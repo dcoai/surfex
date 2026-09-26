@@ -9,6 +9,11 @@ All notable changes to Surfex are recorded here, following
 `mix.exs` reads `0.2.9-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
 release it merely follows.
 
+### Changed
+
+- The README is rewritten: shorter, installing from GitHub, with one worked example, and
+  `spec.md` for everything else. `spec.md` now ships in the package and the docs.
+
 ## [0.2.8] — 2026-09-26
 
 The first release published to GitHub. It fixes a GAP that a shared key could hide.
