@@ -1,0 +1,54 @@
+# The three checks the sibling projects gate on, plus the goldens (spec.md traced against lib/).
+# There is nothing to boot: this package reads source and renders markdown.
+variables:
+  ELIXIR_IMAGE: hexpm/elixir:1.20.4-erlang-29.0.5-debian-bookworm-20260824-slim
+
+default:
+  tags:
+    - DCOTek
+  interruptible: true
+
+stages:
+  - check
+
+.elixir:
+  image: $ELIXIR_IMAGE
+  variables:
+    MIX_ENV: test
+  before_script:
+    - mix local.hex --force
+    - mix local.rebar --force
+  cache:
+    key:
+      files:
+        - mix.exs
+    paths:
+      - _build
+
+format:
+  extends: .elixir
+  stage: check
+  script:
+    - mix format --check-formatted
+
+compile:
+  extends: .elixir
+  stage: check
+  script:
+    # Warnings are errors for the reason they are in every sibling: an unused alias or an
+    # unreachable clause is usually a half-finished edit.
+    - mix compile --force --warnings-as-errors
+
+test:
+  extends: .elixir
+  stage: check
+  script:
+    - mix test
+
+goldens:
+  extends: .elixir
+  stage: check
+  script:
+    # Every golden in .surfex.exs: spec.md against lib/, where a GAP, a broken citation or
+    # a stale SPEC_TRACE.md fails.
+    - mix surfex.goldens

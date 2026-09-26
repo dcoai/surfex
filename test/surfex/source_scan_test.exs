@@ -1,0 +1,282 @@
+defmodule Surfex.SourceScanTest do
+  @moduledoc """
+  The claims `definition_hash/1` makes.
+
+  These are asserted here because nothing downstream can check them: a consuming project's
+  drift gate proves its goldens are *stable*, not that the hash is stable for the right
+  reasons. A hash that changed on every reformat would still produce a self-consistent
+  golden — it would just restamp every row, and the gate would cry wolf until someone
+  turned it off.
+  """
+
+  use ExUnit.Case, async: true
+
+  alias Surfex.SourceScan
+
+  @definition """
+  def transfer(from, to, amount) do
+    debit(from, amount)
+    credit(to, amount)
+  end
+  """
+
+  describe "definition_hash/1 is a function of structure, not position" do
+    # The claim that lets a golden's Locus be a bare path instead of `path.ex:line`.
+    test "a blank line above the definition does not change it" do
+      assert SourceScan.definition_hash("\n\n" <> @definition) ==
+               SourceScan.definition_hash(@definition)
+    end
+
+    test "reindenting does not change it" do
+      indented = @definition |> String.split("\n") |> Enum.map_join("\n", &("    " <> &1))
+
+      assert SourceScan.definition_hash(indented) == SourceScan.definition_hash(@definition)
+    end
+
+    test "a comment inside the body does not change it" do
+      with_comment =
+        String.replace(@definition, "debit(from, amount)", "# why\n  debit(from, amount)")
+
+      assert SourceScan.definition_hash(with_comment) == SourceScan.definition_hash(@definition)
+    end
+
+    test "but changing the body does" do
+      changed = String.replace(@definition, "credit(to, amount)", "credit(to, amount + 1)")
+
+      refute SourceScan.definition_hash(changed) == SourceScan.definition_hash(@definition)
+    end
+
+    test "and so does renaming it" do
+      renamed = String.replace(@definition, "def transfer", "def move")
+
+      refute SourceScan.definition_hash(renamed) == SourceScan.definition_hash(@definition)
+    end
+  end
+
+  describe "definition_hash/1's shape" do
+    test "is 8 lowercase hex characters" do
+      hash = SourceScan.definition_hash(@definition)
+
+      assert String.length(hash) == 8
+      assert hash =~ ~r/^[0-9a-f]{8}$/
+    end
+
+    test "accepts a quoted node and a source binary, and agrees on both" do
+      quoted = Code.string_to_quoted!(@definition)
+
+      assert SourceScan.definition_hash(quoted) == SourceScan.definition_hash(@definition)
+    end
+
+    test "distinguishes definitions that differ only in a literal" do
+      refute SourceScan.definition_hash("def f, do: 1") ==
+               SourceScan.definition_hash("def f, do: 2")
+    end
+  end
+
+  describe "defmodules/1" do
+    test "returns every module in source order, nested ones included" do
+      ast =
+        Code.string_to_quoted!("""
+        defmodule Outer do
+          defmodule Inner do
+          end
+        end
+
+        defmodule Second do
+        end
+        """)
+
+      names =
+        ast
+        |> SourceScan.defmodules()
+        |> Enum.map(fn {:defmodule, _, [{:__aliases__, _, name}, _]} -> name end)
+
+      assert names == [[:Outer], [:Inner], [:Second]]
+    end
+
+    test "an AST with no modules yields none" do
+      assert SourceScan.defmodules(Code.string_to_quoted!("1 + 1")) == []
+    end
+  end
+
+  describe "project_root/1" do
+    setup do
+      root = Path.join(System.tmp_dir!(), "surfex-root-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(Path.join(root, "nested/deeper"))
+      File.write!(Path.join(root, "mix.exs"), "")
+      on_exit(fn -> File.rm_rf!(root) end)
+      %{root: root}
+    end
+
+    test "ascends to the directory holding the marker", %{root: root} do
+      here = File.cwd!()
+      File.cd!(Path.join(root, "nested/deeper"))
+      found = SourceScan.project_root("mix.exs")
+      File.cd!(here)
+
+      # Compared through `Path.expand/1` because a tmp dir is often reached via a symlink.
+      assert Path.expand(found) == Path.expand(root)
+    end
+
+    test "falls back to the working directory when the marker is nowhere", %{root: root} do
+      here = File.cwd!()
+      File.cd!(root)
+      found = SourceScan.project_root("no-such-marker-anywhere")
+      cwd = File.cwd!()
+      File.cd!(here)
+
+      assert found == cwd
+    end
+  end
+
+  describe "lib_sources/1" do
+    setup do
+      root = Path.join(System.tmp_dir!(), "surfex-src-#{System.unique_integer([:positive])}")
+
+      for dir <- ~w(lib/a deps/other/lib _build/dev/lib/x),
+          do: File.mkdir_p!(Path.join(root, dir))
+
+      File.write!(Path.join(root, "mix.exs"), "")
+      File.write!(Path.join(root, "lib/a/one.ex"), "")
+      File.write!(Path.join(root, "deps/other/mix.exs"), "")
+      File.write!(Path.join(root, "deps/other/lib/two.ex"), "")
+      File.write!(Path.join(root, "_build/dev/lib/x/three.ex"), "")
+      on_exit(fn -> File.rm_rf!(root) end)
+      %{root: root}
+    end
+
+    # A scan that catalogued its own dependencies would report a surface the project does
+    # not own, which is worse than reporting none.
+    test "finds first-party sources and excludes deps and _build", %{root: root} do
+      assert root |> SourceScan.lib_sources() |> Enum.map(&Path.basename/1) == ["one.ex"]
+    end
+
+    # #9: ExUnit's tmp_dir trees and test fixtures have a lib/ too. Counting them made a
+    # golden drift on the machine that had just run the tests, and never in CI.
+    test "only a Mix project's own lib/, outside test, tmp and hidden trees", %{root: root} do
+      tree = %{
+        "app/mix.exs" => "",
+        "app/lib/member.ex" => "",
+        "loose/lib/no_mix.ex" => "",
+        "test/fixtures/proj/mix.exs" => "",
+        "test/fixtures/proj/lib/fixture.ex" => "",
+        "tmp/T/case/mix.exs" => "",
+        "tmp/T/case/lib/scratch.ex" => "",
+        ".hidden/mix.exs" => "",
+        ".hidden/lib/hidden.ex" => "",
+        "app/test/support/lib/support.ex" => ""
+      }
+
+      for {path, text} <- tree do
+        File.mkdir_p!(Path.join(root, Path.dirname(path)))
+        File.write!(Path.join(root, path), text)
+      end
+
+      assert root |> SourceScan.lib_sources() |> Enum.map(&Path.relative_to(&1, root)) ==
+               ["app/lib/member.ex", "lib/a/one.ex"]
+    end
+  end
+
+  describe "defs/1" do
+    defp defs(source) do
+      [mod | _] = source |> Code.string_to_quoted!() |> SourceScan.defmodules()
+      SourceScan.defs(mod)
+    end
+
+    defp arities(source), do: source |> defs() |> Enum.map(&{&1.name, &1.arity, &1.kind})
+
+    test "groups clauses, expands defaults, keeps public definers" do
+      assert arities(~S"""
+             defmodule M do
+               def f(a, b \\ 1)
+               def f(0, b), do: b
+               def f(a, b), do: a + b
+               def g, do: :g
+               defmacro m(x), do: x
+               defguard is_z(n) when n == 0
+               defdelegate d(x), to: Kernel, as: :abs
+               defp p(x), do: x
+               defmacrop mp(x), do: x
+               def unquote(:dyn)(), do: 1
+             end
+             """) == [
+               {:d, 1, :function},
+               {:f, 1, :function},
+               {:f, 2, :function},
+               {:g, 0, :function},
+               {:is_z, 1, :macro},
+               {:m, 1, :macro}
+             ]
+    end
+
+    test "@doc false hides one function and does not leak onto the next" do
+      assert arities("""
+             defmodule M do
+               @doc false
+               def hidden(x), do: x
+               def hidden(x, y), do: {x, y}
+               def shown(x), do: x
+             end
+             """) == [{:hidden, 2, :function}, {:shown, 1, :function}]
+    end
+
+    test "later clauses inherit the first clause's visibility" do
+      assert arities("""
+             defmodule M do
+               @doc false
+               def h(0), do: 0
+               def h(n), do: n
+             end
+             """) == []
+    end
+
+    test "an @impl callback is hidden unless it has its own @doc" do
+      assert arities("""
+             defmodule M do
+               @impl true
+               def init(a), do: a
+               @impl true
+               @doc "shown"
+               def call(a), do: a
+               @impl false
+               def plain(a), do: a
+             end
+             """) == [{:call, 1, :function}, {:plain, 1, :function}]
+    end
+
+    test "nested modules' definitions are not the parent's" do
+      assert arities("""
+             defmodule M do
+               def outer, do: 1
+               defmodule Inner do
+                 def inner, do: 2
+               end
+             end
+             """) == [{:outer, 0, :function}]
+    end
+
+    test "a function's hash ignores position and changes with any clause" do
+      base = "def f(0), do: 0\n  def f(n), do: n * 2"
+
+      hash = fn body ->
+        [%{hash: h}] = defs("defmodule M do\n  #{body}\nend\n")
+        h
+      end
+
+      assert hash.("\n\n# a comment\n" <> base) == hash.(base)
+      assert hash.(String.replace(base, "\n  ", "\n      ")) == hash.(base)
+      refute hash.(String.replace(base, "n * 2", "n * 3")) == hash.(base)
+      refute hash.(String.replace(base, "f(0), do: 0", "f(0), do: 1")) == hash.(base)
+    end
+
+    test "hidden_module?/1 reads @moduledoc false" do
+      [hidden, shown] =
+        "defmodule A do\n @moduledoc false\nend\ndefmodule B do\n @moduledoc \"b\"\nend"
+        |> Code.string_to_quoted!()
+        |> SourceScan.defmodules()
+
+      assert SourceScan.hidden_module?(hidden)
+      refute SourceScan.hidden_module?(shown)
+    end
+  end
+end
