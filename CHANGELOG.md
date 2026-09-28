@@ -11,6 +11,12 @@ release it merely follows.
 
 ### Changed
 
+- **A function's version covers what it depends on.** It used to hash only the function's
+  own clauses, so a change made through a private helper, or a module attribute, went
+  unseen. It now also covers every private definition the function calls (transitively,
+  including piped calls, captures and default arguments) and the module attributes they
+  read, and renaming a variable no longer counts as a change. **Every function's version
+  changes once**, with this release; regenerate goldens after upgrading.
 - The README is rewritten: shorter, installing from GitHub, with one worked example, and
   `spec.md` for everything else. `spec.md` now ships in the package and the docs.
 

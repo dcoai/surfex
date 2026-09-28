@@ -112,21 +112,42 @@ defmodule Surfex.SourceScan do
     {clauses, _} =
       Enum.flat_map_reduce(exprs(body), %{doc: nil, impl: false, seen: %{}}, &clause/2)
 
-    clauses
-    |> Enum.group_by(&{&1.name, &1.arity})
-    |> Enum.flat_map(fn {{name, arity}, [first | _] = group} ->
-      defaults = group |> Enum.map(& &1.defaults) |> Enum.max()
-      hash = group |> Enum.map(& &1.node) |> definition_hash()
+    grouped = Enum.group_by(clauses, &{&1.name, &1.arity})
 
-      if first.visible,
-        do:
-          for(
-            a <- (arity - defaults)..arity//1,
+    groups =
+      Map.new(grouped, fn {key, [first | _] = group} ->
+        {key,
+         %{
+           nodes: Enum.map(group, & &1.node),
+           defaults: group |> Enum.map(& &1.defaults) |> Enum.max(),
+           private: first.kind == :private
+         }}
+      end)
+
+    attributes = attributes(body)
+
+    grouped
+    |> Enum.flat_map(fn {{name, arity} = key, [first | _]} ->
+      if first.kind != :private and first.visible do
+        hash = Surfex.SourceScan.Closure.hash(key, groups, attributes)
+        defaults = groups[key].defaults
+
+        for a <- (arity - defaults)..arity//1,
             do: %{name: name, arity: a, kind: first.kind, hash: hash}
-          ),
-        else: []
+      else
+        []
+      end
     end)
     |> Enum.sort_by(&{&1.name, &1.arity})
+  end
+
+  # Every value assigned to each module attribute in the module's own body, in order.
+  # Attributes Elixir itself reads (docs, specs, callbacks) are never read by a clause as
+  # `@name`, so collecting them all does no harm.
+  defp attributes(body) do
+    for {:@, _, [{name, _, [value]}]} <- exprs(body), is_atom(name), reduce: %{} do
+      acc -> Map.update(acc, name, [value], &(&1 ++ [value]))
+    end
   end
 
   @doc "Whether a `defmodule` node declares `@moduledoc false` in its own body."
@@ -150,15 +171,17 @@ defmodule Surfex.SourceScan do
     st = %{st | doc: nil, impl: false}
 
     case signature(head) do
-      {name, args} when is_map_key(@public, definer) ->
+      {name, args} ->
         arity = length(args)
         key = {name, arity}
         visible = Map.get(st.seen, key, not hidden)
 
+        # Private definitions are kept too: a public function's hash follows its calls
+        # into them (Surfex.SourceScan.Closure).
         clause = %{
           name: name,
           arity: arity,
-          kind: Map.fetch!(@public, definer),
+          kind: Map.get(@public, definer, :private),
           defaults: Enum.count(args, &match?({:\\, _, _}, &1)),
           visible: visible,
           node: node

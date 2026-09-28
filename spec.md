@@ -114,7 +114,7 @@ before `Foo.10`). Two specs differing only in those orderings render identical b
   - clauses are grouped by name and arity, and a later clause takes the first clause's
     visibility
   - a default argument declares every arity it generates
-  - each function carries one hash over all its clauses
+  - each function carries one hash over what it depends on (§3.3)
 
 ### 3.3 Content versions
 
@@ -127,6 +127,19 @@ or re-indentation above a definition leaves its hash unchanged; changing its bod
 it. A line number reports movement, and this hash reports change. That is what lets a
 golden locate items by path and version, not `file:line`, so two people editing
 different items touch different rows.
+
+A public function's version, from `Surfex.SourceScan.defs/1`, covers what the function
+depends on, not only its own clauses. A change made through a helper is a change to the
+function:
+- **its own clauses**, with variables renamed by order of first appearance, so renaming
+  a variable is not a change
+- **every private definition it calls**, transitively: direct calls, piped calls
+  (`x |> fee()` is `fee/1`), local captures (`&fee/1`), and calls that rely on default
+  arguments. Recursion terminates.
+- **the values assigned to every module attribute** it, or one of those callees, reads
+
+Calls to other modules, and to the module's own public functions, are not followed:
+those have their own rows and their own versions.
 
 ## 4. Items
 
