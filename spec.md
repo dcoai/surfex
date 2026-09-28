@@ -932,3 +932,40 @@ Its worked example is a claim about Surfex's behaviour, so it is tested. The gui
 versions of a spec are scanned, related as `mix surfex.suggest --accept` would relate
 them, and then edited. The test asserts exactly the dangling, current and orphaned
 relations the guide describes.
+
+## 17. Test evidence {#evidence}
+
+**People or agents judge meaning, and evidence judges behaviour.** A test run shows
+whether a test passes against the code as it is. Recorded at the exact versions of the
+test and the code, that is evidence a confirmation can rest on.
+
+`Surfex.Evidence` is one record per test per run: the test's id and version (§11), whether
+it passed, when, which run, and the versions of the code the test calls at that moment.
+Evidence is **scratch data**. It lives under `_build` (`Surfex.Evidence.path/1`) and is
+never committed; what it justifies is written into the relation log (§14), and the raw
+runs aren't needed afterwards.
+- `Surfex.Evidence.append/2` appends records, and `Surfex.Evidence.load/1` reads them back,
+  oldest first.
+- **A test version discriminates** once it has failed against one version of its code
+  and later passed against a different one, the test itself unchanged:
+  `Surfex.Evidence.discriminating?/3`, with `Surfex.Evidence.red_then_green/3` giving the
+  two runs that show it. A test changed in any way (body, helpers, setups, cases) is a new
+  version, which must fail and pass again.
+- `Surfex.Evidence.latest/3` is a test version's most recent record.
+
+`Surfex.ExUnitFormatter` records it. A project adds it beside the usual formatter
+(`ExUnit.start(formatters: [ExUnit.CLIFormatter, Surfex.ExUnitFormatter])`):
+- At the start of the suite it scans the tests `tests:` names and the code, as
+  `mix surfex.status` does. Without `tests:` it raises.
+- A finished test is matched to its scanned record by file and line, so a test a
+  comprehension generates counts for the record that defines it. A record whose test ran
+  once per case failed if any case failed.
+- Skipped, excluded and invalid tests, and tests outside `tests:`, record nothing.
+- When the suite finishes, the run's records are appended to the evidence file. The
+  formatter never touches the relation log.
+
+```test evidence-discriminates
+a test that failed against one version of the code and then passed against another,
+unchanged itself, discriminates; never red, red with the code unchanged, green before
+red, or a changed test, does not
+```
