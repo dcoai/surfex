@@ -30,7 +30,12 @@ defmodule Surfex.Status.Config do
     unless triangle in [:report, :fail],
       do: raise(ArgumentError, "triangle: must be :report or :fail, got #{inspect(triangle)}")
 
-    [triangle: triangle]
+    coverage =
+      if Keyword.has_key?(config, :classes),
+        do: [coverage: Surfex.Profile.coverage!(config)],
+        else: []
+
+    [triangle: triangle] ++ coverage
   end
 
   @doc "The `require:` policy, validated. Raises `ArgumentError` naming what is wrong."

@@ -16,11 +16,13 @@ defmodule Surfex.Scan do
 
   A spec record also says what part of the spec it is:
 
-    * `role` — `:section` (a heading and its body), `:block` (a marked requirement inside
-      a section) or `:test_hint` (a fenced `test` block saying how to test something);
-      `nil` for records that aren't spec
-    * `within` — the id of the section or block it sits in, `nil` for a section. It is a
-      fact about the text, not a relation.
+    * `role` — what part of the source a record is. For spec, `:section` (a heading and
+      its body), `:block` (a marked requirement inside a section) or `:test_hint` (a
+      fenced `test` block saying how to test something). For code, the item's kind
+      (`:module`, `:function`, …). `nil` for tests and classes.
+    * `within` — what it sits in: the section or block of a block or hint, the parent of a
+      code item (its module, for a function). `nil` when nothing encloses it. It is a
+      fact about the source, not a relation.
 
   A test record (`Surfex.Scan.ExUnit`) can also **declare** what it relates to, in its
   own source: `declares` is a list of `{type, id}`, such as `{:verifies, "cart-add"}`
@@ -39,7 +41,7 @@ defmodule Surfex.Scan do
   defstruct [:kind, :id, :hash, :location, :role, :within, declares: [], calls: []]
 
   @type location :: %{file: String.t(), lines: {pos_integer, pos_integer} | nil}
-  @type role :: :section | :block | :test_hint | nil
+  @type role :: atom | nil
   @type t :: %__MODULE__{
           kind: atom,
           id: String.t(),
@@ -81,7 +83,10 @@ defmodule Surfex.Scan do
   # anchor form. A bare reference names anchors, blocks and hints, never a heading.
   defp anchored?(%__MODULE__{id: id}), do: Regex.match?(~r/#[a-z0-9][a-z0-9-]*$/, id)
 
-  @doc "Code records from a scanner's items: the item's key, version and place."
+  @doc """
+  Code records from a scanner's items: the item's key, version and place, with its kind as
+  `role` (`:function`, `:module`, …) and its parent as `within`, as a spec record has them.
+  """
   @spec code([Item.t()]) :: [t]
   def code(items) do
     items
@@ -90,7 +95,9 @@ defmodule Surfex.Scan do
         kind: :code,
         id: Item.key(item),
         hash: item.hash,
-        location: %{file: item.file, lines: item.lines}
+        location: %{file: item.file, lines: item.lines},
+        role: item.kind,
+        within: item.parent
       }
     end)
     |> Enum.sort_by(& &1.id)

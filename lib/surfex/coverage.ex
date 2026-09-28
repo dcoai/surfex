@@ -17,9 +17,12 @@ defmodule Surfex.Coverage do
 
   @type verdict :: :cited | {:expected, String.t()} | :gap
 
+  @typedoc "What a verdict reads: a `Surfex.Profile`, or `Surfex.Profile.coverage!/1`'s map."
+  @type rules :: Profile.t() | %{rules: [Profile.rule()], never_excused: [atom]}
+
   @doc "The verdict for `item`, given the set of cited keys."
-  @spec verdict(Item.t(), MapSet.t(String.t()), Profile.t()) :: verdict
-  def verdict(%Item{} = item, cited, %Profile{} = profile) do
+  @spec verdict(Item.t(), MapSet.t(String.t()), rules) :: verdict
+  def verdict(%Item{} = item, cited, %{rules: _, never_excused: _} = profile) do
     cond do
       MapSet.member?(cited, Item.key(item)) -> :cited
       item.kind in profile.never_excused -> :gap
@@ -35,10 +38,8 @@ defmodule Surfex.Coverage do
   then ambiguous), and each still needs its own verdict. Keyed by key, one would overwrite
   the other, and a GAP could vanish from the gate (#15).
   """
-  @spec verdicts([Item.t()], %{String.t() => [String.t()]}, Profile.t()) :: [
-          {Item.t(), verdict}
-        ]
-  def verdicts(items, by_item, %Profile{} = profile) do
+  @spec verdicts([Item.t()], %{String.t() => [String.t()]}, rules) :: [{Item.t(), verdict}]
+  def verdicts(items, by_item, %{rules: _, never_excused: _} = profile) do
     cited = MapSet.new(Map.keys(by_item))
     Enum.map(items, &{&1, verdict(&1, cited, profile)})
   end

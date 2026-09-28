@@ -221,7 +221,36 @@ first, see it fail, then change the code, then `mix surfex.confirm` the section.
 is versioned like code (its body, its helpers, its setups, its table of cases), so a
 test weakened to pass dangles its relations too.
 
-## 8. Working with an LLM
+## 8. Code the spec doesn't describe
+
+Not every public function belongs in a spec: GenServer callbacks, generated accessors,
+process wiring. Don't write sections to cover them, and don't loosen the check either.
+**Excuse them by class**, in `.surfex.exs`:
+
+```elixir
+classes: [{"process plumbing", "OTP callbacks; the behaviour is the spec's subject"}],
+rules: [%{class: "process plumbing", kinds: [:function], name: ~r/^handle_(call|cast|info)\//}],
+require: [code: [:implements, :excuses]]
+```
+
+`mix surfex.suggest --accept` relates each matching item that nothing implements to its
+class, with an `excuses` relation. Every public item is then either described or
+deliberately excused, and both are on record. An excuse is held to account like any
+other relation:
+
+- Rewording the class's reason, or changing its rules, dangles every excuse of the class,
+  so someone confirms each item still belongs.
+- An item whose code changes dangles its excuse too: is it still plumbing?
+- An excuse the rules no longer support is **stale** and fails the check: the item was
+  renamed out of the pattern, another class's rule now matches it first, or a section now
+  implements it.
+
+Write rules by **class, never by item**. A new helper falls into its class and stays quiet,
+while a new entry point matches no rule and needs a section, which is the direction that
+matters. Prefer a section whenever the code has behaviour a reader of the spec should
+know about. A class is for code whose only story is "it wires things together".
+
+## 9. Working with an LLM
 
 `mix surfex.status --format json` is an agent's work list: every relation needing
 attention, which end changed, where both ends are, and every new section and item.
@@ -236,7 +265,7 @@ attention, which end changed, where both ends are, and every new section and ite
 - Ask for the test before the code (§7), in a separate step, so the test is written
   from the spec rather than from the code.
 
-## 9. A worked example
+## 10. A worked example
 
 Wren is a small, made-up messaging library. Here is its spec written in one section:
 
@@ -286,7 +315,7 @@ under the new id and proposes moving them.
 These claims are checked: Surfex's own tests scan both versions above, make these
 edits, and assert exactly these outcomes.
 
-## 10. Checklist
+## 11. Checklist
 
 - [ ] Each section holds one requirement, or requirements that change together, or marks
       each requirement as a block.
@@ -297,5 +326,6 @@ edits, and assert exactly these outcomes.
 - [ ] Each requirement says what is returned, rejected, or left unchanged.
 - [ ] Concrete behaviour has examples, and rules over all inputs are stated as invariants.
 - [ ] Where how to test a requirement isn't obvious, a test hint says so.
+- [ ] Code the spec shouldn't describe is excused by a class, never item by item.
 - [ ] `mix surfex.suggest` proposes the relations you expect, and no others.
 - [ ] `mix surfex.status` lists no section as new that should relate to something.

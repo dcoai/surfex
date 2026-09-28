@@ -72,6 +72,10 @@ release it merely follows.
     described or deliberately excused, on record.
   - Rewording a class's reason or changing its rules dangles its excuses.
   - On the reference fixture, the suggested excusals are exactly the trace's verdicts.
+  - An excuse its class no longer covers is **stale** and fails the check: the item is
+    now implemented, no longer matches a rule, or another class's rule matches it first.
+  - Code records now carry the item's kind as `role` and its parent as `within`.
+  - The guide has a section on excusing code.
 - The status reports count spec units by role (`Surfex.Status.units/1`), and the JSON
   gives each id's role and what it sits in.
 - Surfex's own spec now has an anchor on every heading. Its relations moved across and
