@@ -9,6 +9,20 @@ All notable changes to Surfex are recorded here, following
 `mix.exs` reads `0.3.1-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
 release it merely follows.
 
+### Added
+
+- **A specification guide**, `guides/writing-specs.md`: how to write a spec Surfex relates
+  precisely (section sizing, stable headings, naming the code, checkable claims, examples
+  and invariants, test-first work, working with an LLM), with a worked example that
+  Surfex's tests run.
+
+### Fixed
+
+- **The markdown scanner read code fences wrongly.** A tilde fence wasn't a fence, and a
+  shorter inner fence closed a longer outer one, so a `#` line in a code block could
+  become a section and shift the ids and versions after it. Fences now follow
+  CommonMark. A spec with neither form scans as before.
+
 ## [0.3.0] — 2026-09-28
 
 The relation log. Surfex now records which versions of the spec and the code were

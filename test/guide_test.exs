@@ -1,0 +1,131 @@
+defmodule Surfex.GuideTest do
+  @moduledoc """
+  The specification guide's worked example (§9) makes claims about what Surfex does: which
+  relations `mix surfex.suggest` proposes for each version of the Wren spec, and which of
+  them dangle or are orphaned after each edit. This runs Surfex on the guide's own text,
+  so a claim the scanner stops honouring fails here rather than misleading a reader.
+  """
+  use ExUnit.Case, async: true
+
+  alias Surfex.{Item, Scan, Status, Suggest, Trace}
+  alias Surfex.Scan.Markdown
+
+  @moduletag :tmp_dir
+  @guide Path.expand("../guides/writing-specs.md", __DIR__)
+  @meta [by: "guide", at: "2026-09-28T10:00:00Z"]
+
+  # The code the example's spec describes, as the Elixir scanner would report it.
+  @items [
+    %Item{kind: :module, name: "Wren.Queue", file: "lib/wren/queue.ex", hash: "00000001"},
+    %Item{kind: :function, name: "send/3", parent: "Wren", file: "lib/wren.ex", hash: "00000002"},
+    %Item{kind: :function, name: "recv/1", parent: "Wren", file: "lib/wren.ex", hash: "00000003"},
+    %Item{
+      kind: :function,
+      name: "max_len/0",
+      parent: "Wren",
+      file: "lib/wren.ex",
+      hash: "00000004"
+    }
+  ]
+
+  defp example(name) do
+    [_, body] =
+      Regex.run(~r/^```markdown #{name}\n(.*?)^```$/ms, File.read!(@guide))
+
+    body
+  end
+
+  # Relate the spec as `suggest --accept` would, apply `edit`, and derive the status.
+  defp after_edit(root, spec, edit) do
+    path = Path.join(root, "spec.md")
+    File.write!(path, spec)
+    trace = Trace.new!(namespace: "Wren", sources: ["spec.md"])
+    scans = Markdown.records(root, ["spec.md"]) ++ Scan.code(@items)
+
+    candidates = Suggest.candidates(trace, @items, scans, [], root)
+    {:ok, entries} = Suggest.accept(candidates, scans, [], @meta)
+
+    edited = edit.(spec)
+    assert edited != spec
+    File.write!(path, edited)
+    status = Status.derive(Markdown.records(root, ["spec.md"]) ++ Scan.code(@items), entries)
+    {pairs(candidates), status}
+  end
+
+  defp pairs(candidates),
+    do: candidates |> Enum.map(&{section(&1.spec.id), &1.code.id}) |> Enum.sort()
+
+  defp section("spec.md#" <> path), do: path
+
+  defp in_state(status, state) do
+    # `implements` is undirected, so its ends are held sorted: code first.
+    for %{state: ^state, relation: {:implements, {:code, c}, {:spec, s}}} <- status.relations,
+        do: {section(s), c}
+  end
+
+  defp limit(spec), do: String.replace(spec, "at most 512 bytes", "at most 1024 bytes")
+
+  test "before: suggest relates the one section to all four names, and a one-word edit dangles all four",
+       %{tmp_dir: root} do
+    {pairs, status} = after_edit(root, example("wren-before"), &limit/1)
+
+    assert pairs == [
+             {"Messaging", "Wren.Queue"},
+             {"Messaging", "Wren.max_len/0"},
+             {"Messaging", "Wren.recv/1"},
+             {"Messaging", "Wren.send/3"}
+           ]
+
+    assert Enum.sort(in_state(status, :dangling)) == pairs
+  end
+
+  test "after: the same edit dangles only the two relations of Limits", %{tmp_dir: root} do
+    {pairs, status} = after_edit(root, example("wren-after"), &limit/1)
+
+    assert pairs == [
+             {"Messaging", "Wren.Queue"},
+             {"Messaging/Limits", "Wren.max_len/0"},
+             {"Messaging/Limits", "Wren.send/3"},
+             {"Messaging/Receiving", "Wren.recv/1"},
+             {"Messaging/Sending", "Wren.send/3"}
+           ]
+
+    assert Enum.sort(in_state(status, :dangling)) == [
+             {"Messaging/Limits", "Wren.max_len/0"},
+             {"Messaging/Limits", "Wren.send/3"}
+           ]
+
+    assert length(in_state(status, :current)) == 3
+  end
+
+  test "after: reflowing a paragraph dangles nothing", %{tmp_dir: root} do
+    reflow = fn spec ->
+      spec
+      |> String.replace("takes the next message, in", "takes   the next\nmessage, in")
+      |> String.replace("queues a message for a peer.", "queues a message\n\nfor a peer.")
+    end
+
+    assert reflow.(example("wren-after")) =~ "takes   the next\nmessage"
+    {_pairs, status} = after_edit(root, example("wren-after"), reflow)
+
+    assert Enum.all?(status.relations, &(&1.state == :current))
+  end
+
+  test "after: renaming Limits keeps its version but orphans its two relations",
+       %{tmp_dir: root} do
+    spec = example("wren-after")
+    {_pairs, status} = after_edit(root, spec, &String.replace(&1, "## Limits", "## Size limits"))
+
+    assert Enum.sort(in_state(status, :orphaned)) == [
+             {"Messaging/Limits", "Wren.max_len/0"},
+             {"Messaging/Limits", "Wren.send/3"}
+           ]
+
+    versions = fn text -> text |> Markdown.sections("spec.md") |> Map.new(&{&1.id, &1.hash}) end
+
+    assert versions.(spec)["spec.md#Messaging/Limits"] ==
+             versions.(String.replace(spec, "## Limits", "## Size limits"))[
+               "spec.md#Messaging/Size limits"
+             ]
+  end
+end

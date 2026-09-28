@@ -26,6 +26,9 @@ It serves two uses:
    checks both directions: every citation names something that exists, and every item
    the code declares is cited or deliberately excused (§6–§10).
 
+How precisely Surfex can relate a spec depends on how the spec is written.
+`guides/writing-specs.md` (§16) says how to write one that it relates well.
+
 ### 1.2 Policies
 
 - **No dependencies.** `deps: []`, stdlib only. Anything Surfex depends on, every project
@@ -690,3 +693,26 @@ exist. **It never confirms a dangling relation**, which stays a named `confirm` 
 `Mix.Tasks.Surfex.Suggest` is `mix surfex.suggest [--accept] [--note N]`: without
 `--accept` it lists the candidates and writes nothing. Adopting the relation log is
 `mix surfex.log --init` followed by `mix surfex.suggest --accept`.
+
+## 16. The specification guide
+
+`guides/writing-specs.md` is a guide to writing a specification that Surfex can relate
+precisely. It covers:
+
+- what the scanner sees
+- sizing sections to what changes together
+- keeping headings stable
+- naming the code in the section that describes it
+- stating requirements as checkable claims
+- examples and invariants
+- test-first work with Surfex
+- working with an LLM
+- a worked example
+- a checklist
+
+It ships in the package and the docs.
+
+Its worked example is a claim about Surfex's behaviour, so it is tested. The guide's two
+versions of a spec are scanned, related as `mix surfex.suggest --accept` would relate
+them, and then edited. The test asserts exactly the dangling, current and orphaned
+relations the guide describes.

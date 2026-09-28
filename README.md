@@ -132,6 +132,10 @@ replaces it. It will be removed in a later release.
 
 ## Reference
 
+[`guides/writing-specs.md`](guides/writing-specs.md) is how to write a spec Surfex relates
+well: section sizing, stable headings, naming the code, checkable claims, and test-first
+work.
+
 [`spec.md`](spec.md) is the full specification: the scan records, the relation log, every
 state and command, and every `.surfex.exs` key. Surfex holds it to its own code with its
 own relation log, and CI runs `mix surfex.status`.
