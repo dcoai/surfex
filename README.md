@@ -87,20 +87,20 @@ and says exactly what to look at:
 
 ```
 relation status: FAILING
-  implements: current 3 · dangling 2
+  implements: current 4 · dangling 1
 
 Dangling (an end changed since it was confirmed):
-  implements  code MyApp.Cart ↔ spec spec.md#Carts (changed: MyApp.Cart (lib/my_app/cart.ex:2-13))
   implements  code MyApp.Cart.total/1 ↔ spec spec.md#Carts/Totals (changed: MyApp.Cart.total/1 (lib/my_app/cart.ex:12-12))
 
 ** (Mix) relations need attention (see above)
 ```
 
-Read the sections against the new code, fix whichever side is wrong, and confirm what you
-checked:
+Only `total/1`'s relation dangles: a function's body is its own, so the module's relation
+stays current. Read the section against the new code, fix whichever side is wrong, and
+confirm what you checked:
 
 ```sh
-mix surfex.confirm MyApp.Cart.total/1 MyApp.Cart --note "same count, simpler"
+mix surfex.confirm MyApp.Cart.total/1 --note "same count, simpler"
 ```
 
 A relation only becomes current again when someone names it. Regenerating something can't

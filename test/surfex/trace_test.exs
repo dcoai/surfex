@@ -101,7 +101,8 @@ defmodule Surfex.TraceTest do
       message = fails(root)
       assert message =~ "Changed (the sections listed cite them — revisit each)"
       assert message =~ "MyApp.Cart.total/0 → spec — Totals"
-      assert message =~ "MyApp.Cart →"
+      # A body edit is the function's change, not its module's (#33).
+      refute message =~ "MyApp.Cart →"
     end
 
     test "renaming a cited function reports the broken citation and the gap together", %{
