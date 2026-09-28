@@ -4,7 +4,7 @@ All notable changes to Surfex are recorded here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.0] — 2026-09-28
 
 Specs and tests in step. Tests are scanned and say what they verify, and each spec unit is
 checked from three sides: its code implements it, a test verifies it, and that test
