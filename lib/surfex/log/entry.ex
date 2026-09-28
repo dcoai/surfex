@@ -11,7 +11,7 @@ defmodule Surfex.Log.Entry do
   | `parents` | the entry ids it follows for the same relation; two means it resolves a fork |
   | `op` | `:relate` or `:retire` |
   | `type` | `:implements`, `:refines`, `:depends_on`, `:tests` or `:excuses` |
-  | `ends` | two `%{kind, id, hash}`, sorted, so A↔B and B↔A are one relation |
+  | `ends` | two `%{kind, id, hash}`: in order, from → to, for a directed type; sorted for an undirected one, so A↔B and B↔A are one relation |
   | `by` | who recorded it |
   | `note` | why, optionally |
 
@@ -28,6 +28,8 @@ defmodule Surfex.Log.Entry do
   @ops [:relate, :retire]
   @types [:implements, :refines, :depends_on, :tests, :excuses]
   @kinds [:spec, :code, :test, :config, :class]
+  # "A depends on B" is not "B depends on A": these keep their ends in the order given.
+  @directed [:depends_on, :refines, :tests]
 
   @type end_ :: %{kind: atom, id: String.t(), hash: String.t()}
   @type t :: %__MODULE__{
@@ -49,6 +51,10 @@ defmodule Surfex.Log.Entry do
   @doc "The relation types."
   @spec types() :: [atom]
   def types, do: @types
+
+  @doc "The directed types: their ends are from → to, in the order given."
+  @spec directed() :: [atom]
+  def directed, do: @directed
 
   @doc "The kinds an end may be."
   @spec kinds() :: [atom]
@@ -75,7 +81,7 @@ defmodule Surfex.Log.Entry do
            parents: fields |> Map.get(:parents, []) |> sort_list(),
            op: fields[:op],
            type: fields[:type],
-           ends: Enum.sort_by(ends, &{&1.kind, &1.id}),
+           ends: orient(fields[:type], ends),
            by: fields[:by],
            note: fields[:note]
          },
@@ -227,6 +233,9 @@ defmodule Surfex.Log.Entry do
   end
 
   defp decode_ends(other), do: bad(:ends, other)
+
+  defp orient(type, ends) when type in @directed, do: ends
+  defp orient(_type, ends), do: Enum.sort_by(ends, &{&1.kind, &1.id})
 
   defp sort_list(list) when is_list(list), do: Enum.sort(list)
   defp sort_list(other), do: other

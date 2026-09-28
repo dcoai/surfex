@@ -19,6 +19,11 @@ release it merely follows.
   `Surfex.Log` (append-only segments in `.surfex/`, verified loading, union merge), with
   `mix surfex.log --init | --break | --verify | --rechain`. Nothing is ever edited or
   removed.
+- **Relation status**: `Surfex.Status` derives each relation's state (current, dangling
+  with the side that changed, orphaned, conflicted, retired; impacted as a flag), the new
+  ids and the ids a `require:` policy leaves unmet. `mix surfex.status [--format json]
+  [--verify]` reports it and is the check. Directed relation types (`depends_on`,
+  `refines`, `tests`) keep their ends in order.
 
 ### Changed
 

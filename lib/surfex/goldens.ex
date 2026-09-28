@@ -69,7 +69,7 @@ defmodule Surfex.Goldens do
   end
 
   defp run_one(:trace, config, root, defaults, command, write?) do
-    trace = Trace.new!(Keyword.merge(defaults, Keyword.delete(config, :goldens)))
+    trace = Trace.new!(Keyword.merge(defaults, Trace.own_keys(config)))
     analysis = Trace.analyse(trace, Trace.items(trace, root), root)
     golden = Trace.render(trace, analysis)
 

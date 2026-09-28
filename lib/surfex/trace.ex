@@ -137,9 +137,17 @@ defmodule Surfex.Trace do
   """
   @spec load!(String.t(), keyword) :: t
   def load!(path, defaults \\ []) do
-    config = path |> Surfex.Gate.config!() |> Keyword.delete(:goldens)
+    config = path |> Surfex.Gate.config!() |> own_keys()
     new!(Keyword.merge(defaults, config))
   end
+
+  # Keys other tools read from the same `.surfex.exs`: `mix surfex.goldens`'s list, and
+  # `mix surfex.status`'s policy.
+  @other_tools [:goldens, :require]
+
+  @doc "A `.surfex.exs` config without the keys other tools read (`goldens:`, `require:`)."
+  @spec own_keys(keyword) :: keyword
+  def own_keys(config), do: Keyword.drop(config, @other_tools)
 
   @doc "A validated trace from a keyword list. Raises `ArgumentError` naming the key."
   @spec new!(keyword) :: t
