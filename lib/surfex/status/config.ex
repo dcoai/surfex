@@ -1,8 +1,7 @@
 defmodule Surfex.Status.Config do
   @moduledoc """
-  What `mix surfex.status` reads from `.surfex.exs`: where the spec is, how to scan the
-  code, and the `require:` policy. The keys are the trace's own (§9), so one file serves
-  both; `require:` is the status's alone.
+  What the relation log's tasks read from `.surfex.exs`: where the spec is, how to scan the
+  code, how to read citations (the `Surfex.Profile` keys), and the policies.
 
     * `:sources` — globs of the markdown spec files (required)
     * `:scanner`, `:scanner_opts` — the code scanner (`:elixir` by default)
@@ -18,6 +17,73 @@ defmodule Surfex.Status.Config do
   alias Surfex.Scan
 
   @roles [:section, :block, :test_hint]
+
+  # The keys a `.surfex.exs` may hold, besides the profile's (`Surfex.Profile.keys/0`).
+  @own [:scanner, :scanner_opts, :namespace, :goldens, :require, :tests, :triangle]
+
+  # The v0.2 trace's own keys, removed with it in 0.4.0.
+  @removed [
+    :output,
+    :purpose,
+    :task,
+    :gate,
+    :hardness,
+    :item_noun,
+    :columns,
+    :groups,
+    :locus_prefix,
+    :not_catalogued,
+    :prose,
+    :require_citation,
+    :file_labels
+  ]
+
+  @doc """
+  Reads and validates a `.surfex.exs`: it must evaluate to a keyword list of known keys.
+  A key of the removed v0.2 trace raises saying so; any other unknown key raises naming
+  it. Every task reads its config through this, so a misspelt key is never ignored.
+  """
+  @spec read!(String.t()) :: keyword
+  def read!(path) do
+    config = Surfex.Gate.config!(path)
+
+    case Keyword.keys(config) -- (@own ++ Surfex.Profile.keys()) do
+      [] ->
+        config
+
+      unknown ->
+        case Enum.filter(unknown, &(&1 in @removed)) do
+          [] ->
+            raise ArgumentError, "#{path}: unknown keys #{inspect(unknown)}"
+
+          removed ->
+            raise ArgumentError,
+                  "#{path}: #{inspect(removed)} belonged to the v0.2 trace, removed in 0.4.0; " <>
+                    "delete them (the relation log needs only sources:, the reading keys and its own)"
+        end
+    end
+  end
+
+  @doc """
+  The items the code scanner finds under `root`: the built-in Elixir scanner, or the
+  project's `scanner:` module (`Surfex.Scanner`) with its `scanner_opts:`.
+  """
+  @spec items(keyword, String.t()) :: [Surfex.Item.t()]
+  def items(config, root) do
+    opts = Keyword.get(config, :scanner_opts, [])
+
+    case Keyword.get(config, :scanner, :elixir) do
+      :elixir ->
+        Surfex.Scanner.Elixir.items(root, opts)
+
+      scanner ->
+        unless Code.ensure_loaded?(scanner) and function_exported?(scanner, :items, 2),
+          do:
+            raise(ArgumentError, "scanner #{inspect(scanner)} does not implement Surfex.Scanner")
+
+        scanner.items(root, opts)
+    end
+  end
 
   @doc """
   The options `Surfex.Status.derive/4` takes from `.surfex.exs`: `triangle:`, validated.
@@ -136,7 +202,7 @@ defmodule Surfex.Status.Config do
     spec ++ Scan.code(items) ++ tests(config, root) ++ classes(config)
   end
 
-  # Classes (`classes:` and `rules:`, the trace's own keys) are scanned when a project has
+  # Classes (`classes:` and `rules:`, the profile's keys) are scanned when a project has
   # any: each is a record excusals relate to (`Surfex.Scan.Classes`).
   defp classes(config),
     do: if(Keyword.has_key?(config, :classes), do: Scan.Classes.records(config), else: [])
@@ -155,15 +221,6 @@ defmodule Surfex.Status.Config do
           do: raise(ArgumentError, "tests: #{inspect(globs)} matches no file under #{root}")
 
         Scan.ExUnit.records(root, globs)
-    end
-  end
-
-  defp items(config, root) do
-    opts = Keyword.get(config, :scanner_opts, [])
-
-    case Keyword.get(config, :scanner, :elixir) do
-      :elixir -> Surfex.Scanner.Elixir.items(root, opts)
-      scanner -> scanner.items(root, opts)
     end
   end
 end

@@ -6,8 +6,32 @@ All notable changes to Surfex are recorded here, following
 
 ## [Unreleased]
 
-`mix.exs` reads `0.3.1-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
-release it merely follows.
+`mix.exs` reads `0.4.0-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
+release it merely follows. The next release is a **minor** one, since it removes the v0.2
+trace.
+
+### Removed
+
+- **The v0.2 trace.** It was deprecated in 0.3.0, and the relation log now does everything
+  it did. Removed:
+  - `Surfex.Trace` and `mix surfex.trace`;
+  - the `:trace` goldens entry (`goldens:` now defaults to `[:status]`) and `SPEC_TRACE.md`;
+  - `Surfex.Coverage.verdicts/3`;
+  - `Surfex.Cite.by_item/2`, `Surfex.Cite.section_label/2` and `Surfex.Cite.headings/2`;
+  - the `file_labels:` profile key.
+
+  A `.surfex.exs` that still has a trace-only key (`output`, `purpose`, `columns`,
+  `groups`, `prose`, …) raises, naming the keys and why. The README describes the
+  upgrade.
+- `Surfex.Gate.drift/2` no longer formats a `Cited by` column specially: only the trace's
+  golden had one.
+
+### Changed
+
+- Every task reads `.surfex.exs` through `Surfex.Status.Config.read!/1`, which rejects
+  unknown keys rather than ignoring them.
+- `Surfex.Suggest.candidates/5` and `all/5` take a `Surfex.Profile`
+  (`Surfex.Status.Config.profile!/2`) instead of a trace.
 
 ### Added
 

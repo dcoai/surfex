@@ -7,7 +7,8 @@ defmodule Surfex.GuideTest do
   """
   use ExUnit.Case, async: true
 
-  alias Surfex.{Item, Scan, Status, Suggest, Trace}
+  alias Surfex.{Item, Scan, Status, Suggest}
+  alias Surfex.Status.Config
   alias Surfex.Scan.Markdown
 
   @moduletag :tmp_dir
@@ -41,10 +42,10 @@ defmodule Surfex.GuideTest do
   defp after_edit(root, spec, edit) do
     path = Path.join(root, "spec.md")
     File.write!(path, spec)
-    trace = Trace.new!(namespace: "Wren", sources: ["spec.md"])
+    profile = Config.profile!([sources: ["spec.md"]], "Wren")
     scans = Markdown.records(root, ["spec.md"]) ++ Scan.code(@items)
 
-    candidates = Suggest.candidates(trace, @items, scans, [], root)
+    candidates = Suggest.candidates(profile, @items, scans, [], root)
     {:ok, entries} = Suggest.accept(candidates, scans, [], @meta)
 
     edited = edit.(spec)
@@ -135,10 +136,10 @@ defmodule Surfex.GuideTest do
        %{tmp_dir: root} do
     spec = example("wren-after")
     {_pairs, status} = after_edit(root, spec, &String.replace(&1, "## Limits", "## Size limits"))
-    trace = Trace.new!(namespace: "Wren", sources: ["spec.md"])
+    profile = Config.profile!([sources: ["spec.md"]], "Wren")
     scans = Markdown.records(root, ["spec.md"]) ++ Scan.code(@items)
     entries = Enum.flat_map(status.relations, & &1.tips)
-    suggestions = Suggest.all(trace, @items, scans, entries, root)
+    suggestions = Suggest.all(profile, @items, scans, entries, root)
 
     assert [%{from: "spec.md#Messaging/Limits", to: %{id: "spec.md#Messaging/Size limits"}}] =
              suggestions.moves

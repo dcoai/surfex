@@ -30,7 +30,7 @@ defmodule Mix.Tasks.Surfex.Suggest do
 
   use Mix.Task
 
-  alias Surfex.{Gate, Log, Suggest, Trace}
+  alias Surfex.{Log, Suggest}
   alias Surfex.Record.Mix, as: R
   alias Surfex.Status.Config
 
@@ -40,14 +40,14 @@ defmodule Mix.Tasks.Surfex.Suggest do
       OptionParser.parse!(args, strict: [accept: :boolean, note: :string, config: :string])
 
     root = File.cwd!()
-    config = Gate.config!(Path.join(root, opts[:config] || ".surfex.exs"))
+    config = Config.read!(Path.join(root, opts[:config] || ".surfex.exs"))
     namespace = Mix.Project.config()[:app] |> to_string() |> Macro.camelize()
-    trace = Trace.new!(Keyword.merge([namespace: namespace], Trace.own_keys(config)))
-    if trace.scanner != :elixir, do: Mix.Task.run("compile")
+    profile = Config.profile!(config, namespace)
+    if Keyword.get(config, :scanner, :elixir) != :elixir, do: Mix.Task.run("compile")
 
     scans = Config.scans(config, root)
     entries = if File.dir?(Log.dir(root)), do: Log.load(root), else: []
-    suggestions = Suggest.all(trace, Trace.items(trace, root), scans, entries, root)
+    suggestions = Suggest.all(profile, Config.items(config, root), scans, entries, root)
 
     for m <- suggestions.moves, do: Mix.shell().info("move        #{m.from} → #{m.to.id}")
     for r <- suggestions.refines, do: Mix.shell().info("refines     #{r.from.id} → #{r.to.id}")
