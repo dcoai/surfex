@@ -32,6 +32,15 @@ defmodule Surfex.Scan.Markdown.Fence do
     end
   end
 
+  @doc "The info string of a line that opens a fence (trimmed), or `nil` for any other line."
+  @spec info(String.t()) :: String.t() | nil
+  def info(line) do
+    case Regex.run(@open, line, capture: :all_but_first) do
+      [marks, info] -> if opens?(marks, info), do: String.trim(info)
+      nil -> nil
+    end
+  end
+
   defp opens?("`" <> _, info), do: not String.contains?(info, "`")
   defp opens?(_tildes, _info), do: true
 

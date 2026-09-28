@@ -25,6 +25,14 @@ release it merely follows.
   also fails on anything planned and not built, for a release's check. A plausibility
   check refuses a planned id the project couldn't have, so a typo doesn't become a
   plan.
+- **Finer spec units.** A heading anchor (`## Adding items {#cart-add}`) gives a section
+  an id that survives renaming its heading. A **marked block** (the lines between
+  `<!-- surfex: ID -->` and `<!-- /surfex -->`) is one requirement, and a **test hint**
+  (a fence whose info string is `test ID`) says how to test something. Each is a spec
+  record of its own, with its own version, and is left out of the version of what it
+  sits in, so editing one requirement no longer dangles its neighbours. `Surfex.Scan`
+  gains `role` and `within`. `mix surfex.suggest` relates a citation in a block to the
+  block. A spec that uses none of these scans exactly as before.
 
 ### Fixed
 

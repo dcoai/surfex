@@ -32,15 +32,15 @@ on any; a citation of something that does not exist fails it too.
 | `Surfex.Log.Entry` | `:module` | `8fa62411` | `spec — 12.1 Entries` | `lib/surfex/log/entry.ex` |
 | `Surfex.Profile` | `:module` | `622c495c` | `spec — 1.2 Policies, spec — 8. Profiles` | `lib/surfex/profile.ex` |
 | `Surfex.Record` | `:module` | `5ea556b9` | `spec — 14. Recording` | `lib/surfex/record.ex` |
-| `Surfex.Scan` | `:module` | `1cbc20d7` | `spec — 11. Scan records` | `lib/surfex/scan.ex` |
-| `Surfex.Scan.Markdown` | `:module` | `9899d1ab` | `spec — 11. Scan records` | `lib/surfex/scan/markdown.ex` |
+| `Surfex.Scan` | `:module` | `bc474cb2` | `spec — 11. Scan records` | `lib/surfex/scan.ex` |
+| `Surfex.Scan.Markdown` | `:module` | `fa716ab7` | `spec — 11. Scan records` | `lib/surfex/scan/markdown.ex` |
 | `Surfex.Scanner` | `:module` | `f6893413` | `spec — 5.1 The contract, spec — 9.1 Definition` | `lib/surfex/scanner.ex` |
 | `Surfex.Scanner.Elixir` | `:module` | `2fc24816` | `spec — 5.2 The built-in Elixir scanner` | `lib/surfex/scanner/elixir.ex` |
 | `Surfex.SourceScan` | `:module` | `6da732c6` | `spec — 3. Reading source` | `lib/surfex/source_scan.ex` |
 | `Surfex.Status` | `:module` | `75427a17` | `spec — 13. Relation status` | `lib/surfex/status.ex` |
 | `Surfex.Status.Config` | `:module` | `2cc1bc32` | `spec — 13.2 Configuration` | `lib/surfex/status/config.ex` |
 | `Surfex.Status.Report` | `:module` | `4b9fea23` | `spec — 13.3 Reports and the check` | `lib/surfex/status/report.ex` |
-| `Surfex.Suggest` | `:module` | `99bcf40a` | `spec — 15. Suggesting relations` | `lib/surfex/suggest.ex` |
+| `Surfex.Suggest` | `:module` | `1de00270` | `spec — 15. Suggesting relations` | `lib/surfex/suggest.ex` |
 | `Surfex.Surface` | `:module` | `9ca872f0` | `spec — 10.2 Project goldens, spec — 10.3 Every golden at once` | `lib/surfex/surface.ex` |
 | `Surfex.Trace` | `:module` | `c466ac9b` | `spec — 1.2 Policies, spec — 9. Traces` | `lib/surfex/trace.ex` |
 ## Functions
@@ -93,7 +93,7 @@ on any; a citation of something that does not exist fails it too.
 | `Surfex.Record.resolve/7` | `:function` | `e4ae4a48` | `spec — 14. Recording` | `lib/surfex/record.ex` |
 | `Surfex.Record.retire/6` | `:function` | `cf36dc24` | `spec — 14. Recording` | `lib/surfex/record.ex` |
 | `Surfex.Scan.Markdown.records/2` | `:function` | `afbbdb08` | `spec — 11. Scan records` | `lib/surfex/scan/markdown.ex` |
-| `Surfex.Scan.Markdown.sections/2` | `:function` | `a35966ea` | `spec — 11. Scan records` | `lib/surfex/scan/markdown.ex` |
+| `Surfex.Scan.Markdown.sections/2` | `:function` | `f0fa118d` | `spec — 11. Scan records` | `lib/surfex/scan/markdown.ex` |
 | `Surfex.Scan.code/1` | `:function` | `2fd1cbe2` | `spec — 11. Scan records` | `lib/surfex/scan.ex` |
 | `Surfex.Scanner.Elixir.items/1` | `:function` | `aab9c8e3` | `spec — 5.2 The built-in Elixir scanner` | `lib/surfex/scanner/elixir.ex` |
 | `Surfex.Scanner.Elixir.items/2` | `:function` | `aab9c8e3` | `spec — 5.2 The built-in Elixir scanner` | `lib/surfex/scanner/elixir.ex` |
@@ -120,7 +120,7 @@ on any; a citation of something that does not exist fails it too.
 | `Surfex.Status.summary/1` | `:function` | `a081eab5` | `spec — 13.1 States` | `lib/surfex/status.ex` |
 | `Surfex.Status.tips/2` | `:function` | `304fce6b` | `spec — 13.1 States` | `lib/surfex/status.ex` |
 | `Surfex.Suggest.accept/4` | `:function` | `1fb41589` | `spec — 15. Suggesting relations` | `lib/surfex/suggest.ex` |
-| `Surfex.Suggest.candidates/5` | `:function` | `959624db` | `spec — 15. Suggesting relations` | `lib/surfex/suggest.ex` |
+| `Surfex.Suggest.candidates/5` | `:function` | `67048189` | `spec — 15. Suggesting relations` | `lib/surfex/suggest.ex` |
 | `Surfex.Trace.analyse/3` | `:function` | `e6129055` | `spec — 9.2 Analysis` | `lib/surfex/trace.ex` |
 | `Surfex.Trace.drift/2` | `:function` | `ca0f4587` | `spec — 9.4 Drift` | `lib/surfex/trace.ex` |
 | `Surfex.Trace.failures/2` | `:function` | `589e7779` | `spec — 9.2 Analysis` | `lib/surfex/trace.ex` |
