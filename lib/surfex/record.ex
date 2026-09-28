@@ -119,6 +119,74 @@ defmodule Surfex.Record do
   end
 
   @doc """
+  Moves every live relation of `old` onto `new`: a renamed heading, an anchor added, a
+  section moved to another file. For each relation whose tip names `old`, it appends a
+  `retire` of that relation and a `relate` of the same type with `new` in `old`'s place.
+  Both carry a note naming the move unless `meta` has one. Nothing is rewritten: the old
+  relation's history stays in the log, retired.
+
+  The moved end is recorded at the hash **recorded for `old`**, not at `new`'s current
+  hash, and the other end at its recorded hash too. A move carries a judgement across; it
+  never makes one. If the text changed as it moved, or the other end changed, the moved
+  relation is dangling and needs confirming like any other.
+
+  `old` need not be scanned any more; `new` must be, as the same kind. A conflicted
+  relation must be resolved first, and an `old` with no live relation is an error.
+  """
+  @spec move([Scan.t()], [Entry.t()], String.t(), String.t(), meta) ::
+          {:ok, [Entry.t()]} | {:error, String.t()}
+  def move(scans, entries, old, new, meta) do
+    with {:ok, target} <- find(scans, new),
+         {_kind, old_id} = split_kind(old),
+         groups = live_groups(entries, target.kind, old_id),
+         :ok <-
+           if(groups == [],
+             do: {:error, "no live relation names #{old}: nothing to move"},
+             else: :ok
+           ) do
+      note = Keyword.get(meta, :note, "moved from #{old_id} to #{target.id}")
+      meta = Keyword.put(meta, :note, note)
+
+      Enum.reduce_while(groups, {:ok, []}, fn {relation, tips}, {:ok, acc} ->
+        with [tip] <- tips,
+             ends = Enum.map(tip.ends, &moved_end(&1, target, old_id)),
+             {:ok, retired} <- entry(:retire, tip.type, tip.ends, [tip.id], meta),
+             {:ok, moved} <-
+               entry(
+                 :relate,
+                 tip.type,
+                 ends,
+                 parents(entries ++ acc, tip.type, hd(ends), List.last(ends)),
+                 meta
+               ) do
+          {:cont, {:ok, acc ++ [retired, moved]}}
+        else
+          [_, _ | _] ->
+            {:halt, {:error, "#{inspect(relation)} is conflicted: resolve it before moving"}}
+
+          error ->
+            {:halt, error}
+        end
+      end)
+    end
+  end
+
+  # Relations with an end `{kind, old_id}`, grouped with their tips, excluding retired ones.
+  defp live_groups(entries, kind, old_id) do
+    entries
+    |> Enum.filter(fn e -> Enum.any?(e.ends, &(&1.kind == kind and &1.id == old_id)) end)
+    |> Enum.group_by(&Entry.relation/1)
+    |> Enum.map(fn {relation, _} -> {relation, Status.tips(entries, relation)} end)
+    |> Enum.reject(fn {_relation, tips} -> match?([%Entry{op: :retire}], tips) end)
+    |> Enum.sort()
+  end
+
+  defp moved_end(%{kind: kind, id: id} = end_, %Scan{kind: kind, id: new}, id),
+    do: %{end_ | id: new}
+
+  defp moved_end(end_, _target, _old), do: end_
+
+  @doc """
   Resolves a conflicted relation: the tip whose id starts with `pick` is recorded again
   with every tip as a parent. The relation is then judged by that entry. If the scans have
   moved since, it is dangling, and `confirm/4` is next.

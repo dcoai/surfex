@@ -291,7 +291,9 @@ defmodule Surfex.Cite do
   defp heading(path, line) do
     cond do
       String.ends_with?(path, ".md") ->
-        case Regex.run(~r/^(#+)\s+(.+?)\s*$/, line, capture: :all_but_first) do
+        # An anchor, `{#id}`, names the section for the relation log (§11); it is not the
+        # heading's text.
+        case Regex.run(~r/^(#+)\s+(.+?)(?:\s*\{#[^}\s]*\})?\s*$/, line, capture: :all_but_first) do
           [hashes, text] -> {String.length(hashes), text}
           _ -> nil
         end

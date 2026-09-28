@@ -35,13 +35,9 @@ defmodule Surfex.Status.Report do
       items(
         "Unimplemented (every implements relation is planned)",
         status.unimplemented,
-        fn scan ->
-          "#{scan.kind} #{scan.id}#{at(scan)}"
-        end
+        &unit_text/1
       ),
-      items("New (in no relation)", status.new, fn scan ->
-        "#{scan.kind} #{scan.id}#{at(scan)}"
-      end),
+      items("New (in no relation)", status.new, &unit_text/1),
       items("Unmet (required relation missing)", status.unmet, fn %{
                                                                     scan: scan,
                                                                     requires: requires
@@ -53,9 +49,15 @@ defmodule Surfex.Status.Report do
     verdict = if Status.failing?(status), do: "FAILING", else: "ok"
     counts = if summary == [], do: ["  (no relations)"], else: summary
 
+    u = Status.units(status)
+
+    units =
+      "  spec units: sections #{u.section} · blocks #{u.block} · test hints #{u.test_hint}\n"
+
     IO.iodata_to_binary([
       "relation status: #{verdict}\n",
       Enum.map(counts, &[&1, "\n"]),
+      units,
       lists
     ])
   end
@@ -70,6 +72,8 @@ defmodule Surfex.Status.Report do
           {Atom.to_string(type), Map.new(counts, fn {state, n} -> {Atom.to_string(state), n} end)}
         end),
       "relations" => Enum.map(status.relations, &relation_json(&1, status)),
+      "units" =>
+        status |> Status.units() |> Map.new(fn {role, n} -> {Atom.to_string(role), n} end),
       "new" => Enum.map(status.new, &scan_json/1),
       "unimplemented" => Enum.map(status.unimplemented, &scan_json/1),
       "unmet" =>
@@ -129,7 +133,8 @@ defmodule Surfex.Status.Report do
           {"unimplemented", length(status.unimplemented)},
           {"new", length(status.new)},
           {"unmet", length(status.unmet)}
-        ])
+        ]),
+        units_stat(Status.units(status))
       ],
       columns: ["End", "Other end", "State", "Changed"],
       groups:
@@ -207,6 +212,21 @@ defmodule Surfex.Status.Report do
     end
   end
 
+  defp units_stat(u),
+    do:
+      Surfex.Golden.stat("#{u.section + u.block + u.test_hint} spec units", [
+        {"sections", u.section},
+        {"blocks", u.block},
+        {"test hints", u.test_hint}
+      ])
+
+  # A block or hint says what it sits in, so a list of them reads under their sections.
+  defp unit_text(%{kind: kind, id: id, role: role, within: within} = scan) when within != nil,
+    do:
+      "#{kind} #{id} (#{String.replace(Atom.to_string(role), "_", " ")} in #{within})#{at(scan)}"
+
+  defp unit_text(scan), do: "#{scan.kind} #{scan.id}#{at(scan)}"
+
   defp at(%{location: %{file: file, lines: {first, last}}}), do: " (#{file}:#{first}-#{last})"
   defp at(%{location: %{file: file}}), do: " (#{file})"
 
@@ -254,6 +274,8 @@ defmodule Surfex.Status.Report do
       "kind" => Atom.to_string(scan.kind),
       "id" => scan.id,
       "hash" => scan.hash,
+      "role" => scan.role && Atom.to_string(scan.role),
+      "within" => scan.within,
       "location" => location_json(scan.location)
     }
   end

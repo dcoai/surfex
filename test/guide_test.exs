@@ -28,9 +28,10 @@ defmodule Surfex.GuideTest do
     }
   ]
 
+  # A fenced example named by its info string, `markdown NAME`, at any fence length.
   defp example(name) do
-    [_, body] =
-      Regex.run(~r/^```markdown #{name}\n(.*?)^```$/ms, File.read!(@guide))
+    [_, _fence, body] =
+      Regex.run(~r/^(`{3,})markdown #{name}\n(.*?)^\1$/ms, File.read!(@guide))
 
     body
   end
@@ -127,5 +128,38 @@ defmodule Surfex.GuideTest do
              versions.(String.replace(spec, "## Limits", "## Size limits"))[
                "spec.md#Messaging/Size limits"
              ]
+  end
+
+  test "after: suggest proposes moving Limits' relations when its heading is renamed",
+       %{tmp_dir: root} do
+    spec = example("wren-after")
+    {_pairs, status} = after_edit(root, spec, &String.replace(&1, "## Limits", "## Size limits"))
+    trace = Trace.new!(namespace: "Wren", sources: ["spec.md"])
+    scans = Markdown.records(root, ["spec.md"]) ++ Scan.code(@items)
+    entries = Enum.flat_map(status.relations, & &1.tips)
+    suggestions = Suggest.all(trace, @items, scans, entries, root)
+
+    assert [%{from: "spec.md#Messaging/Limits", to: %{id: "spec.md#Messaging/Size limits"}}] =
+             suggestions.moves
+  end
+
+  # §2's marked block and §6's test hint: each is its own unit, left out of its section.
+  test "a marked block and a test hint change only their own versions" do
+    block = example("wren-block")
+    units = fn text -> text |> Markdown.sections("spec.md") |> Map.new(&{&1.id, &1.hash}) end
+
+    changed = fn text, from, to ->
+      before = units.(text)
+      edited = units.(String.replace(text, from, to))
+      for {id, hash} <- before, edited[id] != hash, do: id
+    end
+
+    assert Map.keys(units.(block)) |> Enum.sort() == ["spec.md#limits", "spec.md#max-len"]
+    assert changed.(block, "exhaust memory", "run out of memory") == ["spec.md#limits"]
+    assert changed.(block, "at most 512 bytes", "at most 1024 bytes") == ["spec.md#max-len"]
+
+    hint = "## Limits {#limits}\n\nBounded.\n\n" <> example("wren-hint")
+    assert Map.keys(units.(hint)) |> Enum.sort() == ["spec.md#limits", "spec.md#max-len-test"]
+    assert changed.(hint, "513-byte", "514-byte") == ["spec.md#max-len-test"]
   end
 end

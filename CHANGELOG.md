@@ -33,6 +33,18 @@ release it merely follows.
   sits in, so editing one requirement no longer dangles its neighbours. `Surfex.Scan`
   gains `role` and `within`. `mix surfex.suggest` relates a citation in a block to the
   block. A spec that uses none of these scans exactly as before.
+- **Moving relations.** `mix surfex.move OLD NEW` (`Surfex.Record.move/5`) carries every
+  live relation of a renamed or re-anchored spec id onto its new id. It retires the old
+  relation and relates the new one at the versions that were recorded, so a move never
+  confirms anything.
+- **More suggestions.** `mix surfex.suggest` (`Surfex.Suggest.all/5` and `accept_all/4`)
+  now also proposes:
+  - moves, for a related id that is gone and a new id at the same version;
+  - `refines`, from each block and hint to what it sits in.
+- The status reports count spec units by role (`Surfex.Status.units/1`), and the JSON
+  gives each id's role and what it sits in.
+- Surfex's own spec now has an anchor on every heading. Its relations moved across and
+  the old ones were retired, with their history kept.
 
 ### Fixed
 

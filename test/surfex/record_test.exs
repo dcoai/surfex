@@ -214,4 +214,68 @@ defmodule Surfex.RecordTest do
       assert state(scans(), [e, retired]) == [:retired]
     end
   end
+
+  # #37: a renamed heading or an added anchor carries its relations across.
+  describe "move" do
+    @new_id "spec.md#cart-add"
+
+    defp renamed(spec_hash \\ "s1", code_hash \\ "c1"),
+      do: [
+        scan(:spec, @new_id, spec_hash),
+        scan(:code, @code_id, code_hash),
+        scan(:code, "M.helper/1", "h1")
+      ]
+
+    defp related do
+      {:ok, [e]} = Record.relate(scans(), [], @spec_id, @code_id, :implements, @meta)
+      e
+    end
+
+    test "retires the old relation and relates the new id at the recorded versions" do
+      old = related()
+      {:ok, [retired, moved]} = Record.move(renamed(), [old], @spec_id, @new_id, later(@meta, 1))
+
+      assert %Entry{op: :retire, parents: [old_id]} = retired
+      assert old_id == old.id
+      assert %Entry{op: :relate, type: :implements} = moved
+      assert %{kind: :spec, id: @new_id, hash: "s1"} in moved.ends
+      assert moved.note == "moved from #{@spec_id} to #{@new_id}"
+
+      assert Enum.map(
+               Status.derive(renamed(), [old, retired, moved]).relations,
+               &{&1.relation, &1.state}
+             ) == [
+               {{:implements, {:code, @code_id}, {:spec, @spec_id}}, :retired},
+               {{:implements, {:code, @code_id}, {:spec, @new_id}}, :current}
+             ]
+    end
+
+    test "never confirms: text changed in the move, or the other end changed, still dangles" do
+      old = related()
+
+      {:ok, entries} = Record.move(renamed("s2"), [old], @spec_id, @new_id, later(@meta, 1))
+      assert :dangling in state(renamed("s2"), [old | entries])
+
+      {:ok, entries} = Record.move(renamed("s1", "c2"), [old], @spec_id, @new_id, later(@meta, 1))
+      moved = List.last(entries)
+      assert %{kind: :code, id: @code_id, hash: "c1"} in moved.ends
+      assert :dangling in state(renamed("s1", "c2"), [old | entries])
+    end
+
+    test "refuses a new id that isn't scanned, an old id with nothing live, and a conflict" do
+      old = related()
+
+      assert {:error, "spec.md#nowhere is not scanned" <> _} =
+               Record.move(renamed(), [old], @spec_id, "spec.md#nowhere", @meta)
+
+      assert {:error, "no live relation names spec.md#Gone" <> _} =
+               Record.move(renamed(), [old], "spec.md#Gone", @new_id, @meta)
+
+      {:ok, [other]} =
+        Record.relate(scans("c1"), [], @spec_id, @code_id, :implements, later(@meta, 2))
+
+      assert {:error, _conflicted} =
+               Record.move(renamed(), [old, other], @spec_id, @new_id, @meta)
+    end
+  end
 end
