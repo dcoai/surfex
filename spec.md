@@ -333,6 +333,11 @@ rule naming an undeclared class, and a rule that would excuse a never-excused ki
 
 ## 9. Traces
 
+> **Deprecated.** The relation log (§11–§15) replaces the trace: the trace proves that
+> the spec and the code cite each other, not that anyone reconciled them after either
+> changed. The trace keeps working, and suggesting relations (§15) reads its citations,
+> until a later release removes it.
+
 `Surfex.Trace` is a whole trace: a profile, a scanner, and the golden's definition.
 
 ### 9.1 Definition
@@ -452,7 +457,10 @@ With no key, the list is `[:trace]`.
 - Every failure of every golden is reported in one run.
 
 Surfex gates itself this way: its `.surfex.exs` traces this document against its own
-`lib/`, and CI runs `mix surfex.goldens`.
+`lib/`, and CI runs `mix surfex.goldens`, which gates both `SPEC_TRACE.md` and
+`RELATIONS.md`. It also keeps its own relation log (`.surfex/`), in which every public
+module and function implements a section of this document (`require: [code:
+[:implements]]`), and CI runs `mix surfex.status --verify`.
 
 ## 11. Scan records
 

@@ -1,5 +1,10 @@
 defmodule Surfex.Trace do
   @moduledoc """
+  > **Deprecated.** The relation log (`Surfex.Status`, `mix surfex.status`) replaces the
+  > trace: it records which versions of the spec and the code were confirmed to belong
+  > together, where the trace records only that they cite each other. The trace still
+  > works, and `mix surfex.suggest` reads its citations, until a later release removes it.
+
   A two-way trace between a spec and the code: what the code declares, which spec
   sections cite each item, and what is wrong with either.
 

@@ -31,9 +31,18 @@ release it merely follows.
   adopts the relation log. `--accept` never confirms a dangling relation.
 - **A committed status golden**: `:status` (or `{:status, output}`) in `goldens:` gates
   `RELATIONS.md`, the relation status as a reviewable record.
+- **Surfex runs on its own relation log**: `.surfex/` holds 120 relations adopted from
+  `spec.md`, every public item must implement a section, `RELATIONS.md` is committed, and
+  CI runs `mix surfex.status --verify`.
+
+### Deprecated
+
+- **The trace** (`Surfex.Trace`, `mix surfex.trace`, `:trace` goldens): the relation log
+  replaces it. It keeps working until a later release removes it.
 
 ### Changed
 
+- The README leads with the relation log.
 - `Surfex.SourceScan.project_root/2` takes a starting directory; `/1` is unchanged. Its tests
   had to change the VM-wide working directory, which made the suite fail about once in
   fifteen runs, and a test now keeps async tests from doing that.

@@ -55,3 +55,12 @@ goldens:
     # Every golden in .surfex.exs: spec.md against lib/, where a GAP, a broken citation or
     # a stale SPEC_TRACE.md fails.
     - mix surfex.goldens
+
+status:
+  extends: .elixir
+  stage: check
+  script:
+    # Every relation in .surfex/ still holds, every public item implements a spec section
+    # (require: in .surfex.exs), and the log verifies. A change to lib/ or spec.md dangles
+    # the relations it touches until `mix surfex.confirm` names them.
+    - mix surfex.status --verify
