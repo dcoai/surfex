@@ -634,3 +634,22 @@ The tasks:
 
 Each reads `.surfex.exs` as `mix surfex.status` does. Each needs the log to exist
 (`mix surfex.log --init`), and prints every entry it recorded.
+
+## 15. Suggesting relations
+
+`Surfex.Suggest` proposes candidate `implements` relations from what the spec already
+says. `Surfex.Suggest.candidates/5` reads the spec's citations as the trace does (§6),
+and for each **resolved** citation proposes the pair *(the spec section containing the
+citation's line, each code item it names)*. A family names every member. Left out:
+- a pair already related, in any state, including retired: suggesting it again would
+  overrule a decision already on record
+- a citation inside a fenced code block, which has no line to place it in a section
+- a named item that is not a code scan
+
+Each candidate records where it was first cited. `Surfex.Suggest.accept/4` records one
+`relate` per candidate, at the current hashes. It only ever creates relations that don't
+exist. **It never confirms a dangling relation**, which stays a named `confirm` (§14).
+
+`Mix.Tasks.Surfex.Suggest` is `mix surfex.suggest [--accept] [--note N]`: without
+`--accept` it lists the candidates and writes nothing. Adopting the relation log is
+`mix surfex.log --init` followed by `mix surfex.suggest --accept`.

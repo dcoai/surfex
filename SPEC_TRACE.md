@@ -6,7 +6,7 @@ A row per public module and function in `lib/`. `Cited by` names the sections of
 `spec.md` that cite it. A GAP is code the spec does not describe, and the gate fails
 on any; a citation of something that does not exist fails it too.
 
-**105 items** · cited 105 · expected-silent 0 · GAPS 0 · citations 116 · unresolved 0 · ambiguous 0
+**109 items** · cited 109 · expected-silent 0 · GAPS 0 · citations 120 · unresolved 0 · ambiguous 0
 
 ## Modules
 
@@ -20,6 +20,7 @@ on any; a citation of something that does not exist fails it too.
 | `Mix.Tasks.Surfex.Resolve` | `:module` | `f374b6c2` | `spec — 14. Recording` | `lib/mix/tasks/surfex.resolve.ex` |
 | `Mix.Tasks.Surfex.Retire` | `:module` | `927656eb` | `spec — 14. Recording` | `lib/mix/tasks/surfex.retire.ex` |
 | `Mix.Tasks.Surfex.Status` | `:module` | `6e560dcc` | `spec — 13.3 Reports and the check` | `lib/mix/tasks/surfex.status.ex` |
+| `Mix.Tasks.Surfex.Suggest` | `:module` | `c78cfec2` | `spec — 15. Suggesting relations` | `lib/mix/tasks/surfex.suggest.ex` |
 | `Mix.Tasks.Surfex.Trace` | `:module` | `6466fd68` | `spec — 10.4 The tasks` | `lib/mix/tasks/surfex.trace.ex` |
 | `Surfex.Cite` | `:module` | `74012b44` | `spec — 6. Citations` | `lib/surfex/cite.ex` |
 | `Surfex.Coverage` | `:module` | `f544aca4` | `spec — 7. Coverage` | `lib/surfex/coverage.ex` |
@@ -39,6 +40,7 @@ on any; a citation of something that does not exist fails it too.
 | `Surfex.Status` | `:module` | `3ac14966` | `spec — 13. Relation status` | `lib/surfex/status.ex` |
 | `Surfex.Status.Config` | `:module` | `762c0ba0` | `spec — 13.2 Configuration` | `lib/surfex/status/config.ex` |
 | `Surfex.Status.Report` | `:module` | `dcb37725` | `spec — 13.3 Reports and the check` | `lib/surfex/status/report.ex` |
+| `Surfex.Suggest` | `:module` | `701888fa` | `spec — 15. Suggesting relations` | `lib/surfex/suggest.ex` |
 | `Surfex.Surface` | `:module` | `b2c7d0f8` | `spec — 10.2 Project goldens, spec — 10.3 Every golden at once` | `lib/surfex/surface.ex` |
 | `Surfex.Trace` | `:module` | `4a1ddc9b` | `spec — 1.2 Policies, spec — 9. Traces` | `lib/surfex/trace.ex` |
 ## Functions
@@ -112,6 +114,8 @@ on any; a citation of something that does not exist fails it too.
 | `Surfex.Status.failing?/1` | `:function` | `9ef17a15` | `spec — 13.1 States` | `lib/surfex/status.ex` |
 | `Surfex.Status.summary/1` | `:function` | `a081eab5` | `spec — 13.1 States` | `lib/surfex/status.ex` |
 | `Surfex.Status.tips/2` | `:function` | `304fce6b` | `spec — 13.1 States` | `lib/surfex/status.ex` |
+| `Surfex.Suggest.accept/4` | `:function` | `1fb41589` | `spec — 15. Suggesting relations` | `lib/surfex/suggest.ex` |
+| `Surfex.Suggest.candidates/5` | `:function` | `959624db` | `spec — 15. Suggesting relations` | `lib/surfex/suggest.ex` |
 | `Surfex.Trace.analyse/3` | `:function` | `e6129055` | `spec — 9.2 Analysis` | `lib/surfex/trace.ex` |
 | `Surfex.Trace.drift/2` | `:function` | `ca0f4587` | `spec — 9.4 Drift` | `lib/surfex/trace.ex` |
 | `Surfex.Trace.failures/2` | `:function` | `589e7779` | `spec — 9.2 Analysis` | `lib/surfex/trace.ex` |
