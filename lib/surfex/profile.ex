@@ -140,16 +140,41 @@ defmodule Surfex.Profile do
     fields =
       fields
       |> Map.put_new_lazy(:token, fn -> ~r/\b([A-Za-z_][A-Za-z0-9_]*)\b/ end)
-      |> Map.update(:rules, [], fn
-        rules when is_list(rules) -> Enum.map(rules, &rule/1)
-        other -> other
-      end)
+      |> Map.update(:rules, [], &rules/1)
 
     profile = struct!(__MODULE__, fields)
     Enum.each(@keys, &check!(&1, Map.fetch!(profile, &1)))
     check_rules!(profile)
     profile
   end
+
+  @doc """
+  The coverage keys of a config (`classes:`, `rules:`, `never_excused:`), validated as
+  `new!/1` validates them, for the relation log's classes (`Surfex.Scan.Classes`) without
+  a whole trace profile. Rules get their defaults (`name: nil`, `parent_cited: false`).
+  Raises `ArgumentError` naming what is wrong.
+  """
+  @spec coverage!(keyword | map) :: %{
+          classes: [{String.t(), String.t()}],
+          rules: [rule],
+          never_excused: [atom]
+        }
+  def coverage!(config) do
+    config = Map.new(config)
+
+    coverage = %{
+      classes: Map.get(config, :classes, []),
+      rules: config |> Map.get(:rules, []) |> rules(),
+      never_excused: Map.get(config, :never_excused, [])
+    }
+
+    Enum.each(coverage, fn {key, value} -> check!(key, value) end)
+    check_rules!(coverage)
+    coverage
+  end
+
+  defp rules(rules) when is_list(rules), do: Enum.map(rules, &rule/1)
+  defp rules(other), do: other
 
   defp rule(%{class: _, kinds: _} = r), do: Map.merge(%{name: nil, parent_cited: false}, r)
 
@@ -193,7 +218,7 @@ defmodule Surfex.Profile do
 
   defp subject?(_), do: false
 
-  defp check_rules!(%__MODULE__{classes: classes, rules: rules, never_excused: never}) do
+  defp check_rules!(%{classes: classes, rules: rules, never_excused: never}) do
     known = MapSet.new(classes, &elem(&1, 0))
 
     for %{class: class, kinds: kinds, name: name} = rule <- rules do

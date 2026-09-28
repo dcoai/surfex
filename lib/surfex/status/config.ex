@@ -76,8 +76,13 @@ defmodule Surfex.Status.Config do
     if spec == [],
       do: raise(ArgumentError, "no spec sections found in #{inspect(sources)} under #{root}")
 
-    spec ++ Scan.code(items(config, root)) ++ tests(config, root)
+    spec ++ Scan.code(items(config, root)) ++ tests(config, root) ++ classes(config)
   end
+
+  # Classes (`classes:` and `rules:`, the trace's own keys) are scanned when a project has
+  # any: each is a record excusals relate to (`Surfex.Scan.Classes`).
+  defp classes(config),
+    do: if(Keyword.has_key?(config, :classes), do: Scan.Classes.records(config), else: [])
 
   # No `tests:` means no test scanning. Globs that match nothing raise, as `sources:` do: a
   # misspelt glob would otherwise report every test relation orphaned.

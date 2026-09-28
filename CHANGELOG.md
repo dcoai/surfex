@@ -63,6 +63,15 @@ release it merely follows.
     test calls, with aliases, pipes, captures, imports and private helpers followed.
   - Surfex runs on it: its spec carries test hints, the tests that verify them are
     tagged, and every hint must be verified.
+- **Excusals as relations.** Classes in `.surfex.exs` (the trace's `classes:` and
+  `rules:`) are scanned as items (`Surfex.Scan.Classes`), and `mix surfex.suggest`
+  proposes an `excuses` relation between an item and the class of the first rule it
+  matches.
+  - Only an item nothing implements is proposed.
+  - `require: [code: [:implements, :excuses]]` then means every public item is either
+    described or deliberately excused, on record.
+  - Rewording a class's reason or changing its rules dangles its excuses.
+  - On the reference fixture, the suggested excusals are exactly the trace's verdicts.
 - The status reports count spec units by role (`Surfex.Status.units/1`), and the JSON
   gives each id's role and what it sits in.
 - Surfex's own spec now has an anchor on every heading. Its relations moved across and
