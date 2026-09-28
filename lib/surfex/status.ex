@@ -101,11 +101,24 @@ defmodule Surfex.Status do
     |> Map.new(fn {type, rs} -> {type, Enum.frequencies_by(rs, & &1.state)} end)
   end
 
+  @doc """
+  The tips of `relation` among `entries`: its entries that no other entry of it names as a
+  parent, oldest first. One tip is the judgement in force; more than one is a conflict;
+  none means the log has never recorded the relation.
+  """
+  @spec tips([Entry.t()], {atom, {atom, String.t()}, {atom, String.t()}}) :: [Entry.t()]
+  def tips(entries, relation),
+    do: entries |> Enum.filter(&(Entry.relation(&1) == relation)) |> tips_of()
+
+  defp tips_of(group) do
+    named = group |> Enum.flat_map(& &1.parents) |> MapSet.new()
+    group |> Enum.reject(&MapSet.member?(named, &1.id)) |> Enum.sort_by(&{&1.at, &1.id})
+  end
+
   # ── Judging one relation ────────────────────────────────────────────────
 
   defp judge({type, _a, _b} = relation, group, by_id) do
-    named = group |> Enum.flat_map(& &1.parents) |> MapSet.new()
-    tips = group |> Enum.reject(&MapSet.member?(named, &1.id)) |> Enum.sort_by(&{&1.at, &1.id})
+    tips = tips_of(group)
 
     {state, changed} =
       case tips do

@@ -506,7 +506,8 @@ only state surfex keeps. Scanners never read or write it (§11).
   For the undirected types (`implements`, `excuses`), ends are sorted, so A↔B and B↔A are
   one relation. The directed types (`Surfex.Log.Entry.directed/0`: `depends_on`,
   `refines`, `tests`) keep their ends in the order given, from → to, because "A depends on
-  B" is not "B depends on A".
+  B" is not "B depends on A". `Surfex.Log.Entry.relation/3` gives the relation of a type
+  between two ends without an entry, oriented the same way.
 - `Surfex.Log.Entry.build/1` makes an entry from its fields and computes its id, or says
   which field is invalid. `Surfex.Log.Entry.new!/1` raises instead.
 - **The canonical line is JSON**, keys in the order above (`Surfex.Log.Entry.encode/1`). It
@@ -551,7 +552,7 @@ are pure: the same scans and log always give the same status.
 ### 13.1 States
 
 The judgement in force for a relation is its **tip**: an entry of the relation that no
-other entry of it names as a parent.
+other entry of it names as a parent (`Surfex.Status.tips/2`).
 
 | State | When |
 |---|---|
@@ -597,3 +598,36 @@ or any id is unmet. New, retired and impacted don't fail on their own.
   report, not the first decode error
 - it fails when the status is failing, or the log doesn't verify
 - it compiles the project first only when `.surfex.exs` names a project scanner
+
+## 14. Recording
+
+`Surfex.Record` turns a decision into the entries to append. It's pure: the tasks read
+the scans and the log, and append what it returns. Every function returns the entries
+or the reason there are none. **Nothing edits or removes an entry**: a new entry
+supersedes the relation's tips by naming them as parents.
+
+**Ids** are scan ids (`MyApp.Cart.add/2`, `spec.md#Carts/Adding items`). A `spec:` or
+`code:` prefix picks between kinds when an id is scanned as both. An id that isn't
+scanned is an error, since the relation would be orphaned from the moment it was
+recorded. Every entry carries who recorded it (git's user), HEAD at the time (context
+only), and when.
+
+| Function | Records |
+|---|---|
+| `Surfex.Record.relate/6` | a relation of a type between two ids at their current hashes, from → to for a directed type, superseding the relation's tips |
+| `Surfex.Record.confirm/4` | for every **dangling** relation touching one of the named ids, the relation again at the current hashes, superseding its tip. Only named ids, and an id with nothing dangling is an error, never a silent no-op. Orphaned and conflicted relations aren't confirmed: they need re-pointing or resolving. |
+| `Surfex.Record.retire/6` | that a relation no longer applies, naming every tip as a parent, with the ends as the tip recorded them. An end need not still be scanned: this is how an orphaned relation is put to rest. |
+| `Surfex.Record.resolve/7` | the chosen tip of a **conflicted** relation, recorded again with every tip as a parent. If the scans have moved since, the relation is then dangling, and confirming it is next. |
+
+`Surfex.Record.history/2` lists every entry touching an id, oldest first, from the log
+alone.
+
+The tasks:
+- `Mix.Tasks.Surfex.Relate`: `mix surfex.relate FROM TO --type T [--note N]`
+- `Mix.Tasks.Surfex.Confirm`: `mix surfex.confirm ID… [--note N]`
+- `Mix.Tasks.Surfex.Retire`: `mix surfex.retire FROM TO --type T [--note N]`
+- `Mix.Tasks.Surfex.Resolve`: `mix surfex.resolve FROM TO --type T --pick ID_PREFIX`
+- `Mix.Tasks.Surfex.History`: `mix surfex.history ID`
+
+Each reads `.surfex.exs` as `mix surfex.status` does. Each needs the log to exist
+(`mix surfex.log --init`), and prints every entry it recorded.
