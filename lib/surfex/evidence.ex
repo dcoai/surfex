@@ -25,6 +25,19 @@ defmodule Surfex.Evidence do
           code: %{String.t() => String.t()}
         }
 
+  @note "confirmed by evidence"
+
+  @doc """
+  Whether a log entry is a confirmation by evidence (`Surfex.Record.confirm_by_evidence/4`):
+  its note begins `confirmed by evidence`. That is the claim CI checks against its own run.
+  """
+  @spec claimed?(Surfex.Log.Entry.t()) :: boolean
+  def claimed?(%{note: note}), do: is_binary(note) and String.starts_with?(note, @note)
+
+  @doc "How a confirmation by evidence's note begins."
+  @spec note() :: String.t()
+  def note, do: @note
+
   @doc "Where a project's evidence lives: `_build/surfex/evidence.jsonl` under `root`."
   @spec path(String.t()) :: String.t()
   def path(root), do: Path.join([root, "_build", "surfex", "evidence.jsonl"])

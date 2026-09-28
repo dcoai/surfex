@@ -84,6 +84,7 @@ defmodule Surfex.Status do
           unmet: [%{scan: Scan.t(), requires: [atom]}],
           broken: [%{scan: Scan.t(), type: atom, ref: String.t(), reason: term}],
           triangle: [gap],
+          unproven: [%{relation: tuple, test: String.t() | nil, reason: atom}],
           citations: [Surfex.Cite.t()],
           stale: [
             %{
@@ -137,6 +138,7 @@ defmodule Surfex.Status do
       broken: broken(scans),
       citations: Keyword.get(opts, :citations, []),
       stale: stale(scans, relations, Keyword.get(opts, :coverage)),
+      unproven: unproven(scans, relations, Keyword.get(opts, :evidence)),
       triangle: triangle(scans, relations),
       policy: %{triangle: triangle},
       unimplemented: unimplemented(scans, relations),
@@ -155,6 +157,7 @@ defmodule Surfex.Status do
     failing = if status.planned == :fail, do: [:planned | failing], else: failing
 
     status.unmet != [] or status.broken != [] or status.stale != [] or status.citations != [] or
+      status.unproven != [] or
       (status.policy.triangle == :fail and status.triangle != []) or
       Enum.any?(status.relations, &(&1.state in failing))
   end
@@ -424,6 +427,77 @@ defmodule Surfex.Status do
         raise ArgumentError, "two #{kind} records have the id #{inspect(id)} (#{where})"
     end
   end
+
+  # A current relation confirmed by evidence (`Surfex.Evidence.claimed?/1`) whose claim the
+  # given evidence (this run's) doesn't bear out: its test, at the version the relation
+  # holds, must have passed against the code's version. For `implements`, some test with
+  # a current `verifies` to the spec unit (or inside it) and a current `tests` to the code
+  # must. `nil` evidence means no check.
+  defp unproven(_scans, _relations, nil), do: []
+
+  defp unproven(scans, relations, evidence) do
+    within = for %Scan{kind: :spec, within: w} = s <- scans, w != nil, into: %{}, do: {s.id, w}
+    current = for %{state: :current, tips: [tip]} = r <- relations, do: {r, tip}
+    pairs = fn type -> for {%{type: ^type, relation: {_, a, b}}, _} <- current, do: {a, b} end
+    tests = pairs.(:tests)
+    verifies = pairs.(:verifies)
+
+    for {%{relation: relation} = r, tip} <- current,
+        Surfex.Evidence.claimed?(tip),
+        failure = disproved(r, tip, evidence, tests, verifies, within),
+        failure != nil,
+        do: Map.put(failure, :relation, relation)
+  end
+
+  defp disproved(%{type: :tests, relation: {_, {:test, t}, {:code, c}}}, tip, evidence, _, _, _) do
+    passes(evidence, t, hash_of(tip, :test, t), c, hash_of(tip, :code, c))
+  end
+
+  defp disproved(
+         %{type: :implements, relation: {_, {:code, c}, {:spec, s}}},
+         tip,
+         evidence,
+         tests,
+         verifies,
+         within
+       ) do
+    code_hash = hash_of(tip, :code, c)
+
+    candidates =
+      for {{:test, t}, {:spec, unit}} <- verifies,
+          {{:test, ^t}, {:code, ^c}} <- tests,
+          inside?(unit, s, within),
+          uniq: true,
+          do: t
+
+    if candidates == [] do
+      %{test: nil, reason: :no_verifying_test}
+    else
+      failures = for t <- candidates, f = passes(evidence, t, nil, c, code_hash), do: f
+      if length(failures) == length(candidates), do: hd(failures), else: nil
+    end
+  end
+
+  defp disproved(_other, _tip, _evidence, _tests, _verifies, _within), do: nil
+
+  # nil when the evidence has `test` (at `test_hash`, or its latest version when nil)
+  # passing against `code` at `code_hash`; otherwise why not.
+  defp passes(evidence, test, test_hash, code, code_hash) do
+    latest =
+      evidence
+      |> Enum.filter(&(&1.test == test and (test_hash == nil or &1.test_hash == test_hash)))
+      |> List.last()
+
+    cond do
+      latest == nil -> %{test: test, reason: :not_run}
+      latest.result != :passed -> %{test: test, reason: :failed}
+      Map.get(latest.code, code) != code_hash -> %{test: test, reason: :other_code}
+      true -> nil
+    end
+  end
+
+  defp hash_of(%{ends: ends}, kind, id),
+    do: Enum.find_value(ends, fn e -> if e.kind == kind and e.id == id, do: e.hash end)
 
   defp broken(scans) do
     for scan <- Enum.sort_by(scans, &{&1.kind, &1.id}),

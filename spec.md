@@ -702,6 +702,12 @@ other entry of it names as a parent (`Surfex.Status.tips/2`).
 - **Broken citation:** a name the spec cites (§6) that resolves to nothing the code has,
   or to more than one item. The spec can't name what doesn't exist. Names the profile
   declares external, and documented absences, are not broken.
+- **Unproven:** a current relation confirmed by evidence (§17) that the evidence given to
+  `Surfex.Status.derive/4` as `evidence:` doesn't bear out: its test, at the version the
+  relation holds, didn't run, failed, or ran against another version of the code. For an
+  `implements` relation, some test with a current `verifies` relation to the unit (or
+  inside it) and a current `tests` relation to the code must pass. Without `evidence:`
+  nothing is checked, and a relation confirmed by hand never is.
 - **Stale:** a live `excuses` relation whose code item its class no longer covers,
   judged by `Surfex.Coverage.verdict/3` as the suggestion was (§15). The item may now be
   implemented, no rule of any class may match it, or another class's rule may match it
@@ -710,7 +716,8 @@ other entry of it names as a parent (`Surfex.Status.tips/2`).
   `coverage:`.
 
 `Surfex.Status.failing?/1` is true when any relation is dangling, orphaned or conflicted,
-any id is unmet, any declaration or citation is broken, or any excuse is stale. New,
+any id is unmet, any declaration or citation is broken, any excuse is stale, or any
+confirmation by evidence is unproven. New,
 retired, impacted, planned and unimplemented don't fail on their own. A status derived with
 `planned: :fail` (`Surfex.Status.derive/4`) fails on any planned relation too: the check
 that everything planned has been built, such as a release's.
@@ -780,21 +787,22 @@ log's own: `scanner`, `scanner_opts`, `namespace`, `goldens` (§10.3), `require`
 `Surfex.Status.Report` presents a status:
 - `Surfex.Status.Report.text/1`: the verdict, the counts per type and the spec units by
   role. Then each dangling, orphaned, conflicted, impacted and planned relation, the
-  unimplemented, new and unmet ids, the broken citations, the stale excuses, the broken
-  declarations and the triangle's gaps, with locations. A block or hint in a list says what it sits in.
+  unimplemented, new and unmet ids, the broken citations, the unproven confirmations, the
+  stale excuses, the broken declarations and the triangle's gaps, with locations. A block or hint in a list says what it sits in.
 - `Surfex.Status.Report.golden/2` (`Surfex.Status.Report.golden/1` writes `RELATIONS.md`):
   the status as a golden to commit. It has a table per relation type (end, other end,
   state, the ends that changed or are planned), then the unimplemented, new and unmet
   ids, the broken citations (by section, not line), the stale excuses, the broken
   declarations and the triangle's gaps, with the spec units by role among its stats. It holds no hashes and no times, so it changes when a relation's
   state changes, not on every confirmation. It's a pure function of the scans and the
-  log, so a merge conflict in it is resolved by regenerating.
+  log, so a merge conflict in it is resolved by regenerating. It leaves unproven
+  confirmations out, since they depend on the last test run, not on the source or the log.
 - `Surfex.Status.Report.json/1`: the work list for tools and agents. For each relation,
   its type, state and impact, and per end the recorded hash, the current hash, whether
   it changed, whether it is planned, and its location. Plus the spec units by role, the
   unimplemented, new and unmet ids (each with its role, what it sits in and what it
-  declares), the broken citations, the stale excuses, the broken declarations and the
-  triangle's gaps. A value that doesn't
+  declares), the broken citations, the unproven confirmations, the stale excuses, the
+  broken declarations and the triangle's gaps. A value that doesn't
   exist (a planned end's recorded hash, a gone end's hash and location, or a conflicted
   relation's recorded hashes, since it has no one tip) is JSON `null`.
 
@@ -802,6 +810,8 @@ log's own: `scanner`, `scanner_opts`, `namespace`, `goldens` (§10.3), `require`
 - `--format text|json` (text by default)
 - `--verify` verifies the log (§12.2) **before** loading it, so a tampered log gets its
   report, not the first decode error
+- `--evidence` checks every confirmation by evidence against the evidence the last
+  `mix test` recorded (`evidence:`), and fails on any that is unproven. It only reads.
 - `--no-planned` fails on any planned relation as well (`planned: :fail`). Which
   pipeline allows plans is the caller's decision, so it is a flag, not a setting
 - it fails when the status is failing, or the log doesn't verify
@@ -995,4 +1005,18 @@ a code change whose test went red then green confirms the tests relation and the
 implements relation; a test never red, failing now, green against other code, or changed
 confirms nothing; verifies is never confirmed by evidence; after a spec change only a test
 verifying that exact unit carries implements
+```
+
+**CI validates; it records nothing.** A CI job runs the tests with the formatter, from an
+empty evidence file (a cached `_build` would otherwise carry evidence from other runs),
+then `mix surfex.status --verify --evidence`. That checks that every relation holds and
+that every confirmation by evidence (`Surfex.Evidence.claimed?/1`: its note begins
+`Surfex.Evidence.note/0`) is borne out by this run. A claim the run contradicts fails the
+pipeline. CI never appends to the log and never saves evidence: the log's claims are made
+where the work is done, and CI only checks them.
+
+```test evidence-checked
+a run where the test passes against the code as confirmed bears the claims out; a test
+that didn't run, failed, or ran against other code disproves them and fails the check;
+without evidence nothing is checked, and relations confirmed by hand never are
 ```

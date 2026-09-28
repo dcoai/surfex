@@ -386,6 +386,16 @@ defmodule Surfex.WalkthroughTest do
     assert Enum.all?(json["relations"], &(&1["state"] == "current"))
     assert json["triangle"] == []
 
+    # What CI runs: the claims checked against the last run, and nothing recorded.
+    task(root, Mix.Tasks.Surfex.Status, ["--verify", "--evidence"])
+    assert drain() |> Enum.join() =~ "relation status: ok"
+
+    # A run in which the test fails contradicts the claim, and the check fails.
+    run_test(root, {:failed, []})
+    assert_raise Mix.Error, fn -> task(root, Mix.Tasks.Surfex.Status, ["--evidence"]) end
+    assert drain() |> Enum.join() =~ "Unproven"
+    run_test(root, nil)
+
     # No entry was a named confirmation: the log shows evidence, not a person, for the code.
     task(root, Mix.Tasks.Surfex.History, ["MyApp.Cart.discount/1"])
     assert Enum.any?(drain(), &(&1 =~ "confirmed by evidence"))

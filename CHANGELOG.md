@@ -51,6 +51,11 @@ trace.
   verifying that exact unit can carry `implements`. The evidence is written into each
   entry's note. `require_red: true` makes a `tests` relation unconfirmable by hand too
   until its test was red.
+- **CI validates evidence claims, and records nothing.** `mix surfex.status --evidence`
+  checks every relation confirmed by evidence against the last `mix test`'s evidence. It
+  fails on one the run doesn't bear out: its test didn't run, failed, or ran against
+  other code. Surfex's CI runs its tests from an empty evidence file, then
+  `mix surfex.status --verify --evidence`, in one job.
 - **A specification guide**, `guides/writing-specs.md`: how to write a spec Surfex relates
   precisely (section sizing, stable headings, naming the code, checkable claims, examples
   and invariants, test-first work, working with an LLM), with a worked example that
