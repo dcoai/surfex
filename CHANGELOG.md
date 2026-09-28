@@ -35,6 +35,13 @@ trace.
 
 ### Added
 
+- **Test evidence.** `Surfex.ExUnitFormatter` records each test's result at its exact
+  version, with the versions of the code it calls, to `_build/surfex/evidence.jsonl`
+  (`Surfex.Evidence`). The file is scratch and never committed. A test version
+  **discriminates** once it has failed against one version of its code and passed
+  against another, unchanged itself. That is what the coming confirmation by evidence
+  rests on. Surfex records its own test runs.
+
 - **A specification guide**, `guides/writing-specs.md`: how to write a spec Surfex relates
   precisely (section sizing, stable headings, naming the code, checkable claims, examples
   and invariants, test-first work, working with an LLM), with a worked example that
