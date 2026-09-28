@@ -85,7 +85,17 @@ defmodule Surfex.Record do
   """
   @spec confirm([Scan.t()], [Entry.t()], [String.t()], meta) ::
           {:ok, [Entry.t()]} | {:error, String.t()}
-  def confirm(scans, entries, ids, meta) do
+  def confirm(scans, entries, ids, meta), do: confirm(scans, entries, ids, meta, [])
+
+  @doc """
+  `confirm/4`, under the `require_red:` policy: with `require_red: true` and the project's
+  `evidence:`, a `tests` relation is only confirmed when its test's current version has
+  discriminated (`Surfex.Evidence.discriminating?/3`). A test that has never been red
+  can't be confirmed by hand either.
+  """
+  @spec confirm([Scan.t()], [Entry.t()], [String.t()], meta, keyword) ::
+          {:ok, [Entry.t()]} | {:error, String.t()}
+  def confirm(scans, entries, ids, meta, opts) do
     status = Status.derive(scans, entries)
 
     Enum.reduce_while(ids, {:ok, []}, fn id, {:ok, acc} ->
@@ -93,6 +103,7 @@ defmodule Surfex.Record do
            key = {scan.kind, scan.id},
            dangling = for(r <- status.relations, r.state == :dangling, key in ends(r), do: r),
            :ok <- some(dangling, id),
+           :ok <- red_first(dangling, status, opts),
            {:ok, confirmed} <- confirm_each(dangling, status, meta) do
         {:cont, {:ok, acc ++ confirmed}}
       else
@@ -187,6 +198,132 @@ defmodule Surfex.Record do
   defp moved_end(end_, _target, _old), do: end_
 
   @doc """
+  The confirmations test evidence (`Surfex.Evidence`) justifies, for every relation that
+  dangles. **People or agents judge meaning, and evidence judges behaviour**:
+
+    * `verifies` (test → spec) is never confirmed by evidence. Whether a test still
+      expresses a requirement is a judgement: `confirm/4`.
+    * A dangling `tests` relation (test → code) is confirmed when the test's current
+      version has discriminated (it failed against one version of its code and passed
+      against another, `Surfex.Evidence.discriminating?/3`) and its latest run passed
+      against the code's current version.
+    * A dangling `implements` relation (spec ↔ code) is then confirmed when a test with a
+      current `verifies` relation to the spec unit, or to a block or hint inside it, has a
+      current `tests` relation to the code, a version that discriminated, and a latest run
+      that passed against the code's current version. When the **spec** side is what
+      changed, the `verifies` must be to that exact unit: someone has judged that the test
+      expresses the reworded requirement.
+
+  Each entry records the evidence in its note. Returns `{:ok, []}` when nothing is
+  justified, which is not an error: evidence confirms what it can.
+  """
+  @spec confirm_by_evidence([Scan.t()], [Entry.t()], [Surfex.Evidence.t()], meta) ::
+          {:ok, [Entry.t()]} | {:error, String.t()}
+  def confirm_by_evidence(scans, entries, evidence, meta) do
+    status = Status.derive(scans, entries)
+
+    with {:ok, tests} <- by_evidence(status, :tests, &tests_evidence(&1, status, evidence), meta) do
+      status = Status.derive(scans, entries ++ tests)
+
+      implemented =
+        by_evidence(status, :implements, &implements_evidence(&1, status, evidence), meta)
+
+      with {:ok, implements} <- implemented, do: {:ok, tests ++ implements}
+    end
+  end
+
+  # For each dangling relation of `type` the evidence justifies (`why` gives a note or
+  # nil), a relate at the current versions.
+  defp by_evidence(status, type, why, meta) do
+    Enum.reduce_while(status.relations, {:ok, []}, fn
+      %{type: ^type, state: :dangling, tips: [tip]} = r, {:ok, acc} ->
+        case why.(r) do
+          nil ->
+            {:cont, {:ok, acc}}
+
+          note ->
+            ends = Enum.map(tip.ends, &end_(Map.fetch!(status.scans, {&1.kind, &1.id})))
+
+            case entry(:relate, type, ends, [tip.id], Keyword.put(meta, :note, note)) do
+              {:ok, e} -> {:cont, {:ok, acc ++ [e]}}
+              error -> {:halt, error}
+            end
+        end
+
+      _other, acc ->
+        {:cont, acc}
+    end)
+  end
+
+  # A tests relation: the test's current version discriminated, and its latest run passed
+  # against the code's current version.
+  defp tests_evidence(%{relation: {:tests, {:test, t}, {:code, c}}}, status, evidence) do
+    test = Map.fetch!(status.scans, {:test, t})
+    code = Map.fetch!(status.scans, {:code, c})
+    green_against(evidence, test, code)
+  end
+
+  defp green_against(evidence, test, code) do
+    with {red, green} <- Surfex.Evidence.red_then_green(evidence, test.id, test.hash),
+         %{result: :passed, code: versions} = latest <-
+           Surfex.Evidence.latest(evidence, test.id, test.hash),
+         true <- Map.get(versions, code.id) == code.hash do
+      "confirmed by evidence: #{test.id}@#{test.hash} failed at #{red.at} (#{versions_text(red)}) " <>
+        "and passes at #{latest.at} against #{code.id}@#{code.hash}" <>
+        if(green != latest, do: " (first green #{green.at})", else: "")
+    else
+      _ -> nil
+    end
+  end
+
+  defp versions_text(%{code: versions}) when map_size(versions) == 0, do: "no code yet"
+
+  defp versions_text(%{code: versions}),
+    do: versions |> Enum.sort() |> Enum.map_join(", ", fn {id, h} -> "#{id}@#{h}" end)
+
+  # An implements relation: some test verifying the spec unit (exactly, when the spec is
+  # what changed) and exercising the code, with evidence green against the code now.
+  defp implements_evidence(
+         %{relation: {:implements, {:code, c}, {:spec, s}}} = r,
+         status,
+         evidence
+       ) do
+    code = Map.fetch!(status.scans, {:code, c})
+    spec_changed? = {:spec, s} in r.changed
+
+    live = fn type ->
+      for %{type: ^type, state: :current, relation: {_, a, b}} <- status.relations, do: {a, b}
+    end
+
+    verifying =
+      for {{:test, t}, {:spec, unit}} <- live.(:verifies),
+          if(spec_changed?, do: unit == s, else: inside?(unit, s, status.scans)),
+          uniq: true,
+          do: t
+
+    exercising = MapSet.new(for {{:test, t}, {:code, ^c}} <- live.(:tests), do: t)
+
+    Enum.find_value(verifying, fn t ->
+      if MapSet.member?(exercising, t) do
+        case green_against(evidence, Map.fetch!(status.scans, {:test, t}), code) do
+          nil -> nil
+          note -> "#{note}; #{t} verifies #{s}"
+        end
+      end
+    end)
+  end
+
+  defp inside?(unit, unit, _scans), do: true
+
+  defp inside?(unit, spec, scans) do
+    case Map.get(scans, {:spec, unit}) do
+      %Scan{within: nil} -> false
+      %Scan{within: parent} -> inside?(parent, spec, scans)
+      nil -> false
+    end
+  end
+
+  @doc """
   Resolves a conflicted relation: the tip whose id starts with `pick` is recorded again
   with every tip as a parent. The relation is then judged by that entry. If the scans have
   moved since, it is dangling, and `confirm/4` is next.
@@ -234,6 +371,27 @@ defmodule Surfex.Record do
       {:ok, list} -> {:ok, Enum.reverse(list)}
       error -> error
     end)
+  end
+
+  defp red_first(dangling, status, opts) do
+    if Keyword.get(opts, :require_red, false) do
+      evidence = Keyword.get(opts, :evidence, [])
+
+      never_red =
+        for %{type: :tests, relation: {_, {:test, t}, _}} <- dangling,
+            test = Map.fetch!(status.scans, {:test, t}),
+            not Surfex.Evidence.discriminating?(evidence, test.id, test.hash),
+            uniq: true,
+            do: t
+
+      if never_red == [],
+        do: :ok,
+        else:
+          {:error,
+           "require_red: #{Enum.join(never_red, ", ")} has never failed at its current version"}
+    else
+      :ok
+    end
   end
 
   defp dedupe({:ok, entries}), do: {:ok, Enum.uniq_by(entries, &Entry.relation/1)}

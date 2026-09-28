@@ -307,4 +307,105 @@ defmodule Surfex.WalkthroughTest do
 
     json
   end
+
+  # #54: from a hint to current relations, with no confirmation by hand. The evidence is
+  # recorded by the real formatter, fed the events ExUnit would send.
+  test "hint → red test → code → green → confirm --evidence: current, no human confirm",
+       %{root: root} do
+    File.write!(Path.join(root, "spec.md"), """
+    # Totals {#totals}
+
+    A cart's discount is taken off its total.
+
+    ```test discount-test
+    discounting an empty cart gives an empty cart
+    ```
+    """)
+
+    File.write!(
+      Path.join(root, ".surfex.exs"),
+      ~s([sources: ["spec.md"], tests: ["test/*_test.exs"]])
+    )
+
+    File.mkdir_p!(Path.join(root, "test"))
+
+    File.write!(Path.join(root, "test/cart_test.exs"), """
+    defmodule MyApp.CartTest do
+      use ExUnit.Case
+
+      @tag verifies: "discount-test"
+      test "an empty cart stays empty" do
+        assert MyApp.Cart.discount([]) == []
+      end
+    end
+    """)
+
+    task(root, Mix.Tasks.Surfex.Relate, [
+      "--planned",
+      "spec.md#totals",
+      "MyApp.Cart.discount/1",
+      "--type",
+      "implements"
+    ])
+
+    task(root, Mix.Tasks.Surfex.Suggest, ["--accept"])
+    commit(root, "spec, hint, test first")
+
+    # Red: the test fails, since the code doesn't exist yet.
+    run_test(root, {:failed, []})
+
+    path = Path.join(root, "lib/my_app/cart.ex")
+
+    File.write!(
+      path,
+      String.replace(
+        File.read!(path),
+        "  def total,",
+        "  def discount(cart), do: cart\n\n  def total,"
+      )
+    )
+
+    task(root, Mix.Tasks.Surfex.Suggest, ["--accept"])
+
+    # The planned relation dangles now the code exists; green, and evidence confirms it.
+    assert %{"relations" => relations} = failing_json(root)
+    assert Enum.any?(relations, &(&1["type"] == "implements" and &1["state"] == "dangling"))
+
+    run_test(root, nil)
+    task(root, Mix.Tasks.Surfex.Confirm, ["--evidence"])
+    lines = drain()
+
+    assert Enum.any?(
+             lines,
+             &(&1 =~ "recorded relate implements" and &1 =~ "confirmed by evidence")
+           )
+
+    commit(root, "code, green, confirmed by evidence")
+
+    json = passing_json(root)
+    assert Enum.all?(json["relations"], &(&1["state"] == "current"))
+    assert json["triangle"] == []
+
+    # No entry was a named confirmation: the log shows evidence, not a person, for the code.
+    task(root, Mix.Tasks.Surfex.History, ["MyApp.Cart.discount/1"])
+    assert Enum.any?(drain(), &(&1 =~ "confirmed by evidence"))
+  end
+
+  # One run of the suite, as ExUnit reports it to the formatter.
+  defp run_test(root, state) do
+    {:ok, pid} = GenServer.start_link(Surfex.ExUnitFormatter, surfex_root: root)
+    GenServer.cast(pid, {:suite_started, []})
+    file = Path.join(root, "test/cart_test.exs")
+
+    test = %ExUnit.Test{
+      name: :t,
+      module: MyApp.CartTest,
+      state: state,
+      tags: %{file: file, line: 5}
+    }
+
+    GenServer.cast(pid, {:test_finished, test})
+    GenServer.cast(pid, {:suite_finished, %{}})
+    GenServer.stop(pid)
+  end
 end

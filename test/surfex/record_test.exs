@@ -280,4 +280,119 @@ defmodule Surfex.RecordTest do
                Record.move(renamed(), [old, other], @spec_id, @new_id, @meta)
     end
   end
+
+  # #54: people or agents judge meaning, and evidence judges behaviour.
+  describe "confirm_by_evidence/4" do
+    @describetag verifies: "evidence-confirms"
+
+    @hint "spec.md#h"
+    @t "T: rejects"
+
+    defp ev(result, code_hash, n, test_hash \\ "t1"),
+      do: %{
+        test: @t,
+        test_hash: test_hash,
+        result: result,
+        at: "2026-09-28T1#{n}:00:00Z",
+        run: "r#{n}",
+        seq: 0,
+        code: if(code_hash, do: %{@code_id => code_hash}, else: %{})
+      }
+
+    # The spec section, a hint inside it, the test and the code, at given versions.
+    defp world(spec \\ "s1", code \\ "c1", test \\ "t1"),
+      do: [
+        scan(:spec, @spec_id, spec),
+        %{scan(:spec, @hint, "h1") | role: :test_hint, within: @spec_id},
+        scan(:code, @code_id, code),
+        scan(:test, @t, test)
+      ]
+
+    defp rel(type, {ak, a, ah}, {bk, b, bh}),
+      do:
+        Entry.new!(
+          at: "2026-09-28T09:00:00Z",
+          op: :relate,
+          type: type,
+          ends: [%{kind: ak, id: a, hash: ah}, %{kind: bk, id: b, hash: bh}]
+        )
+
+    # Everything confirmed at s1/c1/t1, the test verifying the hint.
+    defp confirmed,
+      do: [
+        rel(:implements, {:spec, @spec_id, "s1"}, {:code, @code_id, "c1"}),
+        rel(:verifies, {:test, @t, "t1"}, {:spec, @hint, "h1"}),
+        rel(:tests, {:test, @t, "t1"}, {:code, @code_id, "c1"})
+      ]
+
+    defp confirmed_types(scans, entries, evidence) do
+      {:ok, recorded} = Record.confirm_by_evidence(scans, entries, evidence, @meta)
+      recorded |> Enum.map(& &1.type) |> Enum.sort()
+    end
+
+    test "code changed: a test that went red then green confirms tests, and implements follows" do
+      evidence = [ev(:failed, "c1", 1), ev(:passed, "c2", 2)]
+
+      {:ok, recorded} =
+        Record.confirm_by_evidence(world("s1", "c2"), confirmed(), evidence, @meta)
+
+      assert Enum.map(recorded, & &1.type) == [:tests, :implements]
+      assert Enum.all?(recorded, &(&1.note =~ "confirmed by evidence: T: rejects@t1 failed at"))
+      assert List.last(recorded).note =~ "T: rejects verifies #{@spec_id}"
+      assert state(world("s1", "c2"), confirmed() ++ recorded) |> Enum.all?(&(&1 == :current))
+    end
+
+    test "a test never red, failing now, or green against other code confirms nothing" do
+      assert confirmed_types(world("s1", "c2"), confirmed(), [
+               ev(:passed, "c1", 1),
+               ev(:passed, "c2", 2)
+             ]) == []
+
+      assert confirmed_types(world("s1", "c2"), confirmed(), [
+               ev(:failed, "c1", 1),
+               ev(:passed, "c2", 2),
+               ev(:failed, "c2", 3)
+             ]) == []
+
+      assert confirmed_types(world("s1", "c3"), confirmed(), [
+               ev(:failed, "c1", 1),
+               ev(:passed, "c2", 2)
+             ]) == []
+    end
+
+    test "a changed test must earn its red again; verifies is never confirmed by evidence" do
+      # The test changed (t2): tests and verifies dangle; evidence for t1 doesn't count.
+      evidence = [ev(:failed, "c1", 1), ev(:passed, "c2", 2)]
+      assert confirmed_types(world("s1", "c1", "t2"), confirmed(), evidence) == []
+
+      # t2 went red and green: its tests relation is confirmed, its verifies isn't.
+      evidence = evidence ++ [ev(:failed, "c1", 3, "t2"), ev(:passed, "c2", 4, "t2")]
+      assert confirmed_types(world("s1", "c2", "t2"), confirmed(), evidence) == [:tests]
+    end
+
+    test "when the spec changed, only a test verifying that exact unit can carry implements" do
+      evidence = [ev(:failed, "c1", 1), ev(:passed, "c2", 2)]
+      # The section was reworded and the code changed: the hint's verifies doesn't speak for it.
+      assert confirmed_types(world("s2", "c2"), confirmed(), evidence) == [:tests]
+
+      exact = rel(:verifies, {:test, @t, "t1"}, {:spec, @spec_id, "s2"})
+
+      assert confirmed_types(world("s2", "c2"), confirmed() ++ [exact], evidence) == [
+               :implements,
+               :tests
+             ]
+    end
+
+    test "require_red: a tests relation can't be confirmed by hand until its test was red" do
+      entries = confirmed()
+      policy = [require_red: true, evidence: [ev(:passed, "c2", 1)]]
+
+      assert {:error, "require_red: T: rejects has never failed at its current version"} =
+               Record.confirm(world("s1", "c2"), entries, [@code_id], @meta, policy)
+
+      policy = [require_red: true, evidence: [ev(:failed, "c1", 1), ev(:passed, "c2", 2)]]
+      assert {:ok, [_, _]} = Record.confirm(world("s1", "c2"), entries, [@code_id], @meta, policy)
+      assert {:ok, [_, _]} = Record.confirm(world("s1", "c2"), entries, [@code_id], @meta)
+    end
+  end
 end

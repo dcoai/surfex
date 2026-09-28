@@ -39,9 +39,18 @@ trace.
   version, with the versions of the code it calls, to `_build/surfex/evidence.jsonl`
   (`Surfex.Evidence`). The file is scratch and never committed. A test version
   **discriminates** once it has failed against one version of its code and passed
-  against another, unchanged itself. That is what the coming confirmation by evidence
-  rests on. Surfex records its own test runs.
+  against another, unchanged itself. That is what confirmation by evidence rests on.
+  Surfex records its own test runs.
+- **Confirmation by evidence.** `mix surfex.confirm --evidence`
+  (`Surfex.Record.confirm_by_evidence/4`) confirms:
+  - a dangling `tests` relation whose test version has failed once and passes now against
+    the current code;
+  - then each dangling `implements` relation a verifying test with such evidence carries.
 
+  `verifies` stays a judgement, confirmed by name. After a spec change, only a test
+  verifying that exact unit can carry `implements`. The evidence is written into each
+  entry's note. `require_red: true` makes a `tests` relation unconfirmable by hand too
+  until its test was red.
 - **A specification guide**, `guides/writing-specs.md`: how to write a spec Surfex relates
   precisely (section sizing, stable headings, naming the code, checkable claims, examples
   and invariants, test-first work, working with an LLM), with a worked example that

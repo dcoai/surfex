@@ -750,8 +750,8 @@ code no verifying test calls are each reported, naming the test or the code
 ### 13.2 Configuration {#status-config}
 
 `Surfex.Status.Config` reads `.surfex.exs`. It holds the profile keys (§8) and the
-log's own: `scanner`, `scanner_opts`, `namespace`, `goldens` (§10.3), `require`, `tests`
-and `triangle`.
+log's own: `scanner`, `scanner_opts`, `namespace`, `goldens` (§10.3), `require`, `tests`,
+`triangle` and `require_red` (§17).
 - `Surfex.Status.Config.read!/1` reads and validates it. It raises on an unknown key, and
   on a key of the removed trace, saying so (§9). Every task reads its config through
   it, so a misspelt key is never silently ignored.
@@ -825,6 +825,8 @@ time (context only), and when.
 | `Surfex.Record.relate/6` | a relation of a type between two ids at their current hashes, from → to for a directed type, superseding the relation's tips |
 | `Surfex.Record.plan/7` | a **planned** relation: one end is scanned and recorded at its hash, the other doesn't exist yet and is recorded without one. Its kind is its `spec:`/`code:` prefix, else `spec` when it has a `#`, else `code`. A plausibility check refuses an id the project couldn't have, so a typo doesn't become a permanent plan. `mix surfex.relate --planned` asks whether a spec id is in a file the scanner reads, and whether a code id has the scanner's shape (for Elixir, a name under one of the project's namespaces). Both ends scanned, or neither, is an error. |
 | `Surfex.Record.confirm/4` | for every **dangling** relation touching one of the named ids, the relation again at the current hashes, superseding its tip. Only named ids, and an id with nothing dangling is an error, never a silent no-op. Orphaned and conflicted relations aren't confirmed: they need re-pointing or resolving. |
+| `Surfex.Record.confirm/5` | `Surfex.Record.confirm/4` under the `require_red:` policy (§17): with it, a `tests` relation isn't confirmed by hand either until its test's current version has discriminated |
+| `Surfex.Record.confirm_by_evidence/4` | every confirmation the test evidence justifies (§17): each dangling `tests` relation, then each dangling `implements` relation, with the evidence in the note. Nothing justified is `{:ok, []}`, not an error |
 | `Surfex.Record.retire/6` | that a relation no longer applies, naming every tip as a parent, with the ends as the tip recorded them. An end need not still be scanned: this is how an orphaned relation is put to rest. |
 | `Surfex.Record.resolve/7` | the chosen tip of a **conflicted** relation, recorded again with every tip as a parent. If the scans have moved since, the relation is then dangling, and confirming it is next. |
 
@@ -842,7 +844,8 @@ alone.
 
 The tasks:
 - `Mix.Tasks.Surfex.Relate`: `mix surfex.relate FROM TO --type T [--planned] [--note N]`
-- `Mix.Tasks.Surfex.Confirm`: `mix surfex.confirm ID… [--note N]`
+- `Mix.Tasks.Surfex.Confirm`: `mix surfex.confirm ID… [--note N]`, or
+  `mix surfex.confirm --evidence` with no ids
 - `Mix.Tasks.Surfex.Retire`: `mix surfex.retire FROM TO --type T [--note N]`
 - `Mix.Tasks.Surfex.Resolve`: `mix surfex.resolve FROM TO --type T --pick ID_PREFIX`
 - `Mix.Tasks.Surfex.Move`: `mix surfex.move OLD NEW [--note N]`
@@ -968,4 +971,28 @@ runs aren't needed afterwards.
 a test that failed against one version of the code and then passed against another,
 unchanged itself, discriminates; never red, red with the code unchanged, green before
 red, or a changed test, does not
+```
+
+**Who confirms what.** People or agents judge meaning, and evidence judges behaviour:
+
+| Relation | Confirmed by |
+|---|---|
+| `verifies` (test → spec) | judgement only (`Surfex.Record.confirm/4`): does the test still express the requirement? |
+| `tests` (test → code) | evidence: the test's current version has discriminated, and its latest run passed against the code's current version |
+| `implements` (spec ↔ code) | derived: a test with a current `verifies` relation to the spec unit, or to a block or hint inside it, has a current `tests` relation to the code, and such evidence. When the **spec** side is what changed, the `verifies` must be to that exact unit: someone has judged that the test expresses the reworded requirement |
+
+`Surfex.Record.confirm_by_evidence/4` records these, and `mix surfex.confirm --evidence`
+runs it after a test run: `mix test && mix surfex.confirm --evidence`. Each entry's note
+records the evidence (the red run and the green one, with versions), so the conclusion is
+kept in the log and the raw runs aren't needed afterwards. Once a test version has
+discriminated, later green runs re-confirm its relations as the code changes: a refactor
+never goes red, and doesn't need to. A test that has never been red leaves its relations
+for a confirmation by hand, unless `require_red: true` in `.surfex.exs` refuses that too
+(`Surfex.Status.Config.require_red!/1`), which is strict test-first work.
+
+```test evidence-confirms
+a code change whose test went red then green confirms the tests relation and then the
+implements relation; a test never red, failing now, green against other code, or changed
+confirms nothing; verifies is never confirmed by evidence; after a spec change only a test
+verifying that exact unit carries implements
 ```

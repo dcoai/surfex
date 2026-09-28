@@ -11,6 +11,8 @@ defmodule Surfex.Status.Config do
       when present
     * `:triangle` — `:report` (the default) or `:fail`: whether gaps in the spec/test/code
       triangle fail the check or are only reported
+    * `:require_red` — `true` to refuse confirming a `tests` relation, by evidence or by
+      hand, until its test's current version has failed first (`false` by default)
   """
 
   alias Surfex.Log.Entry
@@ -19,7 +21,7 @@ defmodule Surfex.Status.Config do
   @roles [:section, :block, :test_hint]
 
   # The keys a `.surfex.exs` may hold, besides the profile's (`Surfex.Profile.keys/0`).
-  @own [:scanner, :scanner_opts, :namespace, :goldens, :require, :tests, :triangle]
+  @own [:scanner, :scanner_opts, :namespace, :goldens, :require, :tests, :triangle, :require_red]
 
   # The v0.2 trace's own keys, removed with it in 0.4.0.
   @removed [
@@ -102,6 +104,15 @@ defmodule Surfex.Status.Config do
         else: []
 
     [triangle: triangle] ++ coverage
+  end
+
+  @doc "The `require_red:` policy (`false` by default), validated."
+  @spec require_red!(keyword) :: boolean
+  def require_red!(config) do
+    case Keyword.get(config, :require_red, false) do
+      flag when is_boolean(flag) -> flag
+      other -> raise ArgumentError, "require_red: must be true or false, got #{inspect(other)}"
+    end
   end
 
   @doc "The `require:` policy, validated. Raises `ArgumentError` naming what is wrong."
