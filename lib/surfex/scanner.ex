@@ -1,13 +1,15 @@
 defmodule Surfex.Scanner do
   @moduledoc """
-  Finds the items a trace catalogues. A scanner knows one language's declarations; it
-  knows nothing about any spec, and `Surfex.Cite` knows nothing about any language.
+  Finds the items the code declares: the code records the relation log relates
+  (`Surfex.Scan.code/1`), and what the spec's citations resolve to. A scanner knows one
+  language's declarations; it knows nothing about any spec, and `Surfex.Cite` knows
+  nothing about any language.
 
   `Surfex.Scanner.Elixir` is built in. A project whose code is in another language (a C
   reference implementation, a protocol described in headers) implements `c:items/2` for
-  it and gets the rest of the trace unchanged.
+  it (`scanner:` in `.surfex.exs`) and gets the rest unchanged.
 
-  A scanner should read source, never compile or load it: a trace built on it then runs
+  A scanner should read source, never compile or load it: a check built on it then runs
   before, and independently of, the code it inspects, and cannot be fooled by a module
   that failed to build.
   """

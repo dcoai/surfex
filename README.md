@@ -17,7 +17,7 @@ Surfex is a build-time tool with no dependencies of its own:
 ```elixir
 def deps do
   [
-    {:surfex, github: "dcoai/surfex", tag: "v0.3.0", only: [:dev, :test], runtime: false}
+    {:surfex, github: "dcoai/surfex", tag: "v0.4.0", only: [:dev, :test], runtime: false}
   ]
 end
 ```
@@ -117,20 +117,30 @@ way, from the other side.
 - **Relate by hand:** `mix surfex.relate FROM TO --type T` for anything the spec doesn't
   name. Types are `implements`, `refines`, `depends_on`, `tests` and `excuses`.
 - **Put a relation to rest:** `mix surfex.retire FROM TO --type T`.
+- **Rename a section:** give headings anchors (`## Totals {#totals}`) and they keep their
+  id. Otherwise `mix surfex.suggest` spots the rename, or `mix surfex.move OLD NEW` carries
+  the relations across.
 - **Work in parallel:** the log is merged by git's union merge (set up by `--init`). If
   two branches confirm the same relation without seeing each other, it shows as
   **conflicted**, and `mix surfex.resolve … --pick` settles it.
 - **Ask how it got here:** `mix surfex.history MyApp.Cart.total/1` lists every relation
   it has had, from the log alone.
 
-## The trace (deprecated)
+## Upgrading from the v0.2 trace
 
-Earlier versions checked the spec against the code by rendering `SPEC_TRACE.md` from the
-spec's citations (`mix surfex.trace`, or `:trace` in `goldens:`). It still works, and it
-is what `mix surfex.suggest` reads, but it records no reconciliation, so the relation log
-replaces it. It will be removed in a later release.
+The trace (`mix surfex.trace`, `SPEC_TRACE.md`) was removed in 0.4.0; the relation log
+replaces it. Its checks all live on: citations become suggested `implements` relations,
+excusing classes become `excuses` relations, uncited code is **unmet** under `require:`,
+and a citation of something that doesn't exist fails `mix surfex.status`. To move a project
+over, delete the trace-only keys from `.surfex.exs` (Surfex names them), replace `:trace`
+in `goldens:` with `:status`, then run `mix surfex.log --init` and
+`mix surfex.suggest --accept`.
 
 ## Reference
+
+[`guides/writing-specs.md`](guides/writing-specs.md) is how to write a spec Surfex relates
+well: section sizing, stable headings, naming the code, checkable claims, and test-first
+work.
 
 [`spec.md`](spec.md) is the full specification: the scan records, the relation log, every
 state and command, and every `.surfex.exs` key. Surfex holds it to its own code with its

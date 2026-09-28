@@ -54,8 +54,8 @@ defmodule Surfex.Scanner.Elixir do
   end
 
   @doc """
-  The `Surfex.Profile` keys an Elixir trace starts from, for a project whose modules live
-  under `namespace` (`"MyApp"`):
+  The `Surfex.Profile` keys that reading an Elixir project's citations starts from, for a
+  project whose modules live under `namespace` (`"MyApp"`):
 
     * `:shape` — `MyApp`, `MyApp.Cart`, `MyApp.Cart.add`, `MyApp.Cart.add/2`: a span of
       this shape that names nothing is an unresolved citation

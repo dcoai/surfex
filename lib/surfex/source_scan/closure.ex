@@ -31,6 +31,22 @@ defmodule Surfex.SourceScan.Closure do
     |> Surfex.SourceScan.definition_hash()
   end
 
+  # The hash of `nodes` that are not a definition of their own (a test and its setups),
+  # as if they were one: a key no definition can have stands for them.
+  def hash_nodes(nodes, groups, attributes) do
+    key = {:"surfex nodes", 0}
+    hash(key, Map.put(groups, key, %{nodes: nodes, defaults: 0, private: false}), attributes)
+  end
+
+  # `nodes` and the clauses of every private definition they reach, transitively: what
+  # running them runs, as far as the module's own source says.
+  def reach(nodes, groups) do
+    key = {:"surfex nodes", 0}
+    groups = Map.put(groups, key, %{nodes: nodes, defaults: 0, private: false})
+    {callees, _read} = closure([key], MapSet.new(), MapSet.new(), groups, private_index(groups))
+    nodes ++ Enum.flat_map(Enum.sort(callees), &groups[&1].nodes)
+  end
+
   # Private definitions reachable from `frontier`, and the attributes read on the way.
   defp closure([], callees, read, _groups, _privates), do: {callees, read}
 

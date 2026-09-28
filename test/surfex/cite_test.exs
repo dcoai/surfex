@@ -81,20 +81,14 @@ defmodule Surfex.CiteTest do
       assert [%{section: "1.2 Detail", line: 4}] = one(cites, "app_recv")
     end
 
+    test "a heading's anchor is not part of its name", %{tmp_dir: root} do
+      write(root, "spec/01.md", "# 1. Intro {#intro}\n`app_send`\n")
+      assert [%{section: "1. Intro"}] = one(cite(root), "app_send")
+    end
+
     test "an .ex source is sectioned by defmodule", %{tmp_dir: root} do
       write(root, "models/m.ex", "defmodule Model.Send do\n  @moduledoc \"`app_send`\"\nend\n")
       assert [%{section: "Model.Send", file: "models/m.ex"}] = cite(root) |> one("app_send")
-    end
-
-    test "labels default to the file stem, or the first matching file_labels rewrite", %{
-      tmp_dir: root
-    } do
-      write(root, "spec/01-intro.md", "# Intro\n`app_send`\n")
-      cites = cite(root)
-      assert Cite.by_item(cites, profile()) == %{"app_send" => ["01-intro — Intro"]}
-
-      labelled = profile(file_labels: [{~r/^spec\/(\d+).*$/, "§\\1"}, {~r/.*/, "never"}])
-      assert Cite.by_item(cites, labelled) == %{"app_send" => ["§01 — Intro"]}
     end
 
     test "a fence hides headings and spans from the line scan", %{tmp_dir: root} do

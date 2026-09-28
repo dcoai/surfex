@@ -1,4 +1,4 @@
-# The three checks the sibling projects gate on, plus the goldens (spec.md traced against lib/).
+# The three checks the sibling projects gate on, plus the goldens and the relation status.
 # There is nothing to boot: this package reads source and renders markdown.
 variables:
   ELIXIR_IMAGE: hexpm/elixir:1.20.4-erlang-29.0.5-debian-bookworm-20260824-slim
@@ -46,21 +46,18 @@ test:
     # The relation log's tests drive real git (a union merge of two branches' appends is
     # the claim the log rests on), and the slim image has none.
     - apt-get update -qq && apt-get install -y -qq --no-install-recommends git > /dev/null
+    # This run's evidence only: _build is cached between pipelines, and CI must judge the
+    # log's claims by what it sees now.
+    - rm -f _build/surfex/evidence.jsonl
     - mix test
+    # Every relation in .surfex/ still holds, every public item implements a spec section
+    # and every test hint is verified (require: in .surfex.exs), the log verifies, and every
+    # confirmation by evidence is borne out by the run above. It checks; it records nothing.
+    - mix surfex.status --verify --evidence
 
 goldens:
   extends: .elixir
   stage: check
   script:
-    # Every golden in .surfex.exs: spec.md against lib/, where a GAP, a broken citation or
-    # a stale SPEC_TRACE.md fails.
+    # Every golden in .surfex.exs: RELATIONS.md, where a stale committed record fails.
     - mix surfex.goldens
-
-status:
-  extends: .elixir
-  stage: check
-  script:
-    # Every relation in .surfex/ still holds, every public item implements a spec section
-    # (require: in .surfex.exs), and the log verifies. A change to lib/ or spec.md dangles
-    # the relations it touches until `mix surfex.confirm` names them.
-    - mix surfex.status --verify

@@ -118,22 +118,7 @@ defmodule Surfex.SourceScan do
   """
   @spec defs(Macro.t()) :: [definition]
   def defs({:defmodule, _, [_aliases, [do: body]]}) do
-    {clauses, _} =
-      Enum.flat_map_reduce(exprs(body), %{doc: nil, impl: false, seen: %{}}, &clause/2)
-
-    grouped = Enum.group_by(clauses, &{&1.name, &1.arity})
-
-    groups =
-      Map.new(grouped, fn {key, [first | _] = group} ->
-        {key,
-         %{
-           nodes: Enum.map(group, & &1.node),
-           defaults: group |> Enum.map(& &1.defaults) |> Enum.max(),
-           private: first.kind == :private
-         }}
-      end)
-
-    attributes = attributes(body)
+    {grouped, groups, attributes} = definitions(body)
 
     grouped
     |> Enum.flat_map(fn {{name, arity} = key, [first | _]} ->
@@ -149,6 +134,45 @@ defmodule Surfex.SourceScan do
       end
     end)
     |> Enum.sort_by(&{&1.name, &1.arity})
+  end
+
+  @doc false
+  # The content version of arbitrary `nodes` in a module, hashed as `defs/1` hashes a
+  # function: over the nodes, the private definitions they reach, and the attributes read
+  # on the way. `Surfex.Scan.ExUnit` versions a test (its body and its `setup`s) this way.
+  @spec closure_hash(Macro.t(), [Macro.t()]) :: String.t()
+  def closure_hash({:defmodule, _, [_aliases, [do: body]]}, nodes) do
+    {_grouped, groups, attributes} = definitions(body)
+    Surfex.SourceScan.Closure.hash_nodes(nodes, groups, attributes)
+  end
+
+  @doc false
+  # `nodes` and the clauses of the private definitions they reach in the module.
+  @spec closure_nodes(Macro.t(), [Macro.t()]) :: [Macro.t()]
+  def closure_nodes({:defmodule, _, [_aliases, [do: body]]}, nodes) do
+    {_grouped, groups, _attributes} = definitions(body)
+    Surfex.SourceScan.Closure.reach(nodes, groups)
+  end
+
+  # The module's definitions grouped by name and arity (each clause kept), the same as
+  # hashing needs them (%{nodes, defaults, private}), and its attributes' values.
+  defp definitions(body) do
+    {clauses, _} =
+      Enum.flat_map_reduce(exprs(body), %{doc: nil, impl: false, seen: %{}}, &clause/2)
+
+    grouped = Enum.group_by(clauses, &{&1.name, &1.arity})
+
+    groups =
+      Map.new(grouped, fn {key, [first | _] = group} ->
+        {key,
+         %{
+           nodes: Enum.map(group, & &1.node),
+           defaults: group |> Enum.map(& &1.defaults) |> Enum.max(),
+           private: first.kind == :private
+         }}
+      end)
+
+    {grouped, groups, attributes(body)}
   end
 
   # Every value assigned to each module attribute in the module's own body, in order.

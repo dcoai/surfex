@@ -104,65 +104,11 @@ defmodule Surfex.Cite do
     Map.merge(by_key, by_file)
   end
 
-  @doc """
-  Every heading in the profile's sources, as `{file, heading}` in source order: markdown
-  headings and, in an `.ex` source, `defmodule`s. Nothing inside a fenced block is a
-  heading. These are the sections a citation can be credited to.
-  """
-  @spec headings(Profile.t(), String.t()) :: [{String.t(), String.t()}]
-  def headings(%Profile{} = profile, root) do
-    for path <- sources(profile, root),
-        heading <- headings_in(path, File.read!(Path.join(root, path))),
-        do: {path, heading}
-  end
-
-  defp headings_in(path, text) do
-    text
-    |> String.split("\n")
-    |> Enum.flat_map_reduce(false, fn line, fence ->
-      cond do
-        fence?(line) -> {[], not fence}
-        fence -> {[], fence}
-        heading = heading(path, line) -> {[elem(heading, 1)], fence}
-        true -> {[], fence}
-      end
-    end)
-    |> elem(0)
-  end
-
   # Alias => every item declaring it: a family, cited together.
   defp aliases(items) do
     for item <- items, alias <- item.aliases, reduce: %{} do
       acc -> Map.update(acc, alias, [item], &[item | &1])
     end
-  end
-
-  @doc """
-  The golden's join: item key => the labels of the sections citing it, de-duplicated and
-  sorted. Only resolved citations count. An empty list is the "uncited" that
-  `Surfex.Coverage` adjudicates.
-  """
-  @spec by_item([t], Profile.t()) :: %{String.t() => [String.t()]}
-  def by_item(citations, %Profile{} = profile) do
-    citations
-    |> Enum.filter(&(&1.status == :resolved))
-    |> Enum.flat_map(fn c -> Enum.map(c.items, &{&1, section_label(c, profile)}) end)
-    |> Enum.group_by(fn {key, _} -> key end, fn {_, label} -> label end)
-    |> Map.new(fn {k, labels} -> {k, labels |> Enum.uniq() |> Enum.sort()} end)
-  end
-
-  @doc """
-  How a citing section reads in a golden cell: `<file label> — <section>`, the file label
-  from the profile's `:file_labels`, or the base name without extension.
-  """
-  @spec section_label(t, Profile.t()) :: String.t()
-  def section_label(%{file: file, section: section}, %Profile{file_labels: labels}) do
-    label =
-      Enum.find_value(labels, Path.rootname(Path.basename(file)), fn {re, rep} ->
-        if Regex.match?(re, file), do: Regex.replace(re, file, rep, global: false)
-      end)
-
-    "#{label} — #{section}"
   end
 
   # ── Scanning ────────────────────────────────────────────────────────────
@@ -291,7 +237,9 @@ defmodule Surfex.Cite do
   defp heading(path, line) do
     cond do
       String.ends_with?(path, ".md") ->
-        case Regex.run(~r/^(#+)\s+(.+?)\s*$/, line, capture: :all_but_first) do
+        # An anchor, `{#id}`, names the section for the relation log (§11); it is not the
+        # heading's text.
+        case Regex.run(~r/^(#+)\s+(.+?)(?:\s*\{#[^}\s]*\})?\s*$/, line, capture: :all_but_first) do
           [hashes, text] -> {String.length(hashes), text}
           _ -> nil
         end

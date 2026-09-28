@@ -61,6 +61,29 @@ defmodule Surfex.LogTest do
       end
     end
 
+    test "a planned end has no hash, written as null; two planned ends are refused" do
+      planned = [
+        %{kind: :code, id: "M.later/1", hash: nil},
+        %{kind: :spec, id: "spec.md#S", hash: "s"}
+      ]
+
+      e = Entry.new!(at: "2026-09-28T10:00:00Z", op: :relate, type: :implements, ends: planned)
+      line = Entry.encode(e)
+      assert line =~ ~s({"kind":"code","id":"M.later/1","hash":null})
+      assert Entry.decode!(line) == e
+
+      assert {:error, msg} =
+               Entry.build(
+                 at: "2026-09-28T10:00:00Z",
+                 op: :relate,
+                 type: :implements,
+                 ends: Enum.map(planned, &%{&1 | hash: nil})
+               )
+
+      assert msg =~ ":ends"
+    end
+
+    @tag verifies: "entry-tamper"
     test "an edited line no longer decodes as its id" do
       line = entry(1) |> Entry.encode() |> String.replace(~s("hash":"c1"), ~s("hash":"cX"))
       assert {:error, msg} = Entry.decode(line)
@@ -121,6 +144,7 @@ defmodule Surfex.LogTest do
       assert Log.verify(root) == []
     end
 
+    @tag verifies: "entry-tamper"
     test "an edited line is caught", %{tmp_dir: root} do
       path = Path.join(Log.dir(root), "surfex.log")
       File.write!(path, String.replace(File.read!(path), ~s("hash":"c3"), ~s("hash":"cX")))
@@ -158,6 +182,7 @@ defmodule Surfex.LogTest do
 
   # The claim the whole design leans on: git's union merge of two branches' appends loads
   # to the same state, with nothing lost and no conflict.
+  @tag verifies: "union-merge"
   test "two branches' appends merge without conflict and load to one state", %{tmp_dir: root} do
     git = fn args ->
       {out, 0} = System.cmd("git", args, cd: root, stderr_to_stdout: true)

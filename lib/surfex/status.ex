@@ -13,7 +13,9 @@ defmodule Surfex.Status do
     * **conflicted** — more than one tip: two entries recorded without seeing each other
       (sharing a parent, or both with none, on two branches)
     * **retired** — the tip retires it
-    * **orphaned** — an end's id is no longer scanned (removed, or renamed)
+    * **orphaned** — an end recorded at a hash is no longer scanned (removed, or renamed)
+    * **planned** — an end was recorded without a hash, before it existed, and still
+      isn't scanned. When it appears, the relation dangles on that end until confirmed.
     * **dangling** — both ids are scanned, but at least one is at a different hash than
       the tip recorded; the report names which ends changed
     * **current** — both ends are at the hashes the tip recorded
@@ -23,21 +25,45 @@ defmodule Surfex.Status do
   a failure: re-confirming everything downstream of every change would train people to
   confirm without reading.
 
-  A scanned id in no relation at all is **new**.
+  A **broken citation** is a name the spec cites that resolves to nothing, or to more than
+  one item (`Surfex.Cite`): given as `citations:`, so the spec can't name what doesn't exist.
+
+  A scanned id in no relation at all is **new**. A spec id whose every live `implements`
+  relation is planned is **unimplemented**. A test's declaration (`@tag verifies: "id"`)
+  that names no spec unit, or a bare id more than one file has, is **broken**.
 
   ## Policy
 
-  `require:` in `.surfex.exs` names, per kind, the relation types every scanned id of that
-  kind must take part in, e.g. `require: [code: [:implements, :excuses], spec:
-  [:implements]]`. An id with no non-retired relation of one of those types is **unmet**.
+  `require:` in `.surfex.exs` names, per kind or spec role, the relation types every
+  scanned id of it must take part in, e.g. `require: [code: [:implements], test_hint:
+  [:verifies]]`: every code item implements something, and every test hint is verified.
+  An id with no non-retired relation of one of those types is **unmet**, once per rule it
+  fails. A planned relation counts: the intent is on record.
 
-  **Failing** means any dangling, orphaned or conflicted relation, or any unmet id.
+  An `excuses` relation whose item its class no longer covers is **stale**: the item is
+  now implemented, no rule matches it any more, or another class's rule matches it first.
+  An excuse must stay true to its class's rules, not only to the versions it was confirmed
+  at. Judging it needs the rules, given as `coverage:` (`Surfex.Profile.coverage!/1`).
+
+  **Failing** means any dangling, orphaned or conflicted relation, any unmet id, any
+  broken declaration, any stale excuse, or any broken citation. Planned relations fail too when derived with
+  `planned: :fail` (`mix surfex.status --no-planned`), for a check that everything planned
+  has been built, such as a release's.
+
+  ## The triangle
+
+  When tests are scanned, each spec unit that something `implements` should be verified
+  by a test (`verifies`, to it or to a block or hint inside it), and that test should
+  exercise the implementing code (`tests`). The **triangle** lists each side missing:
+  `:no_test`, `:test_misses_code` (a verifying test reaches none of the code), and
+  `:code_untested` (implementing code no verifying test reaches). It is reported, and
+  fails the check only when derived with `triangle: :fail`.
   """
 
   alias Surfex.Log.Entry
   alias Surfex.Scan
 
-  @type state :: :current | :dangling | :orphaned | :conflicted | :retired
+  @type state :: :current | :dangling | :orphaned | :conflicted | :retired | :planned
   @type relation_status :: %{
           relation: {atom, {atom, String.t()}, {atom, String.t()}},
           type: atom,
@@ -46,10 +72,30 @@ defmodule Surfex.Status do
           impacted: boolean,
           tips: [Entry.t()]
         }
+  @type gap :: %{
+          spec: String.t(),
+          gap: :no_test | :test_misses_code | :code_untested,
+          test: String.t() | nil,
+          code: String.t() | nil
+        }
   @type t :: %{
           relations: [relation_status],
           new: [Scan.t()],
           unmet: [%{scan: Scan.t(), requires: [atom]}],
+          broken: [%{scan: Scan.t(), type: atom, ref: String.t(), reason: term}],
+          triangle: [gap],
+          unproven: [%{relation: tuple, test: String.t() | nil, reason: atom}],
+          citations: [Surfex.Cite.t()],
+          stale: [
+            %{
+              class: String.t(),
+              code: String.t(),
+              reason: :implemented | :unmatched | {:other_class, String.t()}
+            }
+          ],
+          policy: %{triangle: :report | :fail},
+          unimplemented: [Scan.t()],
+          planned: :allow | :fail,
           scans: %{{atom, String.t()} => Scan.t()}
         }
 
@@ -57,8 +103,18 @@ defmodule Surfex.Status do
   The status of every relation in `entries` against `scans`, the new ids, and the ids that
   fail the `require` policy.
   """
-  @spec derive([Scan.t()], [Entry.t()], keyword) :: t
-  def derive(scans, entries, require \\ []) do
+  @spec derive([Scan.t()], [Entry.t()], keyword, keyword) :: t
+  def derive(scans, entries, require \\ [], opts \\ []) do
+    unique!(scans)
+    planned = Keyword.get(opts, :planned, :allow)
+    triangle = Keyword.get(opts, :triangle, :report)
+
+    unless planned in [:allow, :fail],
+      do: raise(ArgumentError, "planned: must be :allow or :fail, got #{inspect(planned)}")
+
+    unless triangle in [:report, :fail],
+      do: raise(ArgumentError, "triangle: must be :report or :fail, got #{inspect(triangle)}")
+
     by_id = Map.new(scans, &{{&1.kind, &1.id}, &1})
 
     relations =
@@ -79,16 +135,32 @@ defmodule Surfex.Status do
         |> Enum.reject(&MapSet.member?(related, {&1.kind, &1.id}))
         |> Enum.sort_by(&{&1.kind, &1.id}),
       unmet: unmet(scans, relations, require),
+      broken: broken(scans),
+      citations: Keyword.get(opts, :citations, []),
+      stale: stale(scans, relations, Keyword.get(opts, :coverage)),
+      unproven: unproven(scans, relations, Keyword.get(opts, :evidence)),
+      triangle: triangle(scans, relations),
+      policy: %{triangle: triangle},
+      unimplemented: unimplemented(scans, relations),
+      planned: planned,
       scans: by_id
     }
   end
 
-  @doc "Whether the status fails the check: any dangling, orphaned, conflicted or unmet."
+  @doc """
+  Whether the status fails the check: any dangling, orphaned, conflicted or unmet, and any
+  planned relation when it was derived with `planned: :fail`.
+  """
   @spec failing?(t) :: boolean
-  def failing?(status),
-    do:
-      status.unmet != [] or
-        Enum.any?(status.relations, &(&1.state in [:dangling, :orphaned, :conflicted]))
+  def failing?(status) do
+    failing = [:dangling, :orphaned, :conflicted]
+    failing = if status.planned == :fail, do: [:planned | failing], else: failing
+
+    status.unmet != [] or status.broken != [] or status.stale != [] or status.citations != [] or
+      status.unproven != [] or
+      (status.policy.triangle == :fail and status.triangle != []) or
+      Enum.any?(status.relations, &(&1.state in failing))
+  end
 
   @doc """
   Counts per relation type and state, plus the new and unmet totals: the summary a person
@@ -99,6 +171,27 @@ defmodule Surfex.Status do
     status.relations
     |> Enum.group_by(& &1.type)
     |> Map.new(fn {type, rs} -> {type, Enum.frequencies_by(rs, & &1.state)} end)
+  end
+
+  @doc """
+  How many spec units were scanned, by role: sections, marked blocks and test hints.
+  """
+  @spec units(t) :: %{
+          section: non_neg_integer,
+          block: non_neg_integer,
+          test_hint: non_neg_integer
+        }
+  def units(status) do
+    counts =
+      for {_key, %Scan{kind: :spec, role: role}} <- status.scans, reduce: %{} do
+        acc -> Map.update(acc, role, 1, &(&1 + 1))
+      end
+
+    %{
+      section: Map.get(counts, :section, 0),
+      block: Map.get(counts, :block, 0),
+      test_hint: Map.get(counts, :test_hint, 0)
+    }
   end
 
   @doc """
@@ -131,12 +224,22 @@ defmodule Surfex.Status do
 
   defp judge_tip(%Entry{op: :retire}, _by_id), do: {:retired, []}
 
+  # An end recorded at a hash and no longer scanned is gone: orphaned. An end recorded
+  # without one (planned) and still not scanned is waiting: planned. Once a planned id is
+  # scanned it differs from the recorded nil, so the relation dangles on that end until
+  # someone confirms it, as with any other change.
   defp judge_tip(%Entry{ends: ends}, by_id) do
     looked = Enum.map(ends, &{{&1.kind, &1.id}, &1.hash, Map.get(by_id, {&1.kind, &1.id})})
 
+    gone = for {key, hash, nil} <- looked, hash != nil, do: key
+    waiting = for {key, nil, nil} <- looked, do: key
+
     cond do
-      Enum.any?(looked, fn {_, _, scan} -> scan == nil end) ->
-        {:orphaned, for({key, _, nil} <- looked, do: key)}
+      gone != [] ->
+        {:orphaned, gone}
+
+      waiting != [] ->
+        {:planned, waiting}
 
       true ->
         case for({key, hash, scan} <- looked, scan.hash != hash, do: key) do
@@ -164,6 +267,91 @@ defmodule Surfex.Status do
     end)
   end
 
+  # The spec/test/code triangle, for each spec unit that something implements: a test
+  # should verify it (or a block or hint inside it), and that test should exercise the code
+  # that implements it. Only when tests are scanned at all; otherwise every unit would
+  # report no test for a project that doesn't scan them.
+  defp triangle(scans, relations) do
+    if Enum.any?(scans, &(&1.kind == :test)) do
+      live = Enum.reject(relations, &(&1.state == :retired))
+      implements = pairs(live, :implements, fn {{:code, c}, {:spec, s}} -> {s, c} end)
+      verifies = pairs(live, :verifies, fn {{:test, t}, {:spec, s}} -> {s, t} end)
+      exercises = pairs(live, :tests, fn {{:test, t}, {:code, c}} -> {t, c} end)
+      within = for %Scan{kind: :spec, within: w} = s <- scans, w != nil, into: %{}, do: {s.id, w}
+
+      for {spec, codes} <- Enum.sort(implements),
+          gap <- gaps(spec, codes, verifying(spec, verifies, within), exercises),
+          do: gap
+    else
+      []
+    end
+  end
+
+  defp pairs(relations, type, fun) do
+    for %{type: ^type, relation: {_, a, b}} <- relations, reduce: %{} do
+      acc ->
+        {key, value} = fun.({a, b})
+        Map.update(acc, key, MapSet.new([value]), &MapSet.put(&1, value))
+    end
+  end
+
+  # The tests that verify `spec`, or any unit inside it.
+  defp verifying(spec, verifies, within) do
+    for {unit, tests} <- verifies,
+        inside?(unit, spec, within),
+        test <- tests,
+        into: MapSet.new(),
+        do: test
+  end
+
+  defp inside?(spec, spec, _within), do: true
+
+  defp inside?(unit, spec, within) do
+    case Map.fetch(within, unit) do
+      {:ok, parent} -> inside?(parent, spec, within)
+      :error -> false
+    end
+  end
+
+  defp gaps(spec, codes, tests, exercises) do
+    if MapSet.size(tests) == 0,
+      do: [%{spec: spec, gap: :no_test, test: nil, code: nil}],
+      else: sides(spec, codes, tests, exercises)
+  end
+
+  defp sides(spec, codes, tests, exercises) do
+    reached = fn test -> Map.get(exercises, test, MapSet.new()) end
+
+    misses =
+      for test <- Enum.sort(tests),
+          MapSet.disjoint?(reached.(test), codes),
+          do: %{spec: spec, gap: :test_misses_code, test: test, code: nil}
+
+    untested =
+      for code <- Enum.sort(codes),
+          not Enum.any?(tests, &MapSet.member?(reached.(&1), code)),
+          do: %{spec: spec, gap: :code_untested, test: nil, code: code}
+
+    misses ++ untested
+  end
+
+  # A spec id whose every live `implements` relation is still planned: meant to be built,
+  # and not built yet.
+  defp unimplemented(scans, relations) do
+    by_spec =
+      for %{type: :implements, state: state, relation: {_, a, b}} <- relations,
+          state != :retired,
+          {:spec, _} = end_ <- [a, b],
+          reduce: %{},
+          do: (acc -> Map.update(acc, end_, [state], &[state | &1]))
+
+    for scan <- Enum.sort_by(scans, &{&1.kind, &1.id}),
+        scan.kind == :spec,
+        states = Map.get(by_spec, {:spec, scan.id}, []),
+        states != [] and Enum.all?(states, &(&1 == :planned)),
+        do: scan
+  end
+
   # ── Policy ──────────────────────────────────────────────────────────────
 
   defp unmet(scans, relations, require) do
@@ -174,13 +362,147 @@ defmodule Surfex.Status do
           reduce: %{},
           do: (acc -> Map.update(acc, end_, MapSet.new([type]), &MapSet.put(&1, type)))
 
+    # A kind's rule applies to every scan of that kind; a spec role's rule (`test_hint:`)
+    # to every spec unit in that role. Each rule that isn't met is its own entry.
     for scan <- Enum.sort_by(scans, &{&1.kind, &1.id}),
-        requires = Keyword.get(require, scan.kind, []),
+        key <- Enum.uniq([scan.kind, scan.role]),
+        key != nil,
+        requires = Keyword.get(require, key, []),
         requires != [],
         not Enum.any?(
           requires,
           &MapSet.member?(Map.get(live, {scan.kind, scan.id}, MapSet.new()), &1)
         ),
         do: %{scan: scan, requires: requires}
+  end
+
+  # A declaration in a test (`@tag verifies: "id"`) that names no spec unit, or a bare id
+  # that more than one file has.
+  # A live excuse whose item its class no longer covers: the item is now implemented, no
+  # rule of any class matches it, or another class's rule matches it first. Judged by
+  # `Surfex.Coverage.verdict/3`, as the suggestion was, with a parent counting as cited when
+  # something implements it.
+  defp stale(_scans, _relations, nil), do: []
+
+  defp stale(scans, relations, coverage) do
+    code = for %Scan{kind: :code} = s <- scans, into: %{}, do: {s.id, s}
+
+    implemented =
+      for %{type: :implements, state: state, relation: {_, {:code, id}, _}} <- relations,
+          state != :retired,
+          into: MapSet.new(),
+          do: id
+
+    for %{type: :excuses, state: state, relation: {_, {:class, class}, {:code, id}}} <- relations,
+        state != :retired,
+        scan = Map.get(code, id),
+        scan != nil,
+        verdict = Surfex.Coverage.verdict(item(scan), implemented, coverage),
+        verdict != {:expected, class},
+        do: %{class: class, code: id, reason: stale_reason(verdict)}
+  end
+
+  defp item(%Scan{id: id, role: kind, within: parent, location: %{file: file}, hash: hash}) do
+    key = String.replace_suffix(id, " (#{kind})", "")
+    name = if parent, do: String.replace_prefix(key, parent <> ".", ""), else: key
+    %Surfex.Item{kind: kind, name: name, parent: parent, file: file, hash: hash}
+  end
+
+  defp stale_reason(:cited), do: :implemented
+  defp stale_reason(:gap), do: :unmatched
+  defp stale_reason({:expected, other}), do: {:other_class, other}
+
+  # Two records with one kind and id would be one relation end: a relation would silently
+  # be judged against whichever came last. A scanner must never produce them.
+  defp unique!(scans) do
+    scans
+    |> Enum.group_by(&{&1.kind, &1.id})
+    |> Enum.find(fn {_key, group} -> length(group) > 1 end)
+    |> case do
+      nil ->
+        :ok
+
+      {{kind, id}, group} ->
+        where = Enum.map_join(group, ", ", &"#{&1.location.file}:#{inspect(&1.location.lines)}")
+        raise ArgumentError, "two #{kind} records have the id #{inspect(id)} (#{where})"
+    end
+  end
+
+  # A current relation confirmed by evidence (`Surfex.Evidence.claimed?/1`) whose claim the
+  # given evidence (this run's) doesn't bear out: its test, at the version the relation
+  # holds, must have passed against the code's version. For `implements`, some test with
+  # a current `verifies` to the spec unit (or inside it) and a current `tests` to the code
+  # must. `nil` evidence means no check.
+  defp unproven(_scans, _relations, nil), do: []
+
+  defp unproven(scans, relations, evidence) do
+    within = for %Scan{kind: :spec, within: w} = s <- scans, w != nil, into: %{}, do: {s.id, w}
+    current = for %{state: :current, tips: [tip]} = r <- relations, do: {r, tip}
+    pairs = fn type -> for {%{type: ^type, relation: {_, a, b}}, _} <- current, do: {a, b} end
+    tests = pairs.(:tests)
+    verifies = pairs.(:verifies)
+
+    for {%{relation: relation} = r, tip} <- current,
+        Surfex.Evidence.claimed?(tip),
+        failure = disproved(r, tip, evidence, tests, verifies, within),
+        failure != nil,
+        do: Map.put(failure, :relation, relation)
+  end
+
+  defp disproved(%{type: :tests, relation: {_, {:test, t}, {:code, c}}}, tip, evidence, _, _, _) do
+    passes(evidence, t, hash_of(tip, :test, t), c, hash_of(tip, :code, c))
+  end
+
+  defp disproved(
+         %{type: :implements, relation: {_, {:code, c}, {:spec, s}}},
+         tip,
+         evidence,
+         tests,
+         verifies,
+         within
+       ) do
+    code_hash = hash_of(tip, :code, c)
+
+    candidates =
+      for {{:test, t}, {:spec, unit}} <- verifies,
+          {{:test, ^t}, {:code, ^c}} <- tests,
+          inside?(unit, s, within),
+          uniq: true,
+          do: t
+
+    if candidates == [] do
+      %{test: nil, reason: :no_verifying_test}
+    else
+      failures = for t <- candidates, f = passes(evidence, t, nil, c, code_hash), do: f
+      if length(failures) == length(candidates), do: hd(failures), else: nil
+    end
+  end
+
+  defp disproved(_other, _tip, _evidence, _tests, _verifies, _within), do: nil
+
+  # nil when the evidence has `test` (at `test_hash`, or its latest version when nil)
+  # passing against `code` at `code_hash`; otherwise why not.
+  defp passes(evidence, test, test_hash, code, code_hash) do
+    latest =
+      evidence
+      |> Enum.filter(&(&1.test == test and (test_hash == nil or &1.test_hash == test_hash)))
+      |> List.last()
+
+    cond do
+      latest == nil -> %{test: test, reason: :not_run}
+      latest.result != :passed -> %{test: test, reason: :failed}
+      Map.get(latest.code, code) != code_hash -> %{test: test, reason: :other_code}
+      true -> nil
+    end
+  end
+
+  defp hash_of(%{ends: ends}, kind, id),
+    do: Enum.find_value(ends, fn e -> if e.kind == kind and e.id == id, do: e.hash end)
+
+  defp broken(scans) do
+    for scan <- Enum.sort_by(scans, &{&1.kind, &1.id}),
+        {type, ref} <- scan.declares,
+        {:error, why} <- [Scan.resolve(scans, ref)],
+        do: %{scan: scan, type: type, ref: ref, reason: why}
   end
 end

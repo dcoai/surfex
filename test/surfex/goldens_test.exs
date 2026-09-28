@@ -33,13 +33,11 @@ defmodule Surfex.GoldensTest do
   @config """
   [
     goldens: [
-      :trace,
+      :status,
       {"API.md", Surfex.GoldensTest.Api, routes: [{"/carts", "CartController.index"}]}
     ],
     namespace: "MyApp",
-    sources: ["spec.md"],
-    classes: [{"fixture", "everything here is a fixture"}],
-    rules: [%{class: "fixture", kinds: [:module, :function, :macro]}]
+    sources: ["spec.md"]
   ]
   """
 
@@ -47,6 +45,7 @@ defmodule Surfex.GoldensTest do
     File.cp_r!(@project, root)
     File.write!(Path.join(root, "spec.md"), "# Carts\n`MyApp.Cart` holds lines.\n")
     File.write!(Path.join(root, ".surfex.exs"), @config)
+    Surfex.Log.init(root)
     %{root: root}
   end
 
@@ -69,10 +68,19 @@ defmodule Surfex.GoldensTest do
     File.write!(file, String.replace(File.read!(file), from, to))
   end
 
+  defp relate(root) do
+    File.cd!(root, fn ->
+      Mix.shell(Mix.Shell.Process)
+      Mix.Tasks.Surfex.Relate.run(["spec.md#Carts", "MyApp.Cart", "--type", "implements"])
+    end)
+  after
+    Mix.shell(Mix.Shell.IO)
+  end
+
   describe "mix surfex.goldens" do
     test "--write writes every golden, and a check then passes", %{root: root} do
       task(root, ["--write"])
-      assert File.read!(Path.join(root, "SPEC_TRACE.md")) =~ "| `MyApp.Cart` |"
+      assert File.read!(Path.join(root, "RELATIONS.md")) =~ "| `code MyApp.Cart` |"
       assert File.read!(Path.join(root, "API.md")) =~ "| `/carts` | `CartController.index` |"
 
       task(root)
@@ -85,24 +93,18 @@ defmodule Surfex.GoldensTest do
 
       message = fails(root)
       assert message =~ "API.md: out of date."
-      # A golden with no Cited by column says nothing about a spec.
       assert message =~ "Changed:\n  /carts\n"
-      refute message =~ "revisit"
-      refute message =~ "SPEC_TRACE.md"
+      refute message =~ "RELATIONS.md"
     end
 
     test "every drifted golden is named in one run", %{root: root} do
       task(root, ["--write"])
       config(root, "CartController.index", "CartController.list")
-
-      File.write!(
-        Path.join(root, "spec.md"),
-        "# Carts\n`MyApp.Cart` holds lines. Also `MyApp.Cart.total/0`.\n"
-      )
+      relate(root)
 
       message = fails(root)
       assert message =~ "API.md: out of date."
-      assert message =~ "SPEC_TRACE.md: out of date."
+      assert message =~ "RELATIONS.md: out of date."
     end
 
     test "a module that is not a Surface is named", %{root: root} do
@@ -113,7 +115,7 @@ defmodule Surfex.GoldensTest do
       end
     end
 
-    test "the built-in trace reads source it could not compile", %{root: root} do
+    test "the built-in scanner reads source it could not compile", %{root: root} do
       # Valid syntax, but no compiler would accept it.
       File.write!(Path.join(root, "lib/broken.ex"), """
       defmodule MyApp.Broken do
@@ -121,27 +123,25 @@ defmodule Surfex.GoldensTest do
       end
       """)
 
-      File.write!(Path.join(root, ".surfex.exs"), trace_only_config())
+      File.write!(Path.join(root, ".surfex.exs"), ~s([namespace: "MyApp", sources: ["spec.md"]]))
       task(root, ["--write"])
-      assert File.read!(Path.join(root, "SPEC_TRACE.md")) =~ "| `MyApp.Broken.call/0` |"
+      assert File.read!(Path.join(root, "RELATIONS.md")) =~ "| `code MyApp.Broken.call/0` |"
     end
-  end
 
-  defp trace_only_config do
-    """
-    [
-      namespace: "MyApp",
-      sources: ["spec.md"],
-      classes: [{"fixture", "everything here is a fixture"}],
-      rules: [%{class: "fixture", kinds: [:module, :function, :macro]}]
-    ]
-    """
+    test "a config written for the removed trace says so", %{root: root} do
+      config(root, "sources: [\"spec.md\"]", "sources: [\"spec.md\"], output: \"SPEC_TRACE.md\"")
+
+      assert_raise ArgumentError,
+                   ~r/\[:output\] belonged to the v0.2 trace, removed in 0.4.0/,
+                   fn ->
+                     task(root)
+                   end
+    end
   end
 
   describe "the :status golden" do
     setup %{root: root} do
       File.write!(Path.join(root, ".surfex.exs"), ~s([goldens: [:status], sources: ["spec.md"]]))
-      Surfex.Log.init(root)
       :ok
     end
 
@@ -159,13 +159,7 @@ defmodule Surfex.GoldensTest do
 
     test "a relation's change of state is a drift", %{root: root} do
       task(root, ["--write"])
-
-      File.cd!(root, fn ->
-        Mix.shell(Mix.Shell.Process)
-        Mix.Tasks.Surfex.Relate.run(["spec.md#Carts", "MyApp.Cart", "--type", "implements"])
-      end)
-
-      Mix.shell(Mix.Shell.IO)
+      relate(root)
       assert fails(root) =~ "RELATIONS.md: out of date."
     end
 
@@ -182,31 +176,35 @@ defmodule Surfex.GoldensTest do
   end
 
   describe "entries!/1" do
-    test "defaults to the trace alone" do
-      assert Goldens.entries!(sources: ["spec.md"]) == [:trace]
+    test "defaults to the relation status alone" do
+      assert Goldens.entries!(sources: ["spec.md"]) == [:status]
     end
 
-    test "names a malformed entry" do
-      assert_raise ArgumentError, ~r/goldens entry "API.md" is not :trace, :status/, fn ->
+    test "names a malformed entry, and the removed :trace with its reason" do
+      assert_raise ArgumentError, ~r/goldens entry "API.md" is not :status/, fn ->
         Goldens.entries!(goldens: ["API.md"])
+      end
+
+      assert_raise ArgumentError, ~r/:trace was removed in 0.4.0/, fn ->
+        Goldens.entries!(goldens: [:trace])
       end
 
       assert_raise ArgumentError, ~r/non-empty list/, fn -> Goldens.entries!(goldens: []) end
     end
 
     test "two entries writing one file is an error" do
-      assert_raise ArgumentError, ~r/two goldens write \["SPEC_TRACE.md"\]/, fn ->
-        Goldens.entries!(goldens: [:trace, {"SPEC_TRACE.md", Mod, []}])
+      assert_raise ArgumentError, ~r/two goldens write \["RELATIONS.md"\]/, fn ->
+        Goldens.entries!(goldens: [:status, {"RELATIONS.md", Mod, []}])
       end
     end
   end
 
   describe "needs_compile?/2" do
     test "only project code needs a compile" do
-      refute Goldens.needs_compile?([:trace], [])
-      refute Goldens.needs_compile?([:trace], scanner: :elixir)
-      assert Goldens.needs_compile?([:trace], scanner: MyScanner)
-      assert Goldens.needs_compile?([:trace, {"A.md", Mod, []}], [])
+      refute Goldens.needs_compile?([:status], [])
+      refute Goldens.needs_compile?([:status], scanner: :elixir)
+      assert Goldens.needs_compile?([:status], scanner: MyScanner)
+      assert Goldens.needs_compile?([:status, {"A.md", Mod, []}], [])
     end
   end
 end

@@ -31,23 +31,60 @@ defmodule Surfex.Status.Report do
         &(&1.state == :conflicted)
       ),
       section("Impacted (an end depends on something not current)", status, & &1.impacted),
-      items("New (in no relation)", status.new, fn scan ->
-        "#{scan.kind} #{scan.id}#{at(scan)}"
-      end),
+      section("Planned (an end doesn't exist yet)", status, &(&1.state == :planned)),
+      items(
+        "Unimplemented (every implements relation is planned)",
+        status.unimplemented,
+        &unit_text/1
+      ),
+      items("New (in no relation)", status.new, &unit_text/1),
       items("Unmet (required relation missing)", status.unmet, fn %{
                                                                     scan: scan,
                                                                     requires: requires
                                                                   } ->
         "#{scan.kind} #{scan.id} needs one of: #{Enum.join(requires, ", ")}#{at(scan)}"
+      end),
+      items(
+        "Triangle (a spec unit, its tests and its code don't meet)",
+        status.triangle,
+        &gap_text/1
+      ),
+      items(
+        "Broken citations (the spec names what the code doesn't have)",
+        status.citations,
+        fn c ->
+          "#{c.file}:#{c.line} (#{c.section}): `#{c.span}` #{citation_text(c)}"
+        end
+      ),
+      items(
+        "Unproven (a confirmation by evidence this run doesn't bear out)",
+        status.unproven,
+        fn u ->
+          {type, {ak, a}, {bk, b}} = u.relation
+          test = if u.test, do: "#{u.test} ", else: ""
+          "#{type}  #{ak} #{a} ↔ #{bk} #{b}: #{test}#{unproven_text(u.reason)}"
+        end
+      ),
+      items("Stale (an excuse its class no longer covers)", status.stale, fn s ->
+        "class #{s.class} ↔ code #{s.code}: #{stale_text(s.reason)}"
+      end),
+      items("Broken (a test declares what no spec unit is)", status.broken, fn b ->
+        "#{b.scan.kind} #{b.scan.id} #{b.type} #{inspect(b.ref)}: #{reason(b.reason)}#{at(b.scan)}"
       end)
     ]
 
     verdict = if Status.failing?(status), do: "FAILING", else: "ok"
     counts = if summary == [], do: ["  (no relations)"], else: summary
 
+    u = Status.units(status)
+
+    units =
+      "  spec units: sections #{u.section} · blocks #{u.block} · test hints #{u.test_hint}\n"
+
     IO.iodata_to_binary([
       "relation status: #{verdict}\n",
       Enum.map(counts, &[&1, "\n"]),
+      units,
       lists
     ])
   end
@@ -62,13 +99,57 @@ defmodule Surfex.Status.Report do
           {Atom.to_string(type), Map.new(counts, fn {state, n} -> {Atom.to_string(state), n} end)}
         end),
       "relations" => Enum.map(status.relations, &relation_json(&1, status)),
+      "units" =>
+        status |> Status.units() |> Map.new(fn {role, n} -> {Atom.to_string(role), n} end),
       "new" => Enum.map(status.new, &scan_json/1),
+      "unimplemented" => Enum.map(status.unimplemented, &scan_json/1),
       "unmet" =>
         Enum.map(status.unmet, fn %{scan: scan, requires: requires} ->
           Map.put(scan_json(scan), "requires", Enum.map(requires, &Atom.to_string/1))
+        end),
+      "triangle" =>
+        Enum.map(status.triangle, fn g ->
+          %{"spec" => g.spec, "gap" => Atom.to_string(g.gap), "test" => g.test, "code" => g.code}
+        end),
+      "citations" =>
+        Enum.map(status.citations, fn c ->
+          %{
+            "span" => c.span,
+            "file" => c.file,
+            "line" => c.line,
+            "section" => c.section,
+            "status" => Atom.to_string(c.status),
+            "items" => c.items
+          }
+        end),
+      "unproven" =>
+        Enum.map(status.unproven, fn u ->
+          {type, {ak, a}, {bk, b}} = u.relation
+
+          %{
+            "type" => Atom.to_string(type),
+            "ends" => [
+              %{"kind" => Atom.to_string(ak), "id" => a},
+              %{"kind" => Atom.to_string(bk), "id" => b}
+            ],
+            "test" => u.test,
+            "reason" => unproven_text(u.reason)
+          }
+        end),
+      "stale" =>
+        Enum.map(status.stale, fn s ->
+          %{"class" => s.class, "code" => s.code, "reason" => stale_text(s.reason)}
+        end),
+      "broken" =>
+        Enum.map(status.broken, fn b ->
+          Map.merge(scan_json(b.scan), %{
+            "type" => Atom.to_string(b.type),
+            "ref" => b.ref,
+            "reason" => reason(b.reason)
+          })
         end)
     }
-    |> :json.encode()
+    |> :json.encode(&encode/2)
     |> IO.iodata_to_binary()
   end
 
@@ -105,7 +186,7 @@ defmodule Surfex.Status.Report do
       hardness: :hard,
       prose:
         "A row per relation. **dangling**: an end changed since it was confirmed (`mix surfex.confirm`). " <>
-          "**orphaned**: an end is gone. **conflicted**: recorded on two branches (`mix surfex.resolve`). " <>
+          "**orphaned**: an end is gone. **planned**: an end doesn't exist yet. **conflicted**: recorded on two branches (`mix surfex.resolve`). " <>
           "For `depends_on`, `refines` and `tests` the first end depends on, refines or tests the " <>
           "other; the other types' ends are in sorted order. `mix surfex.status` is the check; " <>
           "this is the record.",
@@ -116,19 +197,53 @@ defmodule Surfex.Status.Report do
           {"orphaned", Map.get(counts, :orphaned, 0)},
           {"conflicted", Map.get(counts, :conflicted, 0)},
           {"retired", Map.get(counts, :retired, 0)},
+          {"planned", Map.get(counts, :planned, 0)},
+          {"unimplemented", length(status.unimplemented)},
           {"new", length(status.new)},
-          {"unmet", length(status.unmet)}
-        ])
+          {"unmet", length(status.unmet)},
+          {"broken", length(status.broken)},
+          {"stale", length(status.stale)},
+          {"broken citations", length(status.citations)},
+          {"triangle gaps", length(status.triangle)}
+        ]),
+        units_stat(Status.units(status))
       ],
       columns: ["End", "Other end", "State", "Changed"],
       groups:
         relation_groups ++
+          id_group.(
+            "unimplemented",
+            ["Item"],
+            status.unimplemented,
+            &%{"Item" => {:code, "#{&1.kind} #{&1.id}"}}
+          ) ++
           id_group.(
             "new",
             ["Item"],
             status.new,
             &%{"Item" => {:code, "#{&1.kind} #{&1.id}"}}
           ) ++
+          id_group.("triangle", ["Item", "Gap"], status.triangle, fn g ->
+            %{"Item" => {:code, "spec #{g.spec}"}, "Gap" => {:raw, gap_text(g, false)}}
+          end) ++
+          id_group.("broken citations", ["Item", "Cited at"], status.citations, fn c ->
+            %{
+              "Item" => {:code, c.span},
+              "Cited at" => {:raw, "`#{c.file}` · #{c.section}: #{citation_text(c)}"}
+            }
+          end) ++
+          id_group.("stale", ["Item", "Excused as"], status.stale, fn s ->
+            %{
+              "Item" => {:code, "code #{s.code}"},
+              "Excused as" => {:raw, "`#{s.class}`: #{stale_text(s.reason)}"}
+            }
+          end) ++
+          id_group.("broken", ["Item", "Declares"], status.broken, fn b ->
+            %{
+              "Item" => {:code, "#{b.scan.kind} #{b.scan.id}"},
+              "Declares" => {:raw, "`#{b.type} #{b.ref}`: #{reason(b.reason)}"}
+            }
+          end) ++
           id_group.("unmet", ["Item", "Needs"], status.unmet, fn %{scan: s, requires: r} ->
             %{
               "Item" => {:code, "#{s.kind} #{s.id}"},
@@ -160,10 +275,12 @@ defmodule Surfex.Status.Report do
       for r <- status.relations, pick.(r) do
         {type, a, b} = r.relation
 
+        label = if r.state == :planned, do: "planned", else: "changed"
+
         changed =
           if r.changed == [],
             do: "",
-            else: " (changed: #{Enum.map_join(r.changed, ", ", &describe(&1, status))})"
+            else: " (#{label}: #{Enum.map_join(r.changed, ", ", &describe(&1, status))})"
 
         tips =
           if r.state == :conflicted,
@@ -188,10 +305,59 @@ defmodule Surfex.Status.Report do
     end
   end
 
+  defp gap_text(g, with_spec? \\ true) do
+    what =
+      case g.gap do
+        :no_test -> "no test verifies it"
+        :test_misses_code -> "`#{g.test}` verifies it but calls none of its code"
+        :code_untested -> "`#{g.code}` implements it but no verifying test calls it"
+      end
+
+    if with_spec?, do: "spec #{g.spec}: #{String.replace(what, "`", "")}", else: what
+  end
+
+  defp citation_text(%{status: :unresolved}), do: "names nothing the code has"
+
+  defp citation_text(%{status: :ambiguous, items: items}),
+    do: "names more than one item: #{Enum.join(items, ", ")}"
+
+  defp unproven_text(:not_run), do: "didn't run"
+  defp unproven_text(:failed), do: "failed"
+  defp unproven_text(:other_code), do: "ran against another version of the code"
+  defp unproven_text(:no_verifying_test), do: "no current verifying test exercises the code"
+
+  defp stale_text(:implemented), do: "something implements it now"
+  defp stale_text(:unmatched), do: "no rule of its class matches it"
+  defp stale_text({:other_class, class}), do: "class #{class}'s rule matches it first"
+
+  defp reason(:unknown), do: "no spec unit has that id"
+  defp reason({:ambiguous, ids}), do: "more than one does: #{Enum.join(ids, ", ")}"
+
+  defp units_stat(u),
+    do:
+      Surfex.Golden.stat("#{u.section + u.block + u.test_hint} spec units", [
+        {"sections", u.section},
+        {"blocks", u.block},
+        {"test hints", u.test_hint}
+      ])
+
+  # A block or hint says what it sits in, so a list of them reads under their sections.
+  defp unit_text(%{kind: kind, id: id, role: role, within: within} = scan) when within != nil,
+    do:
+      "#{kind} #{id} (#{String.replace(Atom.to_string(role), "_", " ")} in #{within})#{at(scan)}"
+
+  defp unit_text(scan), do: "#{scan.kind} #{scan.id}#{at(scan)}"
+
   defp at(%{location: %{file: file, lines: {first, last}}}), do: " (#{file}:#{first}-#{last})"
   defp at(%{location: %{file: file}}), do: " (#{file})"
 
   # ── JSON ────────────────────────────────────────────────────────────────
+
+  # OTP's encoder writes only the atom `:null` as null, and any other atom, `nil` too, as a
+  # string. Absent values (a gone end's hash and location, a conflicted relation's recorded
+  # hashes) must reach tools as null, not as a hash named "nil".
+  defp encode(nil, _encoder), do: "null"
+  defp encode(value, encoder), do: :json.encode_value(value, encoder)
 
   defp relation_json(r, status) do
     {type, a, b} = r.relation
@@ -210,7 +376,9 @@ defmodule Surfex.Status.Report do
             "id" => id,
             "recorded" => Map.get(recorded, key),
             "now" => scan && scan.hash,
-            "changed" => key in r.changed,
+            # A planned relation's `changed` names the ends still waiting to exist.
+            "changed" => r.state != :planned and key in r.changed,
+            "planned" => r.state == :planned and key in r.changed,
             "location" => scan && location_json(scan.location)
           }
         end),
@@ -227,6 +395,12 @@ defmodule Surfex.Status.Report do
       "kind" => Atom.to_string(scan.kind),
       "id" => scan.id,
       "hash" => scan.hash,
+      "role" => scan.role && Atom.to_string(scan.role),
+      "within" => scan.within,
+      "declares" =>
+        Enum.map(scan.declares, fn {type, ref} ->
+          %{"type" => Atom.to_string(type), "ref" => ref}
+        end),
       "location" => location_json(scan.location)
     }
   end

@@ -15,7 +15,7 @@ defmodule Surfex.PublishedContentTest do
   # Built at runtime so that this file does not match itself.
   @forbidden [Enum.join(["ho", "ma"])]
 
-  @published ~w(lib/**/* test/**/* spec.md README.md CHANGELOG.md RELEASING.md mix.exs .surfex.exs SPEC_TRACE.md)
+  @published ~w(lib/**/* guides/**/* test/**/* spec.md README.md CHANGELOG.md RELEASING.md mix.exs .surfex.exs RELATIONS.md)
 
   test "no published file carries another project's material" do
     files =

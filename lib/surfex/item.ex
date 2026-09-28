@@ -1,7 +1,7 @@
 defmodule Surfex.Item do
   @moduledoc """
-  One item a scanner found in the code: the unit a spec citation resolves to and a trace
-  golden has a row for.
+  One item a scanner found in the code: the unit a spec citation resolves to, and the
+  source of a code record (`Surfex.Scan.code/1`).
 
   `key/1` is the identity. It must stay stable across edits that rename nothing, or a
   golden reports a deletion and an addition where a reader should see one row whose

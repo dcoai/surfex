@@ -51,9 +51,8 @@ defmodule Surfex.Gate do
   @doc """
   What changed between a committed golden and a fresh render, or `nil` when they are
   identical: the rows that changed, appeared or went. A row is keyed by its table's
-  `Item` column, or its first column when the table has none. A changed row that has a
-  `Cited by` cell names the sections citing it: the sections to revisit. A change outside
-  every row is reported as such.
+  `Item` column, or its first column when the table has none, and compared by its
+  `Version` cell when it has one. A change outside every row is reported as such.
   """
   @spec drift(String.t(), String.t()) :: String.t() | nil
   def drift(same, same), do: nil
@@ -63,9 +62,9 @@ defmodule Surfex.Gate do
     new_rows = rows(new)
 
     changed =
-      for {item, {value, cites}} <- Enum.sort(new_rows),
-          match?({:ok, {v, _}} when v != value, Map.fetch(old_rows, item)),
-          do: changed(item, cites)
+      for {item, value} <- Enum.sort(new_rows),
+          match?({:ok, v} when v != value, Map.fetch(old_rows, item)),
+          do: item
 
     added = new_rows |> Map.keys() |> Kernel.--(Map.keys(old_rows)) |> Enum.sort()
     gone = old_rows |> Map.keys() |> Kernel.--(Map.keys(new_rows)) |> Enum.sort()
@@ -75,30 +74,19 @@ defmodule Surfex.Gate do
         do: ["\nNo row changed: the prose or a stats line did.\n"],
         else: []
 
-    # Only a golden that relates rows to a spec (a `Cited by` column) says what the spec
-    # has to do about a change.
-    traced = Enum.any?(Map.values(new_rows) ++ Map.values(old_rows), &(elem(&1, 1) != nil))
-
     IO.iodata_to_binary([
       "out of date.\n",
-      section(title(traced, "Changed", "the sections listed cite them — revisit each"), changed),
-      section(title(traced, "Added", "nothing in the spec covers them yet"), added),
-      section(title(traced, "Gone", "the spec may still describe them"), gone),
+      section("Changed", changed),
+      section("Added", added),
+      section("Gone", gone),
       other
     ])
   end
 
-  defp title(true, what, why), do: "#{what} (#{why})"
-  defp title(false, what, _why), do: what
-
-  defp changed(item, nil), do: item
-  defp changed(item, cites) when cites in ["", "—"], do: "#{item} (uncited)"
-  defp changed(item, cites), do: "#{item} → #{cites}"
-
   defp section(_title, []), do: []
   defp section(title, lines), do: ["\n#{title}:\n", Enum.map(lines, &"  #{&1}\n")]
 
-  # key => {version (or the whole row when there is no Version column), cited-by | nil}
+  # key => its version, or the whole row when there is no Version column
   defp rows(text) do
     text
     |> String.split("\n")
@@ -120,8 +108,7 @@ defmodule Surfex.Gate do
     by_name = Map.new(row)
     key = Map.get(by_name, "Item") || row |> hd() |> elem(1)
     value = if v = by_name["Version"], do: unquote_code(v), else: Enum.join(cells, " | ")
-    cites = if c = by_name["Cited by"], do: unquote_code(c)
-    Map.put(acc, unquote_code(key), {value, cites})
+    Map.put(acc, unquote_code(key), value)
   end
 
   defp cells(line) do

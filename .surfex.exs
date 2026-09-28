@@ -1,22 +1,16 @@
-# Surfex holds its own specification to its own code, two ways:
+# Surfex holds its own specification to its own code and tests with its own relation log
+# (.surfex/): which spec units, functions and tests were confirmed to belong together, at
+# which versions. `mix surfex.status` is the check:
 #
-#   * the relation log (.surfex/): which spec sections and which functions were confirmed
-#     to belong together, at which versions. `mix surfex.status` is the check, and every
-#     public module and function must implement some section (require:).
-#   * the v0.2 trace (SPEC_TRACE.md), deprecated, kept alongside until it is removed.
+#   * every public module and function implements some section (require:)
+#   * every test hint in spec.md is verified by a test tagged `@tag verifies: "<hint id>"`
+#   * every name spec.md cites exists
 #
-# `mix surfex.goldens` gates both goldens: SPEC_TRACE.md and RELATIONS.md.
+# Its tests are scanned (tests:), and the spec/test/code triangle is reported.
+# `mix surfex.goldens` gates RELATIONS.md, the relation status as a committed record.
 [
-  goldens: [:trace, :status],
-  require: [code: [:implements]],
-  sources: ["spec.md"],
-  file_labels: [{~r/^spec\.md$/, "spec"}],
-  purpose: "Every public module and function of Surfex, and the spec section that covers it.",
-  prose: [
-    """
-    A row per public module and function in `lib/`. `Cited by` names the sections of
-    `spec.md` that cite it. A GAP is code the spec does not describe, and the gate fails
-    on any; a citation of something that does not exist fails it too.
-    """
-  ]
+  goldens: [:status],
+  require: [code: [:implements], test_hint: [:verifies]],
+  tests: ["test/*_test.exs", "test/surfex/*_test.exs"],
+  sources: ["spec.md"]
 ]

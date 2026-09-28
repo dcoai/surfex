@@ -1,13 +1,14 @@
 defmodule Surfex.Profile do
   @moduledoc """
-  Everything project-specific about a trace, **as data**. `Surfex.Cite` and
+  Everything project-specific about reading a spec's citations and excusing code, **as
+  data**. `Surfex.Cite` and
   `Surfex.Coverage` are generic; a profile is what makes them read one project's spec
   against one project's code. A profile holds no functions, so it can live in a data file
   and be read in review like any other configuration.
 
   Build one with `new!/1`. It rejects an unknown key, a wrong type, and a rule that is
   inconsistent with the rest of the profile, **loudly and before anything is scanned**: a
-  misconfigured trace must not render a golden that passes.
+  misconfigured check must never pass.
 
   ## Where the spec is
 
@@ -43,23 +44,13 @@ defmodule Surfex.Profile do
       a code reference. A cell holding a code span is already cited as one.
     * `:file_targets` — file names that are citation targets in their own right.
       `:item_files` in the list adds every file an item is declared in.
-    * `:file_labels` — `{regex, replacement}` rewrites of a source's path into the label a
-      golden cell prints before `— <section>`. The first matching rewrite wins; with none,
-      the label is the file's base name without its extension.
-
-  Member paths need no configuration: `` `field.member` `` resolves `field` (directly or
-  through a subject), then `member` within the field's `Surfex.Item` `:type`, and cites
-  both.
-
-  ## Citations that are not failures
-
     * `:known_external` — `%{name => reason}`: real, but outside the scanned tree
     * `:documented_absences` — `%{{name, file} => reason}`: a section that names something
       deliberately *because* the code does not have it
 
   ## Coverage
 
-    * `:classes` — `[{class, reason}]`, in the order a golden prints them
+    * `:classes` — `[{class, reason}]`: a kind of code the spec doesn't describe, and why
     * `:rules` — `[%{class:, kinds:, name: regex | nil, parent_cited: boolean}]`. The first
       matching rule excuses an uncited item into its class. Rules are by class, never by
       item, so a new helper falls into its class and a new entry point is a gap.
@@ -80,7 +71,6 @@ defmodule Surfex.Profile do
           subjects: [subject],
           table_columns: [String.t()],
           file_targets: [String.t() | :item_files],
-          file_labels: [{Regex.t(), String.t()}],
           known_external: %{String.t() => String.t()},
           documented_absences: %{{String.t(), String.t()} => String.t()},
           classes: [{String.t(), String.t()}],
@@ -98,7 +88,6 @@ defmodule Surfex.Profile do
             subjects: [],
             table_columns: [],
             file_targets: [],
-            file_labels: [],
             known_external: %{},
             documented_absences: %{},
             classes: [],
@@ -115,13 +104,16 @@ defmodule Surfex.Profile do
     :subjects,
     :table_columns,
     :file_targets,
-    :file_labels,
     :known_external,
     :documented_absences,
     :classes,
     :rules,
     :never_excused
   ]
+
+  @doc "The keys a profile takes: what shapes reading citations, and the class keys."
+  @spec keys() :: [atom]
+  def keys, do: @keys
 
   @doc "A validated profile from a keyword list or map. Raises `ArgumentError` naming the key."
   @spec new!(keyword | map) :: t
@@ -140,16 +132,41 @@ defmodule Surfex.Profile do
     fields =
       fields
       |> Map.put_new_lazy(:token, fn -> ~r/\b([A-Za-z_][A-Za-z0-9_]*)\b/ end)
-      |> Map.update(:rules, [], fn
-        rules when is_list(rules) -> Enum.map(rules, &rule/1)
-        other -> other
-      end)
+      |> Map.update(:rules, [], &rules/1)
 
     profile = struct!(__MODULE__, fields)
     Enum.each(@keys, &check!(&1, Map.fetch!(profile, &1)))
     check_rules!(profile)
     profile
   end
+
+  @doc """
+  The coverage keys of a config (`classes:`, `rules:`, `never_excused:`), validated as
+  `new!/1` validates them, for the relation log's classes (`Surfex.Scan.Classes`) without
+  a whole profile. Rules get their defaults (`name: nil`, `parent_cited: false`).
+  Raises `ArgumentError` naming what is wrong.
+  """
+  @spec coverage!(keyword | map) :: %{
+          classes: [{String.t(), String.t()}],
+          rules: [rule],
+          never_excused: [atom]
+        }
+  def coverage!(config) do
+    config = Map.new(config)
+
+    coverage = %{
+      classes: Map.get(config, :classes, []),
+      rules: config |> Map.get(:rules, []) |> rules(),
+      never_excused: Map.get(config, :never_excused, [])
+    }
+
+    Enum.each(coverage, fn {key, value} -> check!(key, value) end)
+    check_rules!(coverage)
+    coverage
+  end
+
+  defp rules(rules) when is_list(rules), do: Enum.map(rules, &rule/1)
+  defp rules(other), do: other
 
   defp rule(%{class: _, kinds: _} = r), do: Map.merge(%{name: nil, parent_cited: false}, r)
 
@@ -173,7 +190,6 @@ defmodule Surfex.Profile do
   defp valid?(:token, v), do: regex?(v)
   defp valid?(:known_shape, v), do: is_nil(v) or regex?(v)
   defp valid?(:normalise, v), do: is_list(v) and Enum.all?(v, &rewrite?/1)
-  defp valid?(:file_labels, v), do: is_list(v) and Enum.all?(v, &rewrite?/1)
   defp valid?(:subjects, v), do: is_list(v) and Enum.all?(v, &subject?/1)
   defp valid?(:known_external, v), do: is_map(v)
   defp valid?(:documented_absences, v), do: is_map(v) and Enum.all?(Map.keys(v), &pair?/1)
@@ -193,7 +209,7 @@ defmodule Surfex.Profile do
 
   defp subject?(_), do: false
 
-  defp check_rules!(%__MODULE__{classes: classes, rules: rules, never_excused: never}) do
+  defp check_rules!(%{classes: classes, rules: rules, never_excused: never}) do
     known = MapSet.new(classes, &elem(&1, 0))
 
     for %{class: class, kinds: kinds, name: name} = rule <- rules do
