@@ -6,13 +6,14 @@ A row per public module and function in `lib/`. `Cited by` names the sections of
 `spec.md` that cite it. A GAP is code the spec does not describe, and the gate fails
 on any; a citation of something that does not exist fails it too.
 
-**57 items** · cited 57 · expected-silent 0 · GAPS 0 · citations 68 · unresolved 0 · ambiguous 0
+**77 items** · cited 77 · expected-silent 0 · GAPS 0 · citations 88 · unresolved 0 · ambiguous 0
 
 ## Modules
 
 | Item | Kind | Version | Cited by | Locus |
 |---|---|---|---|---|
 | `Mix.Tasks.Surfex.Goldens` | `:module` | `b311e60a` | `spec — 10.4 The tasks` | `lib/mix/tasks/surfex.goldens.ex` |
+| `Mix.Tasks.Surfex.Log` | `:module` | `3b21205a` | `spec — 12.2 The log` | `lib/mix/tasks/surfex.log.ex` |
 | `Mix.Tasks.Surfex.Trace` | `:module` | `6466fd68` | `spec — 10.4 The tasks` | `lib/mix/tasks/surfex.trace.ex` |
 | `Surfex.Cite` | `:module` | `74012b44` | `spec — 6. Citations` | `lib/surfex/cite.ex` |
 | `Surfex.Coverage` | `:module` | `f544aca4` | `spec — 7. Coverage` | `lib/surfex/coverage.ex` |
@@ -20,6 +21,8 @@ on any; a citation of something that does not exist fails it too.
 | `Surfex.Golden` | `:module` | `90f118d3` | `spec — 1.1 What Surfex is for, spec — 10.2 Project goldens, spec — 2. Surface goldens` | `lib/surfex/golden.ex` |
 | `Surfex.Goldens` | `:module` | `4adcb2b1` | `spec — 10.3 Every golden at once` | `lib/surfex/goldens.ex` |
 | `Surfex.Item` | `:module` | `1a5ab649` | `spec — 4. Items` | `lib/surfex/item.ex` |
+| `Surfex.Log` | `:module` | `ce3b9799` | `spec — 12.2 The log` | `lib/surfex/log.ex` |
+| `Surfex.Log.Entry` | `:module` | `d7649c30` | `spec — 12.1 Entries` | `lib/surfex/log/entry.ex` |
 | `Surfex.Profile` | `:module` | `89077cbb` | `spec — 1.2 Policies, spec — 8. Profiles` | `lib/surfex/profile.ex` |
 | `Surfex.Scan` | `:module` | `9377ad29` | `spec — 11. Scan records` | `lib/surfex/scan.ex` |
 | `Surfex.Scan.Markdown` | `:module` | `d0231dfd` | `spec — 11. Scan records` | `lib/surfex/scan/markdown.ex` |
@@ -51,6 +54,23 @@ on any; a citation of something that does not exist fails it too.
 | `Surfex.Goldens.needs_compile?/2` | `:function` | `656c5bbf` | `spec — 10.3 Every golden at once, spec — 10.4 The tasks` | `lib/surfex/goldens.ex` |
 | `Surfex.Goldens.run/6` | `:function` | `98aee0d8` | `spec — 10.3 Every golden at once` | `lib/surfex/goldens.ex` |
 | `Surfex.Item.key/1` | `:function` | `6378a7aa` | `spec — 4. Items` | `lib/surfex/item.ex` |
+| `Surfex.Log.Entry.build/1` | `:function` | `b0d33eda` | `spec — 12.1 Entries` | `lib/surfex/log/entry.ex` |
+| `Surfex.Log.Entry.decode!/1` | `:function` | `4728faeb` | `spec — 12.1 Entries` | `lib/surfex/log/entry.ex` |
+| `Surfex.Log.Entry.decode/1` | `:function` | `c33356b5` | `spec — 12.1 Entries` | `lib/surfex/log/entry.ex` |
+| `Surfex.Log.Entry.encode/1` | `:function` | `80b8c6ed` | `spec — 12.1 Entries` | `lib/surfex/log/entry.ex` |
+| `Surfex.Log.Entry.json/1` | `:function` | `61cc02fd` | `spec — 12.1 Entries` | `lib/surfex/log/entry.ex` |
+| `Surfex.Log.Entry.kinds/0` | `:function` | `da831ba2` | `spec — 12.1 Entries` | `lib/surfex/log/entry.ex` |
+| `Surfex.Log.Entry.new!/1` | `:function` | `de545e28` | `spec — 12.1 Entries` | `lib/surfex/log/entry.ex` |
+| `Surfex.Log.Entry.ops/0` | `:function` | `0df6c811` | `spec — 12.1 Entries` | `lib/surfex/log/entry.ex` |
+| `Surfex.Log.Entry.relation/1` | `:function` | `b4e366cd` | `spec — 12.1 Entries` | `lib/surfex/log/entry.ex` |
+| `Surfex.Log.Entry.types/0` | `:function` | `7ebbf9d6` | `spec — 12.1 Entries` | `lib/surfex/log/entry.ex` |
+| `Surfex.Log.append/2` | `:function` | `6c47f7ae` | `spec — 12.2 The log` | `lib/surfex/log.ex` |
+| `Surfex.Log.break/1` | `:function` | `c0db9bce` | `spec — 12.2 The log` | `lib/surfex/log.ex` |
+| `Surfex.Log.dir/1` | `:function` | `3eb7eba4` | `spec — 12.2 The log` | `lib/surfex/log.ex` |
+| `Surfex.Log.init/1` | `:function` | `46a75090` | `spec — 12.2 The log` | `lib/surfex/log.ex` |
+| `Surfex.Log.load/1` | `:function` | `c30ee8c2` | `spec — 12.2 The log` | `lib/surfex/log.ex` |
+| `Surfex.Log.rechain/1` | `:function` | `7ff21572` | `spec — 12.2 The log` | `lib/surfex/log.ex` |
+| `Surfex.Log.verify/1` | `:function` | `05ca6738` | `spec — 12.2 The log` | `lib/surfex/log.ex` |
 | `Surfex.Profile.new!/1` | `:function` | `a7ebba6b` | `spec — 8. Profiles` | `lib/surfex/profile.ex` |
 | `Surfex.Scan.Markdown.records/2` | `:function` | `afbbdb08` | `spec — 11. Scan records` | `lib/surfex/scan/markdown.ex` |
 | `Surfex.Scan.Markdown.sections/2` | `:function` | `1941c3ca` | `spec — 11. Scan records` | `lib/surfex/scan/markdown.ex` |
