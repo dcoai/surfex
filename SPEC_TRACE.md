@@ -21,7 +21,7 @@ on any; a citation of something that does not exist fails it too.
 | `Mix.Tasks.Surfex.Retire` | `:module` | `927656eb` | `spec — 14. Recording` | `lib/mix/tasks/surfex.retire.ex` |
 | `Mix.Tasks.Surfex.Status` | `:module` | `6e560dcc` | `spec — 13.3 Reports and the check` | `lib/mix/tasks/surfex.status.ex` |
 | `Mix.Tasks.Surfex.Suggest` | `:module` | `c78cfec2` | `spec — 15. Suggesting relations` | `lib/mix/tasks/surfex.suggest.ex` |
-| `Mix.Tasks.Surfex.Trace` | `:module` | `6466fd68` | `spec — 10.4 The tasks` | `lib/mix/tasks/surfex.trace.ex` |
+| `Mix.Tasks.Surfex.Trace` | `:module` | `ed31e0e4` | `spec — 10.4 The tasks` | `lib/mix/tasks/surfex.trace.ex` |
 | `Surfex.Cite` | `:module` | `74012b44` | `spec — 6. Citations` | `lib/surfex/cite.ex` |
 | `Surfex.Coverage` | `:module` | `f544aca4` | `spec — 7. Coverage` | `lib/surfex/coverage.ex` |
 | `Surfex.Gate` | `:module` | `6f319cfe` | `spec — 10.1 The gate` | `lib/surfex/gate.ex` |
@@ -42,7 +42,7 @@ on any; a citation of something that does not exist fails it too.
 | `Surfex.Status.Report` | `:module` | `3354f37b` | `spec — 13.3 Reports and the check` | `lib/surfex/status/report.ex` |
 | `Surfex.Suggest` | `:module` | `701888fa` | `spec — 15. Suggesting relations` | `lib/surfex/suggest.ex` |
 | `Surfex.Surface` | `:module` | `b2c7d0f8` | `spec — 10.2 Project goldens, spec — 10.3 Every golden at once` | `lib/surfex/surface.ex` |
-| `Surfex.Trace` | `:module` | `4a1ddc9b` | `spec — 1.2 Policies, spec — 9. Traces` | `lib/surfex/trace.ex` |
+| `Surfex.Trace` | `:module` | `1b160789` | `spec — 1.2 Policies, spec — 9. Traces` | `lib/surfex/trace.ex` |
 ## Functions
 
 | Item | Kind | Version | Cited by | Locus |
