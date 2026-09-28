@@ -103,6 +103,16 @@ defmodule Surfex.Log.Entry do
   @spec relation(t) :: {atom, {atom, String.t()}, {atom, String.t()}}
   def relation(%__MODULE__{type: type, ends: [a, b]}), do: {type, {a.kind, a.id}, {b.kind, b.id}}
 
+  @doc """
+  The relation of `type` between two ends (`%{kind, id}` or more), oriented as an entry's
+  would be: in order for a directed type, sorted otherwise.
+  """
+  @spec relation(atom, map, map) :: {atom, {atom, String.t()}, {atom, String.t()}}
+  def relation(type, a, b) do
+    [a, b] = orient(type, [a, b])
+    {type, {a.kind, a.id}, {b.kind, b.id}}
+  end
+
   @doc "The canonical line, without a trailing newline."
   @spec encode(t) :: String.t()
   def encode(%__MODULE__{} = entry), do: canonical(entry, true)

@@ -24,6 +24,8 @@ release it merely follows.
   ids and the ids a `require:` policy leaves unmet. `mix surfex.status [--format json]
   [--verify]` reports it and is the check. Directed relation types (`depends_on`,
   `refines`, `tests`) keep their ends in order.
+- **Recording**: `Surfex.Record` and `mix surfex.relate`, `confirm`, `retire`, `resolve` and
+  `history`. A relation moves back to current only when someone names it in `confirm`.
 
 ### Changed
 
