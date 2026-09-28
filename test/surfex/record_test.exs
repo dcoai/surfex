@@ -54,7 +54,7 @@ defmodule Surfex.RecordTest do
 
     both = [scan(:spec, "x", "1"), scan(:code, "x", "2") | scans()]
     assert {:error, msg} = Record.relate(both, [], "x", @code_id, :implements, @meta)
-    assert msg =~ "prefix it with spec: or code:"
+    assert msg =~ "prefix it with spec:, code:, test: or class:"
     assert {:ok, [e]} = Record.relate(both, [], "spec:x", @code_id, :implements, @meta)
     assert %{kind: :spec, id: "x", hash: "1"} in e.ends
   end

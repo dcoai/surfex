@@ -94,7 +94,7 @@ defmodule Surfex.ReferenceTest do
     test "a class excuses by kind and name, and parent_cited covers a member", c do
       assert c.suggestions.excuses |> Enum.map(&{&1.from.id, &1.to.id}) |> Enum.sort() == [
                {"internal constants", "WREN_BUCKETS"},
-               {"internal constants", "wren_twin"},
+               {"internal constants", "wren_twin (impl_const)"},
                {"locking", "wren_lock"},
                {"members of a documented structure", "wren_ack.port"},
                {"reference prose", "protocol.md#Overview"}
@@ -102,17 +102,7 @@ defmodule Surfex.ReferenceTest do
     end
 
     test "status: what nothing implements or excuses is unmet, and broken citations fail", c do
-      # `wren_twin` is two items with one key (a function and a constant), which the
-      # relation log can't yet tell apart (#60): its suggestions are left unrecorded here.
-      shared = c.scans |> Enum.filter(&(&1.kind == :code)) |> Enum.frequencies_by(& &1.id)
-      unique? = fn s -> s == nil or Map.get(shared, s.id, 1) == 1 end
-
-      suggestions =
-        Map.new(c.suggestions, fn {kind, list} ->
-          {kind, Enum.filter(list, &(unique?.(&1[:to]) and unique?.(&1[:code])))}
-        end)
-
-      {:ok, entries} = Suggest.accept_all(suggestions, c.scans, [], @meta)
+      {:ok, entries} = Suggest.accept_all(c.suggestions, c.scans, [], @meta)
       citations = Config.broken_citations(c.config, c.items, c.root, nil)
 
       status =
@@ -121,6 +111,11 @@ defmodule Surfex.ReferenceTest do
       unmet = for %{scan: %{kind: :code} = s} <- status.unmet, do: {s.id, s.role}
       assert {"wren_orphan", :function} in unmet
       refute {"wren_lock", :function} in unmet
+
+      # Two items with one key are related each on its own (#60): the constant is excused,
+      # the function is described by nothing.
+      assert {"wren_twin (function)", :function} in unmet
+      refute {"wren_twin (impl_const)", :impl_const} in unmet
 
       assert Enum.map(status.citations, &{&1.span, &1.status}) == [
                {"wren_send_all", :unresolved},

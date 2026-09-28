@@ -77,6 +77,24 @@ defmodule Surfex.Scan do
     end
   end
 
+  defp code_id(item, shared) do
+    key = Item.key(item)
+    if Map.has_key?(shared, key), do: "#{key} (#{item.kind})", else: key
+  end
+
+  @doc """
+  The code record in `scans` for `item`, whatever its id: the bare key, or the key with
+  its kind when the key is shared (`code/1`).
+  """
+  @spec for_item([t], Item.t()) :: t | nil
+  def for_item(scans, %Item{kind: kind} = item) do
+    key = Item.key(item)
+
+    Enum.find(scans, fn s ->
+      s.kind == :code and s.role == kind and (s.id == key or s.id == "#{key} (#{kind})")
+    end)
+  end
+
   defp bare(id), do: id |> String.split("#", parts: 2) |> List.last()
 
   # A section's id is an anchor when it isn't a heading path: no `/`, and it has the
@@ -86,14 +104,20 @@ defmodule Surfex.Scan do
   @doc """
   Code records from a scanner's items: the item's key, version and place, with its kind as
   `role` (`:function`, `:module`, …) and its parent as `within`, as a spec record has them.
+
+  The id is the item's key. When two items share a key (a C function and a constant both
+  called `twin`), each id carries its kind, `twin (function)` and `twin (const)`, so each
+  can be related on its own. A key no other item has keeps its bare id.
   """
   @spec code([Item.t()]) :: [t]
   def code(items) do
+    shared = items |> Enum.frequencies_by(&Item.key/1) |> Map.filter(fn {_, n} -> n > 1 end)
+
     items
     |> Enum.map(fn item ->
       %__MODULE__{
         kind: :code,
-        id: Item.key(item),
+        id: code_id(item, shared),
         hash: item.hash,
         location: %{file: item.file, lines: item.lines},
         role: item.kind,

@@ -209,7 +209,7 @@ defmodule Surfex.Suggest do
       )
 
     for item <- items,
-        scan = Map.get(code, Surfex.Item.key(item)),
+        scan = Scan.for_item(Map.values(code), item),
         scan != nil,
         not MapSet.member?(implemented, scan.id),
         {:expected, class} <- [Surfex.Coverage.verdict(item, implemented, profile)],
