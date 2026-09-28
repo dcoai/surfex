@@ -72,6 +72,87 @@ defmodule Surfex.Status.Report do
     |> IO.iodata_to_binary()
   end
 
+  @doc """
+  The status as a `Surfex.Golden` spec, to commit and gate. It has a table per relation
+  type (from, to, state, the ends that changed), then the new and the unmet ids. It holds
+  no hashes and no times: it changes when a relation's state changes, not every time one
+  is confirmed, and it stays a pure function of the scans and the log, so a merge
+  conflict in it is resolved by regenerating.
+  """
+  @spec golden(Status.t(), String.t()) :: Surfex.Golden.spec()
+  def golden(status, output \\ "RELATIONS.md") do
+    counts = Enum.frequencies_by(status.relations, & &1.state)
+
+    relation_groups =
+      status.relations
+      |> Enum.group_by(& &1.type)
+      |> Enum.sort()
+      |> Enum.map(fn {type, rs} ->
+        %{heading: Atom.to_string(type), rows: Enum.map(rs, &golden_row/1)}
+      end)
+
+    id_group = fn heading, columns, list, fun ->
+      if list == [],
+        do: [],
+        else: [%{heading: heading, columns: columns, rows: Enum.map(list, fun)}]
+    end
+
+    %{
+      name: Path.basename(output),
+      purpose: "Every spec↔code relation in the log, and whether it still holds.",
+      task: "surfex.goldens",
+      gate: "relation-status-drift",
+      hardness: :hard,
+      prose:
+        "A row per relation. **dangling**: an end changed since it was confirmed (`mix surfex.confirm`). " <>
+          "**orphaned**: an end is gone. **conflicted**: recorded on two branches (`mix surfex.resolve`). " <>
+          "For `depends_on`, `refines` and `tests` the first end depends on, refines or tests the " <>
+          "other; the other types' ends are in sorted order. `mix surfex.status` is the check; " <>
+          "this is the record.",
+      stats: [
+        Surfex.Golden.stat("#{length(status.relations)} relations", [
+          {"current", Map.get(counts, :current, 0)},
+          {"dangling", Map.get(counts, :dangling, 0)},
+          {"orphaned", Map.get(counts, :orphaned, 0)},
+          {"conflicted", Map.get(counts, :conflicted, 0)},
+          {"retired", Map.get(counts, :retired, 0)},
+          {"new", length(status.new)},
+          {"unmet", length(status.unmet)}
+        ])
+      ],
+      columns: ["End", "Other end", "State", "Changed"],
+      groups:
+        relation_groups ++
+          id_group.(
+            "new",
+            ["Item"],
+            status.new,
+            &%{"Item" => {:code, "#{&1.kind} #{&1.id}"}}
+          ) ++
+          id_group.("unmet", ["Item", "Needs"], status.unmet, fn %{scan: s, requires: r} ->
+            %{
+              "Item" => {:code, "#{s.kind} #{s.id}"},
+              "Needs" => {:raw, Enum.map_join(r, ", ", &"`#{&1}`")}
+            }
+          end)
+    }
+  end
+
+  defp golden_row(%{relation: {_type, {ak, aid}, {bk, bid}}} = r) do
+    state = if r.impacted, do: {:raw, "`#{inspect(r.state)}` · impacted"}, else: {:atom, r.state}
+
+    %{
+      "End" => {:code, "#{ak} #{aid}"},
+      "Other end" => {:code, "#{bk} #{bid}"},
+      "State" => state,
+      "Changed" =>
+        if(r.changed == [],
+          do: :absent,
+          else: {:raw, Enum.map_join(r.changed, ", ", fn {k, id} -> "`#{k} #{id}`" end)}
+        )
+    }
+  end
+
   # ── Text ────────────────────────────────────────────────────────────────
 
   defp section(title, status, pick) do

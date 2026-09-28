@@ -138,13 +138,56 @@ defmodule Surfex.GoldensTest do
     """
   end
 
+  describe "the :status golden" do
+    setup %{root: root} do
+      File.write!(Path.join(root, ".surfex.exs"), ~s([goldens: [:status], sources: ["spec.md"]]))
+      Surfex.Log.init(root)
+      :ok
+    end
+
+    test "writes RELATIONS.md, and a check then passes", %{root: root} do
+      task(root, ["--write"])
+      golden = File.read!(Path.join(root, "RELATIONS.md"))
+      assert golden =~ "# RELATIONS.md"
+      assert golden =~ "**0 relations** · current 0"
+      assert golden =~ "## new\n\n| Item |\n|---|\n| `code MyApp.Cart` |"
+      refute golden =~ ~r/\d{4}-\d{2}-\d{2}/
+
+      task(root)
+      assert_received {:mix_shell, :info, ["checked 1 golden(s): all current, nothing failing"]}
+    end
+
+    test "a relation's change of state is a drift", %{root: root} do
+      task(root, ["--write"])
+
+      File.cd!(root, fn ->
+        Mix.shell(Mix.Shell.Process)
+        Mix.Tasks.Surfex.Relate.run(["spec.md#Carts", "MyApp.Cart", "--type", "implements"])
+      end)
+
+      Mix.shell(Mix.Shell.IO)
+      assert fails(root) =~ "RELATIONS.md: out of date."
+    end
+
+    test "{:status, output} writes where it is told", %{root: root} do
+      File.write!(
+        Path.join(root, ".surfex.exs"),
+        ~s([goldens: [{:status, "docs/REL.md"}], sources: ["spec.md"]])
+      )
+
+      File.mkdir_p!(Path.join(root, "docs"))
+      task(root, ["--write"])
+      assert File.exists?(Path.join(root, "docs/REL.md"))
+    end
+  end
+
   describe "entries!/1" do
     test "defaults to the trace alone" do
       assert Goldens.entries!(sources: ["spec.md"]) == [:trace]
     end
 
     test "names a malformed entry" do
-      assert_raise ArgumentError, ~r/goldens entry "API.md" is neither/, fn ->
+      assert_raise ArgumentError, ~r/goldens entry "API.md" is not :trace, :status/, fn ->
         Goldens.entries!(goldens: ["API.md"])
       end
 

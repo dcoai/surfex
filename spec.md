@@ -420,8 +420,14 @@ endpoints a router declares, the actions a model defines): `spec(opts)` returns 
 ### 10.3 Every golden at once
 
 `Surfex.Goldens` runs every golden a project lists in `.surfex.exs`'s `goldens:` key.
-Each entry is `:trace` (the trace the rest of the file defines) or
-`{output, module, opts}` (a `Surfex.Surface`). With no key, the list is `[:trace]`.
+Each entry is one of:
+- `:trace`: the trace the rest of the file defines
+- `:status` or `{:status, output}`: the relation status as a golden (§13.3),
+  `RELATIONS.md` by default. Its drift fails here; whether the relations are healthy is
+  `mix surfex.status`'s question.
+- `{output, module, opts}`: a `Surfex.Surface`
+
+With no key, the list is `[:trace]`.
 
 - `Surfex.Goldens.entries!/1` validates the list. It raises naming an entry that is
   neither form, an empty list, and two entries writing one file.
@@ -591,6 +597,11 @@ or any id is unmet. New, retired and impacted don't fail on their own.
 `Surfex.Status.Report` presents a status:
 - `Surfex.Status.Report.text/1`: the verdict, the counts per type, then each dangling,
   orphaned, conflicted and impacted relation, and the new and unmet ids, with locations.
+- `Surfex.Status.Report.golden/2` (`Surfex.Status.Report.golden/1` writes `RELATIONS.md`):
+  the status as a golden to commit. It has a table per relation type (end, other end,
+  state, the ends that changed), then the new and unmet ids. It holds no hashes and no times, so it changes when a relation's state changes,
+  not on every confirmation. It's a pure function of the scans and the log, so a merge
+  conflict in it is resolved by regenerating.
 - `Surfex.Status.Report.json/1`: the work list for tools and agents. For each relation,
   its type, state and impact, and per end the recorded hash, the current hash, whether
   it changed, and its location. Plus the new and unmet ids.
