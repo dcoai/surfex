@@ -171,4 +171,106 @@ defmodule Surfex.ClassesTest do
     assert suggested == Enum.sort(traced)
     assert length(suggested) == 5
   end
+
+  # #51: an excuse must stay true to its class's rules.
+  describe "stale excuses" do
+    alias Surfex.Log.Entry
+    alias Surfex.Status.Report
+
+    @coverage Profile.coverage!(@config)
+
+    defp code_scan(id, kind, parent),
+      do: %Scan{
+        kind: :code,
+        id: id,
+        hash: "c1",
+        location: %{file: "lib/s.ex", lines: {1, 2}},
+        role: kind,
+        within: parent
+      }
+
+    defp excuse(class, id),
+      do:
+        Entry.new!(
+          at: "2026-09-28T10:00:00Z",
+          op: :relate,
+          type: :excuses,
+          ends: [
+            %{kind: :class, id: class, hash: hash(@config, class)},
+            %{kind: :code, id: id, hash: "c1"}
+          ]
+        )
+
+    defp status(code, entries, coverage \\ @coverage),
+      do: Status.derive(Classes.records(@config) ++ code, entries, [], coverage: coverage)
+
+    test "an item still matching its class's rule is not stale" do
+      code = [code_scan("App.Server.handle_call/3", :function, "App.Server")]
+      assert status(code, [excuse("plumbing", "App.Server.handle_call/3")]).stale == []
+    end
+
+    test "an item renamed out of its rule's pattern is stale, and fails" do
+      # The excuse was confirmed for handle_call/3; the item is now called serve/3, and the
+      # relation still names it (as a move would carry it).
+      code = [code_scan("App.Server.serve/3", :function, "App.Server")]
+      status = status(code, [excuse("plumbing", "App.Server.serve/3")])
+      assert [%{class: "plumbing", code: "App.Server.serve/3", reason: :unmatched}] = status.stale
+      assert Status.failing?(status)
+    end
+
+    test "a narrowed rule, another class's rule first, or an implementation make it stale" do
+      code = [code_scan("App.Server.handle_info/2", :function, "App.Server")]
+      entries = [excuse("plumbing", "App.Server.handle_info/2")]
+
+      narrowed = put_in(@coverage, [:rules, Access.at(0), :name], ~r/^handle_call/)
+      assert [%{reason: :unmatched}] = status(code, entries, narrowed).stale
+
+      first = %{
+        @coverage
+        | rules: [
+            %{class: "members", kinds: [:function], name: nil, parent_cited: false}
+            | @coverage.rules
+          ]
+      }
+
+      assert [%{reason: {:other_class, "members"}}] = status(code, entries, first).stale
+
+      spec = %Scan{
+        kind: :spec,
+        id: "spec.md#S",
+        hash: "s1",
+        location: %{file: "spec.md", lines: {1, 1}},
+        role: :section
+      }
+
+      implemented =
+        Entry.new!(
+          at: "2026-09-28T10:00:00Z",
+          op: :relate,
+          type: :implements,
+          ends: [
+            %{kind: :spec, id: "spec.md#S", hash: "s1"},
+            %{kind: :code, id: "App.Server.handle_info/2", hash: "c1"}
+          ]
+        )
+
+      assert [%{reason: :implemented}] = status([spec | code], [implemented | entries]).stale
+    end
+
+    test "all three reports show it; without the rules nothing is judged" do
+      code = [code_scan("App.Server.serve/3", :function, "App.Server")]
+      status = status(code, [excuse("plumbing", "App.Server.serve/3")])
+
+      assert Report.text(status) =~
+               "Stale (an excuse its class no longer covers):\n  class plumbing ↔ code App.Server.serve/3: no rule of its class matches it"
+
+      {json, :ok, _} = status |> Report.json() |> :json.decode(:ok, %{null: nil})
+      assert [%{"class" => "plumbing", "code" => "App.Server.serve/3"}] = json["stale"]
+      assert status |> Report.golden() |> Surfex.Golden.render() =~ "## stale"
+
+      assert Status.derive(Classes.records(@config) ++ code, [
+               excuse("plumbing", "App.Server.serve/3")
+             ]).stale == []
+    end
+  end
 end

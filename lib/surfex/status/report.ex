@@ -49,6 +49,9 @@ defmodule Surfex.Status.Report do
         status.triangle,
         &gap_text/1
       ),
+      items("Stale (an excuse its class no longer covers)", status.stale, fn s ->
+        "class #{s.class} ↔ code #{s.code}: #{stale_text(s.reason)}"
+      end),
       items("Broken (a test declares what no spec unit is)", status.broken, fn b ->
         "#{b.scan.kind} #{b.scan.id} #{b.type} #{inspect(b.ref)}: #{reason(b.reason)}#{at(b.scan)}"
       end)
@@ -91,6 +94,10 @@ defmodule Surfex.Status.Report do
       "triangle" =>
         Enum.map(status.triangle, fn g ->
           %{"spec" => g.spec, "gap" => Atom.to_string(g.gap), "test" => g.test, "code" => g.code}
+        end),
+      "stale" =>
+        Enum.map(status.stale, fn s ->
+          %{"class" => s.class, "code" => s.code, "reason" => stale_text(s.reason)}
         end),
       "broken" =>
         Enum.map(status.broken, fn b ->
@@ -154,6 +161,7 @@ defmodule Surfex.Status.Report do
           {"new", length(status.new)},
           {"unmet", length(status.unmet)},
           {"broken", length(status.broken)},
+          {"stale", length(status.stale)},
           {"triangle gaps", length(status.triangle)}
         ]),
         units_stat(Status.units(status))
@@ -175,6 +183,12 @@ defmodule Surfex.Status.Report do
           ) ++
           id_group.("triangle", ["Item", "Gap"], status.triangle, fn g ->
             %{"Item" => {:code, "spec #{g.spec}"}, "Gap" => {:raw, gap_text(g, false)}}
+          end) ++
+          id_group.("stale", ["Item", "Excused as"], status.stale, fn s ->
+            %{
+              "Item" => {:code, "code #{s.code}"},
+              "Excused as" => {:raw, "`#{s.class}`: #{stale_text(s.reason)}"}
+            }
           end) ++
           id_group.("broken", ["Item", "Declares"], status.broken, fn b ->
             %{
@@ -253,6 +267,10 @@ defmodule Surfex.Status.Report do
 
     if with_spec?, do: "spec #{g.spec}: #{String.replace(what, "`", "")}", else: what
   end
+
+  defp stale_text(:implemented), do: "something implements it now"
+  defp stale_text(:unmatched), do: "no rule of its class matches it"
+  defp stale_text({:other_class, class}), do: "class #{class}'s rule matches it first"
 
   defp reason(:unknown), do: "no spec unit has that id"
   defp reason({:ambiguous, ids}), do: "more than one does: #{Enum.join(ids, ", ")}"

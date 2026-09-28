@@ -126,7 +126,7 @@ defmodule Surfex.ScanTest do
   end
 
   describe "code records" do
-    test "carry the item's key, version and location" do
+    test "carry the item's key, version, location, kind and parent" do
       item = %Item{
         kind: :function,
         name: "add/2",
@@ -141,7 +141,9 @@ defmodule Surfex.ScanTest do
                  kind: :code,
                  id: "M.add/2",
                  hash: "h",
-                 location: %{file: "lib/m.ex", lines: {3, 5}}
+                 location: %{file: "lib/m.ex", lines: {3, 5}},
+                 role: :function,
+                 within: "M"
                }
              ]
     end

@@ -317,6 +317,10 @@ Rules are by class, never by item. A new helper falls into its class and stays q
 a new entry point matches no rule and is a gap. Each class carries the reason the golden
 prints, so silence is always attributable.
 
+Both read only the rules and `never_excused` kinds: a whole `Surfex.Profile`, or the map
+`Surfex.Profile.coverage!/1` gives. The relation log judges excuses with the same
+function (§13, §15), so the log and the trace can't disagree about what a class covers.
+
 **A verdict belongs to an item, not to a key.** `Surfex.Coverage.verdicts/3` pairs each
 item with its own verdict, in item order. Two items may share a key (a citation of it is
 then ambiguous), and each keeps its own verdict, row and failure. A failure message about
@@ -494,17 +498,19 @@ for spec records.
   and name (`spec.md#Carts/Adding items`, `spec.md#cart-add`)
 - **hash:** the content version, 8 hex characters
 - **location:** the file and first and last lines
-- **role:** what part of the spec a record is: `:section`, `:block` or `:test_hint`
-  (below); `nil` for code
-- **within:** the id of the section or block a block or hint sits in; `nil` for a
-  section. It is a fact about the text, not a relation.
+- **role:** what part of the source a record is: for spec, `:section`, `:block` or
+  `:test_hint` (below); for code, the item's kind (`:module`, `:function`, …); `nil` for
+  tests and classes
+- **within:** what it sits in: the section or block of a block or hint, or the parent of
+  a code item (a function's module); `nil` when nothing encloses it. It is a fact about
+  the source, not a relation.
 
 **Scanners only ever produce scan records.** They never read or write relations, and a
 record is a pure function of the source. Location is never part of a relation: moving
 code, or adding text above a section, changes where something is and not what it is.
 
 `Surfex.Scan.code/1` makes code records from any scanner's items (§5), with the item's
-key, version (§3.3) and line range.
+key, version (§3.3) and line range, its kind as `role` and its parent as `within`.
 
 `Surfex.Scan.ExUnit` is the test scanner. It makes one record of kind `:test` per ExUnit
 `test`, read from source without compiling it. `Surfex.Scan.ExUnit.records/2` reads
@@ -744,12 +750,18 @@ other entry of it names as a parent (`Surfex.Status.tips/2`).
   verified. An id that fails several rules is unmet once per rule.
 - **Broken:** a test's declaration (§11) that names no spec unit, or a bare id more
   than one file has.
+- **Stale:** a live `excuses` relation whose code item its class no longer covers,
+  judged by `Surfex.Coverage.verdict/3` as the suggestion was (§15). The item may now be
+  implemented, no rule of any class may match it, or another class's rule may match it
+  first. An excuse must stay true to its class's rules, not only to the versions it was
+  confirmed at. Judging it needs the rules, which `Surfex.Status.derive/4` takes as
+  `coverage:`.
 
 `Surfex.Status.failing?/1` is true when any relation is dangling, orphaned or conflicted,
-any id is unmet, or any declaration is broken. New, retired, impacted, planned and
-unimplemented don't fail on their own. A status derived with `planned: :fail`
-(`Surfex.Status.derive/4`) fails on any planned relation too: the check that everything
-planned has been built, such as a release's.
+any id is unmet, any declaration is broken, or any excuse is stale. New, retired,
+impacted, planned and unimplemented don't fail on their own. A status derived with
+`planned: :fail` (`Surfex.Status.derive/4`) fails on any planned relation too: the check
+that everything planned has been built, such as a release's.
 
 **The triangle.** A spec unit, its tests and its code relate three ways: the code
 `implements` the unit, a test `verifies` the unit, and the test `tests` the code. When
@@ -791,7 +803,8 @@ code no verifying test calls are each reported, naming the test or the code
   test files, each test in them (`Surfex.Scan.ExUnit`). A missing `sources`, or one
   that matches no section, raises. So does a `tests:` that matches no file.
 - `Surfex.Status.Config.options!/1` reads `triangle: :report | :fail` (`:report` by
-  default) for `Surfex.Status.derive/4`, and raises on any other value. It is the
+  default) for `Surfex.Status.derive/4`, and raises on any other value. When `classes:`
+  is present it also gives the class rules as `coverage:`, for judging stale excuses. It is the
   project maintainer's intent, and a wrong value is loud: the gaps are reported either
   way.
 - `Surfex.Status.Config.require!/1` validates the `require:` policy against the known
@@ -802,20 +815,21 @@ code no verifying test calls are each reported, naming the test or the code
 `Surfex.Status.Report` presents a status:
 - `Surfex.Status.Report.text/1`: the verdict, the counts per type and the spec units by
   role. Then each dangling, orphaned, conflicted, impacted and planned relation, the
-  unimplemented, new and unmet ids, the broken declarations and the triangle's gaps,
-  with locations. A block or hint in a list says what it sits in.
+  unimplemented, new and unmet ids, the stale excuses, the broken declarations and the
+  triangle's gaps, with locations. A block or hint in a list says what it sits in.
 - `Surfex.Status.Report.golden/2` (`Surfex.Status.Report.golden/1` writes `RELATIONS.md`):
   the status as a golden to commit. It has a table per relation type (end, other end,
   state, the ends that changed or are planned), then the unimplemented, new and unmet
-  ids, the broken declarations and the triangle's gaps, with the spec units by role
-  among its stats. It holds no hashes and no times, so it changes when a relation's
+  ids, the stale excuses, the broken declarations and the triangle's gaps, with the spec
+  units by role among its stats. It holds no hashes and no times, so it changes when a relation's
   state changes, not on every confirmation. It's a pure function of the scans and the
   log, so a merge conflict in it is resolved by regenerating.
 - `Surfex.Status.Report.json/1`: the work list for tools and agents. For each relation,
   its type, state and impact, and per end the recorded hash, the current hash, whether
   it changed, whether it is planned, and its location. Plus the spec units by role, the
   unimplemented, new and unmet ids (each with its role, what it sits in and what it
-  declares), the broken declarations and the triangle's gaps. A value that doesn't
+  declares), the stale excuses, the broken declarations and the triangle's gaps. A value
+  that doesn't
   exist (a planned end's recorded hash, a gone end's hash and location, or a conflicted
   relation's recorded hashes, since it has no one tip) is JSON `null`.
 
@@ -941,6 +955,7 @@ precisely. It covers:
 - stating requirements as checkable claims
 - examples and invariants
 - test-first work with Surfex
+- excusing code the spec shouldn't describe
 - working with an LLM
 - a worked example
 - a checklist

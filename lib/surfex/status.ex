@@ -37,10 +37,15 @@ defmodule Surfex.Status do
   An id with no non-retired relation of one of those types is **unmet**, once per rule it
   fails. A planned relation counts: the intent is on record.
 
-  **Failing** means any dangling, orphaned or conflicted relation, any unmet id, or any
-  broken declaration. Planned relations fail too when derived with `planned: :fail`
-  (`mix surfex.status --no-planned`), for a check that everything planned has been built,
-  such as a release's.
+  An `excuses` relation whose item its class no longer covers is **stale**: the item is
+  now implemented, no rule matches it any more, or another class's rule matches it first.
+  An excuse must stay true to its class's rules, not only to the versions it was confirmed
+  at. Judging it needs the rules, given as `coverage:` (`Surfex.Profile.coverage!/1`).
+
+  **Failing** means any dangling, orphaned or conflicted relation, any unmet id, any
+  broken declaration, or any stale excuse. Planned relations fail too when derived with
+  `planned: :fail` (`mix surfex.status --no-planned`), for a check that everything planned
+  has been built, such as a release's.
 
   ## The triangle
 
@@ -76,6 +81,13 @@ defmodule Surfex.Status do
           unmet: [%{scan: Scan.t(), requires: [atom]}],
           broken: [%{scan: Scan.t(), type: atom, ref: String.t(), reason: term}],
           triangle: [gap],
+          stale: [
+            %{
+              class: String.t(),
+              code: String.t(),
+              reason: :implemented | :unmatched | {:other_class, String.t()}
+            }
+          ],
           policy: %{triangle: :report | :fail},
           unimplemented: [Scan.t()],
           planned: :allow | :fail,
@@ -118,6 +130,7 @@ defmodule Surfex.Status do
         |> Enum.sort_by(&{&1.kind, &1.id}),
       unmet: unmet(scans, relations, require),
       broken: broken(scans),
+      stale: stale(scans, relations, Keyword.get(opts, :coverage)),
       triangle: triangle(scans, relations),
       policy: %{triangle: triangle},
       unimplemented: unimplemented(scans, relations),
@@ -135,7 +148,7 @@ defmodule Surfex.Status do
     failing = [:dangling, :orphaned, :conflicted]
     failing = if status.planned == :fail, do: [:planned | failing], else: failing
 
-    status.unmet != [] or status.broken != [] or
+    status.unmet != [] or status.broken != [] or status.stale != [] or
       (status.policy.triangle == :fail and status.triangle != []) or
       Enum.any?(status.relations, &(&1.state in failing))
   end
@@ -356,6 +369,39 @@ defmodule Surfex.Status do
 
   # A declaration in a test (`@tag verifies: "id"`) that names no spec unit, or a bare id
   # that more than one file has.
+  # A live excuse whose item its class no longer covers: the item is now implemented, no
+  # rule of any class matches it, or another class's rule matches it first. Judged by
+  # `Surfex.Coverage.verdict/3`, as the suggestion was, with a parent counting as cited when
+  # something implements it.
+  defp stale(_scans, _relations, nil), do: []
+
+  defp stale(scans, relations, coverage) do
+    code = for %Scan{kind: :code} = s <- scans, into: %{}, do: {s.id, s}
+
+    implemented =
+      for %{type: :implements, state: state, relation: {_, {:code, id}, _}} <- relations,
+          state != :retired,
+          into: MapSet.new(),
+          do: id
+
+    for %{type: :excuses, state: state, relation: {_, {:class, class}, {:code, id}}} <- relations,
+        state != :retired,
+        scan = Map.get(code, id),
+        scan != nil,
+        verdict = Surfex.Coverage.verdict(item(scan), implemented, coverage),
+        verdict != {:expected, class},
+        do: %{class: class, code: id, reason: stale_reason(verdict)}
+  end
+
+  defp item(%Scan{id: id, role: kind, within: parent, location: %{file: file}, hash: hash}) do
+    name = if parent, do: String.replace_prefix(id, parent <> ".", ""), else: id
+    %Surfex.Item{kind: kind, name: name, parent: parent, file: file, hash: hash}
+  end
+
+  defp stale_reason(:cited), do: :implemented
+  defp stale_reason(:gap), do: :unmatched
+  defp stale_reason({:expected, other}), do: {:other_class, other}
+
   defp broken(scans) do
     for scan <- Enum.sort_by(scans, &{&1.kind, &1.id}),
         {type, ref} <- scan.declares,

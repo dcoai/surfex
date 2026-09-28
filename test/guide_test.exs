@@ -1,6 +1,6 @@
 defmodule Surfex.GuideTest do
   @moduledoc """
-  The specification guide's worked example (§9) makes claims about what Surfex does: which
+  The specification guide's worked example (§10) makes claims about what Surfex does: which
   relations `mix surfex.suggest` proposes for each version of the Wren spec, and which of
   them dangle or are orphaned after each edit. This runs Surfex on the guide's own text,
   so a claim the scanner stops honouring fails here rather than misleading a reader.
