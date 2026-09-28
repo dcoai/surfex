@@ -353,7 +353,8 @@ rule naming an undeclared class, and a rule that would excuse a never-excused ki
 
 Keys the project sets win over the Elixir defaults. `Surfex.Trace.load!/1` and
 `Surfex.Trace.load!/2` evaluate a `.surfex.exs` data file, which must return a keyword
-list, with optional defaults under it.
+list, with optional defaults under it. The same file carries keys other tools read
+(`goldens:` for §10.3, `require:` for §13), which `Surfex.Trace.own_keys/1` drops.
 
 ### 9.2 Analysis
 
@@ -502,7 +503,10 @@ only state surfex keeps. Scanners never read or write it (§11).
 | `note` | why, optionally |
 
 - **A relation is its type and its two ends' kinds and ids** (`Surfex.Log.Entry.relation/1`).
-  Ends are sorted, so A↔B and B↔A are one relation.
+  For the undirected types (`implements`, `excuses`), ends are sorted, so A↔B and B↔A are
+  one relation. The directed types (`Surfex.Log.Entry.directed/0`: `depends_on`,
+  `refines`, `tests`) keep their ends in the order given, from → to, because "A depends on
+  B" is not "B depends on A".
 - `Surfex.Log.Entry.build/1` makes an entry from its fields and computes its id, or says
   which field is invalid. `Surfex.Log.Entry.new!/1` raises instead.
 - **The canonical line is JSON**, keys in the order above (`Surfex.Log.Entry.encode/1`). It
@@ -537,3 +541,59 @@ answered from the log alone.
 
 `Mix.Tasks.Surfex.Log` is `mix surfex.log`, with exactly one of `--init`, `--break`,
 `--verify` (fails on any problem) or `--rechain`. It never edits or removes an entry.
+
+## 13. Relation status
+
+`Surfex.Status` derives the state of every relation from the scans (§11) and the log
+(§12). `Surfex.Status.derive/2` and `Surfex.Status.derive/3` (with a `require:` policy)
+are pure: the same scans and log always give the same status.
+
+### 13.1 States
+
+The judgement in force for a relation is its **tip**: an entry of the relation that no
+other entry of it names as a parent.
+
+| State | When |
+|---|---|
+| **conflicted** | more than one tip: entries recorded without seeing each other (sharing a parent, or both with none) |
+| **retired** | the tip retires the relation |
+| **orphaned** | an end's id is no longer scanned (removed or renamed) |
+| **dangling** | both ids are scanned, but at least one is at a different hash than the tip recorded; the report names which ends changed |
+| **current** | both ends are at the hashes the tip recorded |
+
+- **Impacted** is a flag, not a state. A relation is impacted when one of its ends has a
+  `depends_on` relation to something that is not current. It doesn't fail the check:
+  re-confirming everything downstream of every change would train people to confirm
+  without reading.
+- **New:** a scanned id in no relation at all.
+- **Unmet:** a scanned id that the `require:` policy (`[kind: [type, …]]`) says must take
+  part in a non-retired relation of one of those types, and doesn't.
+
+`Surfex.Status.failing?/1` is true when any relation is dangling, orphaned or conflicted,
+or any id is unmet. New, retired and impacted don't fail on their own.
+`Surfex.Status.summary/1` counts relations per type and state.
+
+### 13.2 Configuration
+
+`Surfex.Status.Config` reads `.surfex.exs`, the same file the trace reads:
+- `Surfex.Status.Config.scans/2` scans each markdown section of `sources` and each item
+  the code scanner (`scanner`, `scanner_opts`) finds. A missing `sources`, or one that
+  matches no section, raises.
+- `Surfex.Status.Config.require!/1` validates the `require:` policy against the known
+  kinds and types, and raises naming what's wrong.
+
+### 13.3 Reports and the check
+
+`Surfex.Status.Report` presents a status:
+- `Surfex.Status.Report.text/1`: the verdict, the counts per type, then each dangling,
+  orphaned, conflicted and impacted relation, and the new and unmet ids, with locations.
+- `Surfex.Status.Report.json/1`: the work list for tools and agents. For each relation,
+  its type, state and impact, and per end the recorded hash, the current hash, whether
+  it changed, and its location. Plus the new and unmet ids.
+
+`Mix.Tasks.Surfex.Status` is `mix surfex.status`:
+- `--format text|json` (text by default)
+- `--verify` verifies the log (§12.2) **before** loading it, so a tampered log gets its
+  report, not the first decode error
+- it fails when the status is failing, or the log doesn't verify
+- it compiles the project first only when `.surfex.exs` names a project scanner
