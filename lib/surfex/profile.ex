@@ -123,6 +123,10 @@ defmodule Surfex.Profile do
     :never_excused
   ]
 
+  @doc "The keys a profile takes: what shapes reading citations, and the class keys."
+  @spec keys() :: [atom]
+  def keys, do: @keys
+
   @doc "A validated profile from a keyword list or map. Raises `ArgumentError` naming the key."
   @spec new!(keyword | map) :: t
   def new!(fields) do

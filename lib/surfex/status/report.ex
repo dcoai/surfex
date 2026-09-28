@@ -49,6 +49,13 @@ defmodule Surfex.Status.Report do
         status.triangle,
         &gap_text/1
       ),
+      items(
+        "Broken citations (the spec names what the code doesn't have)",
+        status.citations,
+        fn c ->
+          "#{c.file}:#{c.line} (#{c.section}): `#{c.span}` #{citation_text(c)}"
+        end
+      ),
       items("Stale (an excuse its class no longer covers)", status.stale, fn s ->
         "class #{s.class} ↔ code #{s.code}: #{stale_text(s.reason)}"
       end),
@@ -94,6 +101,17 @@ defmodule Surfex.Status.Report do
       "triangle" =>
         Enum.map(status.triangle, fn g ->
           %{"spec" => g.spec, "gap" => Atom.to_string(g.gap), "test" => g.test, "code" => g.code}
+        end),
+      "citations" =>
+        Enum.map(status.citations, fn c ->
+          %{
+            "span" => c.span,
+            "file" => c.file,
+            "line" => c.line,
+            "section" => c.section,
+            "status" => Atom.to_string(c.status),
+            "items" => c.items
+          }
         end),
       "stale" =>
         Enum.map(status.stale, fn s ->
@@ -162,6 +180,7 @@ defmodule Surfex.Status.Report do
           {"unmet", length(status.unmet)},
           {"broken", length(status.broken)},
           {"stale", length(status.stale)},
+          {"broken citations", length(status.citations)},
           {"triangle gaps", length(status.triangle)}
         ]),
         units_stat(Status.units(status))
@@ -183,6 +202,12 @@ defmodule Surfex.Status.Report do
           ) ++
           id_group.("triangle", ["Item", "Gap"], status.triangle, fn g ->
             %{"Item" => {:code, "spec #{g.spec}"}, "Gap" => {:raw, gap_text(g, false)}}
+          end) ++
+          id_group.("broken citations", ["Item", "Cited at"], status.citations, fn c ->
+            %{
+              "Item" => {:code, c.span},
+              "Cited at" => {:raw, "`#{c.file}` · #{c.section}: #{citation_text(c)}"}
+            }
           end) ++
           id_group.("stale", ["Item", "Excused as"], status.stale, fn s ->
             %{
@@ -267,6 +292,11 @@ defmodule Surfex.Status.Report do
 
     if with_spec?, do: "spec #{g.spec}: #{String.replace(what, "`", "")}", else: what
   end
+
+  defp citation_text(%{status: :unresolved}), do: "names nothing the code has"
+
+  defp citation_text(%{status: :ambiguous, items: items}),
+    do: "names more than one item: #{Enum.join(items, ", ")}"
 
   defp stale_text(:implemented), do: "something implements it now"
   defp stale_text(:unmatched), do: "no rule of its class matches it"

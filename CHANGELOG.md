@@ -76,6 +76,11 @@ release it merely follows.
     now implemented, no longer matches a rule, or another class's rule matches it first.
   - Code records now carry the item's kind as `role` and its parent as `within`.
   - The guide has a section on excusing code.
+- **Broken citations fail `mix surfex.status`.** A name the spec cites that resolves to
+  nothing (a deleted or misspelt function) or to more than one item is reported and fails
+  the check, read by `Surfex.Cite` as the trace read it. It was the trace's last check
+  the relation log lacked. `Surfex.Status.Config.load/3` scans once for everything status
+  needs.
 - The status reports count spec units by role (`Surfex.Status.units/1`), and the JSON
   gives each id's role and what it sits in.
 - Surfex's own spec now has an anchor on every heading. Its relations moved across and

@@ -91,15 +91,16 @@ defmodule Surfex.Goldens do
 
   # The committed record of the relation status. Its drift is a failure here; whether the
   # relations are healthy is `mix surfex.status`'s question.
-  defp run_one({:status, output}, config, root, _defaults, command, write?) do
+  defp run_one({:status, output}, config, root, defaults, command, write?) do
     entries = if File.dir?(Log.dir(root)), do: Log.load(root), else: []
+    {scans, options} = Config.load(config, root, defaults[:namespace])
 
     status =
       Status.derive(
-        Config.scans(config, root),
+        scans,
         entries,
         Config.require!(config),
-        Config.options!(config)
+        options
       )
 
     Gate.run(

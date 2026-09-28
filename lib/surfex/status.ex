@@ -25,6 +25,9 @@ defmodule Surfex.Status do
   a failure: re-confirming everything downstream of every change would train people to
   confirm without reading.
 
+  A **broken citation** is a name the spec cites that resolves to nothing, or to more than
+  one item (`Surfex.Cite`): given as `citations:`, so the spec can't name what doesn't exist.
+
   A scanned id in no relation at all is **new**. A spec id whose every live `implements`
   relation is planned is **unimplemented**. A test's declaration (`@tag verifies: "id"`)
   that names no spec unit, or a bare id more than one file has, is **broken**.
@@ -43,7 +46,7 @@ defmodule Surfex.Status do
   at. Judging it needs the rules, given as `coverage:` (`Surfex.Profile.coverage!/1`).
 
   **Failing** means any dangling, orphaned or conflicted relation, any unmet id, any
-  broken declaration, or any stale excuse. Planned relations fail too when derived with
+  broken declaration, any stale excuse, or any broken citation. Planned relations fail too when derived with
   `planned: :fail` (`mix surfex.status --no-planned`), for a check that everything planned
   has been built, such as a release's.
 
@@ -81,6 +84,7 @@ defmodule Surfex.Status do
           unmet: [%{scan: Scan.t(), requires: [atom]}],
           broken: [%{scan: Scan.t(), type: atom, ref: String.t(), reason: term}],
           triangle: [gap],
+          citations: [Surfex.Cite.t()],
           stale: [
             %{
               class: String.t(),
@@ -130,6 +134,7 @@ defmodule Surfex.Status do
         |> Enum.sort_by(&{&1.kind, &1.id}),
       unmet: unmet(scans, relations, require),
       broken: broken(scans),
+      citations: Keyword.get(opts, :citations, []),
       stale: stale(scans, relations, Keyword.get(opts, :coverage)),
       triangle: triangle(scans, relations),
       policy: %{triangle: triangle},
@@ -148,7 +153,7 @@ defmodule Surfex.Status do
     failing = [:dangling, :orphaned, :conflicted]
     failing = if status.planned == :fail, do: [:planned | failing], else: failing
 
-    status.unmet != [] or status.broken != [] or status.stale != [] or
+    status.unmet != [] or status.broken != [] or status.stale != [] or status.citations != [] or
       (status.policy.triangle == :fail and status.triangle != []) or
       Enum.any?(status.relations, &(&1.state in failing))
   end
