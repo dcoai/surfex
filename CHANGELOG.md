@@ -43,6 +43,10 @@ release it merely follows.
 ### Changed
 
 - The README leads with the relation log.
+- **A module's version is its public surface** (`Surfex.SourceScan.module_hash/1`): its
+  moduledoc, public definitions, behaviours, `use`s, struct fields and types, not its
+  functions' bodies. A function edit no longer dangles its module's relations as well.
+  Every module's version moves once with this change.
 - `Surfex.SourceScan.project_root/2` takes a starting directory; `/1` is unchanged. Its tests
   had to change the VM-wide working directory, which made the suite fail about once in
   fifteen runs, and a test now keeps async tests from doing that.

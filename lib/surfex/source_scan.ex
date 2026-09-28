@@ -192,6 +192,55 @@ defmodule Surfex.SourceScan do
     end)
   end
 
+  @doc """
+  A module's version: a `definition_hash/1` over its **public surface**, not its whole
+  body. That covers:
+
+    * its `@moduledoc`
+    * its public definitions, as name, arity and kind (`defs/1`)
+    * its `@behaviour`s and `use`s
+    * its `defstruct` or `defexception` fields
+    * its `@type`, `@opaque`, `@callback` and `@macrocallback` declarations
+
+  Each list is sorted, so reordering is not a change. Function bodies are left out: each
+  public function has its own item and version, so a body edit changes that function's
+  version and not its module's. Private definitions and nested modules are left out too.
+  """
+  @spec module_hash(Macro.t()) :: String.t()
+  def module_hash({:defmodule, _, [_aliases, [do: body]]} = node) do
+    top = exprs(body)
+
+    pick = fn match -> top |> Enum.flat_map(match) |> Enum.map(&strip_meta/1) |> Enum.sort() end
+
+    [
+      pick.(fn
+        {:@, _, [{:moduledoc, _, [doc]}]} -> [doc]
+        _ -> []
+      end),
+      node
+      |> defs()
+      |> Enum.map(&[Atom.to_string(&1.name), &1.arity, Atom.to_string(&1.kind)])
+      |> Enum.sort(),
+      pick.(fn
+        {:@, _, [{:behaviour, _, [mod]}]} -> [[:behaviour, mod]]
+        {:use, _, args} -> [[:use, args]]
+        _ -> []
+      end),
+      pick.(fn
+        {definer, _, args} when definer in [:defstruct, :defexception] -> [[definer, args]]
+        _ -> []
+      end),
+      pick.(fn
+        {:@, _, [{kind, _, [spec]}]} when kind in [:type, :opaque, :callback, :macrocallback] ->
+          [[kind, spec]]
+
+        _ ->
+          []
+      end)
+    ]
+    |> definition_hash()
+  end
+
   @doc "Whether a `defmodule` node declares `@moduledoc false` in its own body."
   @spec hidden_module?(Macro.t()) :: boolean
   def hidden_module?({:defmodule, _, [_aliases, [do: body]]}),

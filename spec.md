@@ -147,6 +147,19 @@ function:
 Calls to other modules, and to the module's own public functions, are not followed:
 those have their own rows and their own versions.
 
+A module's version, from `Surfex.SourceScan.module_hash/1`, covers its **public surface**,
+not its whole body:
+- its `@moduledoc`
+- its public definitions, as name, arity and kind
+- its `@behaviour`s and `use`s
+- its `defstruct` or `defexception` fields
+- its `@type`, `@opaque`, `@callback` and `@macrocallback` declarations
+
+Each list is sorted, so reordering is not a change. Function bodies, private definitions
+and nested modules are left out: each public function has its own version, so a body edit
+changes that function's version and not its module's, and a relation to the module
+doesn't dangle for it.
+
 ## 4. Items
 
 `Surfex.Item` is one thing a scanner found: the unit a citation resolves to and a trace

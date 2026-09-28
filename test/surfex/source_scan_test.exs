@@ -347,4 +347,59 @@ defmodule Surfex.SourceScanTest do
       assert is_binary(hashes(@base)[:rec])
     end
   end
+
+  # #33: a module's version is its public surface, so its relations don't dangle on every
+  # function edit.
+  describe "module_hash/1" do
+    @mod ~S"""
+    defmodule M do
+      @moduledoc "doc"
+      @behaviour B
+      use GenServer
+      defstruct [:a, :b]
+      @type t :: integer
+      @type u :: atom
+      def f(x), do: x
+      def g, do: 1
+      defp p(x), do: x
+    end
+    """
+
+    defp module_hash(source) do
+      [mod | _] = source |> Code.string_to_quoted!() |> SourceScan.defmodules()
+      SourceScan.module_hash(mod)
+    end
+
+    defp surface_changes?(from, to) do
+      assert @mod =~ from
+      module_hash(@mod) != module_hash(String.replace(@mod, from, to))
+    end
+
+    test "a function body or a private helper is not part of it" do
+      refute surface_changes?("def f(x), do: x", "def f(x), do: x + 1")
+      refute surface_changes?("defp p(x), do: x", "defp p(x), do: x * 2")
+      refute surface_changes?("defp p(x), do: x", "defp p(x), do: x\n  defp q, do: 0")
+    end
+
+    test "its public definitions, docs, behaviours, uses, struct and types are" do
+      assert surface_changes?("def g, do: 1", "def g, do: 1\n  def h, do: 2")
+      assert surface_changes?(~s("doc"), ~s("docs"))
+      assert surface_changes?("@behaviour B", "@behaviour C")
+      assert surface_changes?("use GenServer", "use Agent")
+      assert surface_changes?("[:a, :b]", "[:a, :c]")
+      assert surface_changes?("@type t :: integer", "@type t :: float")
+    end
+
+    test "reordering is not a change" do
+      refute surface_changes?(
+               "  @type t :: integer\n  @type u :: atom\n",
+               "  @type u :: atom\n  @type t :: integer\n"
+             )
+
+      refute surface_changes?(
+               "  def f(x), do: x\n  def g, do: 1\n",
+               "  def g, do: 1\n  def f(x), do: x\n"
+             )
+    end
+  end
 end

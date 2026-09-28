@@ -106,7 +106,7 @@ defmodule Surfex.Scanner.Elixir do
           kind: :module,
           name: module,
           file: file,
-          hash: SourceScan.definition_hash(node),
+          hash: SourceScan.module_hash(node),
           lines: SourceScan.line_range(node)
         }
       ] ++
