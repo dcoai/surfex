@@ -403,6 +403,27 @@ defmodule Surfex.StatusTest do
       assert status |> Report.golden() |> Surfex.Golden.render() =~ "2 spec units"
     end
 
+    test "broken citations fail, and all three reports show them" do
+      citation = %{
+        span: "M.gone/0",
+        file: "spec.md",
+        section: "Carts",
+        line: 3,
+        status: :unresolved,
+        items: []
+      }
+
+      status = Status.derive(scans(), [], [], citations: [citation])
+      assert Status.failing?(status)
+      assert Report.text(status) =~ "spec.md:3 (Carts): `M.gone/0` names nothing the code has"
+      {json, :ok, _} = status |> Report.json() |> :json.decode(:ok, %{null: nil})
+      assert [%{"span" => "M.gone/0", "status" => "unresolved", "line" => 3}] = json["citations"]
+      golden = status |> Report.golden() |> Surfex.Golden.render()
+      assert golden =~ "## broken citations"
+      # The golden names the section, not the line, so moving text doesn't restamp it.
+      refute golden =~ "spec.md:3"
+    end
+
     test "with no relations, it says so" do
       assert Report.text(Status.derive(scans(), [])) =~ "(no relations)"
     end

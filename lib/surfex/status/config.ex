@@ -71,7 +71,59 @@ defmodule Surfex.Status.Config do
   status over no spec would report every relation orphaned without saying why.
   """
   @spec scans(keyword, String.t()) :: [Scan.t()]
-  def scans(config, root) do
+  def scans(config, root), do: scans(config, root, items(config, root))
+
+  @doc """
+  Everything `Surfex.Status.derive/4` needs, scanning the code once: the scans, and the
+  options (`options!/1`'s, plus the spec's broken citations, `broken_citations/3`).
+  `namespace` is the Elixir scanner's root module when the config doesn't name one.
+  """
+  @spec load(keyword, String.t(), String.t() | nil) :: {[Scan.t()], keyword}
+  def load(config, root, namespace) do
+    items = items(config, root)
+
+    {scans(config, root, items),
+     options!(config) ++ [citations: broken_citations(config, items, root, namespace)]}
+  end
+
+  @doc """
+  The spec's citations that resolve to nothing (`:unresolved`) or to more than one item
+  (`:ambiguous`), read with `Surfex.Cite` under the config's profile (`profile!/2`). A
+  name the profile declares external, or a documented absence, is not broken.
+  """
+  @spec broken_citations(keyword, [Surfex.Item.t()], String.t(), String.t() | nil) :: [
+          Surfex.Cite.t()
+        ]
+  def broken_citations(config, items, root, namespace) do
+    items
+    |> Surfex.Cite.citations(profile!(config, namespace), root)
+    |> Enum.filter(&(&1.status in [:unresolved, :ambiguous]))
+  end
+
+  @doc """
+  The citation-reading profile of a config: its profile keys (`Surfex.Profile.keys/0`),
+  over the Elixir scanner's defaults for its namespace (`namespace:` in the config, else
+  the one given). A project scanner's config gives its own `shape:`.
+  """
+  @spec profile!(keyword, String.t() | nil) :: Surfex.Profile.t()
+  def profile!(config, namespace) do
+    defaults =
+      case Keyword.get(config, :scanner, :elixir) do
+        :elixir ->
+          ns =
+            Keyword.get(config, :namespace, namespace) ||
+              raise(ArgumentError, "reading citations needs namespace: for the Elixir scanner")
+
+          Surfex.Scanner.Elixir.profile_defaults(ns)
+
+        _project_scanner ->
+          []
+      end
+
+    Surfex.Profile.new!(Keyword.merge(defaults, Keyword.take(config, Surfex.Profile.keys())))
+  end
+
+  defp scans(config, root, items) do
     sources =
       Keyword.get(config, :sources) ||
         raise(ArgumentError, ".surfex.exs needs sources: (the spec's globs)")
@@ -81,7 +133,7 @@ defmodule Surfex.Status.Config do
     if spec == [],
       do: raise(ArgumentError, "no spec sections found in #{inspect(sources)} under #{root}")
 
-    spec ++ Scan.code(items(config, root)) ++ tests(config, root) ++ classes(config)
+    spec ++ Scan.code(items) ++ tests(config, root) ++ classes(config)
   end
 
   # Classes (`classes:` and `rules:`, the trace's own keys) are scanned when a project has

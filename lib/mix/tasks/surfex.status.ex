@@ -41,14 +41,16 @@ defmodule Mix.Tasks.Surfex.Status do
       do: Mix.raise("the relation log does not verify:\n" <> Enum.join(problems, "\n"))
 
     entries = if File.dir?(Log.dir(root)), do: Log.load(root), else: []
+    namespace = Mix.Project.config()[:app] |> to_string() |> Macro.camelize()
+    {scans, options} = Config.load(config, root, namespace)
     planned = if opts[:planned] == false, do: :fail, else: :allow
 
     status =
       Status.derive(
-        Config.scans(config, root),
+        scans,
         entries,
         Config.require!(config),
-        [planned: planned] ++ Config.options!(config)
+        [planned: planned] ++ options
       )
 
     case opts[:format] || "text" do

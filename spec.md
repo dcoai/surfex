@@ -750,6 +750,9 @@ other entry of it names as a parent (`Surfex.Status.tips/2`).
   verified. An id that fails several rules is unmet once per rule.
 - **Broken:** a test's declaration (§11) that names no spec unit, or a bare id more
   than one file has.
+- **Broken citation:** a name the spec cites (§6) that resolves to nothing the code has,
+  or to more than one item. The spec can't name what doesn't exist. Names the profile
+  declares external, and documented absences, are not broken.
 - **Stale:** a live `excuses` relation whose code item its class no longer covers,
   judged by `Surfex.Coverage.verdict/3` as the suggestion was (§15). The item may now be
   implemented, no rule of any class may match it, or another class's rule may match it
@@ -758,8 +761,8 @@ other entry of it names as a parent (`Surfex.Status.tips/2`).
   `coverage:`.
 
 `Surfex.Status.failing?/1` is true when any relation is dangling, orphaned or conflicted,
-any id is unmet, any declaration is broken, or any excuse is stale. New, retired,
-impacted, planned and unimplemented don't fail on their own. A status derived with
+any id is unmet, any declaration or citation is broken, or any excuse is stale. New,
+retired, impacted, planned and unimplemented don't fail on their own. A status derived with
 `planned: :fail` (`Surfex.Status.derive/4`) fails on any planned relation too: the check
 that everything planned has been built, such as a release's.
 
@@ -807,6 +810,12 @@ code no verifying test calls are each reported, naming the test or the code
   is present it also gives the class rules as `coverage:`, for judging stale excuses. It is the
   project maintainer's intent, and a wrong value is loud: the gaps are reported either
   way.
+- `Surfex.Status.Config.load/3` gives everything `Surfex.Status.derive/4` needs from the
+  config, scanning the code once: the scans, and the options, including the broken
+  citations (`Surfex.Status.Config.broken_citations/4`). Those are read with
+  `Surfex.Cite` under `Surfex.Status.Config.profile!/2`: the config's profile keys
+  (`Surfex.Profile.keys/0`) over the Elixir scanner's defaults for `namespace:`, which
+  defaults to the project's app name.
 - `Surfex.Status.Config.require!/1` validates the `require:` policy against the known
   kinds, spec roles and types, and raises naming what's wrong.
 
@@ -815,21 +824,21 @@ code no verifying test calls are each reported, naming the test or the code
 `Surfex.Status.Report` presents a status:
 - `Surfex.Status.Report.text/1`: the verdict, the counts per type and the spec units by
   role. Then each dangling, orphaned, conflicted, impacted and planned relation, the
-  unimplemented, new and unmet ids, the stale excuses, the broken declarations and the
-  triangle's gaps, with locations. A block or hint in a list says what it sits in.
+  unimplemented, new and unmet ids, the broken citations, the stale excuses, the broken
+  declarations and the triangle's gaps, with locations. A block or hint in a list says what it sits in.
 - `Surfex.Status.Report.golden/2` (`Surfex.Status.Report.golden/1` writes `RELATIONS.md`):
   the status as a golden to commit. It has a table per relation type (end, other end,
   state, the ends that changed or are planned), then the unimplemented, new and unmet
-  ids, the stale excuses, the broken declarations and the triangle's gaps, with the spec
-  units by role among its stats. It holds no hashes and no times, so it changes when a relation's
+  ids, the broken citations (by section, not line), the stale excuses, the broken
+  declarations and the triangle's gaps, with the spec units by role among its stats. It holds no hashes and no times, so it changes when a relation's
   state changes, not on every confirmation. It's a pure function of the scans and the
   log, so a merge conflict in it is resolved by regenerating.
 - `Surfex.Status.Report.json/1`: the work list for tools and agents. For each relation,
   its type, state and impact, and per end the recorded hash, the current hash, whether
   it changed, whether it is planned, and its location. Plus the spec units by role, the
   unimplemented, new and unmet ids (each with its role, what it sits in and what it
-  declares), the stale excuses, the broken declarations and the triangle's gaps. A value
-  that doesn't
+  declares), the broken citations, the stale excuses, the broken declarations and the
+  triangle's gaps. A value that doesn't
   exist (a planned end's recorded hash, a gone end's hash and location, or a conflicted
   relation's recorded hashes, since it has no one tip) is JSON `null`.
 
