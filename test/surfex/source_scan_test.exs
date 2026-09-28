@@ -279,4 +279,75 @@ defmodule Surfex.SourceScanTest do
       refute SourceScan.hidden_module?(shown)
     end
   end
+
+  # #20: a function's hash covers what it depends on, not only its own clauses.
+  describe "defs/1: what a function's hash depends on" do
+    @base ~S"""
+    defmodule M do
+      @rate 5
+      @other 1
+      def price(x), do: x * @rate + fee(x)
+      def piped(x), do: x |> fee()
+      def cap, do: Enum.map([1], &fee/1)
+      def dflt(x), do: opt(x)
+      def rec(n), do: loop(n)
+      def total, do: sub()
+      def sub, do: 1
+      defp fee(x), do: deep(x) + 1
+      defp deep(x), do: x * 2
+      defp unused(x), do: x
+      defp opt(a, b \\ 1), do: a + b
+      defp loop(0), do: 0
+      defp loop(n), do: loop(n - 1)
+    end
+    """
+
+    defp hashes(source) do
+      [mod] = source |> Code.string_to_quoted!() |> SourceScan.defmodules()
+      Map.new(SourceScan.defs(mod), &{&1.name, &1.hash})
+    end
+
+    defp changes?(fun, from, to) do
+      assert @base =~ from
+      hashes(@base)[fun] != hashes(String.replace(@base, from, to))[fun]
+    end
+
+    test "a private helper it calls, directly or transitively" do
+      assert changes?(:price, "deep(x) + 1", "deep(x) + 2")
+      assert changes?(:price, "do: x * 2", "do: x * 3")
+    end
+
+    test "a module attribute it reads, and no other" do
+      assert changes?(:price, "@rate 5", "@rate 7")
+      refute changes?(:price, "@other 1", "@other 2")
+    end
+
+    test "a helper it does not call is not part of it" do
+      refute changes?(:price, "defp unused(x), do: x", "defp unused(x), do: x + 1")
+    end
+
+    test "piped calls, captures and default-argument calls are followed" do
+      assert changes?(:piped, "deep(x) + 1", "deep(x) + 9")
+      assert changes?(:cap, "deep(x) + 1", "deep(x) + 9")
+      assert changes?(:dflt, "do: a + b", "do: a - b")
+    end
+
+    test "public callees are not followed: they have their own rows" do
+      refute changes?(:total, "def sub, do: 1", "def sub, do: 2")
+    end
+
+    test "renaming a variable is not a change; changing an expression is" do
+      refute changes?(
+               :price,
+               "def price(x), do: x * @rate + fee(x)",
+               "def price(y), do: y * @rate + fee(y)"
+             )
+
+      assert changes?(:price, "x * @rate", "x + @rate")
+    end
+
+    test "recursion terminates" do
+      assert is_binary(hashes(@base)[:rec])
+    end
+  end
 end
