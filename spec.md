@@ -86,9 +86,12 @@ before `Foo.10`). Two specs differing only in those orderings render identical b
 
 ### 3.1 Finding source
 
-- `Surfex.SourceScan.project_root/1` ascends from the working directory to the first
-  directory containing the given marker (`"mix.exs"` for a library). The marker has no
-  default, because a default would be silently wrong for some layout.
+- `Surfex.SourceScan.project_root/2` ascends from a starting directory to the first
+  directory containing the given marker (`"mix.exs"` for a library), falling back to the
+  starting directory. `Surfex.SourceScan.project_root/1` starts from the working
+  directory. The marker has no default, because a default would be silently wrong for
+  some layout. The starting directory exists so that nothing has to change the working
+  directory, which belongs to the whole VM, to ask.
 - `Surfex.SourceScan.lib_sources/1` lists the `.ex` files of every first-party `lib/`
   under a root, sorted. It serves a library and a multi-project tree alike, with nothing
   to configure. A `lib/` is first-party when:
