@@ -26,6 +26,9 @@ release it merely follows.
   `refines`, `tests`) keep their ends in order.
 - **Recording**: `Surfex.Record` and `mix surfex.relate`, `confirm`, `retire`, `resolve` and
   `history`. A relation moves back to current only when someone names it in `confirm`.
+- **Suggesting relations**: `Surfex.Suggest` and `mix surfex.suggest [--accept]` propose
+  `implements` relations from the spec's existing citations, which is also how a project
+  adopts the relation log. `--accept` never confirms a dangling relation.
 
 ### Changed
 
