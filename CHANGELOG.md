@@ -121,6 +121,12 @@ trace.
   become a section and shift the ids and versions after it. Fences now follow
   CommonMark. A spec with neither form scans as before.
 
+- **Two code items sharing a key couldn't be related.** A C scanner's function and
+  constant both called `twin` had one id, so the relation log couldn't tell them apart:
+  relating either was refused with a misleading message, and status judged whichever came
+  last. Their ids now carry their kind (`twin (function)`, `twin (const)`), and status
+  raises on two records with one kind and id. Unique keys are unchanged.
+
 ## [0.3.0] — 2026-09-28
 
 The relation log. Surfex now records which versions of the spec and the code were
@@ -184,10 +190,6 @@ The first release published to GitHub. It fixes a GAP that a shared key could hi
 
 ### Fixed
 
-- **The JSON status report wrote a missing value as the string `"nil"`.** A gone end's
-  hash and location, and a conflicted relation's recorded hashes, reached tools as a hash
-  named `nil`. They are now `null`.
-
 - **A GAP could be hidden by a key two items share.** `Surfex.Coverage.verdicts/3` kept
   one verdict per key, so when two items shared a key, one item's verdict overwrote the
   other's. A GAP could then vanish from the golden and from the gate. Every item now keeps
@@ -231,10 +233,6 @@ has been added since 0.1.0.
   release guide.
 
 ### Fixed
-
-- **The JSON status report wrote a missing value as the string `"nil"`.** A gone end's
-  hash and location, and a conflicted relation's recorded hashes, reached tools as a hash
-  named `nil`. They are now `null`.
 
 - `Surfex.SourceScan.lib_sources/1` no longer counts test fixtures or the `tmp/` trees
   ExUnit leaves behind as first-party source. A `lib/` counts only when its parent has a

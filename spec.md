@@ -456,6 +456,11 @@ code, or adding text above a section, changes where something is and not what it
 
 `Surfex.Scan.code/1` makes code records from any scanner's items (§5), with the item's
 key, version (§3.3) and line range, its kind as `role` and its parent as `within`.
+The id is the item's key. When two items share a key (a C function and a constant both
+called `twin`), each id carries its kind, `twin (function)` and `twin (const)`, so each is
+a relation end of its own. `Surfex.Scan.for_item/2` finds an item's record whatever its
+id. A citation of a shared key stays ambiguous (§6.2). `Surfex.Status.derive/4` raises on
+two records with one kind and id, naming both locations: no record may shadow another.
 
 `Surfex.Scan.ExUnit` is the test scanner. It makes one record of kind `:test` per ExUnit
 `test`, read from source without compiling it. `Surfex.Scan.ExUnit.records/2` reads

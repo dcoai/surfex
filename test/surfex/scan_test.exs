@@ -148,6 +148,33 @@ defmodule Surfex.ScanTest do
              ]
     end
 
+    # #60: two items sharing a key are two relation ends.
+    test "items sharing a key get ids that carry their kind; a unique key keeps its own" do
+      items = [
+        %Item{kind: :function, name: "twin", file: "a.c", hash: "1"},
+        %Item{kind: :const, name: "twin", file: "a.h", hash: "2"},
+        %Item{kind: :function, name: "alone", file: "a.c", hash: "3"}
+      ]
+
+      scans = Scan.code(items)
+      assert Enum.map(scans, & &1.id) == ["alone", "twin (const)", "twin (function)"]
+      assert %Scan{id: "twin (const)"} = Scan.for_item(scans, Enum.at(items, 1))
+      assert %Scan{id: "alone"} = Scan.for_item(scans, Enum.at(items, 2))
+    end
+
+    test "status refuses two records with one kind and id, naming where they are" do
+      twin = %Scan{kind: :code, id: "twin", hash: "1", location: %{file: "a.c", lines: {1, 2}}}
+
+      assert_raise ArgumentError,
+                   ~r/two code records have the id "twin" \(a.c:\{1, 2\}, b.c/,
+                   fn ->
+                     Surfex.Status.derive(
+                       [twin, %{twin | location: %{file: "b.c", lines: {3, 4}}}],
+                       []
+                     )
+                   end
+    end
+
     test "the Elixir scanner's items span their clauses" do
       items = Surfex.Scanner.Elixir.items(Path.expand("../fixtures/elixir_project", __DIR__))
       by_key = Map.new(items, &{Item.key(&1), &1})

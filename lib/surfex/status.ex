@@ -104,6 +104,7 @@ defmodule Surfex.Status do
   """
   @spec derive([Scan.t()], [Entry.t()], keyword, keyword) :: t
   def derive(scans, entries, require \\ [], opts \\ []) do
+    unique!(scans)
     planned = Keyword.get(opts, :planned, :allow)
     triangle = Keyword.get(opts, :triangle, :report)
 
@@ -399,13 +400,30 @@ defmodule Surfex.Status do
   end
 
   defp item(%Scan{id: id, role: kind, within: parent, location: %{file: file}, hash: hash}) do
-    name = if parent, do: String.replace_prefix(id, parent <> ".", ""), else: id
+    key = String.replace_suffix(id, " (#{kind})", "")
+    name = if parent, do: String.replace_prefix(key, parent <> ".", ""), else: key
     %Surfex.Item{kind: kind, name: name, parent: parent, file: file, hash: hash}
   end
 
   defp stale_reason(:cited), do: :implemented
   defp stale_reason(:gap), do: :unmatched
   defp stale_reason({:expected, other}), do: {:other_class, other}
+
+  # Two records with one kind and id would be one relation end: a relation would silently
+  # be judged against whichever came last. A scanner must never produce them.
+  defp unique!(scans) do
+    scans
+    |> Enum.group_by(&{&1.kind, &1.id})
+    |> Enum.find(fn {_key, group} -> length(group) > 1 end)
+    |> case do
+      nil ->
+        :ok
+
+      {{kind, id}, group} ->
+        where = Enum.map_join(group, ", ", &"#{&1.location.file}:#{inspect(&1.location.lines)}")
+        raise ArgumentError, "two #{kind} records have the id #{inspect(id)} (#{where})"
+    end
+  end
 
   defp broken(scans) do
     for scan <- Enum.sort_by(scans, &{&1.kind, &1.id}),

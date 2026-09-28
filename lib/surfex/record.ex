@@ -332,9 +332,18 @@ defmodule Surfex.Record do
     {kind, bare} = split_kind(id)
 
     case Enum.filter(scans, &(&1.id == bare and (kind == nil or &1.kind == kind))) do
-      [scan] -> {:ok, scan}
-      [] -> {:error, "#{id} is not scanned: no spec section or code item has that id"}
-      _ -> {:error, "#{id} is scanned as more than one kind; prefix it with spec: or code:"}
+      [scan] ->
+        {:ok, scan}
+
+      [] ->
+        {:error, "#{id} is not scanned: no spec section or code item has that id"}
+
+      several ->
+        if kind == nil and length(Enum.uniq_by(several, & &1.kind)) > 1,
+          do:
+            {:error,
+             "#{id} is scanned as more than one kind; prefix it with spec:, code:, test: or class:"},
+          else: {:error, "#{id} names #{length(several)} scanned records of one kind"}
     end
   end
 
