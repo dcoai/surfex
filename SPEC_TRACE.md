@@ -6,7 +6,7 @@ A row per public module and function in `lib/`. `Cited by` names the sections of
 `spec.md` that cite it. A GAP is code the spec does not describe, and the gate fails
 on any; a citation of something that does not exist fails it too.
 
-**51 items** · cited 51 · expected-silent 0 · GAPS 0 · citations 62 · unresolved 0 · ambiguous 0
+**57 items** · cited 57 · expected-silent 0 · GAPS 0 · citations 68 · unresolved 0 · ambiguous 0
 
 ## Modules
 
@@ -19,11 +19,13 @@ on any; a citation of something that does not exist fails it too.
 | `Surfex.Gate` | `:module` | `6f319cfe` | `spec — 10.1 The gate` | `lib/surfex/gate.ex` |
 | `Surfex.Golden` | `:module` | `90f118d3` | `spec — 1.1 What Surfex is for, spec — 10.2 Project goldens, spec — 2. Surface goldens` | `lib/surfex/golden.ex` |
 | `Surfex.Goldens` | `:module` | `4adcb2b1` | `spec — 10.3 Every golden at once` | `lib/surfex/goldens.ex` |
-| `Surfex.Item` | `:module` | `21562a45` | `spec — 4. Items` | `lib/surfex/item.ex` |
+| `Surfex.Item` | `:module` | `1a5ab649` | `spec — 4. Items` | `lib/surfex/item.ex` |
 | `Surfex.Profile` | `:module` | `89077cbb` | `spec — 1.2 Policies, spec — 8. Profiles` | `lib/surfex/profile.ex` |
+| `Surfex.Scan` | `:module` | `9377ad29` | `spec — 11. Scan records` | `lib/surfex/scan.ex` |
+| `Surfex.Scan.Markdown` | `:module` | `d0231dfd` | `spec — 11. Scan records` | `lib/surfex/scan/markdown.ex` |
 | `Surfex.Scanner` | `:module` | `0305a8dd` | `spec — 5.1 The contract, spec — 9.1 Definition` | `lib/surfex/scanner.ex` |
-| `Surfex.Scanner.Elixir` | `:module` | `599bd281` | `spec — 5.2 The built-in Elixir scanner` | `lib/surfex/scanner/elixir.ex` |
-| `Surfex.SourceScan` | `:module` | `c2ad8c77` | `spec — 3. Reading source` | `lib/surfex/source_scan.ex` |
+| `Surfex.Scanner.Elixir` | `:module` | `fdfd1448` | `spec — 5.2 The built-in Elixir scanner` | `lib/surfex/scanner/elixir.ex` |
+| `Surfex.SourceScan` | `:module` | `2ac40371` | `spec — 3. Reading source` | `lib/surfex/source_scan.ex` |
 | `Surfex.Surface` | `:module` | `b2c7d0f8` | `spec — 10.2 Project goldens, spec — 10.3 Every golden at once` | `lib/surfex/surface.ex` |
 | `Surfex.Trace` | `:module` | `a1b35643` | `spec — 1.2 Policies, spec — 9. Traces` | `lib/surfex/trace.ex` |
 ## Functions
@@ -50,14 +52,18 @@ on any; a citation of something that does not exist fails it too.
 | `Surfex.Goldens.run/6` | `:function` | `98aee0d8` | `spec — 10.3 Every golden at once` | `lib/surfex/goldens.ex` |
 | `Surfex.Item.key/1` | `:function` | `6378a7aa` | `spec — 4. Items` | `lib/surfex/item.ex` |
 | `Surfex.Profile.new!/1` | `:function` | `a7ebba6b` | `spec — 8. Profiles` | `lib/surfex/profile.ex` |
-| `Surfex.Scanner.Elixir.items/1` | `:function` | `713e8dbf` | `spec — 5.2 The built-in Elixir scanner` | `lib/surfex/scanner/elixir.ex` |
-| `Surfex.Scanner.Elixir.items/2` | `:function` | `713e8dbf` | `spec — 5.2 The built-in Elixir scanner` | `lib/surfex/scanner/elixir.ex` |
+| `Surfex.Scan.Markdown.records/2` | `:function` | `afbbdb08` | `spec — 11. Scan records` | `lib/surfex/scan/markdown.ex` |
+| `Surfex.Scan.Markdown.sections/2` | `:function` | `1941c3ca` | `spec — 11. Scan records` | `lib/surfex/scan/markdown.ex` |
+| `Surfex.Scan.code/1` | `:function` | `2fd1cbe2` | `spec — 11. Scan records` | `lib/surfex/scan.ex` |
+| `Surfex.Scanner.Elixir.items/1` | `:function` | `0d4a35c1` | `spec — 5.2 The built-in Elixir scanner` | `lib/surfex/scanner/elixir.ex` |
+| `Surfex.Scanner.Elixir.items/2` | `:function` | `0d4a35c1` | `spec — 5.2 The built-in Elixir scanner` | `lib/surfex/scanner/elixir.ex` |
 | `Surfex.Scanner.Elixir.profile_defaults/1` | `:function` | `70270e6a` | `spec — 5.2 The built-in Elixir scanner` | `lib/surfex/scanner/elixir.ex` |
 | `Surfex.SourceScan.definition_hash/1` | `:function` | `8f93f153` | `spec — 3.3 Content versions` | `lib/surfex/source_scan.ex` |
 | `Surfex.SourceScan.defmodules/1` | `:function` | `a6d8ef02` | `spec — 3.2 Modules and definitions` | `lib/surfex/source_scan.ex` |
-| `Surfex.SourceScan.defs/1` | `:function` | `6e6bee57` | `spec — 3.2 Modules and definitions, spec — 3.3 Content versions` | `lib/surfex/source_scan.ex` |
+| `Surfex.SourceScan.defs/1` | `:function` | `835f175e` | `spec — 3.2 Modules and definitions, spec — 3.3 Content versions` | `lib/surfex/source_scan.ex` |
 | `Surfex.SourceScan.hidden_module?/1` | `:function` | `50cc9f12` | `spec — 3.2 Modules and definitions` | `lib/surfex/source_scan.ex` |
 | `Surfex.SourceScan.lib_sources/1` | `:function` | `32efa98a` | `spec — 3.1 Finding source` | `lib/surfex/source_scan.ex` |
+| `Surfex.SourceScan.line_range/1` | `:function` | `3b4ffe1b` | `spec — 3.2 Modules and definitions` | `lib/surfex/source_scan.ex` |
 | `Surfex.SourceScan.project_root/1` | `:function` | `a25d7754` | `spec — 3.1 Finding source` | `lib/surfex/source_scan.ex` |
 | `Surfex.Trace.analyse/3` | `:function` | `e6129055` | `spec — 9.2 Analysis` | `lib/surfex/trace.ex` |
 | `Surfex.Trace.drift/2` | `:function` | `ca0f4587` | `spec — 9.4 Drift` | `lib/surfex/trace.ex` |

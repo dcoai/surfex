@@ -13,7 +13,7 @@ defmodule Surfex.Item do
   """
 
   @enforce_keys [:kind, :name, :file, :hash]
-  defstruct [:kind, :name, :file, :hash, :value, :parent, :type, :detail, aliases: []]
+  defstruct [:kind, :name, :file, :hash, :value, :parent, :type, :detail, :lines, aliases: []]
 
   @type t :: %__MODULE__{
           kind: atom,
@@ -34,7 +34,10 @@ defmodule Surfex.Item do
           # Other names that cite this item. Several items may share one: citing it cites
           # them all, as a family (`Mod.fun` cites every arity of `fun`). Unlike two items
           # sharing a *key*, which is ambiguous, a shared alias is declared on purpose.
-          aliases: [String.t()]
+          aliases: [String.t()],
+          # First and last line in `file`, when the scanner knows them. Where the item is,
+          # for people and tools; never part of its identity or its version.
+          lines: {pos_integer, pos_integer} | nil
         }
 
   @doc """
