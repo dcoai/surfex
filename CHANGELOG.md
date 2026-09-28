@@ -29,6 +29,8 @@ release it merely follows.
 - **Suggesting relations**: `Surfex.Suggest` and `mix surfex.suggest [--accept]` propose
   `implements` relations from the spec's existing citations, which is also how a project
   adopts the relation log. `--accept` never confirms a dangling relation.
+- **A committed status golden**: `:status` (or `{:status, output}`) in `goldens:` gates
+  `RELATIONS.md`, the relation status as a reviewable record.
 
 ### Changed
 

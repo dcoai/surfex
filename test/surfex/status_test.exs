@@ -171,6 +171,19 @@ defmodule Surfex.StatusTest do
     test "with no relations, it says so" do
       assert Report.text(Status.derive(scans(), [])) =~ "(no relations)"
     end
+
+    test "the golden is the same whatever order the scans and the log's lines come in" do
+      extra = scan(:code, "M.other/0", "o")
+      first = relate("s1", "c1")
+      second = relate("s1", "c2", parents: [first.id], at: "2026-09-28T11:00:00Z")
+
+      render = fn scans, entries ->
+        Surfex.Golden.render(Report.golden(Status.derive(scans, entries)))
+      end
+
+      assert render.([extra | scans("s1", "c3")], [first, second]) ==
+               render.(Enum.reverse([extra | scans("s1", "c3")]), [second, first])
+    end
   end
 
   describe "configuration" do
