@@ -1,5 +1,6 @@
 defmodule Surfex.SuggestTest do
   use ExUnit.Case, async: true
+  @moduletag verifies: "suggest-proposes"
 
   alias Surfex.{Item, Scan, Status, Suggest}
   alias Surfex.Status.Config

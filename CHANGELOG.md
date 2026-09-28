@@ -9,6 +9,15 @@ All notable changes to Surfex are recorded here, following
 `mix.exs` reads `0.4.1-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
 release it merely follows.
 
+### Changed
+
+- **Surfex closes its own spec/test/code triangle, and gates it** (`triangle: :fail`).
+  Every section that code implements now states its claims as test hints (46 in all),
+  each verified by tagged tests that exercise the implementing code; new tests cover the
+  claims that were unchecked (the gate, item keys, the scanner contract, the log's
+  vocabulary, the config readers, and more). Relations that existed only because a section
+  mentioned code described elsewhere were retired.
+
 ### Fixed
 
 - **The triangle reported false gaps.** A test's `calls` now include every module it calls

@@ -52,6 +52,11 @@ How precisely Surfex can relate a spec depends on how the spec is written.
 `Surfex.Golden` is the one renderer. `Surfex.Golden.render/1` takes a spec (a map) and
 returns the golden's text.
 
+```test golden-renders
+a golden spec renders to markdown: a header block naming what regenerates it, the prose,
+the stats lines, and a table per group of typed cells; one spec always renders one text
+```
+
 ### 2.1 Shape {#golden-shape}
 
 1. **Header block**, three contiguous lines: `# <name>`, the one-line purpose, and the
@@ -64,6 +69,11 @@ returns the golden's text.
 3. **Tables.** The first column is the catalogued item and the last is conventionally
    `Locus`. A golden is either one flat table or `## <heading>` groups, each with its
    own table and optionally its own columns.
+
+```test golden-stats
+a stats line reads **N noun** followed by each label and count, and a header block
+names the golden, its purpose, the task that regenerates it and its gate
+```
 
 ### 2.2 Cells are typed {#golden-cells}
 
@@ -86,9 +96,19 @@ sorted by the spec's `:sort` function, or by default by the first column's natur
 (`Surfex.Golden.natural_key/1`: alternating text and integer chunks, so `Foo.9` sorts
 before `Foo.10`). Two specs differing only in those orderings render identical bytes.
 
+```test golden-order
+rows come out in natural-key order whatever order they went in, and a golden never
+carries a date, a time or a commit
+```
+
 ## 3. Reading source {#reading-source}
 
 `Surfex.SourceScan` holds the primitives every scanner of Elixir source shares.
+
+```test source-not-compiled
+source is read as text and parsed, never compiled: code no compiler would accept is
+still read
+```
 
 ### 3.1 Finding source {#finding-source}
 
@@ -110,6 +130,11 @@ before `Foo.10`). Two specs differing only in those orderings render identical b
   A looser rule would let the scratch trees a test run leaves behind into a golden,
   which would then drift on that machine and never in CI.
 
+```test finding-lib-sources
+a project's root is found from a marker file; lib sources are the .ex files under a lib/
+whose parent has a mix.exs, skipping deps, _build, test, tmp and hidden directories
+```
+
 ### 3.2 Modules and definitions {#definitions}
 
 - `Surfex.SourceScan.defmodules/1` returns every `defmodule` node in a quoted AST, in
@@ -127,6 +152,11 @@ before `Foo.10`). Two specs differing only in those orderings render identical b
     visibility
   - a default argument declares every arity it generates
   - each function carries one hash over what it depends on (§3.3)
+
+```test public-definitions
+a module's public definitions are listed with name, arity and kind; a default argument
+declares each arity; @doc false and implicit @impl callbacks are hidden
+```
 
 ### 3.3 Content versions {#content-versions}
 
@@ -166,6 +196,12 @@ and nested modules are left out: each public function has its own version, so a 
 changes that function's version and not its module's, and a relation to the module
 doesn't dangle for it.
 
+```test structure-versions
+a definition's version changes with its structure and not with its position or layout;
+a function's version follows its private helpers and the attributes they read; a
+module's follows its public surface only
+```
+
 ## 4. Items {#items}
 
 `Surfex.Item` is one thing a scanner found: the unit a citation resolves to, and the
@@ -187,6 +223,10 @@ source of a code record (§11).
 The hash is never part of the key, so an edit changes a row's version and not its
 identity.
 
+```test item-key
+an item's key is its name, or parent.name when it has a parent
+```
+
 ## 5. Scanners {#scanners}
 
 ### 5.1 The contract {#scanner-contract}
@@ -195,6 +235,11 @@ identity.
 item under `root`. A scanner reads source and never compiles or loads it. The contract
 is language-agnostic: a project whose code is in C implements it for C, and the rest is
 unchanged.
+
+```test scanner-behaviour
+a project scanner implements Surfex.Scanner, and a module that doesn't is refused,
+named
+```
 
 ### 5.2 The built-in Elixir scanner {#elixir-scanner}
 
@@ -221,11 +266,21 @@ project's citations starts from, for a root namespace:
 - a `normalise` rule that drops a call's arguments, so `MyApp.Cart.add(cart, item)` names
   `MyApp.Cart.add`
 
+```test elixir-scanner-items
+the Elixir scanner reports every public module and definition under the paths it is
+given, with nested modules named in full, and profile defaults for a namespace
+```
+
 ## 6. Citations {#citations}
 
 `Surfex.Cite` finds a specification's citations of the code and resolves them.
 `Surfex.Cite.citations/3` returns every citation in the profile's sources, sorted by
 file, line and span.
+
+```test citation-status-kinds
+each citation ends in exactly one status: resolved, ambiguous, unresolved, external or
+a documented absence
+```
 
 ### 6.1 No new notation {#citation-notation}
 
@@ -259,6 +314,12 @@ Every citation has exactly one status:
 - **Fenced code blocks**: shape-matching tokens are credited to `(code block)`. Inside a
   fence nothing else is read, so a `# comment` in a code block is not a heading.
 
+```test citation-sections
+a citation is credited to the nearest heading above it (or the defmodule in an .ex
+source); inside a fence nothing but shaped tokens is read; sources are globbed, excluded
+and sorted
+```
+
 ### 6.4 Resolution {#citation-resolution}
 
 A span is normalised (trimmed, then the profile's rewrites in order) and then resolved
@@ -281,6 +342,11 @@ citing `MyApp.Cart.add` means the function, whatever its arity.
 A member is reached through its parent (`struct.field`), a subject, or a member path,
 **never by its bare name**: a bare `offset` naming three structs' fields is not a claim
 about any one of them.
+
+```test citation-resolves
+a span resolves through absences, externals, subject members, item keys, aliases and
+member paths, in that order; a bare member name never resolves on its own
+```
 
 ### 6.5 Member paths {#member-paths}
 
@@ -319,6 +385,12 @@ gives.
 **A verdict belongs to an item, not to a key.** Two items may share a key (a citation of
 it is then ambiguous), and each is judged on its own.
 
+```test coverage-verdict
+an item is cited, excused by the first rule that matches, or a gap; a never-excused
+kind is a gap whatever the rules say; the rules can come from a profile or its coverage
+map
+```
+
 ## 8. Profiles {#profiles}
 
 `Surfex.Profile` is everything project-specific about reading a spec's citations and
@@ -348,6 +420,11 @@ rule naming an undeclared class, and a rule that would excuse a never-excused ki
 A project writes these keys in `.surfex.exs`, alongside the relation log's own (§13.2).
 For the built-in Elixir scanner, `shape`, `token` and `normalise` default from the
 project's namespace (§5.2).
+
+```test profile-validated
+a profile rejects an unknown key, a missing required key, a wrong type, and a rule that
+names an unknown class or excuses a never-excused kind
+```
 
 ## 9. The v0.2 trace, removed {#traces}
 
@@ -389,11 +466,21 @@ A `.surfex.exs` that still has a trace-only key (`output`, `purpose`, `task`, `g
 - `Surfex.Gate.config!/1` evaluates a `.surfex.exs`-style data file, which must return a
   keyword list.
 
+```test gate-drift
+the gate writes a golden or checks it: a missing file and a drift fail, naming the rows
+that changed, appeared or went, or that only the prose changed
+```
+
 ### 10.2 Project goldens {#project-goldens}
 
 `Surfex.Surface` is the behaviour for a golden only the project can scan for (the
 endpoints a router declares, the actions a model defines): `spec(opts)` returns a
 `Surfex.Golden` spec, which is rendered and gated like any golden.
+
+```test project-golden
+a module implementing Surfex.Surface is rendered and gated like any golden, and a module
+that doesn't is named
+```
 
 ### 10.3 Every golden at once {#all-goldens}
 
@@ -415,6 +502,11 @@ With no key, the list is `[:status]`.
   drift in entry order. A module that does not implement `Surfex.Surface` raises, naming
   it.
 
+```test goldens-entries
+goldens: defaults to [:status]; each entry is validated, :trace is refused with its
+reason, and every golden's drift is reported in one run
+```
+
 ### 10.4 The task {#golden-tasks}
 
 `Mix.Tasks.Surfex.Goldens` is `mix surfex.goldens`:
@@ -428,7 +520,15 @@ With no key, the list is `[:status]`.
 - Every failure of every golden is reported in one run.
 
 Surfex gates itself this way: CI runs `mix surfex.goldens`, which gates `RELATIONS.md`,
-and `mix surfex.status --verify`, which checks the relation log itself (§13.3).
+and, after its tests, `mix surfex.status --verify --evidence`, which checks the relation
+log itself (§13.3, §17). Surfex's own triangle is closed and gated (`triangle: :fail`):
+every section something implements states its claims as test hints, each verified by a
+tagged test that exercises the implementing code.
+
+```test goldens-task
+mix surfex.goldens checks every golden, and --write regenerates them all, even when
+some have drifted
+```
 
 ## 11. Scan records {#scan-records}
 
@@ -595,6 +695,11 @@ reads, a setup that applies to it, or its comprehension's cases change;
 not when a variable is renamed, or a setup it doesn't get changes
 ```
 
+```test scan-records-pure
+scanners produce scan records only, each a pure function of the source: spec units,
+code items, tests and classes
+```
+
 ## 12. The relation log {#relation-log}
 
 The relation log records judgements: that two things relate, at two versions. It is the
@@ -637,6 +742,11 @@ an entry whose line is edited no longer decodes under its id,
 and verifying the log reports it
 ```
 
+```test entry-canonical
+an entry's canonical line is JSON with fixed keys, its id a hash of that line; undirected
+ends are sorted; the vocabulary of ops, types and kinds is fixed
+```
+
 ### 12.2 The log {#log-segments}
 
 `Surfex.Log` keeps the entries in `.surfex/` under the project root
@@ -667,12 +777,22 @@ two branches that each append to the log merge without a conflict,
 and the merged log loads to one state
 ```
 
+```test log-append-only
+the log only appends: segments load together with duplicates dropped, a break starts a
+new segment, and verifying finds an edited line, a removed parent or a truncation
+```
+
 ## 13. Relation status {#status}
 
 `Surfex.Status` derives the state of every relation from the scans (§11) and the log
 (§12). `Surfex.Status.derive/2`, `Surfex.Status.derive/3` (with a `require:` policy) and
 `Surfex.Status.derive/4` (with options: `planned: :allow | :fail`, `triangle: :report |
 :fail`) are pure: the same scans and log always give the same status.
+
+```test status-pure
+the status is derived from the scans and the log alone: the same inputs always give the
+same status
+```
 
 ### 13.1 States {#status-states}
 
@@ -762,6 +882,16 @@ no verifying test, a verifying test that calls none of its code, and implementin
 code no verifying test calls are each reported, naming the test or the code
 ```
 
+```test status-failing
+the check fails on a dangling, orphaned or conflicted relation, an unmet id, a broken
+declaration or citation, a stale excuse, or an unproven confirmation, and on nothing
+else by default
+```
+
+```test units-by-role
+the spec units scanned are counted by role: sections, blocks and test hints
+```
+
 ### 13.2 Configuration {#status-config}
 
 `Surfex.Status.Config` reads `.surfex.exs`. It holds the profile keys (§8) and the
@@ -789,6 +919,11 @@ log's own: `scanner`, `scanner_opts`, `namespace`, `goldens` (§10.3), `require`
   defaults to the project's app name.
 - `Surfex.Status.Config.require!/1` validates the `require:` policy against the known
   kinds, spec roles and types, and raises naming what's wrong.
+
+```test status-config-read
+.surfex.exs is read and validated: unknown keys and keys of the removed trace are refused,
+the code is scanned once, and citations are read under the config's profile
+```
 
 ### 13.3 Reports and the check {#status-reports}
 
@@ -824,6 +959,11 @@ log's own: `scanner`, `scanner_opts`, `namespace`, `goldens` (§10.3), `require`
   pipeline allows plans is the caller's decision, so it is a flag, not a setting
 - it fails when the status is failing, or the log doesn't verify
 - it compiles the project first only when `.surfex.exs` names a project scanner
+
+```test status-report-forms
+the status reads as text for people, JSON for tools and a golden for review, the golden
+with no hashes or times
+```
 
 ## 14. Recording {#recording}
 
@@ -881,6 +1021,11 @@ a move records the recorded versions under the new id: if the text changed as it
 moved, or the other end changed, the moved relation dangles
 ```
 
+```test recording-by-name
+relate, confirm, retire, resolve, move and history each record or read entries by name,
+and never edit or remove one
+```
+
 ## 15. Suggesting relations {#suggesting}
 
 `Surfex.Suggest` proposes relations from what the spec already says. Its candidate
@@ -928,6 +1073,11 @@ so accepting suggestions never confirms a dangling relation
 ```test suggest-moves
 an anchor added to a related section is suggested as a move, and its relations
 aren't suggested again; two new ids at one version are not suggested
+```
+
+```test suggest-proposes
+suggest proposes relations the spec and tests already imply and records them only on
+--accept
 ```
 
 ## 16. The specification guide {#spec-guide}
@@ -1027,4 +1177,9 @@ where the work is done, and CI only checks them.
 a run where the test passes against the code as confirmed bears the claims out; a test
 that didn't run, failed, or ran against other code disproves them and fails the check;
 without evidence nothing is checked, and relations confirmed by hand never are
+```
+
+```test evidence-recorded
+a test run's results are recorded per scanned test at its versions, under _build, and
+read back oldest first
 ```

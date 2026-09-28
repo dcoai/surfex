@@ -1,5 +1,6 @@
 defmodule Surfex.ScanExUnitTest do
   use ExUnit.Case, async: true
+  @moduletag verifies: "scan-records-pure"
 
   alias Surfex.Scan
   alias Surfex.Scan.ExUnit, as: Tests

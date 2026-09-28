@@ -51,6 +51,8 @@ defmodule Surfex.CiteTest do
   defp one(cites, span), do: Enum.filter(cites, &(&1.span == span))
 
   describe "statuses" do
+    @describetag verifies: "citation-status-kinds"
+
     test "each of the five, from one spec", %{tmp_dir: root} do
       write(root, "spec/01.md", """
       # 1. Sending
@@ -74,6 +76,8 @@ defmodule Surfex.CiteTest do
   end
 
   describe "sections" do
+    @describetag verifies: "citation-sections"
+
     test "credited to the nearest heading, or the preamble", %{tmp_dir: root} do
       write(root, "spec/01.md", "`app_send`\n# 1. Intro\n## 1.2 Detail\n`app_recv`\n")
       cites = cite(root)
@@ -100,6 +104,15 @@ defmodule Surfex.CiteTest do
   end
 
   describe "resolution" do
+    @describetag verifies: "citation-resolves"
+
+    test "index/2 keys every item, and makes files citable when asked" do
+      index = Cite.index(items(), profile(file_targets: [:item_files]))
+      assert [%{name: "app_send"}] = index["app_send"]
+      assert length(index["app_twice"]) == 2
+      assert [%{kind: :file}] = index["lib/x.ex"]
+    end
+
     test "normalisation applies before lookup", %{tmp_dir: root} do
       write(root, "spec/01.md", "`struct app_hdr` and `app_send()`\n")
       cites = cite(root)
@@ -210,6 +223,7 @@ defmodule Surfex.CiteTest do
     end
   end
 
+  @tag verifies: "citation-sections"
   test "sources: globs, exclusions, sorted, de-duplicated", %{tmp_dir: root} do
     for p <- ~w(spec/b.md spec/a.md spec/vendored/c.md models/m.ex other/d.md),
         do: write(root, p, "")

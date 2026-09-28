@@ -10,6 +10,7 @@ defmodule Surfex.SourceScanTest do
   """
 
   use ExUnit.Case, async: true
+  @moduletag verifies: "source-not-compiled"
 
   alias Surfex.SourceScan
 
@@ -21,6 +22,8 @@ defmodule Surfex.SourceScanTest do
   """
 
   describe "definition_hash/1 is a function of structure, not position" do
+    @describetag verifies: "structure-versions"
+
     # The claim that lets a golden's Locus be a bare path instead of `path.ex:line`.
     test "a blank line above the definition does not change it" do
       assert SourceScan.definition_hash("\n\n" <> @definition) ==
@@ -54,6 +57,8 @@ defmodule Surfex.SourceScanTest do
   end
 
   describe "definition_hash/1's shape" do
+    @describetag verifies: "structure-versions"
+
     test "is 8 lowercase hex characters" do
       hash = SourceScan.definition_hash(@definition)
 
@@ -74,6 +79,8 @@ defmodule Surfex.SourceScanTest do
   end
 
   describe "defmodules/1" do
+    @describetag verifies: "public-definitions"
+
     test "returns every module in source order, nested ones included" do
       ast =
         Code.string_to_quoted!("""
@@ -102,6 +109,8 @@ defmodule Surfex.SourceScanTest do
   # Given a starting directory, never by changing the working directory: that belongs to
   # the whole VM, and this module runs async (#27).
   describe "project_root/2" do
+    @describetag verifies: "finding-lib-sources"
+
     setup do
       root = Path.join(System.tmp_dir!(), "surfex-root-#{System.unique_integer([:positive])}")
       File.mkdir_p!(Path.join(root, "nested/deeper"))
@@ -127,6 +136,8 @@ defmodule Surfex.SourceScanTest do
   end
 
   describe "lib_sources/1" do
+    @describetag verifies: "finding-lib-sources"
+
     setup do
       root = Path.join(System.tmp_dir!(), "surfex-src-#{System.unique_integer([:positive])}")
 
@@ -175,6 +186,8 @@ defmodule Surfex.SourceScanTest do
   end
 
   describe "defs/1" do
+    @describetag verifies: "public-definitions"
+
     defp defs(source) do
       [mod | _] = source |> Code.string_to_quoted!() |> SourceScan.defmodules()
       SourceScan.defs(mod)
@@ -279,6 +292,8 @@ defmodule Surfex.SourceScanTest do
 
   # #20: a function's hash covers what it depends on, not only its own clauses.
   describe "defs/1: what a function's hash depends on" do
+    @describetag verifies: "structure-versions"
+
     @base ~S"""
     defmodule M do
       @rate 5
@@ -351,6 +366,8 @@ defmodule Surfex.SourceScanTest do
   # #33: a module's version is its public surface, so its relations don't dangle on every
   # function edit.
   describe "module_hash/1" do
+    @describetag verifies: "structure-versions"
+
     @mod ~S"""
     defmodule M do
       @moduledoc "doc"

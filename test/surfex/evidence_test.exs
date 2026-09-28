@@ -1,5 +1,6 @@
 defmodule Surfex.EvidenceTest do
   use ExUnit.Case, async: true
+  @moduletag verifies: "evidence-recorded"
 
   alias Surfex.Evidence
 
@@ -100,8 +101,7 @@ defmodule Surfex.EvidenceTest do
       end
       """)
 
-      {:ok, pid} = GenServer.start_link(Surfex.ExUnitFormatter, surfex_root: root)
-      %{pid: pid, cart_test: Path.join(root, "test/cart_test.exs")}
+      %{cart_test: Path.join(root, "test/cart_test.exs")}
     end
 
     defp finished(pid, file, line, state),
@@ -118,7 +118,8 @@ defmodule Surfex.EvidenceTest do
         )
 
     test "records each test's result at its version, with the versions of what it calls",
-         %{pid: pid, cart_test: file, tmp_dir: root} do
+         %{cart_test: file, tmp_dir: root} do
+      {:ok, pid} = GenServer.start_link(Surfex.ExUnitFormatter, surfex_root: root)
       GenServer.cast(pid, {:suite_started, []})
       finished(pid, file, 4, nil)
       finished(pid, file, 9, nil)
@@ -138,6 +139,23 @@ defmodule Surfex.EvidenceTest do
       # One case of the generated family failed: the family failed.
       assert %{test: "MyApp.CartTest: case #{"\#{n}"}", result: :failed} = generated
       assert generated.run == totals.run
+    end
+  end
+
+  test "latest/3, claimed?/1 and note/0; require_red! reads the policy" do
+    evidence = [record(:failed, "c1", 1), record(:passed, "c2", 2)]
+    assert %{result: :passed} = Evidence.latest(evidence, "T: a", "t1")
+    assert Evidence.latest(evidence, "T: a", "other") == nil
+
+    assert Evidence.claimed?(%{note: Evidence.note() <> ": T: a@t1 failed at …"})
+    refute Evidence.claimed?(%{note: "reviewed by hand"})
+    refute Evidence.claimed?(%{note: nil})
+
+    assert Surfex.Status.Config.require_red!([]) == false
+    assert Surfex.Status.Config.require_red!(require_red: true) == true
+
+    assert_raise ArgumentError, ~r/require_red: must be true or false/, fn ->
+      Surfex.Status.Config.require_red!(require_red: :yes)
     end
   end
 end

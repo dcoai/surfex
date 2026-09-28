@@ -78,6 +78,8 @@ defmodule Surfex.GoldensTest do
   end
 
   describe "mix surfex.goldens" do
+    @describetag verifies: "goldens-task"
+
     test "--write writes every golden, and a check then passes", %{root: root} do
       task(root, ["--write"])
       assert File.read!(Path.join(root, "RELATIONS.md")) =~ "| `code MyApp.Cart` |"
@@ -140,6 +142,8 @@ defmodule Surfex.GoldensTest do
   end
 
   describe "the :status golden" do
+    @describetag verifies: "goldens-task"
+
     setup %{root: root} do
       File.write!(Path.join(root, ".surfex.exs"), ~s([goldens: [:status], sources: ["spec.md"]]))
       :ok
@@ -175,7 +179,22 @@ defmodule Surfex.GoldensTest do
     end
   end
 
+  describe "project goldens" do
+    @describetag verifies: ["project-golden", "goldens-entries"]
+
+    test "a Surface is a spec/1 callback, rendered and gated by run/6", %{tmp_dir: root} do
+      assert Surfex.Surface.behaviour_info(:callbacks) == [spec: 1]
+
+      entry = {"API.md", Surfex.GoldensTest.Api, routes: [{"/carts", "CartController.index"}]}
+      assert Goldens.run([entry], [], root, [], "mix surfex.goldens", true) == []
+      assert Goldens.run([entry], [], root, [], "mix surfex.goldens", false) == []
+      assert File.read!(Path.join(root, "API.md")) =~ "| `/carts` |"
+    end
+  end
+
   describe "entries!/1" do
+    @describetag verifies: "goldens-entries"
+
     test "defaults to the relation status alone" do
       assert Goldens.entries!(sources: ["spec.md"]) == [:status]
     end
@@ -200,6 +219,8 @@ defmodule Surfex.GoldensTest do
   end
 
   describe "needs_compile?/2" do
+    @describetag verifies: "goldens-entries"
+
     test "only project code needs a compile" do
       refute Goldens.needs_compile?([:status], [])
       refute Goldens.needs_compile?([:status], scanner: :elixir)
