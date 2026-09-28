@@ -31,6 +31,14 @@ defmodule Surfex.Status.Report do
         &(&1.state == :conflicted)
       ),
       section("Impacted (an end depends on something not current)", status, & &1.impacted),
+      section("Planned (an end doesn't exist yet)", status, &(&1.state == :planned)),
+      items(
+        "Unimplemented (every implements relation is planned)",
+        status.unimplemented,
+        fn scan ->
+          "#{scan.kind} #{scan.id}#{at(scan)}"
+        end
+      ),
       items("New (in no relation)", status.new, fn scan ->
         "#{scan.kind} #{scan.id}#{at(scan)}"
       end),
@@ -63,6 +71,7 @@ defmodule Surfex.Status.Report do
         end),
       "relations" => Enum.map(status.relations, &relation_json(&1, status)),
       "new" => Enum.map(status.new, &scan_json/1),
+      "unimplemented" => Enum.map(status.unimplemented, &scan_json/1),
       "unmet" =>
         Enum.map(status.unmet, fn %{scan: scan, requires: requires} ->
           Map.put(scan_json(scan), "requires", Enum.map(requires, &Atom.to_string/1))
@@ -105,7 +114,7 @@ defmodule Surfex.Status.Report do
       hardness: :hard,
       prose:
         "A row per relation. **dangling**: an end changed since it was confirmed (`mix surfex.confirm`). " <>
-          "**orphaned**: an end is gone. **conflicted**: recorded on two branches (`mix surfex.resolve`). " <>
+          "**orphaned**: an end is gone. **planned**: an end doesn't exist yet. **conflicted**: recorded on two branches (`mix surfex.resolve`). " <>
           "For `depends_on`, `refines` and `tests` the first end depends on, refines or tests the " <>
           "other; the other types' ends are in sorted order. `mix surfex.status` is the check; " <>
           "this is the record.",
@@ -116,6 +125,8 @@ defmodule Surfex.Status.Report do
           {"orphaned", Map.get(counts, :orphaned, 0)},
           {"conflicted", Map.get(counts, :conflicted, 0)},
           {"retired", Map.get(counts, :retired, 0)},
+          {"planned", Map.get(counts, :planned, 0)},
+          {"unimplemented", length(status.unimplemented)},
           {"new", length(status.new)},
           {"unmet", length(status.unmet)}
         ])
@@ -123,6 +134,12 @@ defmodule Surfex.Status.Report do
       columns: ["End", "Other end", "State", "Changed"],
       groups:
         relation_groups ++
+          id_group.(
+            "unimplemented",
+            ["Item"],
+            status.unimplemented,
+            &%{"Item" => {:code, "#{&1.kind} #{&1.id}"}}
+          ) ++
           id_group.(
             "new",
             ["Item"],
@@ -160,10 +177,12 @@ defmodule Surfex.Status.Report do
       for r <- status.relations, pick.(r) do
         {type, a, b} = r.relation
 
+        label = if r.state == :planned, do: "planned", else: "changed"
+
         changed =
           if r.changed == [],
             do: "",
-            else: " (changed: #{Enum.map_join(r.changed, ", ", &describe(&1, status))})"
+            else: " (#{label}: #{Enum.map_join(r.changed, ", ", &describe(&1, status))})"
 
         tips =
           if r.state == :conflicted,
@@ -216,7 +235,9 @@ defmodule Surfex.Status.Report do
             "id" => id,
             "recorded" => Map.get(recorded, key),
             "now" => scan && scan.hash,
-            "changed" => key in r.changed,
+            # A planned relation's `changed` names the ends still waiting to exist.
+            "changed" => r.state != :planned and key in r.changed,
+            "planned" => r.state == :planned and key in r.changed,
             "location" => scan && location_json(scan.location)
           }
         end),

@@ -52,7 +52,9 @@ defmodule Surfex.WalkthroughTest do
   end
 
   defp read_status do
-    json = drain() |> Enum.find(&String.starts_with?(&1, "{")) |> :json.decode()
+    {json, :ok, _} =
+      drain() |> Enum.find(&String.starts_with?(&1, "{")) |> :json.decode(:ok, %{null: nil})
+
     [relation] = json["relations"]
     relation
   end
@@ -144,5 +146,60 @@ defmodule Surfex.WalkthroughTest do
     task(root, Mix.Tasks.Surfex.Log, ["--verify"])
     assert [text] = drain()
     assert text =~ "relation log verified: 5 entries"
+  end
+
+  # #36: the spec is written first, the relation planned, and the code follows.
+  test "plan → planned → write the code → dangling → confirm", %{root: root} do
+    planned = "MyApp.Cart.discount/1"
+    task(root, Mix.Tasks.Surfex.Relate, ["--planned", @section, planned, "--type", "implements"])
+    assert Enum.any?(drain(), &(&1 =~ "code #{planned}@planned"))
+    commit(root, "plan")
+
+    # Planned passes the everyday check, and fails the everything-built one.
+    assert %{"state" => "planned", "ends" => ends} = status(root)
+    assert %{"planned" => true, "recorded" => nil} = Enum.find(ends, &(&1["id"] == planned))
+
+    assert_raise Mix.Error, fn ->
+      task(root, Mix.Tasks.Surfex.Status, ["--no-planned"])
+    end
+
+    drain()
+
+    # The code is written: the relation dangles on it until someone confirms it.
+    path = Path.join(root, "lib/my_app/cart.ex")
+
+    File.write!(
+      path,
+      String.replace(
+        File.read!(path),
+        "  def total,",
+        "  def discount(cart), do: cart\n\n  def total,"
+      )
+    )
+
+    commit(root, "write discount/1")
+    assert %{"state" => "dangling", "ends" => ends} = failing_status(root)
+    assert %{"changed" => true, "planned" => false} = Enum.find(ends, &(&1["id"] == planned))
+
+    task(root, Mix.Tasks.Surfex.Confirm, [planned])
+    commit(root, "confirm")
+    assert %{"state" => "current"} = status(root)
+    task(root, Mix.Tasks.Surfex.Status, ["--no-planned"])
+  end
+
+  test "a planned id that couldn't be the project's is refused", %{root: root} do
+    for id <- ["MyAp.Cart.discount/1", "other.md#Totals"] do
+      error =
+        assert_raise Mix.Error, fn ->
+          task(root, Mix.Tasks.Surfex.Relate, ["--planned", @function, id, "--type", "implements"])
+        end
+
+      assert error.message =~ "doesn't look like"
+    end
+
+    # --planned is relate's alone.
+    assert_raise OptionParser.ParseError, fn ->
+      task(root, Mix.Tasks.Surfex.Confirm, ["--planned", @function])
+    end
   end
 end

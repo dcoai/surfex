@@ -15,6 +15,16 @@ release it merely follows.
   precisely (section sizing, stable headings, naming the code, checkable claims, examples
   and invariants, test-first work, working with an LLM), with a worked example that
   Surfex's tests run.
+- **Planned relations.** `mix surfex.relate --planned` (`Surfex.Record.plan/7`) relates a
+  section to code that doesn't exist yet, or the other way round. The missing end is
+  recorded without a hash. The relation is **planned** until the id is scanned, then
+  dangling until someone confirms it, so spec-first and test-first work can record
+  intent before the code. A planned relation meets a `require:` policy. A section whose
+  only `implements` relations are planned is reported as **unimplemented**.
+  `mix surfex.status --no-planned` (`Surfex.Status.derive/4` with `planned: :fail`)
+  also fails on anything planned and not built, for a release's check. A plausibility
+  check refuses a planned id the project couldn't have, so a typo doesn't become a
+  plan.
 
 ### Fixed
 

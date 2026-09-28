@@ -536,7 +536,7 @@ only state surfex keeps. Scanners never read or write it (§11).
 | `parents` | the entry ids it follows for the same relation; two means it resolves a fork |
 | `op` | `relate` or `retire` (`Surfex.Log.Entry.ops/0`) |
 | `type` | `implements`, `refines`, `depends_on`, `tests` or `excuses` (`Surfex.Log.Entry.types/0`) |
-| `ends` | two `{kind, id, hash}`, of the kinds `Surfex.Log.Entry.kinds/0` lists |
+| `ends` | two `{kind, id, hash}`, of the kinds `Surfex.Log.Entry.kinds/0` lists. A `null` hash is a **planned** end: an id that didn't exist when the relation was recorded (§14). At most one end is planned. |
 | `by` | who recorded it |
 | `note` | why, optionally |
 
@@ -584,8 +584,9 @@ answered from the log alone.
 ## 13. Relation status
 
 `Surfex.Status` derives the state of every relation from the scans (§11) and the log
-(§12). `Surfex.Status.derive/2` and `Surfex.Status.derive/3` (with a `require:` policy)
-are pure: the same scans and log always give the same status.
+(§12). `Surfex.Status.derive/2`, `Surfex.Status.derive/3` (with a `require:` policy) and
+`Surfex.Status.derive/4` (with options: `planned: :allow | :fail`) are pure: the same
+scans and log always give the same status.
 
 ### 13.1 States
 
@@ -596,7 +597,8 @@ other entry of it names as a parent (`Surfex.Status.tips/2`).
 |---|---|
 | **conflicted** | more than one tip: entries recorded without seeing each other (sharing a parent, or both with none) |
 | **retired** | the tip retires the relation |
-| **orphaned** | an end's id is no longer scanned (removed or renamed) |
+| **orphaned** | an end recorded at a hash is no longer scanned (removed or renamed) |
+| **planned** | an end was recorded without a hash, before it existed, and still isn't scanned. Once it is scanned, the relation is dangling on that end until someone confirms it. |
 | **dangling** | both ids are scanned, but at least one is at a different hash than the tip recorded; the report names which ends changed |
 | **current** | both ends are at the hashes the tip recorded |
 
@@ -605,11 +607,17 @@ other entry of it names as a parent (`Surfex.Status.tips/2`).
   re-confirming everything downstream of every change would train people to confirm
   without reading.
 - **New:** a scanned id in no relation at all.
+- **Unimplemented:** a spec id whose every non-retired `implements` relation is planned:
+  meant to be built, and not built yet.
 - **Unmet:** a scanned id that the `require:` policy (`[kind: [type, …]]`) says must take
-  part in a non-retired relation of one of those types, and doesn't.
+  part in a non-retired relation of one of those types, and doesn't. A planned relation
+  meets it: the intent is on record.
 
 `Surfex.Status.failing?/1` is true when any relation is dangling, orphaned or conflicted,
-or any id is unmet. New, retired and impacted don't fail on their own.
+or any id is unmet. New, retired, impacted, planned and unimplemented don't fail on their
+own. A status derived with `planned: :fail` (`Surfex.Status.derive/4`) fails on any
+planned relation too: the check that everything planned has been built, such as a
+release's.
 `Surfex.Status.summary/1` counts relations per type and state.
 
 ### 13.2 Configuration
@@ -625,22 +633,27 @@ or any id is unmet. New, retired and impacted don't fail on their own.
 
 `Surfex.Status.Report` presents a status:
 - `Surfex.Status.Report.text/1`: the verdict, the counts per type, then each dangling,
-  orphaned, conflicted and impacted relation, and the new and unmet ids, with locations.
+  orphaned, conflicted, impacted and planned relation, and the unimplemented, new and
+  unmet ids, with locations.
 - `Surfex.Status.Report.golden/2` (`Surfex.Status.Report.golden/1` writes `RELATIONS.md`):
   the status as a golden to commit. It has a table per relation type (end, other end,
-  state, the ends that changed), then the new and unmet ids. It holds no hashes and no times, so it changes when a relation's state changes,
+  state, the ends that changed or are planned), then the unimplemented, new and unmet
+  ids. It holds no hashes and no times, so it changes when a relation's state changes,
   not on every confirmation. It's a pure function of the scans and the log, so a merge
   conflict in it is resolved by regenerating.
 - `Surfex.Status.Report.json/1`: the work list for tools and agents. For each relation,
   its type, state and impact, and per end the recorded hash, the current hash, whether
-  it changed, and its location. Plus the new and unmet ids. A value that doesn't exist
-  (a gone end's hash and location, or a conflicted relation's recorded hashes, since it
-  has no one tip) is JSON `null`.
+  it changed, whether it is planned, and its location. Plus the unimplemented, new and
+  unmet ids. A value that doesn't exist (a planned end's recorded hash, a gone end's
+  hash and location, or a conflicted relation's recorded hashes, since it has no one
+  tip) is JSON `null`.
 
 `Mix.Tasks.Surfex.Status` is `mix surfex.status`:
 - `--format text|json` (text by default)
 - `--verify` verifies the log (§12.2) **before** loading it, so a tampered log gets its
   report, not the first decode error
+- `--no-planned` fails on any planned relation as well (`planned: :fail`). Which
+  pipeline allows plans is the caller's decision, so it is a flag, not a setting
 - it fails when the status is failing, or the log doesn't verify
 - it compiles the project first only when `.surfex.exs` names a project scanner
 
@@ -660,6 +673,7 @@ only), and when.
 | Function | Records |
 |---|---|
 | `Surfex.Record.relate/6` | a relation of a type between two ids at their current hashes, from → to for a directed type, superseding the relation's tips |
+| `Surfex.Record.plan/7` | a **planned** relation: one end is scanned and recorded at its hash, the other doesn't exist yet and is recorded without one. Its kind is its `spec:`/`code:` prefix, else `spec` when it has a `#`, else `code`. A plausibility check refuses an id the project couldn't have, so a typo doesn't become a permanent plan. `mix surfex.relate --planned` asks whether a spec id is in a file the scanner reads, and whether a code id has the scanner's shape (for Elixir, a name under one of the project's namespaces). Both ends scanned, or neither, is an error. |
 | `Surfex.Record.confirm/4` | for every **dangling** relation touching one of the named ids, the relation again at the current hashes, superseding its tip. Only named ids, and an id with nothing dangling is an error, never a silent no-op. Orphaned and conflicted relations aren't confirmed: they need re-pointing or resolving. |
 | `Surfex.Record.retire/6` | that a relation no longer applies, naming every tip as a parent, with the ends as the tip recorded them. An end need not still be scanned: this is how an orphaned relation is put to rest. |
 | `Surfex.Record.resolve/7` | the chosen tip of a **conflicted** relation, recorded again with every tip as a parent. If the scans have moved since, the relation is then dangling, and confirming it is next. |
@@ -668,7 +682,7 @@ only), and when.
 alone.
 
 The tasks:
-- `Mix.Tasks.Surfex.Relate`: `mix surfex.relate FROM TO --type T [--note N]`
+- `Mix.Tasks.Surfex.Relate`: `mix surfex.relate FROM TO --type T [--planned] [--note N]`
 - `Mix.Tasks.Surfex.Confirm`: `mix surfex.confirm ID… [--note N]`
 - `Mix.Tasks.Surfex.Retire`: `mix surfex.retire FROM TO --type T [--note N]`
 - `Mix.Tasks.Surfex.Resolve`: `mix surfex.resolve FROM TO --type T --pick ID_PREFIX`

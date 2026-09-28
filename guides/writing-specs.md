@@ -118,14 +118,21 @@ property test, which checks it over many generated inputs instead of a few chose
 The order that makes it hardest to get the code wrong is spec, then test, then code. The
 test is written from the spec's words, before any code exists to copy.
 
-1. **Write the section.** It's new: `mix surfex.status` lists it under "New".
+1. **Write the section, and plan its relation.** Name the code that will implement it,
+   although that code doesn't exist yet:
+   `mix surfex.relate --planned "spec.md#Messaging/Sending" Wren.send/3 --type implements`.
+   The relation is **planned**, and the section is listed as **unimplemented**. That
+   passes the everyday check, and a `require:` policy counts it as met: the intent is on
+   record.
 2. **Write the test** from the section's claims and examples. Run it: it fails (red),
    because the code doesn't exist.
-3. **Write the code** until the test passes (green).
-4. **Record the relation.** `mix surfex.suggest --accept` relates the section to the code
-   it names, at their current versions. Or name the pair yourself:
-   `mix surfex.relate "spec.md#Messaging/Sending" Wren.send/3 --type implements`.
-5. **Check:** `mix surfex.status` is current.
+3. **Write the code** until the test passes (green). The planned relation now
+   **dangles** on the code's end: the code exists, and nobody has yet said it matches.
+4. **Confirm it** after reading the section against the code:
+   `mix surfex.confirm Wren.send/3`. (Without a plan, `mix surfex.suggest --accept` relates
+   the section to the code it names, at their current versions.)
+5. **Check:** `mix surfex.status` is current. A release pipeline runs
+   `mix surfex.status --no-planned`, which also fails on anything planned and not built.
 
 When the spec changes later, its relations dangle. Update the test to the new words
 first, see it fail, then change the code, then `mix surfex.confirm` the section.

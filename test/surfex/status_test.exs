@@ -131,6 +131,78 @@ defmodule Surfex.StatusTest do
     end
   end
 
+  describe "planned relations" do
+    # The spec section exists; the code it will be implemented by doesn't yet.
+    defp plan(extra \\ []) do
+      Entry.new!(
+        at: Keyword.get(extra, :at, "2026-09-28T10:00:00Z"),
+        op: :relate,
+        type: :implements,
+        parents: Keyword.get(extra, :parents, []),
+        ends: [
+          %{kind: :spec, id: @spec_id, hash: "s1"},
+          %{kind: :code, id: "M.later/1", hash: nil}
+        ]
+      )
+    end
+
+    defp spec_only, do: [scan(:spec, @spec_id, "s1")]
+
+    test "planned while the end doesn't exist, not orphaned, and not failing" do
+      status = Status.derive(spec_only(), [plan()])
+      assert %{state: :planned, changed: [{:code, "M.later/1"}]} = only(status)
+      refute Status.failing?(status)
+    end
+
+    test "dangling on that end once it exists" do
+      status = Status.derive([scan(:code, "M.later/1", "l1") | spec_only()], [plan()])
+      assert %{state: :dangling, changed: [{:code, "M.later/1"}]} = only(status)
+    end
+
+    test "a spec end recorded at a hash and gone is still orphaned" do
+      assert %{state: :orphaned, changed: [{:spec, @spec_id}]} = only(Status.derive([], [plan()]))
+    end
+
+    test "it meets the require policy, and its section is unimplemented" do
+      status = Status.derive(spec_only(), [plan()], spec: [:implements])
+      assert status.unmet == []
+      assert [%Scan{id: @spec_id}] = status.unimplemented
+
+      # Implemented by something real as well: no longer unimplemented.
+      real = relate("s1", "c1")
+      assert Status.derive(scans(), [plan(), real]).unimplemented == []
+    end
+
+    test "planned: :fail makes it fail, as mix surfex.status --no-planned does" do
+      assert Status.failing?(Status.derive(spec_only(), [plan()], [], planned: :fail))
+      refute Status.failing?(Status.derive(scans(), [relate("s1", "c1")], [], planned: :fail))
+
+      assert_raise ArgumentError, ~r/planned: must be :allow or :fail/, fn ->
+        Status.derive(spec_only(), [plan()], [], planned: :maybe)
+      end
+    end
+
+    test "the reports show it" do
+      status = Status.derive(spec_only(), [plan()])
+
+      assert Report.text(status) =~
+               "Planned (an end doesn't exist yet):\n  implements  code M.later/1 ↔ spec #{@spec_id} (planned: M.later/1)"
+
+      assert Report.text(status) =~
+               "Unimplemented (every implements relation is planned):\n  spec #{@spec_id}"
+
+      {json, :ok, _} = status |> Report.json() |> :json.decode(:ok, %{null: nil})
+      assert [%{"id" => @spec_id}] = json["unimplemented"]
+      [relation] = json["relations"]
+      code = Enum.find(relation["ends"], &(&1["kind"] == "code"))
+      assert %{"recorded" => nil, "now" => nil, "planned" => true, "changed" => false} = code
+
+      golden = status |> Report.golden() |> Surfex.Golden.render()
+      assert golden =~ "planned 1"
+      assert golden =~ "## unimplemented"
+    end
+  end
+
   test "failing: dangling, orphaned, conflicted or unmet; not new, retired or impacted" do
     refute Status.failing?(Status.derive(scans(), [relate("s1", "c1")]))
 
@@ -164,6 +236,7 @@ defmodule Surfex.StatusTest do
                "recorded" => "c1",
                "now" => "c2",
                "changed" => true,
+               "planned" => false,
                "location" => %{"file" => "f", "lines" => [1, 2]}
              }
     end
