@@ -32,14 +32,14 @@ defmodule Surfex.MixProject do
       package: [
         licenses: ["MIT"],
         links: %{"GitHub" => @source_url},
-        files: ~w(lib mix.exs README.md CHANGELOG.md spec.md LICENSE)
+        files: ~w(lib guides mix.exs README.md CHANGELOG.md spec.md LICENSE)
       ],
       source_url: @source_url,
       docs: [
         main: "readme",
         source_url: @source_url,
         source_ref: "v#{@version}",
-        extras: ["README.md", "spec.md", "CHANGELOG.md"]
+        extras: ["README.md", "guides/writing-specs.md", "spec.md", "CHANGELOG.md"]
       ]
     ]
   end
