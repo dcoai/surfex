@@ -41,6 +41,19 @@ release it merely follows.
   now also proposes:
   - moves, for a related id that is gone and a new id at the same version;
   - `refines`, from each block and hint to what it sits in.
+- **Tests as scanned items.** `tests:` in `.surfex.exs` turns on `Surfex.Scan.ExUnit`,
+  which reads ExUnit tests from source without compiling them.
+  - A test's version covers its body, the private helpers and attributes it reads, its
+    setups, and the generators of a comprehension that defines it. Weakening a test
+    through any of them changes its version.
+  - A test says what it verifies with a plain ExUnit tag, `@tag verifies: "id"`
+    (`@describetag`, `@moduletag` too). `mix test --only verifies:id` then runs one
+    requirement's tests.
+  - A declaration naming no spec unit is **broken** and fails the check.
+    `Surfex.Scan.resolve/2` resolves a full or bare id.
+  - The new relation type `verifies` runs from a test to a spec unit.
+  - `require:` takes spec roles as keys: `test_hint: [:verifies]` requires a test for
+    every hint.
 - The status reports count spec units by role (`Surfex.Status.units/1`), and the JSON
   gives each id's role and what it sits in.
 - Surfex's own spec now has an anchor on every heading. Its relations moved across and

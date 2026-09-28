@@ -10,7 +10,7 @@ defmodule Surfex.Log.Entry do
   | `commit` | HEAD when it was recorded: context only, and may be squashed away |
   | `parents` | the entry ids it follows for the same relation; two means it resolves a fork |
   | `op` | `:relate` or `:retire` |
-  | `type` | `:implements`, `:refines`, `:depends_on`, `:tests` or `:excuses` |
+  | `type` | `:implements`, `:refines`, `:depends_on`, `:tests`, `:verifies` (a test verifies a spec unit) or `:excuses` |
   | `ends` | two `%{kind, id, hash}`: in order, from → to, for a directed type; sorted for an undirected one, so A↔B and B↔A are one relation. A `nil` hash (JSON `null`) is a **planned** end: an id that didn't exist when the relation was recorded. At most one end is planned. |
   | `by` | who recorded it |
   | `note` | why, optionally |
@@ -26,10 +26,10 @@ defmodule Surfex.Log.Entry do
   defstruct [:id, :at, :commit, :op, :type, :by, :note, parents: [], ends: []]
 
   @ops [:relate, :retire]
-  @types [:implements, :refines, :depends_on, :tests, :excuses]
+  @types [:implements, :refines, :depends_on, :tests, :verifies, :excuses]
   @kinds [:spec, :code, :test, :config, :class]
   # "A depends on B" is not "B depends on A": these keep their ends in the order given.
-  @directed [:depends_on, :refines, :tests]
+  @directed [:depends_on, :refines, :tests, :verifies]
 
   @type end_ :: %{kind: atom, id: String.t(), hash: String.t() | nil}
   @type t :: %__MODULE__{

@@ -26,16 +26,19 @@ defmodule Surfex.Status do
   confirm without reading.
 
   A scanned id in no relation at all is **new**. A spec id whose every live `implements`
-  relation is planned is **unimplemented**.
+  relation is planned is **unimplemented**. A test's declaration (`@tag verifies: "id"`)
+  that names no spec unit, or a bare id more than one file has, is **broken**.
 
   ## Policy
 
-  `require:` in `.surfex.exs` names, per kind, the relation types every scanned id of that
-  kind must take part in, e.g. `require: [code: [:implements, :excuses], spec:
-  [:implements]]`. An id with no non-retired relation of one of those types is **unmet**.
-  A planned relation counts: the intent is on record.
+  `require:` in `.surfex.exs` names, per kind or spec role, the relation types every
+  scanned id of it must take part in, e.g. `require: [code: [:implements], test_hint:
+  [:verifies]]`: every code item implements something, and every test hint is verified.
+  An id with no non-retired relation of one of those types is **unmet**, once per rule it
+  fails. A planned relation counts: the intent is on record.
 
-  **Failing** means any dangling, orphaned or conflicted relation, or any unmet id. Planned
+  **Failing** means any dangling, orphaned or conflicted relation, any unmet id, or any
+  broken declaration. Planned
   relations fail too when derived with `planned: :fail` (`mix surfex.status --no-planned`),
   for a check that everything planned has been built, such as a release's.
   """
@@ -56,6 +59,7 @@ defmodule Surfex.Status do
           relations: [relation_status],
           new: [Scan.t()],
           unmet: [%{scan: Scan.t(), requires: [atom]}],
+          broken: [%{scan: Scan.t(), type: atom, ref: String.t(), reason: term}],
           unimplemented: [Scan.t()],
           planned: :allow | :fail,
           scans: %{{atom, String.t()} => Scan.t()}
@@ -92,6 +96,7 @@ defmodule Surfex.Status do
         |> Enum.reject(&MapSet.member?(related, {&1.kind, &1.id}))
         |> Enum.sort_by(&{&1.kind, &1.id}),
       unmet: unmet(scans, relations, require),
+      broken: broken(scans),
       unimplemented: unimplemented(scans, relations),
       planned: planned,
       scans: by_id
@@ -106,7 +111,9 @@ defmodule Surfex.Status do
   def failing?(status) do
     failing = [:dangling, :orphaned, :conflicted]
     failing = if status.planned == :fail, do: [:planned | failing], else: failing
-    status.unmet != [] or Enum.any?(status.relations, &(&1.state in failing))
+
+    status.unmet != [] or status.broken != [] or
+      Enum.any?(status.relations, &(&1.state in failing))
   end
 
   @doc """
@@ -241,13 +248,26 @@ defmodule Surfex.Status do
           reduce: %{},
           do: (acc -> Map.update(acc, end_, MapSet.new([type]), &MapSet.put(&1, type)))
 
+    # A kind's rule applies to every scan of that kind; a spec role's rule (`test_hint:`)
+    # to every spec unit in that role. Each rule that isn't met is its own entry.
     for scan <- Enum.sort_by(scans, &{&1.kind, &1.id}),
-        requires = Keyword.get(require, scan.kind, []),
+        key <- Enum.uniq([scan.kind, scan.role]),
+        key != nil,
+        requires = Keyword.get(require, key, []),
         requires != [],
         not Enum.any?(
           requires,
           &MapSet.member?(Map.get(live, {scan.kind, scan.id}, MapSet.new()), &1)
         ),
         do: %{scan: scan, requires: requires}
+  end
+
+  # A declaration in a test (`@tag verifies: "id"`) that names no spec unit, or a bare id
+  # that more than one file has.
+  defp broken(scans) do
+    for scan <- Enum.sort_by(scans, &{&1.kind, &1.id}),
+        {type, ref} <- scan.declares,
+        {:error, why} <- [Scan.resolve(scans, ref)],
+        do: %{scan: scan, type: type, ref: ref, reason: why}
   end
 end

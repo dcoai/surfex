@@ -43,6 +43,9 @@ defmodule Surfex.Status.Report do
                                                                     requires: requires
                                                                   } ->
         "#{scan.kind} #{scan.id} needs one of: #{Enum.join(requires, ", ")}#{at(scan)}"
+      end),
+      items("Broken (a test declares what no spec unit is)", status.broken, fn b ->
+        "#{b.scan.kind} #{b.scan.id} #{b.type} #{inspect(b.ref)}: #{reason(b.reason)}#{at(b.scan)}"
       end)
     ]
 
@@ -79,6 +82,14 @@ defmodule Surfex.Status.Report do
       "unmet" =>
         Enum.map(status.unmet, fn %{scan: scan, requires: requires} ->
           Map.put(scan_json(scan), "requires", Enum.map(requires, &Atom.to_string/1))
+        end),
+      "broken" =>
+        Enum.map(status.broken, fn b ->
+          Map.merge(scan_json(b.scan), %{
+            "type" => Atom.to_string(b.type),
+            "ref" => b.ref,
+            "reason" => reason(b.reason)
+          })
         end)
     }
     |> :json.encode(&encode/2)
@@ -132,7 +143,8 @@ defmodule Surfex.Status.Report do
           {"planned", Map.get(counts, :planned, 0)},
           {"unimplemented", length(status.unimplemented)},
           {"new", length(status.new)},
-          {"unmet", length(status.unmet)}
+          {"unmet", length(status.unmet)},
+          {"broken", length(status.broken)}
         ]),
         units_stat(Status.units(status))
       ],
@@ -151,6 +163,12 @@ defmodule Surfex.Status.Report do
             status.new,
             &%{"Item" => {:code, "#{&1.kind} #{&1.id}"}}
           ) ++
+          id_group.("broken", ["Item", "Declares"], status.broken, fn b ->
+            %{
+              "Item" => {:code, "#{b.scan.kind} #{b.scan.id}"},
+              "Declares" => {:raw, "`#{b.type} #{b.ref}`: #{reason(b.reason)}"}
+            }
+          end) ++
           id_group.("unmet", ["Item", "Needs"], status.unmet, fn %{scan: s, requires: r} ->
             %{
               "Item" => {:code, "#{s.kind} #{s.id}"},
@@ -211,6 +229,9 @@ defmodule Surfex.Status.Report do
       scan -> "#{id}#{at(scan)}"
     end
   end
+
+  defp reason(:unknown), do: "no spec unit has that id"
+  defp reason({:ambiguous, ids}), do: "more than one does: #{Enum.join(ids, ", ")}"
 
   defp units_stat(u),
     do:
@@ -276,6 +297,10 @@ defmodule Surfex.Status.Report do
       "hash" => scan.hash,
       "role" => scan.role && Atom.to_string(scan.role),
       "within" => scan.within,
+      "declares" =>
+        Enum.map(scan.declares, fn {type, ref} ->
+          %{"type" => Atom.to_string(type), "ref" => ref}
+        end),
       "location" => location_json(scan.location)
     }
   end

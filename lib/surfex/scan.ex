@@ -22,14 +22,19 @@ defmodule Surfex.Scan do
     * `within` — the id of the section or block it sits in, `nil` for a section. It is a
       fact about the text, not a relation.
 
+  A test record (`Surfex.Scan.ExUnit`) can also **declare** what it relates to, in its
+  own source: `declares` is a list of `{type, id}`, such as `{:verifies, "cart-add"}`
+  from `@tag verifies: "cart-add"`. A declaration is a claim in the source, not a
+  relation; `resolve/2` finds the spec unit it names.
+
   `code/1` makes code records from any `Surfex.Scanner`'s items. `Surfex.Scan.Markdown`
-  makes spec records.
+  makes spec records and `Surfex.Scan.ExUnit` test records.
   """
 
   alias Surfex.Item
 
   @enforce_keys [:kind, :id, :hash, :location]
-  defstruct [:kind, :id, :hash, :location, :role, :within]
+  defstruct [:kind, :id, :hash, :location, :role, :within, declares: []]
 
   @type location :: %{file: String.t(), lines: {pos_integer, pos_integer} | nil}
   @type role :: :section | :block | :test_hint | nil
@@ -39,8 +44,39 @@ defmodule Surfex.Scan do
           hash: String.t(),
           location: location,
           role: role,
-          within: String.t() | nil
+          within: String.t() | nil,
+          declares: [{atom, String.t()}]
         }
+
+  @doc """
+  The spec unit a declaration names: a full id (`spec.md#Carts/Adding items`,
+  `spec.md#cart-add`), or a bare anchor, block or hint id (`cart-add`) looked up across
+  every spec file. `{:error, :unknown}` when nothing has it, `{:error, {:ambiguous, ids}}`
+  when a bare id is in more than one file.
+  """
+  @spec resolve([t], String.t()) ::
+          {:ok, t} | {:error, :unknown | {:ambiguous, [String.t()]}}
+  def resolve(scans, ref) do
+    spec = Enum.filter(scans, &(&1.kind == :spec))
+
+    matches =
+      if String.contains?(ref, "#"),
+        do: Enum.filter(spec, &(&1.id == ref)),
+        else:
+          Enum.filter(spec, fn s -> (s.role != :section or anchored?(s)) and bare(s.id) == ref end)
+
+    case matches do
+      [one] -> {:ok, one}
+      [] -> {:error, :unknown}
+      many -> {:error, {:ambiguous, many |> Enum.map(& &1.id) |> Enum.sort()}}
+    end
+  end
+
+  defp bare(id), do: id |> String.split("#", parts: 2) |> List.last()
+
+  # A section's id is an anchor when it isn't a heading path: no `/`, and it has the
+  # anchor form. A bare reference names anchors, blocks and hints, never a heading.
+  defp anchored?(%__MODULE__{id: id}), do: Regex.match?(~r/#[a-z0-9][a-z0-9-]*$/, id)
 
   @doc "Code records from a scanner's items: the item's key, version and place."
   @spec code([Item.t()]) :: [t]
