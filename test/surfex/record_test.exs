@@ -306,7 +306,7 @@ defmodule Surfex.RecordTest do
         scan(:spec, @spec_id, spec),
         %{scan(:spec, @hint, "h1") | role: :test_hint, within: @spec_id},
         scan(:code, @code_id, code),
-        scan(:test, @t, test)
+        %{scan(:test, @t, test) | declares: [{:verifies, @hint}]}
       ]
 
     defp rel(type, {ak, a, ah}, {bk, b, bh}),

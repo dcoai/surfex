@@ -81,7 +81,8 @@ defmodule Surfex.Suggest do
           implements: [candidate],
           verifies: [pair],
           tests: [pair],
-          excuses: [pair]
+          excuses: [pair],
+          undeclared: [%{test: String.t(), spec: String.t()}]
         }
 
   @doc """
@@ -97,6 +98,8 @@ defmodule Surfex.Suggest do
       spec unit (`Surfex.Scan.resolve/2`).
     * **tests** — each test paired with each scanned code item it calls (in its body or
       the private helpers it reaches).
+    * **undeclared** — each `verifies` relation whose test no longer declares it
+      (`Surfex.Status`), to retire: the test's source no longer makes the claim.
     * **excuses** — each code item nothing implements (and no implements candidate will),
       paired with the class of the first rule it matches, as `Surfex.Coverage` matches
       them. A parent counts as cited when something implements it. `never_excused`
@@ -126,6 +129,7 @@ defmodule Surfex.Suggest do
       implements: implements,
       excuses: excusals(profile, items, scans, moved, implements),
       verifies: verifications(scans, moved),
+      undeclared: Surfex.Status.derive(scans, moved).undeclared,
       tests: exercised(scans, moved)
     }
   end
@@ -151,6 +155,16 @@ defmodule Surfex.Suggest do
         end) ++
         Enum.map(suggestions.tests, fn t ->
           &Record.relate(scans, &1, "test:" <> t.from.id, "code:" <> t.to.id, :tests, meta)
+        end) ++
+        Enum.map(suggestions.undeclared, fn u ->
+          &Record.retire(
+            scans,
+            &1,
+            "test:" <> u.test,
+            "spec:" <> u.spec,
+            :verifies,
+            Keyword.put_new(meta, :note, "the test no longer declares that it verifies this")
+          )
         end) ++
         Enum.map(suggestions.excuses, fn x ->
           &Record.relate(scans, &1, "class:" <> x.from.id, "code:" <> x.to.id, :excuses, meta)

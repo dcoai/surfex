@@ -65,6 +65,9 @@ defmodule Surfex.Status.Report do
           "#{type}  #{ak} #{a} ↔ #{bk} #{b}: #{test}#{unproven_text(u.reason)}"
         end
       ),
+      items("Undeclared (a test no longer declares what it verifies)", status.undeclared, fn u ->
+        "verifies  test #{u.test} → spec #{u.spec}"
+      end),
       items("Stale (an excuse its class no longer covers)", status.stale, fn s ->
         "class #{s.class} ↔ code #{s.code}: #{stale_text(s.reason)}"
       end),
@@ -136,6 +139,7 @@ defmodule Surfex.Status.Report do
             "reason" => unproven_text(u.reason)
           }
         end),
+      "undeclared" => Enum.map(status.undeclared, &%{"test" => &1.test, "spec" => &1.spec}),
       "stale" =>
         Enum.map(status.stale, fn s ->
           %{"class" => s.class, "code" => s.code, "reason" => stale_text(s.reason)}
@@ -203,6 +207,7 @@ defmodule Surfex.Status.Report do
           {"unmet", length(status.unmet)},
           {"broken", length(status.broken)},
           {"stale", length(status.stale)},
+          {"undeclared", length(status.undeclared)},
           {"broken citations", length(status.citations)},
           {"triangle gaps", length(status.triangle)}
         ]),
@@ -231,6 +236,9 @@ defmodule Surfex.Status.Report do
               "Item" => {:code, c.span},
               "Cited at" => {:raw, "`#{c.file}` · #{c.section}: #{citation_text(c)}"}
             }
+          end) ++
+          id_group.("undeclared", ["Item", "Verified"], status.undeclared, fn u ->
+            %{"Item" => {:code, "test #{u.test}"}, "Verified" => {:code, "spec #{u.spec}"}}
           end) ++
           id_group.("stale", ["Item", "Excused as"], status.stale, fn s ->
             %{

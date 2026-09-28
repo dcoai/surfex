@@ -1,3 +1,15 @@
+# Defined before the test module: async tests start as soon as their module is loaded,
+# so a module defined later in this file might not exist yet when they run.
+defmodule Surfex.StatusTest.OneScanner do
+  @moduledoc false
+  # A project scanner, as a project would write one.
+  @behaviour Surfex.Scanner
+
+  @impl true
+  def items(_root, _opts),
+    do: [%Surfex.Item{kind: :function, name: "one", file: "one.c", hash: "1"}]
+end
+
 defmodule Surfex.StatusTest do
   use ExUnit.Case, async: true
 
@@ -160,6 +172,29 @@ defmodule Surfex.StatusTest do
 
       fine = Status.derive([hint("h"), test_scan([{:verifies, "h"}]) | scans()], [])
       assert fine.broken == []
+    end
+
+    # #66: a claim the test's source no longer makes must not stay current.
+    @tag verifies: "undeclared-verifies"
+    test "a verifies relation the test no longer declares is undeclared, and fails" do
+      verified =
+        Entry.new!(
+          at: "2026-09-28T10:00:00Z",
+          op: :relate,
+          type: :verifies,
+          ends: [
+            %{kind: :test, id: "T: a", hash: "t1"},
+            %{kind: :spec, id: "spec.md#h", hash: "h1"}
+          ]
+        )
+
+      declared = Status.derive([hint("h"), test_scan([{:verifies, "h"}]) | scans()], [verified])
+      assert declared.undeclared == []
+
+      dropped = Status.derive([hint("h"), test_scan([]) | scans()], [verified])
+      assert dropped.undeclared == [%{test: "T: a", spec: "spec.md#h"}]
+      assert Status.failing?(dropped)
+      assert Report.text(dropped) =~ "Undeclared (a test no longer declares what it verifies)"
     end
 
     test "a role's rule applies to units in that role only, alongside the kind's" do
@@ -602,14 +637,4 @@ defmodule Surfex.StatusTest do
     assert Status.tips([first, second], Entry.relation(first)) == [second]
     refute Status.failing?(status)
   end
-end
-
-defmodule Surfex.StatusTest.OneScanner do
-  @moduledoc false
-  # A project scanner, as a project would write one.
-  @behaviour Surfex.Scanner
-
-  @impl true
-  def items(_root, _opts),
-    do: [%Surfex.Item{kind: :function, name: "one", file: "one.c", hash: "1"}]
 end

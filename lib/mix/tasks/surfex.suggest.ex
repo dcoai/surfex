@@ -54,6 +54,10 @@ defmodule Mix.Tasks.Surfex.Suggest do
 
     for v <- suggestions.verifies, do: Mix.shell().info("verifies    #{v.from.id} → #{v.to.id}")
     for t <- suggestions.tests, do: Mix.shell().info("tests       #{t.from.id} → #{t.to.id}")
+
+    for u <- suggestions.undeclared,
+        do: Mix.shell().info("retire      verifies #{u.test} → #{u.spec} (no longer declared)")
+
     for x <- suggestions.excuses, do: Mix.shell().info("excuses     #{x.from.id} ↔ #{x.to.id}")
 
     for c <- suggestions.implements do
