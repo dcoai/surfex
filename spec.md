@@ -106,6 +106,9 @@ before `Foo.10`). Two specs differing only in those orderings render identical b
 - `Surfex.SourceScan.defmodules/1` returns every `defmodule` node in a quoted AST, in
   source order, nested ones included.
 - `Surfex.SourceScan.hidden_module?/1` says whether a module declares `@moduledoc false`.
+- `Surfex.SourceScan.line_range/1` gives the first and last source lines a node spans,
+  from its metadata (parsed with `token_metadata: true`). Metadata never reaches a hash, so
+  a line range is where something is, never what it is.
 - `Surfex.SourceScan.defs/1` returns a module's **public definitions**, from its own body
   only (a nested module's definitions are that module's):
   - public means `def`, `defmacro`, `defdelegate` and `defguard`
@@ -156,6 +159,7 @@ row describes.
 | `parent` | the enclosing item's key, for a member |
 | `type` | the key of the item a member is an instance of (a field holding a struct) |
 | `aliases` | other names that cite it (§6.4) |
+| `lines` | its first and last line in `file`, when the scanner knows them: never part of its key or its hash |
 
 `Surfex.Item.key/1` is an item's identity: `parent.name` for a member, otherwise `name`.
 The hash is never part of the key, so an edit changes a row's version and not its
@@ -439,3 +443,39 @@ Each entry is `:trace` (the trace the rest of the file defines) or
 
 Surfex gates itself this way: its `.surfex.exs` traces this document against its own
 `lib/`, and CI runs `mix surfex.goldens`.
+
+## 11. Scan records
+
+Sections 11 onwards describe the relation log: pure scanners report what the spec and
+the code are now, and an append-only log records which versions of them someone has
+confirmed belong together.
+It is being built alongside the trace of §6–§10, which stays until it is replaced.
+
+`Surfex.Scan` is a scan record: `{kind, id, hash, location}`.
+- **kind:** `:spec` or `:code`
+- **id:** the identity: a code item's key (`MyApp.Cart.add/2`), or a spec section's
+  file and heading path (`spec.md#Carts/Adding items`)
+- **hash:** the content version, 8 hex characters
+- **location:** the file and first and last lines
+
+**Scanners only ever produce scan records.** They never read or write relations, and a
+record is a pure function of the source. Location is never part of a relation: moving
+code, or adding text above a section, changes where something is and not what it is.
+
+`Surfex.Scan.code/1` makes code records from any scanner's items (§5), with the item's
+key, version (§3.3) and line range.
+
+`Surfex.Scan.Markdown` is the spec scanner for markdown. `Surfex.Scan.Markdown.records/2`
+reads every file matching a list of globs under a root; `Surfex.Scan.Markdown.sections/2`
+scans one text.
+- **A section** is a heading and the lines under it, up to the next heading of any
+  level. Subsections are sections of their own, so editing one changes only its own
+  version. Text before the first heading is the section `(preamble)`, when it has any.
+- **Its id** is the file and the path of headings down to it. Two sections with the
+  same path in one file are told apart as `~2`, `~3`, in order.
+- **Its hash** covers its own body, **not its heading**, with runs of whitespace
+  collapsed. Rewording the body changes it. Renaming the heading, reflowing a
+  paragraph or adding blank lines doesn't, so a renamed section keeps its version
+  under a new id, which is what lets a tool recognise the move.
+- **Its location** runs from the heading's line to its last non-blank line.
+- A line inside a fenced code block is never a heading.

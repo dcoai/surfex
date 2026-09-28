@@ -9,6 +9,13 @@ All notable changes to Surfex are recorded here, following
 `mix.exs` reads `0.2.9-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
 release it merely follows.
 
+### Added
+
+- **Scan records**, the first part of the relation log: `Surfex.Scan` (`{kind, id, hash,
+  location}`), a markdown spec scanner that hashes each section's own body
+  (`Surfex.Scan.Markdown`), and line ranges on code items (`Surfex.Item` `lines`,
+  `Surfex.SourceScan.line_range/1`).
+
 ### Changed
 
 - **A function's version covers what it depends on.** It used to hash only the function's

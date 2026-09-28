@@ -90,7 +90,9 @@ defmodule Surfex.SourceScan do
           name: atom,
           arity: non_neg_integer,
           kind: :function | :macro,
-          hash: String.t()
+          hash: String.t(),
+          # First and last line of all its clauses (see line_range/1), or nil.
+          lines: {pos_integer, pos_integer} | nil
         }
 
   @doc """
@@ -131,9 +133,10 @@ defmodule Surfex.SourceScan do
       if first.kind != :private and first.visible do
         hash = Surfex.SourceScan.Closure.hash(key, groups, attributes)
         defaults = groups[key].defaults
+        lines = line_range(groups[key].nodes)
 
         for a <- (arity - defaults)..arity//1,
-            do: %{name: name, arity: a, kind: first.kind, hash: hash}
+            do: %{name: name, arity: a, kind: first.kind, hash: hash, lines: lines}
       else
         []
       end
@@ -148,6 +151,38 @@ defmodule Surfex.SourceScan do
     for {:@, _, [{name, _, [value]}]} <- exprs(body), is_atom(name), reduce: %{} do
       acc -> Map.update(acc, name, [value], &(&1 ++ [value]))
     end
+  end
+
+  @doc """
+  The first and last source lines a quoted node spans, from its metadata, or `nil` when it
+  carries none. Parse with `token_metadata: true` so a `do … end` block's closing line is
+  known. Metadata never reaches a hash, so parsing this way changes no version.
+  """
+  @spec line_range(Macro.t()) :: {pos_integer, pos_integer} | nil
+  def line_range(ast) do
+    {_, lines} =
+      Macro.prewalk(ast, [], fn
+        {_, meta, _} = node, acc when is_list(meta) -> {node, meta_lines(meta) ++ acc}
+        node, acc -> {node, acc}
+      end)
+
+    case lines do
+      [] -> nil
+      lines -> {Enum.min(lines), Enum.max(lines)}
+    end
+  end
+
+  defp meta_lines(meta) do
+    Enum.flat_map(meta, fn
+      {:line, line} when is_integer(line) ->
+        [line]
+
+      {_key, nested} when is_list(nested) ->
+        if Keyword.keyword?(nested), do: meta_lines(nested), else: []
+
+      _ ->
+        []
+    end)
   end
 
   @doc "Whether a `defmodule` node declares `@moduledoc false` in its own body."
