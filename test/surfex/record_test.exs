@@ -74,6 +74,7 @@ defmodule Surfex.RecordTest do
       assert state(scans("c2"), [first, e]) == [:current]
     end
 
+    @tag verifies: "confirm-named"
     test "naming an id with nothing dangling is an error, not a no-op", %{first: first} do
       assert {:error, msg} = Record.confirm(scans(), [first], [@code_id], @meta)
       assert msg =~ "nothing dangling touches M.add/2"
@@ -250,6 +251,7 @@ defmodule Surfex.RecordTest do
              ]
     end
 
+    @tag verifies: "move-carries"
     test "never confirms: text changed in the move, or the other end changed, still dangles" do
       old = related()
 

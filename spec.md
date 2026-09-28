@@ -526,6 +526,13 @@ scans one text.
   record's `declares`. Since a tag is ordinary ExUnit, `mix test --only verifies:id`
   runs exactly the tests of one requirement. A `verifies` value that isn't a literal
   string or list of strings raises, naming the file and line.
+- **What it calls**: the record's `calls` lists the functions the test's body and the
+  private helpers it reaches call, as `Module.fun/arity`. Aliases are resolved, a
+  piped call counts the piped value, and a capture (`&Mod.fun/2`) is a call. A local
+  call the module doesn't define is listed under each module it imports. Setups are
+  left out: they prepare a test, and what a test tests is what it calls itself. These
+  are facts about the source; which of them are code the project has is for
+  `Surfex.Suggest` to find (§15).
 
 A declaration is a claim in the source, not a relation. `Surfex.Scan.resolve/2` finds
 the spec unit it names: a full id (`spec.md#cart-add`, `spec.md#Carts/Adding items`), or
@@ -581,6 +588,30 @@ as it did before they existed. Every problem raises, naming the file and line:
 - a malformed id;
 - a duplicate id, naming both lines.
 
+```test section-versions
+given a section
+when its body is reworded, its version changes
+when its heading is renamed, a paragraph reflowed or blank lines added, it doesn't
+when a subsection is edited, only the subsection's version changes
+```
+
+```test fence-rule
+a # line inside a fence (backticks or tildes, closed only by the same character at
+least as many times) stays in its section's body and counts in its version;
+outside a fence it is a heading
+```
+
+```test unit-versions
+editing a marked block, a test hint, or a section's own prose changes that unit's
+version and no other's
+```
+
+```test test-versions
+a test's version changes when its body, a private helper it calls, an attribute it
+reads, a setup that applies to it, or its comprehension's cases change;
+not when a variable is renamed, or a setup it doesn't get changes
+```
+
 ## 12. The relation log {#relation-log}
 
 The relation log records judgements: that two things relate, at two versions. It is the
@@ -618,6 +649,11 @@ only state surfex keeps. Scanners never read or write it (§11).
   raises, since the file is then corrupt. `Surfex.Log.Entry.json/1` reads one JSON value
   with `null` as `nil`.
 
+```test entry-tamper
+an entry whose line is edited no longer decodes under its id,
+and verifying the log reports it
+```
+
 ### 12.2 The log {#log-segments}
 
 `Surfex.Log` keeps the entries in `.surfex/` under the project root
@@ -643,12 +679,17 @@ answered from the log alone.
 `Mix.Tasks.Surfex.Log` is `mix surfex.log`, with exactly one of `--init`, `--break`,
 `--verify` (fails on any problem) or `--rechain`. It never edits or removes an entry.
 
+```test union-merge
+two branches that each append to the log merge without a conflict,
+and the merged log loads to one state
+```
+
 ## 13. Relation status {#status}
 
 `Surfex.Status` derives the state of every relation from the scans (§11) and the log
 (§12). `Surfex.Status.derive/2`, `Surfex.Status.derive/3` (with a `require:` policy) and
-`Surfex.Status.derive/4` (with options: `planned: :allow | :fail`) are pure: the same
-scans and log always give the same status.
+`Surfex.Status.derive/4` (with options: `planned: :allow | :fail`, `triangle: :report |
+:fail`) are pure: the same scans and log always give the same status.
 
 ### 13.1 States {#status-states}
 
@@ -682,12 +723,42 @@ other entry of it names as a parent (`Surfex.Status.tips/2`).
   than one file has.
 
 `Surfex.Status.failing?/1` is true when any relation is dangling, orphaned or conflicted,
-any id is unmet, or any declaration is broken. New, retired, impacted, planned and unimplemented don't fail on their
-own. A status derived with `planned: :fail` (`Surfex.Status.derive/4`) fails on any
-planned relation too: the check that everything planned has been built, such as a
-release's.
+any id is unmet, or any declaration is broken. New, retired, impacted, planned and
+unimplemented don't fail on their own. A status derived with `planned: :fail`
+(`Surfex.Status.derive/4`) fails on any planned relation too: the check that everything
+planned has been built, such as a release's.
+
+**The triangle.** A spec unit, its tests and its code relate three ways: the code
+`implements` the unit, a test `verifies` the unit, and the test `tests` the code. When
+tests are scanned, every spec unit that something implements is checked for each side
+missing:
+- `:no_test`: no test verifies it, or any block or hint inside it;
+- `:test_misses_code`: a test verifies it but exercises none of the code that
+  implements it, naming the test;
+- `:code_untested`: code implements it that no verifying test exercises, naming the
+  code.
+
+The gaps are the status's `triangle`. They are reported, and fail the check only when
+derived with `triangle: :fail`. Without scanned tests there is no triangle, since
+every unit would otherwise report a missing test for a project that doesn't scan them.
 `Surfex.Status.summary/1` counts relations per type and state. `Surfex.Status.units/1`
 counts the spec units scanned, by role: sections, blocks and test hints.
+
+```test dangling-side
+a relation whose end changed since it was confirmed is dangling,
+and names which end changed
+```
+
+```test planned-state
+a relation to an id that doesn't exist yet is planned and passes the check;
+when the id appears it dangles; once confirmed it is current
+```
+
+```test triangle-gaps
+given a spec unit something implements:
+no verifying test, a verifying test that calls none of its code, and implementing
+code no verifying test calls are each reported, naming the test or the code
+```
 
 ### 13.2 Configuration {#status-config}
 
@@ -696,6 +767,10 @@ counts the spec units scanned, by role: sections, blocks and test hints.
   code scanner (`scanner`, `scanner_opts`) finds, and, when `tests:` names globs of
   test files, each test in them (`Surfex.Scan.ExUnit`). A missing `sources`, or one
   that matches no section, raises. So does a `tests:` that matches no file.
+- `Surfex.Status.Config.options!/1` reads `triangle: :report | :fail` (`:report` by
+  default) for `Surfex.Status.derive/4`, and raises on any other value. It is the
+  project maintainer's intent, and a wrong value is loud: the gaps are reported either
+  way.
 - `Surfex.Status.Config.require!/1` validates the `require:` policy against the known
   kinds, spec roles and types, and raises naming what's wrong.
 
@@ -704,22 +779,22 @@ counts the spec units scanned, by role: sections, blocks and test hints.
 `Surfex.Status.Report` presents a status:
 - `Surfex.Status.Report.text/1`: the verdict, the counts per type and the spec units by
   role. Then each dangling, orphaned, conflicted, impacted and planned relation, the
-  unimplemented, new and unmet ids, and the broken declarations, with locations. A block
-  or hint in a list says what it sits in.
+  unimplemented, new and unmet ids, the broken declarations and the triangle's gaps,
+  with locations. A block or hint in a list says what it sits in.
 - `Surfex.Status.Report.golden/2` (`Surfex.Status.Report.golden/1` writes `RELATIONS.md`):
   the status as a golden to commit. It has a table per relation type (end, other end,
   state, the ends that changed or are planned), then the unimplemented, new and unmet
-  ids and the broken declarations, with the spec units by role among its stats. It holds
-  no hashes and no times, so it changes when a relation's state changes, not on every
-  confirmation. It's a pure function of the scans and the log, so a merge conflict in it
-  is resolved by regenerating.
+  ids, the broken declarations and the triangle's gaps, with the spec units by role
+  among its stats. It holds no hashes and no times, so it changes when a relation's
+  state changes, not on every confirmation. It's a pure function of the scans and the
+  log, so a merge conflict in it is resolved by regenerating.
 - `Surfex.Status.Report.json/1`: the work list for tools and agents. For each relation,
   its type, state and impact, and per end the recorded hash, the current hash, whether
   it changed, whether it is planned, and its location. Plus the spec units by role, the
   unimplemented, new and unmet ids (each with its role, what it sits in and what it
-  declares), and the broken declarations. A value that doesn't exist (a planned end's
-  recorded hash, a gone end's hash and location, or a conflicted relation's recorded
-  hashes, since it has no one tip) is JSON `null`.
+  declares), the broken declarations and the triangle's gaps. A value that doesn't
+  exist (a planned end's recorded hash, a gone end's hash and location, or a conflicted
+  relation's recorded hashes, since it has no one tip) is JSON `null`.
 
 `Mix.Tasks.Surfex.Status` is `mix surfex.status`:
 - `--format text|json` (text by default)
@@ -737,11 +812,11 @@ the scans and the log, and append what it returns. Every function returns the en
 or the reason there are none. **Nothing edits or removes an entry**: a new entry
 supersedes the relation's tips by naming them as parents.
 
-**Ids** are scan ids (`MyApp.Cart.add/2`, `spec.md#Carts/Adding items`). A `spec:` or
-`code:` prefix picks between kinds when an id is scanned as both. An id that isn't
-scanned is an error, since the relation would be orphaned from the moment it was
-recorded. Every entry carries who recorded it (git's user), HEAD at the time (context
-only), and when.
+**Ids** are scan ids (`MyApp.Cart.add/2`, `spec.md#Carts/Adding items`). A `spec:`,
+`code:` or `test:` prefix picks between kinds when an id is scanned as more than one. An
+id that isn't scanned is an error, since the relation would be orphaned from the moment
+it was recorded. Every entry carries who recorded it (git's user), HEAD at the time
+(context only), and when.
 
 | Function | Records |
 |---|---|
@@ -774,6 +849,15 @@ The tasks:
 Each reads `.surfex.exs` as `mix surfex.status` does. Each needs the log to exist
 (`mix surfex.log --init`), and prints every entry it recorded.
 
+```test confirm-named
+confirming an id with nothing dangling is an error, never a silent no-op
+```
+
+```test move-carries
+a move records the recorded versions under the new id: if the text changed as it
+moved, or the other end changed, the moved relation dangles
+```
+
 ## 15. Suggesting relations {#suggesting}
 
 `Surfex.Suggest` proposes relations from what the spec already says. Its candidate
@@ -800,15 +884,27 @@ repeats another:
 - **refines**: each marked block and test hint `refines` the unit it sits in
   (`within`, §11), unless that relation exists in any state.
 - **implements**: the candidates above.
+- **verifies**: each test's declaration (§11) that resolves to a spec unit.
+- **tests**: each test paired with each scanned code item in its `calls` (§11).
 
-Refines and implements are computed as if the moves were already recorded, so a moved
+The others are computed as if the moves were already recorded, so a moved
 section's relations are not suggested again under its new id.
 `Surfex.Suggest.accept_all/4` records them: each move (`Surfex.Record.move/5`), then each
-refinement and candidate as a `relate` at the current hashes.
+other suggestion as a `relate` at the current hashes.
 
 `Mix.Tasks.Surfex.Suggest` is `mix surfex.suggest [--accept] [--note N]`: without
 `--accept` it lists every suggestion and writes nothing. Adopting the relation log is
 `mix surfex.log --init` followed by `mix surfex.suggest --accept`.
+
+```test suggest-never-confirms
+a pair already related, in any state, is never suggested again,
+so accepting suggestions never confirms a dangling relation
+```
+
+```test suggest-moves
+an anchor added to a related section is suggested as a move, and its relations
+aren't suggested again; two new ids at one version are not suggested
+```
 
 ## 16. The specification guide {#spec-guide}
 

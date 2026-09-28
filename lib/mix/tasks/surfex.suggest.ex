@@ -10,6 +10,8 @@ defmodule Mix.Tasks.Surfex.Suggest do
     * **refines** — each marked block and test hint refines the section or block it sits
       in.
     * **implements** — each spec unit paired with each code item it names.
+    * **verifies** — each test paired with the spec unit its `@tag verifies:` names.
+    * **tests** — each test paired with each code item it calls.
 
   Pairs already related, in any state, are left out.
 
@@ -47,6 +49,9 @@ defmodule Mix.Tasks.Surfex.Suggest do
 
     for m <- suggestions.moves, do: Mix.shell().info("move        #{m.from} → #{m.to.id}")
     for r <- suggestions.refines, do: Mix.shell().info("refines     #{r.from.id} → #{r.to.id}")
+
+    for v <- suggestions.verifies, do: Mix.shell().info("verifies    #{v.from.id} → #{v.to.id}")
+    for t <- suggestions.tests, do: Mix.shell().info("tests       #{t.from.id} → #{t.to.id}")
 
     for c <- suggestions.implements do
       {file, line} = c.cited_at

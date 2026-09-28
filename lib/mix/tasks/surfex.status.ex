@@ -44,8 +44,11 @@ defmodule Mix.Tasks.Surfex.Status do
     planned = if opts[:planned] == false, do: :fail, else: :allow
 
     status =
-      Status.derive(Config.scans(config, root), entries, Config.require!(config),
-        planned: planned
+      Status.derive(
+        Config.scans(config, root),
+        entries,
+        Config.require!(config),
+        [planned: planned] ++ Config.options!(config)
       )
 
     case opts[:format] || "text" do

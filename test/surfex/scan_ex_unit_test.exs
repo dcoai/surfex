@@ -82,6 +82,7 @@ defmodule Surfex.ScanExUnitTest do
     assert by_id()["MyApp.CartTest: starts empty"].declares == [{:verifies, "carts"}]
   end
 
+  @tag verifies: "test-versions"
   test "the version follows helpers, attributes, setups and a comprehension's generators" do
     assert changes?("length(cart) >= @limit", "length(cart) > @limit", @closed)
     assert changes?("@limit 3", "@limit 4", @closed)
@@ -174,5 +175,42 @@ defmodule Surfex.ScanExUnitTest do
       assert {:error, {:ambiguous, ["other.md#closed", "spec.md#closed"]}} =
                Scan.resolve(@scans, "closed")
     end
+  end
+
+  test "calls: aliases, pipes, captures and imports resolved, helpers followed" do
+    source = ~S'''
+    defmodule MyApp.CartTest do
+      use ExUnit.Case
+      alias MyApp.Cart
+      alias MyApp.{Line, Price}
+      alias MyApp.Tax, as: T
+      import MyApp.Fixtures
+
+      defp build(item), do: item |> Line.new() |> Price.of(:eur)
+
+      test "a" do
+        cart = Cart.new()
+        cart |> Cart.add(build(:apple)) |> T.apply()
+        Enum.map([1], &Cart.total/1)
+        fixture(:x)
+        local_helper()
+      end
+
+      def local_helper, do: :ok
+    end
+    '''
+
+    [test] = Tests.tests(source, "t.exs")
+
+    assert test.calls == [
+             "Enum.map/2",
+             "MyApp.Cart.add/2",
+             "MyApp.Cart.new/0",
+             "MyApp.Cart.total/1",
+             "MyApp.Fixtures.fixture/1",
+             "MyApp.Line.new/1",
+             "MyApp.Price.of/2",
+             "MyApp.Tax.apply/1"
+           ]
   end
 end

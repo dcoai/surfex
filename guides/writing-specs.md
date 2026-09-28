@@ -163,26 +163,63 @@ ordinary code block.
 ## 7. Test-first, with Surfex
 
 The order that makes it hardest to get the code wrong is spec, then test, then code. The
-test is written from the spec's words, before any code exists to copy.
+test is written from the spec's words, before any code exists to copy. Surfex records
+each step, so the order is visible afterwards, and the three relations between a
+requirement, its tests and its code are checked together.
 
-1. **Write the section, and plan its relation.** Name the code that will implement it,
-   although that code doesn't exist yet:
-   `mix surfex.relate --planned "spec.md#Messaging/Sending" Wren.send/3 --type implements`.
-   The relation is **planned**, and the section is listed as **unimplemented**. That
-   passes the everyday check, and a `require:` policy counts it as met: the intent is on
-   record.
-2. **Write the test** from the section's claims and examples. Run it: it fails (red),
-   because the code doesn't exist.
+Turn on test scanning in `.surfex.exs`, and require every test hint to be verified:
+
+```elixir
+tests: ["test/**/*_test.exs"],
+require: [code: [:implements], test_hint: [:verifies]]
+```
+
+1. **Write the requirement and its test hint, and plan the code.**
+
+   ````markdown
+   ## Sending {#sending}
+
+   `Wren.send/3` queues a message for a peer.
+
+   ```test sending-queues
+   given an empty queue, when a message is sent, recv/1 returns it
+   ```
+   ````
+
+   `mix surfex.relate --planned spec.md#sending Wren.send/3 --type implements` records
+   that `Wren.send/3` will implement it, although it doesn't exist yet: the relation is
+   **planned**, and the section is **unimplemented**. The hint is **unmet**, because no
+   test verifies it yet, so the check fails until one does.
+2. **Write the test from the hint**, and say so with a tag:
+
+   ```elixir
+   @tag verifies: "sending-queues"
+   test "a sent message can be received" do
+     ...
+   end
+   ```
+
+   Run it: it fails (red), because the code doesn't exist.
+   `mix surfex.suggest --accept` records that the test `verifies` the hint. The hint is
+   met, and the **triangle** shows what's still open: the test calls `Wren.send/3`, and
+   nothing implements the section yet.
 3. **Write the code** until the test passes (green). The planned relation now
    **dangles** on the code's end: the code exists, and nobody has yet said it matches.
-4. **Confirm it** after reading the section against the code:
-   `mix surfex.confirm Wren.send/3`. (Without a plan, `mix surfex.suggest --accept` relates
-   the section to the code it names, at their current versions.)
-5. **Check:** `mix surfex.status` is current. A release pipeline runs
-   `mix surfex.status --no-planned`, which also fails on anything planned and not built.
+4. **Record and confirm.** `mix surfex.suggest --accept` records that the test `tests`
+   the code it calls. Read the section against the code, then
+   `mix surfex.confirm Wren.send/3`.
+5. **Check:** `mix surfex.status` is current and the triangle is closed: the section is
+   implemented by `Wren.send/3`, verified by the test, and the test exercises
+   `Wren.send/3`. A release pipeline runs `mix surfex.status --no-planned`, which also
+   fails on anything planned and not built. A project that wants every open side of the
+   triangle to fail the check sets `triangle: :fail`.
+
+`mix test --only verifies:sending-queues` runs exactly the tests of that requirement.
 
 When the spec changes later, its relations dangle. Update the test to the new words
-first, see it fail, then change the code, then `mix surfex.confirm` the section.
+first, see it fail, then change the code, then `mix surfex.confirm` the section. A test
+is versioned like code (its body, its helpers, its setups, its table of cases), so a
+test weakened to pass dangles its relations too.
 
 ## 8. Working with an LLM
 

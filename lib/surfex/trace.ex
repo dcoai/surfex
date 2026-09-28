@@ -148,9 +148,9 @@ defmodule Surfex.Trace do
 
   # Keys other tools read from the same `.surfex.exs`: `mix surfex.goldens`'s list, and
   # `mix surfex.status`'s policy and test globs.
-  @other_tools [:goldens, :require, :tests]
+  @other_tools [:goldens, :require, :tests, :triangle]
 
-  @doc "A `.surfex.exs` config without the keys other tools read (`goldens:`, `require:`, `tests:`)."
+  @doc "A `.surfex.exs` config without the keys other tools read (`goldens:`, `require:`, `tests:`, `triangle:`)."
   @spec own_keys(keyword) :: keyword
   def own_keys(config), do: Keyword.drop(config, @other_tools)
 

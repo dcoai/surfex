@@ -38,9 +38,18 @@ defmodule Surfex.Status do
   fails. A planned relation counts: the intent is on record.
 
   **Failing** means any dangling, orphaned or conflicted relation, any unmet id, or any
-  broken declaration. Planned
-  relations fail too when derived with `planned: :fail` (`mix surfex.status --no-planned`),
-  for a check that everything planned has been built, such as a release's.
+  broken declaration. Planned relations fail too when derived with `planned: :fail`
+  (`mix surfex.status --no-planned`), for a check that everything planned has been built,
+  such as a release's.
+
+  ## The triangle
+
+  When tests are scanned, each spec unit that something `implements` should be verified
+  by a test (`verifies`, to it or to a block or hint inside it), and that test should
+  exercise the implementing code (`tests`). The **triangle** lists each side missing:
+  `:no_test`, `:test_misses_code` (a verifying test reaches none of the code), and
+  `:code_untested` (implementing code no verifying test reaches). It is reported, and
+  fails the check only when derived with `triangle: :fail`.
   """
 
   alias Surfex.Log.Entry
@@ -55,11 +64,19 @@ defmodule Surfex.Status do
           impacted: boolean,
           tips: [Entry.t()]
         }
+  @type gap :: %{
+          spec: String.t(),
+          gap: :no_test | :test_misses_code | :code_untested,
+          test: String.t() | nil,
+          code: String.t() | nil
+        }
   @type t :: %{
           relations: [relation_status],
           new: [Scan.t()],
           unmet: [%{scan: Scan.t(), requires: [atom]}],
           broken: [%{scan: Scan.t(), type: atom, ref: String.t(), reason: term}],
+          triangle: [gap],
+          policy: %{triangle: :report | :fail},
           unimplemented: [Scan.t()],
           planned: :allow | :fail,
           scans: %{{atom, String.t()} => Scan.t()}
@@ -72,9 +89,13 @@ defmodule Surfex.Status do
   @spec derive([Scan.t()], [Entry.t()], keyword, keyword) :: t
   def derive(scans, entries, require \\ [], opts \\ []) do
     planned = Keyword.get(opts, :planned, :allow)
+    triangle = Keyword.get(opts, :triangle, :report)
 
     unless planned in [:allow, :fail],
       do: raise(ArgumentError, "planned: must be :allow or :fail, got #{inspect(planned)}")
+
+    unless triangle in [:report, :fail],
+      do: raise(ArgumentError, "triangle: must be :report or :fail, got #{inspect(triangle)}")
 
     by_id = Map.new(scans, &{{&1.kind, &1.id}, &1})
 
@@ -97,6 +118,8 @@ defmodule Surfex.Status do
         |> Enum.sort_by(&{&1.kind, &1.id}),
       unmet: unmet(scans, relations, require),
       broken: broken(scans),
+      triangle: triangle(scans, relations),
+      policy: %{triangle: triangle},
       unimplemented: unimplemented(scans, relations),
       planned: planned,
       scans: by_id
@@ -113,6 +136,7 @@ defmodule Surfex.Status do
     failing = if status.planned == :fail, do: [:planned | failing], else: failing
 
     status.unmet != [] or status.broken != [] or
+      (status.policy.triangle == :fail and status.triangle != []) or
       Enum.any?(status.relations, &(&1.state in failing))
   end
 
@@ -219,6 +243,74 @@ defmodule Surfex.Status do
             r.type != :depends_on and (MapSet.member?(troubled, a) or MapSet.member?(troubled, b))
       }
     end)
+  end
+
+  # The spec/test/code triangle, for each spec unit that something implements: a test
+  # should verify it (or a block or hint inside it), and that test should exercise the code
+  # that implements it. Only when tests are scanned at all; otherwise every unit would
+  # report no test for a project that doesn't scan them.
+  defp triangle(scans, relations) do
+    if Enum.any?(scans, &(&1.kind == :test)) do
+      live = Enum.reject(relations, &(&1.state == :retired))
+      implements = pairs(live, :implements, fn {{:code, c}, {:spec, s}} -> {s, c} end)
+      verifies = pairs(live, :verifies, fn {{:test, t}, {:spec, s}} -> {s, t} end)
+      exercises = pairs(live, :tests, fn {{:test, t}, {:code, c}} -> {t, c} end)
+      within = for %Scan{kind: :spec, within: w} = s <- scans, w != nil, into: %{}, do: {s.id, w}
+
+      for {spec, codes} <- Enum.sort(implements),
+          gap <- gaps(spec, codes, verifying(spec, verifies, within), exercises),
+          do: gap
+    else
+      []
+    end
+  end
+
+  defp pairs(relations, type, fun) do
+    for %{type: ^type, relation: {_, a, b}} <- relations, reduce: %{} do
+      acc ->
+        {key, value} = fun.({a, b})
+        Map.update(acc, key, MapSet.new([value]), &MapSet.put(&1, value))
+    end
+  end
+
+  # The tests that verify `spec`, or any unit inside it.
+  defp verifying(spec, verifies, within) do
+    for {unit, tests} <- verifies,
+        inside?(unit, spec, within),
+        test <- tests,
+        into: MapSet.new(),
+        do: test
+  end
+
+  defp inside?(spec, spec, _within), do: true
+
+  defp inside?(unit, spec, within) do
+    case Map.fetch(within, unit) do
+      {:ok, parent} -> inside?(parent, spec, within)
+      :error -> false
+    end
+  end
+
+  defp gaps(spec, codes, tests, exercises) do
+    if MapSet.size(tests) == 0,
+      do: [%{spec: spec, gap: :no_test, test: nil, code: nil}],
+      else: sides(spec, codes, tests, exercises)
+  end
+
+  defp sides(spec, codes, tests, exercises) do
+    reached = fn test -> Map.get(exercises, test, MapSet.new()) end
+
+    misses =
+      for test <- Enum.sort(tests),
+          MapSet.disjoint?(reached.(test), codes),
+          do: %{spec: spec, gap: :test_misses_code, test: test, code: nil}
+
+    untested =
+      for code <- Enum.sort(codes),
+          not Enum.any?(tests, &MapSet.member?(reached.(&1), code)),
+          do: %{spec: spec, gap: :code_untested, test: nil, code: code}
+
+    misses ++ untested
   end
 
   # A spec id whose every live `implements` relation is still planned: meant to be built,

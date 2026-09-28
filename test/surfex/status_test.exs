@@ -35,6 +35,7 @@ defmodule Surfex.StatusTest do
       assert %{state: :current, changed: []} = only(Status.derive(scans(), [relate("s1", "c1")]))
     end
 
+    @tag verifies: "dangling-side"
     test "dangling, naming which end changed" do
       assert %{state: :dangling, changed: [{:code, @code_id}]} =
                only(Status.derive(scans("s1", "c2"), [relate("s1", "c1")]))
@@ -174,6 +175,66 @@ defmodule Surfex.StatusTest do
       # With a kind rule too, each rule it fails is its own entry.
       both = Status.derive([hint("h") | scans()], [], spec: [:implements], test_hint: [:verifies])
       assert [[:implements], [:implements], [:verifies]] = Enum.map(both.unmet, & &1.requires)
+    end
+  end
+
+  # #38: spec ↔ code (implements), test → spec (verifies), test → code (tests).
+  describe "the triangle" do
+    defp rel(type, {ak, aid, ah}, {bk, bid, bh}),
+      do:
+        Entry.new!(
+          at: "2026-09-28T10:00:00Z",
+          op: :relate,
+          type: type,
+          ends: [%{kind: ak, id: aid, hash: ah}, %{kind: bk, id: bid, hash: bh}]
+        )
+
+    @t {:test, "T: a", "t1"}
+    @s {:spec, @spec_id, "s1"}
+    @c {:code, @code_id, "c1"}
+    @other {:code, "M.other/0", "o1"}
+
+    defp tri_scans, do: [scan(:test, "T: a", "t1"), scan(:code, "M.other/0", "o1") | scans()]
+    defp gaps(entries, opts \\ []), do: Status.derive(tri_scans(), entries, [], opts).triangle
+
+    test "closed: the test verifies the spec and exercises its code" do
+      assert gaps([rel(:implements, @s, @c), rel(:verifies, @t, @s), rel(:tests, @t, @c)]) == []
+    end
+
+    @tag verifies: "triangle-gaps"
+    test "each open side is named" do
+      assert [%{gap: :no_test, spec: @spec_id}] = gaps([rel(:implements, @s, @c)])
+
+      assert [%{gap: :test_misses_code, test: "T: a"}, %{gap: :code_untested, code: @code_id}] =
+               gaps([rel(:implements, @s, @c), rel(:verifies, @t, @s), rel(:tests, @t, @other)])
+    end
+
+    test "a test verifying a block or hint inside the section counts for it" do
+      hint = %{scan(:spec, "spec.md#h", "h1") | role: :test_hint, within: @spec_id}
+
+      entries = [
+        rel(:implements, @s, @c),
+        rel(:verifies, @t, {:spec, "spec.md#h", "h1"}),
+        rel(:tests, @t, @c)
+      ]
+
+      assert Status.derive([hint | tri_scans()], entries).triangle == []
+    end
+
+    test "reported by default, failing with triangle: :fail, and silent without tests" do
+      entries = [rel(:implements, @s, @c)]
+      refute Status.failing?(Status.derive(tri_scans(), entries))
+      assert Status.failing?(Status.derive(tri_scans(), entries, [], triangle: :fail))
+      assert Status.derive(scans(), entries).triangle == []
+
+      status = Status.derive(tri_scans(), entries)
+
+      assert Report.text(status) =~
+               "Triangle (a spec unit, its tests and its code don't meet):\n  spec #{@spec_id}: no test verifies it"
+
+      {json, :ok, _} = status |> Report.json() |> :json.decode(:ok, %{null: nil})
+      assert [%{"spec" => @spec_id, "gap" => "no_test", "test" => nil}] = json["triangle"]
+      assert status |> Report.golden() |> Surfex.Golden.render() =~ "## triangle"
     end
   end
 
@@ -372,6 +433,15 @@ defmodule Surfex.StatusTest do
 
       assert_raise ArgumentError, ~r/code needs a non-empty list/, fn ->
         Config.require!(require: [code: [:likes]])
+      end
+    end
+
+    test "triangle: is :report by default, or :fail, and nothing else" do
+      assert Config.options!([]) == [triangle: :report]
+      assert Config.options!(triangle: :fail) == [triangle: :fail]
+
+      assert_raise ArgumentError, ~r/triangle: must be :report or :fail/, fn ->
+        Config.options!(triangle: :loud)
       end
     end
 

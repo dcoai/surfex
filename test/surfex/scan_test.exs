@@ -52,6 +52,7 @@ defmodule Surfex.ScanTest do
       assert sections["spec.md#(preamble)"].location.lines == {1, 1}
     end
 
+    @tag verifies: "section-versions"
     test "the hash is over the body: not the heading, not subsections, not whitespace" do
       base = by_id(@spec_md)
 
@@ -98,6 +99,7 @@ defmodule Surfex.ScanTest do
     ]
 
     for {name, body} <- @inside do
+      @tag verifies: "fence-rule"
       test "inside: #{name}" do
         text = "# A\n\n" <> unquote(body) <> "\n"
         assert text_ids(text) == ["spec.md#A"]
@@ -114,6 +116,7 @@ defmodule Surfex.ScanTest do
     ]
 
     for {name, body} <- @outside do
+      @tag verifies: "fence-rule"
       test "outside: #{name}" do
         assert text_ids("# A\n\n" <> unquote(body) <> "\n") == ["spec.md#A", "spec.md#H"]
       end
@@ -221,6 +224,7 @@ defmodule Surfex.ScanTest do
       assert unit(renamed, "Carts/Adding lines/Notes")
     end
 
+    @tag verifies: "unit-versions"
     test "editing a block or a hint changes only its own version" do
       base = Map.new(units(), &{&1.id, &1.hash})
 
