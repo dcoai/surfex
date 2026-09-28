@@ -6,11 +6,16 @@ defmodule Surfex.Status.Config do
 
     * `:sources` — globs of the markdown spec files (required)
     * `:scanner`, `:scanner_opts` — the code scanner (`:elixir` by default)
-    * `:require` — `[kind: [type, …]]`, validated against the known kinds and types
+    * `:require` — `[key: [type, …]]`: a key is a kind (`:spec`, `:code`, `:test`, …) or
+      a spec role (`:section`, `:block`, `:test_hint`), validated with the types
+    * `:tests` — globs of ExUnit test files, scanned for tests (`Surfex.Scan.ExUnit`)
+      when present
   """
 
   alias Surfex.Log.Entry
   alias Surfex.Scan
+
+  @roles [:section, :block, :test_hint]
 
   @doc "The `require:` policy, validated. Raises `ArgumentError` naming what is wrong."
   @spec require!(keyword) :: keyword
@@ -25,8 +30,8 @@ defmodule Surfex.Status.Config do
         )
 
     for {kind, types} <- policy do
-      unless kind in Entry.kinds(),
-        do: raise(ArgumentError, "require: unknown kind #{inspect(kind)}")
+      unless kind in Entry.kinds() or kind in @roles,
+        do: raise(ArgumentError, "require: #{inspect(kind)} is neither a kind nor a spec role")
 
       unless is_list(types) and types != [] and Enum.all?(types, &(&1 in Entry.types())),
         do:
@@ -55,7 +60,24 @@ defmodule Surfex.Status.Config do
     if spec == [],
       do: raise(ArgumentError, "no spec sections found in #{inspect(sources)} under #{root}")
 
-    spec ++ Scan.code(items(config, root))
+    spec ++ Scan.code(items(config, root)) ++ tests(config, root)
+  end
+
+  # No `tests:` means no test scanning. Globs that match nothing raise, as `sources:` do: a
+  # misspelt glob would otherwise report every test relation orphaned.
+  defp tests(config, root) do
+    case Keyword.get(config, :tests) do
+      nil ->
+        []
+
+      globs ->
+        files = Enum.flat_map(globs, &Path.wildcard(Path.join(root, &1)))
+
+        if files == [],
+          do: raise(ArgumentError, "tests: #{inspect(globs)} matches no file under #{root}")
+
+        Scan.ExUnit.records(root, globs)
+    end
   end
 
   defp items(config, root) do

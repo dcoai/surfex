@@ -379,7 +379,8 @@ rule naming an undeclared class, and a rule that would excuse a never-excused ki
 Keys the project sets win over the Elixir defaults. `Surfex.Trace.load!/1` and
 `Surfex.Trace.load!/2` evaluate a `.surfex.exs` data file, which must return a keyword
 list, with optional defaults under it. The same file carries keys other tools read
-(`goldens:` for §10.3, `require:` for §13), which `Surfex.Trace.own_keys/1` drops.
+(`goldens:` for §10.3, `require:` and `tests:` for §13), which `Surfex.Trace.own_keys/1`
+drops.
 
 ### 9.2 Analysis {#trace-analysis}
 
@@ -505,6 +506,33 @@ code, or adding text above a section, changes where something is and not what it
 `Surfex.Scan.code/1` makes code records from any scanner's items (§5), with the item's
 key, version (§3.3) and line range.
 
+`Surfex.Scan.ExUnit` is the test scanner. It makes one record of kind `:test` per ExUnit
+`test`, read from source without compiling it. `Surfex.Scan.ExUnit.records/2` reads
+every file matching a list of globs under a root, and `Surfex.Scan.ExUnit.tests/2`
+scans one text.
+- **Its id** is the module, the `describe` if any, and the test's name:
+  `MyApp.CartTest: adding: rejects a closed cart`. A test defined in a comprehension
+  keeps its name as written (`counts #{name}`), since the names it generates are only
+  known when compiled. Two tests with one id are told apart as `~2`, `~3`.
+- **Its hash** is a function's version (§3.3): its body, the private helpers it calls
+  (transitively) and the module attributes they read, with variables normalised. Every
+  `setup` that applies to it (the module's and its `describe`'s, including named
+  callbacks) and the generators of a comprehension that defines it are also part of it.
+  Weakening a test through a helper, a setup or its table of cases changes its version.
+- **Its location** is the file and the test's lines.
+- **What it declares**: a test says what it verifies with ExUnit's own tags.
+  `@tag verifies: "id"` (or a list) applies to the next test, `@describetag` to a
+  `describe`, and `@moduletag` to a module. Each becomes `{:verifies, id}` in the
+  record's `declares`. Since a tag is ordinary ExUnit, `mix test --only verifies:id`
+  runs exactly the tests of one requirement. A `verifies` value that isn't a literal
+  string or list of strings raises, naming the file and line.
+
+A declaration is a claim in the source, not a relation. `Surfex.Scan.resolve/2` finds
+the spec unit it names: a full id (`spec.md#cart-add`, `spec.md#Carts/Adding items`), or
+a bare anchor, block or hint id (`cart-add`) looked up across every spec file. A bare
+id never names a heading path. It gives `{:error, :unknown}` when nothing has the id,
+and `{:error, {:ambiguous, ids}}` when more than one file does.
+
 `Surfex.Scan.Markdown` is the spec scanner for markdown. `Surfex.Scan.Markdown.records/2`
 reads every file matching a list of globs under a root; `Surfex.Scan.Markdown.sections/2`
 scans one text. Both give every unit (sections, marked blocks and test hints) in the
@@ -569,7 +597,7 @@ only state surfex keeps. Scanners never read or write it (§11).
 | `commit` | HEAD when it was recorded: context only, since squash merges can make it unreachable |
 | `parents` | the entry ids it follows for the same relation; two means it resolves a fork |
 | `op` | `relate` or `retire` (`Surfex.Log.Entry.ops/0`) |
-| `type` | `implements`, `refines`, `depends_on`, `tests` or `excuses` (`Surfex.Log.Entry.types/0`) |
+| `type` | `implements`, `refines`, `depends_on`, `tests`, `verifies` (a test verifies a spec unit) or `excuses` (`Surfex.Log.Entry.types/0`) |
 | `ends` | two `{kind, id, hash}`, of the kinds `Surfex.Log.Entry.kinds/0` lists. A `null` hash is a **planned** end: an id that didn't exist when the relation was recorded (§14). At most one end is planned. |
 | `by` | who recorded it |
 | `note` | why, optionally |
@@ -577,7 +605,7 @@ only state surfex keeps. Scanners never read or write it (§11).
 - **A relation is its type and its two ends' kinds and ids** (`Surfex.Log.Entry.relation/1`).
   For the undirected types (`implements`, `excuses`), ends are sorted, so A↔B and B↔A are
   one relation. The directed types (`Surfex.Log.Entry.directed/0`: `depends_on`,
-  `refines`, `tests`) keep their ends in the order given, from → to, because "A depends on
+  `refines`, `tests`, `verifies`) keep their ends in the order given, from → to, because "A depends on
   B" is not "B depends on A". `Surfex.Log.Entry.relation/3` gives the relation of a type
   between two ends without an entry, oriented the same way.
 - `Surfex.Log.Entry.build/1` makes an entry from its fields and computes its id, or says
@@ -643,12 +671,18 @@ other entry of it names as a parent (`Surfex.Status.tips/2`).
 - **New:** a scanned id in no relation at all.
 - **Unimplemented:** a spec id whose every non-retired `implements` relation is planned:
   meant to be built, and not built yet.
-- **Unmet:** a scanned id that the `require:` policy (`[kind: [type, …]]`) says must take
-  part in a non-retired relation of one of those types, and doesn't. A planned relation
-  meets it: the intent is on record.
+- **Unmet:** a scanned id that the `require:` policy says must take part in a
+  non-retired relation of one of those types, and doesn't. A planned relation meets
+  it: the intent is on record. The policy is `[key: [type, …]]`, where a key is a
+  kind (every scan of that kind) or a spec role (`section`, `block`, `test_hint`: every
+  spec unit in that role). For example, `require: [code: [:implements], test_hint:
+  [:verifies]]` means every code item implements something and every test hint is
+  verified. An id that fails several rules is unmet once per rule.
+- **Broken:** a test's declaration (§11) that names no spec unit, or a bare id more
+  than one file has.
 
 `Surfex.Status.failing?/1` is true when any relation is dangling, orphaned or conflicted,
-or any id is unmet. New, retired, impacted, planned and unimplemented don't fail on their
+any id is unmet, or any declaration is broken. New, retired, impacted, planned and unimplemented don't fail on their
 own. A status derived with `planned: :fail` (`Surfex.Status.derive/4`) fails on any
 planned relation too: the check that everything planned has been built, such as a
 release's.
@@ -658,31 +692,34 @@ counts the spec units scanned, by role: sections, blocks and test hints.
 ### 13.2 Configuration {#status-config}
 
 `Surfex.Status.Config` reads `.surfex.exs`, the same file the trace reads:
-- `Surfex.Status.Config.scans/2` scans each markdown section of `sources` and each item
-  the code scanner (`scanner`, `scanner_opts`) finds. A missing `sources`, or one that
-  matches no section, raises.
+- `Surfex.Status.Config.scans/2` scans each markdown unit of `sources`, each item the
+  code scanner (`scanner`, `scanner_opts`) finds, and, when `tests:` names globs of
+  test files, each test in them (`Surfex.Scan.ExUnit`). A missing `sources`, or one
+  that matches no section, raises. So does a `tests:` that matches no file.
 - `Surfex.Status.Config.require!/1` validates the `require:` policy against the known
-  kinds and types, and raises naming what's wrong.
+  kinds, spec roles and types, and raises naming what's wrong.
 
 ### 13.3 Reports and the check {#status-reports}
 
 `Surfex.Status.Report` presents a status:
 - `Surfex.Status.Report.text/1`: the verdict, the counts per type and the spec units by
-  role, then each dangling, orphaned, conflicted, impacted and planned relation, and the
-  unimplemented, new and unmet ids, with locations. A block or hint in a list says what
-  it sits in.
+  role. Then each dangling, orphaned, conflicted, impacted and planned relation, the
+  unimplemented, new and unmet ids, and the broken declarations, with locations. A block
+  or hint in a list says what it sits in.
 - `Surfex.Status.Report.golden/2` (`Surfex.Status.Report.golden/1` writes `RELATIONS.md`):
   the status as a golden to commit. It has a table per relation type (end, other end,
   state, the ends that changed or are planned), then the unimplemented, new and unmet
-  ids, with the spec units by role among its stats. It holds no hashes and no times, so it changes when a relation's state changes,
-  not on every confirmation. It's a pure function of the scans and the log, so a merge
-  conflict in it is resolved by regenerating.
+  ids and the broken declarations, with the spec units by role among its stats. It holds
+  no hashes and no times, so it changes when a relation's state changes, not on every
+  confirmation. It's a pure function of the scans and the log, so a merge conflict in it
+  is resolved by regenerating.
 - `Surfex.Status.Report.json/1`: the work list for tools and agents. For each relation,
   its type, state and impact, and per end the recorded hash, the current hash, whether
-  it changed, whether it is planned, and its location. Plus the spec units by role, and
-  the unimplemented, new and unmet ids, each with its role and what it sits in. A value that doesn't exist (a planned end's recorded hash, a gone end's
-  hash and location, or a conflicted relation's recorded hashes, since it has no one
-  tip) is JSON `null`.
+  it changed, whether it is planned, and its location. Plus the spec units by role, the
+  unimplemented, new and unmet ids (each with its role, what it sits in and what it
+  declares), and the broken declarations. A value that doesn't exist (a planned end's
+  recorded hash, a gone end's hash and location, or a conflicted relation's recorded
+  hashes, since it has no one tip) is JSON `null`.
 
 `Mix.Tasks.Surfex.Status` is `mix surfex.status`:
 - `--format text|json` (text by default)

@@ -131,6 +131,52 @@ defmodule Surfex.StatusTest do
     end
   end
 
+  # #38: tests declare what they verify; a declaration naming nothing fails.
+  describe "declarations and role rules" do
+    defp hint(id), do: %{scan(:spec, "spec.md##{id}", "h1") | role: :test_hint, within: @spec_id}
+    defp test_scan(declares), do: %{scan(:test, "T: a", "t1") | declares: declares}
+
+    test "a declaration naming no spec unit, or an ambiguous one, is broken and fails" do
+      status = Status.derive([test_scan([{:verifies, "nothing"}]) | scans()], [])
+      assert [%{type: :verifies, ref: "nothing", reason: :unknown}] = status.broken
+      assert Status.failing?(status)
+      assert Report.text(status) =~ ~s(test T: a verifies "nothing": no spec unit has that id)
+
+      {json, :ok, _} = status |> Report.json() |> :json.decode(:ok, %{null: nil})
+
+      assert [%{"id" => "T: a", "ref" => "nothing", "declares" => [%{"type" => "verifies"}]}] =
+               json["broken"]
+
+      assert status |> Report.golden() |> Surfex.Golden.render() =~ "## broken"
+
+      fine = Status.derive([hint("h"), test_scan([{:verifies, "h"}]) | scans()], [])
+      assert fine.broken == []
+    end
+
+    test "a role's rule applies to units in that role only, alongside the kind's" do
+      require = [test_hint: [:verifies]]
+      status = Status.derive([hint("h") | scans()], [], require)
+      assert [%{scan: %{id: "spec.md#h"}, requires: [:verifies]}] = status.unmet
+
+      verified =
+        Entry.new!(
+          at: "2026-09-28T10:00:00Z",
+          op: :relate,
+          type: :verifies,
+          ends: [
+            %{kind: :test, id: "T: a", hash: "t1"},
+            %{kind: :spec, id: "spec.md#h", hash: "h1"}
+          ]
+        )
+
+      assert Status.derive([hint("h"), test_scan([]) | scans()], [verified], require).unmet == []
+
+      # With a kind rule too, each rule it fails is its own entry.
+      both = Status.derive([hint("h") | scans()], [], spec: [:implements], test_hint: [:verifies])
+      assert [[:implements], [:implements], [:verifies]] = Enum.map(both.unmet, & &1.requires)
+    end
+  end
+
   describe "planned relations" do
     # The spec section exists; the code it will be implemented by doesn't yet.
     defp plan(extra \\ []) do
@@ -320,12 +366,39 @@ defmodule Surfex.StatusTest do
     test "require: is validated" do
       assert Config.require!(require: [code: [:implements]]) == [code: [:implements]]
 
-      assert_raise ArgumentError, ~r/unknown kind :cod/, fn ->
+      assert_raise ArgumentError, ~r/:cod is neither a kind nor a spec role/, fn ->
         Config.require!(require: [cod: [:implements]])
       end
 
       assert_raise ArgumentError, ~r/code needs a non-empty list/, fn ->
         Config.require!(require: [code: [:likes]])
+      end
+    end
+
+    test "require: takes spec roles as keys" do
+      assert Config.require!(require: [test_hint: [:verifies]]) == [test_hint: [:verifies]]
+    end
+
+    @tag :tmp_dir
+    test "tests: scans the test files it names, and raises when it names none", %{tmp_dir: root} do
+      File.write!(Path.join(root, "spec.md"), "# A\n\ntext\n")
+      File.mkdir_p!(Path.join(root, "test"))
+
+      File.write!(
+        Path.join(root, "test/a_test.exs"),
+        "defmodule ATest do\n  test \"a\", do: :ok\nend\n"
+      )
+
+      scans =
+        Config.scans(
+          [sources: ["spec.md"], scanner_opts: [paths: []], tests: ["test/*_test.exs"]],
+          root
+        )
+
+      assert [%Scan{kind: :test, id: "ATest: a"}] = Enum.filter(scans, &(&1.kind == :test))
+
+      assert_raise ArgumentError, ~r/tests: \["nope\/\*.exs"\] matches no file/, fn ->
+        Config.scans([sources: ["spec.md"], tests: ["nope/*.exs"]], root)
       end
     end
 
