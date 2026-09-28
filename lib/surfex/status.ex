@@ -121,6 +121,27 @@ defmodule Surfex.Status do
   end
 
   @doc """
+  How many spec units were scanned, by role: sections, marked blocks and test hints.
+  """
+  @spec units(t) :: %{
+          section: non_neg_integer,
+          block: non_neg_integer,
+          test_hint: non_neg_integer
+        }
+  def units(status) do
+    counts =
+      for {_key, %Scan{kind: :spec, role: role}} <- status.scans, reduce: %{} do
+        acc -> Map.update(acc, role, 1, &(&1 + 1))
+      end
+
+    %{
+      section: Map.get(counts, :section, 0),
+      block: Map.get(counts, :block, 0),
+      test_hint: Map.get(counts, :test_hint, 0)
+    }
+  end
+
+  @doc """
   The tips of `relation` among `entries`: its entries that no other entry of it names as a
   parent, oldest first. One tip is the judgement in force; more than one is a conflict;
   none means the log has never recorded the relation.

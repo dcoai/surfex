@@ -72,6 +72,109 @@ defmodule Surfex.Suggest do
     end)
   end
 
+  @type move :: %{from: String.t(), to: Scan.t()}
+  @type refinement :: %{from: Scan.t(), to: Scan.t()}
+  @type suggestions :: %{moves: [move], refines: [refinement], implements: [candidate]}
+
+  @doc """
+  Every suggestion at once, computed together so none repeats another:
+
+    * **moves** — a spec id the log relates that is no longer scanned, and a new id in no
+      relation at the **same version**: a renamed heading, or an anchor added. Only a
+      one-to-one match is suggested; two candidates with one version are left alone.
+    * **refines** — each marked block and test hint `refines` the section or block it sits
+      in (`within`), unless that relation exists in any state.
+    * **implements** — `candidates/5`.
+
+  Refines and implements are computed as if the moves were already recorded, so a moved
+  section's relations aren't suggested again under its new id.
+  """
+  # Only for computing what the moves would leave; never recorded.
+  @epoch "1970-01-01T00:00:00Z"
+
+  @spec all(Trace.t(), [Surfex.Item.t()], [Scan.t()], [Entry.t()], String.t()) :: suggestions
+  def all(trace, items, scans, entries, root) do
+    moves = moves(scans, entries)
+
+    {:ok, moved} =
+      Enum.reduce(moves, {:ok, entries}, fn m, {:ok, acc} ->
+        {:ok, recorded} = Record.move(scans, acc, m.from, "spec:" <> m.to.id, at: @epoch)
+        {:ok, acc ++ recorded}
+      end)
+
+    %{
+      moves: moves,
+      refines: refinements(scans, moved),
+      implements: candidates(trace, items, scans, moved, root)
+    }
+  end
+
+  @doc """
+  Records suggestions: each move (`Surfex.Record.move/5`), then each refinement and
+  implements candidate as a `relate` at the current hashes. It only creates relations
+  that don't exist and carries judgements across moves; it never confirms a dangling
+  relation.
+  """
+  @spec accept_all(suggestions, [Scan.t()], [Entry.t()], keyword) ::
+          {:ok, [Entry.t()]} | {:error, String.t()}
+  def accept_all(suggestions, scans, entries, meta) do
+    steps =
+      Enum.map(suggestions.moves, fn m ->
+        &Record.move(scans, &1, m.from, "spec:" <> m.to.id, meta)
+      end) ++
+        Enum.map(suggestions.refines, fn r ->
+          &Record.relate(scans, &1, "spec:" <> r.from.id, "spec:" <> r.to.id, :refines, meta)
+        end)
+
+    with {:ok, recorded} <-
+           Enum.reduce_while(steps, {:ok, []}, fn step, {:ok, acc} ->
+             case step.(entries ++ acc) do
+               {:ok, more} -> {:cont, {:ok, acc ++ more}}
+               error -> {:halt, error}
+             end
+           end),
+         {:ok, implemented} <- accept(suggestions.implements, scans, entries ++ recorded, meta) do
+      {:ok, recorded ++ implemented}
+    end
+  end
+
+  defp moves(scans, entries) do
+    status = Surfex.Status.derive(scans, entries)
+
+    gone =
+      for %{state: :orphaned, tips: [tip], changed: changed} <- status.relations,
+          end_ <- tip.ends,
+          end_.kind == :spec,
+          {:spec, end_.id} in changed,
+          reduce: %{},
+          do: (acc ->
+                 Map.update(acc, end_.id, MapSet.new([end_.hash]), &MapSet.put(&1, end_.hash)))
+
+    fresh = for %Scan{kind: :spec} = s <- status.new, do: s
+
+    gone_by_hash =
+      gone
+      |> Enum.filter(fn {_id, hashes} -> MapSet.size(hashes) == 1 end)
+      |> Enum.group_by(fn {_id, hashes} -> Enum.at(hashes, 0) end, &elem(&1, 0))
+
+    fresh_by_hash = Enum.group_by(fresh, & &1.hash)
+
+    for {hash, [old]} <- gone_by_hash,
+        [new] <- [Map.get(fresh_by_hash, hash, [])],
+        do: %{from: old, to: new}
+  end
+
+  defp refinements(scans, entries) do
+    by_id = for %Scan{kind: :spec} = s <- scans, into: %{}, do: {s.id, s}
+    related = MapSet.new(entries, &Entry.relation/1)
+
+    for %Scan{kind: :spec, within: within} = unit <- scans,
+        within != nil,
+        parent = Map.fetch!(by_id, within),
+        not MapSet.member?(related, Entry.relation(:refines, unit, parent)),
+        do: %{from: unit, to: parent}
+  end
+
   # The innermost spec unit whose lines contain `line` in `file`. Sections don't overlap
   # (each stops at the next heading), but a marked block sits inside its section, and a
   # citation in the block is about the block's requirement.

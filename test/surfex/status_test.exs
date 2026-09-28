@@ -275,6 +275,27 @@ defmodule Surfex.StatusTest do
       end
     end
 
+    test "spec units are counted by role, and a block or hint says what it sits in" do
+      block = %{scan(:spec, "spec.md#rule", "b1") | role: :block, within: @spec_id}
+      section = %{scan(:spec, @spec_id, "s1") | role: :section}
+      status = Status.derive([section, block, scan(:code, @code_id, "c1")], [])
+
+      assert Status.units(status) == %{section: 1, block: 1, test_hint: 0}
+      text = Report.text(status)
+      assert text =~ "  spec units: sections 1 · blocks 1 · test hints 0\n"
+      assert text =~ "spec spec.md#rule (block in #{@spec_id}) (f:1-2)"
+
+      {json, :ok, _} = status |> Report.json() |> :json.decode(:ok, %{null: nil})
+      assert json["units"] == %{"section" => 1, "block" => 1, "test_hint" => 0}
+
+      assert %{"role" => "block", "within" => @spec_id} =
+               Enum.find(json["new"], &(&1["id"] == "spec.md#rule"))
+
+      assert %{"role" => nil, "within" => nil} = Enum.find(json["new"], &(&1["kind"] == "code"))
+
+      assert status |> Report.golden() |> Surfex.Golden.render() =~ "2 spec units"
+    end
+
     test "with no relations, it says so" do
       assert Report.text(Status.derive(scans(), [])) =~ "(no relations)"
     end

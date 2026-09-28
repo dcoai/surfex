@@ -117,6 +117,9 @@ way, from the other side.
 - **Relate by hand:** `mix surfex.relate FROM TO --type T` for anything the spec doesn't
   name. Types are `implements`, `refines`, `depends_on`, `tests` and `excuses`.
 - **Put a relation to rest:** `mix surfex.retire FROM TO --type T`.
+- **Rename a section:** give headings anchors (`## Totals {#totals}`) and they keep their
+  id. Otherwise `mix surfex.suggest` spots the rename, or `mix surfex.move OLD NEW` carries
+  the relations across.
 - **Work in parallel:** the log is merged by git's union merge (set up by `--init`). If
   two branches confirm the same relation without seeing each other, it shows as
   **conflicted**, and `mix surfex.resolve … --pick` settles it.
