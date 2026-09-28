@@ -19,6 +19,8 @@ defmodule Surfex.ClassesTest do
     do: config |> Classes.records() |> Enum.find(&(&1.id == class)) |> Map.fetch!(:hash)
 
   describe "class records" do
+    @describetag verifies: "scan-records-pure"
+
     test "one per class, located in .surfex.exs" do
       assert [
                %Scan{kind: :class, id: "members", location: %{file: ".surfex.exs", lines: nil}},

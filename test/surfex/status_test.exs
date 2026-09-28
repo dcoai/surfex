@@ -31,6 +31,8 @@ defmodule Surfex.StatusTest do
   defp only(status), do: hd(status.relations)
 
   describe "a relation's state comes from its tip" do
+    @describetag verifies: ["status-pure"]
+
     test "current: both ends at the recorded hashes" do
       assert %{state: :current, changed: []} = only(Status.derive(scans(), [relate("s1", "c1")]))
     end
@@ -116,6 +118,9 @@ defmodule Surfex.StatusTest do
   end
 
   describe "policy" do
+    @describetag verifies: ["status-pure"]
+
+    @tag verifies: ["status-failing"]
     test "an id the policy requires to be related, and isn't, is unmet" do
       extra = scan(:code, "M.other/0", "o")
       status = Status.derive([extra | scans()], [relate("s1", "c1")], code: [:implements])
@@ -134,9 +139,12 @@ defmodule Surfex.StatusTest do
 
   # #38: tests declare what they verify; a declaration naming nothing fails.
   describe "declarations and role rules" do
+    @describetag verifies: ["status-pure"]
+
     defp hint(id), do: %{scan(:spec, "spec.md##{id}", "h1") | role: :test_hint, within: @spec_id}
     defp test_scan(declares), do: %{scan(:test, "T: a", "t1") | declares: declares}
 
+    @tag verifies: ["status-failing"]
     test "a declaration naming no spec unit, or an ambiguous one, is broken and fails" do
       status = Status.derive([test_scan([{:verifies, "nothing"}]) | scans()], [])
       assert [%{type: :verifies, ref: "nothing", reason: :unknown}] = status.broken
@@ -180,6 +188,8 @@ defmodule Surfex.StatusTest do
 
   # #38: spec ↔ code (implements), test → spec (verifies), test → code (tests).
   describe "the triangle" do
+    @describetag verifies: ["status-pure"]
+
     defp rel(type, {ak, aid, ah}, {bk, bid, bh}),
       do:
         Entry.new!(
@@ -238,6 +248,7 @@ defmodule Surfex.StatusTest do
       assert Status.derive([hint | tri_scans()], entries).triangle == []
     end
 
+    @tag verifies: ["status-failing"]
     test "reported by default, failing with triangle: :fail, and silent without tests" do
       entries = [rel(:implements, @s, @c)]
       refute Status.failing?(Status.derive(tri_scans(), entries))
@@ -256,6 +267,10 @@ defmodule Surfex.StatusTest do
   end
 
   describe "planned relations" do
+    @describetag verifies: ["status-pure"]
+
+    @describetag verifies: "planned-state"
+
     # The spec section exists; the code it will be implemented by doesn't yet.
     defp plan(extra \\ []) do
       Entry.new!(
@@ -272,6 +287,7 @@ defmodule Surfex.StatusTest do
 
     defp spec_only, do: [scan(:spec, @spec_id, "s1")]
 
+    @tag verifies: ["status-failing"]
     test "planned while the end doesn't exist, not orphaned, and not failing" do
       status = Status.derive(spec_only(), [plan()])
       assert %{state: :planned, changed: [{:code, "M.later/1"}]} = only(status)
@@ -297,6 +313,7 @@ defmodule Surfex.StatusTest do
       assert Status.derive(scans(), [plan(), real]).unimplemented == []
     end
 
+    @tag verifies: ["status-failing"]
     test "planned: :fail makes it fail, as mix surfex.status --no-planned does" do
       assert Status.failing?(Status.derive(spec_only(), [plan()], [], planned: :fail))
       refute Status.failing?(Status.derive(scans(), [relate("s1", "c1")], [], planned: :fail))
@@ -327,6 +344,7 @@ defmodule Surfex.StatusTest do
     end
   end
 
+  @tag verifies: ["status-pure", "status-failing"]
   test "failing: dangling, orphaned, conflicted or unmet; not new, retired or impacted" do
     refute Status.failing?(Status.derive(scans(), [relate("s1", "c1")]))
 
@@ -338,6 +356,10 @@ defmodule Surfex.StatusTest do
   end
 
   describe "the report" do
+    @describetag verifies: ["status-pure"]
+
+    @describetag verifies: "status-report-forms"
+
     test "text names the verdict, the counts, and each relation needing attention" do
       text = Report.text(Status.derive(scans("s1", "c2"), [relate("s1", "c1")]))
       assert text =~ "relation status: FAILING"
@@ -399,6 +421,7 @@ defmodule Surfex.StatusTest do
       end
     end
 
+    @tag verifies: "units-by-role"
     test "spec units are counted by role, and a block or hint says what it sits in" do
       block = %{scan(:spec, "spec.md#rule", "b1") | role: :block, within: @spec_id}
       section = %{scan(:spec, @spec_id, "s1") | role: :section}
@@ -420,6 +443,7 @@ defmodule Surfex.StatusTest do
       assert status |> Report.golden() |> Surfex.Golden.render() =~ "2 spec units"
     end
 
+    @tag verifies: ["status-failing"]
     test "broken citations fail, and all three reports show them" do
       citation = %{
         span: "M.gone/0",
@@ -460,6 +484,8 @@ defmodule Surfex.StatusTest do
   end
 
   describe "configuration" do
+    @describetag verifies: "status-config-read"
+
     alias Surfex.Status.Config
 
     test "require: is validated" do
@@ -517,4 +543,73 @@ defmodule Surfex.StatusTest do
       end
     end
   end
+
+  @tag verifies: "scanner-behaviour"
+  test "a project scanner implements Surfex.Scanner; a module that doesn't is refused, named" do
+    assert Surfex.Scanner.behaviour_info(:callbacks) == [items: 2]
+
+    assert_raise ArgumentError, ~r/String does not implement Surfex.Scanner/, fn ->
+      Surfex.Status.Config.items([scanner: String], ".")
+    end
+
+    assert [%Surfex.Item{name: "one"}] =
+             Surfex.Status.Config.items([scanner: Surfex.StatusTest.OneScanner], ".")
+  end
+
+  describe "reading .surfex.exs" do
+    @describetag verifies: "status-config-read"
+    @describetag :tmp_dir
+
+    alias Surfex.Status.Config
+
+    test "read!/1 refuses an unknown key, and a key of the removed trace with the reason",
+         %{tmp_dir: root} do
+      path = Path.join(root, ".surfex.exs")
+      File.write!(path, ~s([sources: ["spec.md"], sorces: []]))
+      assert_raise ArgumentError, ~r/unknown keys \[:sorces\]/, fn -> Config.read!(path) end
+
+      File.write!(path, ~s([sources: ["spec.md"], columns: []]))
+
+      assert_raise ArgumentError, ~r/\[:columns\] belonged to the v0.2 trace/, fn ->
+        Config.read!(path)
+      end
+
+      File.write!(path, ~s([sources: ["spec.md"]]))
+      assert Config.read!(path) == [sources: ["spec.md"]]
+    end
+
+    test "items/2 and load/3 scan the code once; profile!/2 reads under the namespace",
+         %{tmp_dir: root} do
+      File.cp_r!(Path.expand("../fixtures/elixir_project", __DIR__), root)
+      File.write!(Path.join(root, "spec.md"), "# Carts\n\n`MyApp.Cart.nothing/0` is gone.\n")
+      config = [sources: ["spec.md"]]
+
+      assert "add/2" in Enum.map(Config.items(config, root), & &1.name)
+      {scans, options} = Config.load(config, root, "MyApp")
+      assert Enum.any?(scans, &(&1.id == "MyApp.Cart.add/2"))
+      assert [%{span: "MyApp.Cart.nothing/0", status: :unresolved}] = options[:citations]
+      assert Regex.match?(Config.profile!(config, "MyApp").shape, "MyApp.Cart")
+    end
+  end
+
+  @tag verifies: ["status-pure", "status-failing"]
+  test "summary/1 counts relations per type and state; tips/2 are the judgements in force" do
+    first = relate("s1", "c1")
+    second = relate("s1", "c2", parents: [first.id], at: "2026-09-28T11:00:00Z")
+    status = Status.derive(scans("s1", "c2"), [first, second])
+
+    assert Status.summary(status) == %{implements: %{current: 1}}
+    assert Status.tips([first, second], Entry.relation(first)) == [second]
+    refute Status.failing?(status)
+  end
+end
+
+defmodule Surfex.StatusTest.OneScanner do
+  @moduledoc false
+  # A project scanner, as a project would write one.
+  @behaviour Surfex.Scanner
+
+  @impl true
+  def items(_root, _opts),
+    do: [%Surfex.Item{kind: :function, name: "one", file: "one.c", hash: "1"}]
 end

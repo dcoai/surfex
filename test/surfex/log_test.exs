@@ -24,6 +24,8 @@ defmodule Surfex.LogTest do
   defp open(root), do: Path.join(Log.dir(root), "surfex.log")
 
   describe "entries" do
+    @describetag verifies: "entry-canonical"
+
     test "encode and decode round-trip, with keys in a fixed order" do
       e = entry(1, note: "why", parents: ["b", "a"], commit: "abc")
       line = Entry.encode(e)
@@ -61,6 +63,19 @@ defmodule Surfex.LogTest do
       end
     end
 
+    test "the vocabulary is fixed: ops, types, kinds, and which types are directed" do
+      assert Entry.ops() == [:relate, :retire]
+      assert :verifies in Entry.types() and :excuses in Entry.types()
+      assert Entry.kinds() == [:spec, :code, :test, :config, :class]
+      assert Entry.directed() == [:depends_on, :refines, :tests, :verifies]
+
+      a = %{kind: :spec, id: "spec.md#S"}
+      b = %{kind: :code, id: "M.f/1"}
+      assert Entry.relation(:implements, a, b) == Entry.relation(:implements, b, a)
+      refute Entry.relation(:depends_on, a, b) == Entry.relation(:depends_on, b, a)
+      assert Entry.json(~s({"hash":null})) == %{"hash" => nil}
+    end
+
     test "a planned end has no hash, written as null; two planned ends are refused" do
       planned = [
         %{kind: :code, id: "M.later/1", hash: nil},
@@ -92,6 +107,8 @@ defmodule Surfex.LogTest do
   end
 
   describe "the log" do
+    @describetag verifies: "log-append-only"
+
     test "init creates the log and the union merge, idempotently", %{tmp_dir: root} do
       File.write!(Path.join(root, ".gitattributes"), "*.bin binary")
       Log.init(root)
@@ -131,6 +148,8 @@ defmodule Surfex.LogTest do
   end
 
   describe "verify" do
+    @describetag verifies: "log-append-only"
+
     setup %{tmp_dir: root} do
       Log.init(root)
       first = entry(1)
@@ -144,7 +163,6 @@ defmodule Surfex.LogTest do
       assert Log.verify(root) == []
     end
 
-    @tag verifies: "entry-tamper"
     test "an edited line is caught", %{tmp_dir: root} do
       path = Path.join(Log.dir(root), "surfex.log")
       File.write!(path, String.replace(File.read!(path), ~s("hash":"c3"), ~s("hash":"cX")))

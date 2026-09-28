@@ -1,5 +1,6 @@
 defmodule Surfex.CoverageTest do
   use ExUnit.Case, async: true
+  @moduletag verifies: "coverage-verdict"
 
   alias Surfex.{Coverage, Item, Profile}
 
@@ -60,5 +61,18 @@ defmodule Surfex.CoverageTest do
 
     assert Coverage.verdict(gap, MapSet.new(), profile()) == :gap
     assert Coverage.verdict(excused, MapSet.new(), profile()) == {:expected, "helpers"}
+  end
+
+  test "verdict/3 reads the rules from a coverage map as from a profile" do
+    coverage =
+      Surfex.Profile.coverage!(
+        classes: [{"helpers", "the code's own factoring"}],
+        rules: [%{class: "helpers", kinds: [:function], name: ~r/^do_/}]
+      )
+
+    assert Coverage.verdict(item(:function, "do_twin"), MapSet.new(), coverage) ==
+             {:expected, "helpers"}
+
+    assert Coverage.verdict(item(:function, "main"), MapSet.new(), coverage) == :gap
   end
 end

@@ -5,12 +5,14 @@
 #   * every public module and function implements some section (require:)
 #   * every test hint in spec.md is verified by a test tagged `@tag verifies: "<hint id>"`
 #   * every name spec.md cites exists
+#   * the spec/test/code triangle is closed (triangle: :fail): every section something
+#     implements is verified by a test, and that test exercises the implementing code
 #
-# Its tests are scanned (tests:), and the spec/test/code triangle is reported.
 # `mix surfex.goldens` gates RELATIONS.md, the relation status as a committed record.
 [
   goldens: [:status],
   require: [code: [:implements], test_hint: [:verifies]],
   tests: ["test/*_test.exs", "test/surfex/*_test.exs"],
+  triangle: :fail,
   sources: ["spec.md"]
 ]

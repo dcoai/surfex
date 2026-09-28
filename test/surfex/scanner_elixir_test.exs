@@ -1,5 +1,6 @@
 defmodule Surfex.Scanner.ElixirTest do
   use ExUnit.Case, async: true
+  @moduletag verifies: "elixir-scanner-items"
 
   alias Surfex.{Cite, Item, Profile}
   alias Surfex.Scanner.Elixir, as: Scanner
@@ -63,11 +64,9 @@ defmodule Surfex.Scanner.ElixirTest do
   end
 
   describe "profile_defaults/1" do
-    setup do
-      %{d: Scanner.profile_defaults("MyApp")}
-    end
+    test "shape matches the namespace's names and nothing else" do
+      d = Scanner.profile_defaults("MyApp")
 
-    test "shape matches the namespace's names and nothing else", %{d: d} do
       for name <- ~w(MyApp MyApp.Cart MyApp.Cart.add MyApp.Cart.add/2 MyApp.Cart.valid?/1),
           do: assert(Regex.match?(d[:shape], name), name)
 

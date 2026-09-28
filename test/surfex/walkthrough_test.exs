@@ -92,6 +92,7 @@ defmodule Surfex.WalkthroughTest do
     )
   end
 
+  @tag verifies: ["recording-by-name", "log-append-only"]
   test "relate → dangling → confirm → conflict across branches → resolve", %{root: root} do
     task(root, Mix.Tasks.Surfex.Relate, [@section, @function, "--type", "implements"])
     commit(root, "relate")
@@ -149,7 +150,6 @@ defmodule Surfex.WalkthroughTest do
   end
 
   # #36: the spec is written first, the relation planned, and the code follows.
-  @tag verifies: "planned-state"
   test "plan → planned → write the code → dangling → confirm", %{root: root} do
     planned = "MyApp.Cart.discount/1"
     task(root, Mix.Tasks.Surfex.Relate, ["--planned", @section, planned, "--type", "implements"])
@@ -205,6 +205,7 @@ defmodule Surfex.WalkthroughTest do
   end
 
   # #38: the whole test-first flow, from a test hint to a closed triangle.
+  @tag verifies: ["suggest-proposes"]
   test "hint → tagged test → planned code → code → suggest: the triangle closes", %{root: root} do
     File.write!(Path.join(root, "spec.md"), """
     # Totals {#totals}
@@ -419,5 +420,18 @@ defmodule Surfex.WalkthroughTest do
     GenServer.cast(pid, {:test_finished, test})
     GenServer.cast(pid, {:suite_finished, %{}})
     GenServer.stop(pid)
+  end
+
+  @tag verifies: "recording-by-name"
+  test "move carries a renamed section's relation, retire puts one to rest", %{root: root} do
+    task(root, Mix.Tasks.Surfex.Relate, [@section, @function, "--type", "implements"])
+    File.write!(Path.join(root, "spec.md"), "# Totals {#totals}\n\nA cart's total.\n")
+    task(root, Mix.Tasks.Surfex.Move, [@section, "spec.md#totals"])
+
+    assert %{"state" => "current"} =
+             Enum.find(passing_json(root)["relations"], &(&1["state"] != "retired"))
+
+    task(root, Mix.Tasks.Surfex.Retire, ["spec.md#totals", @function, "--type", "implements"])
+    assert Enum.all?(passing_json(root)["relations"], &(&1["state"] == "retired"))
   end
 end

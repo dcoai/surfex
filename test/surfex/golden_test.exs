@@ -12,6 +12,7 @@ defmodule Surfex.GoldenTest do
   """
 
   use ExUnit.Case, async: true
+  @moduletag verifies: "golden-renders"
 
   alias Surfex.Golden
 
@@ -38,6 +39,8 @@ defmodule Surfex.GoldenTest do
   end
 
   describe "the header block" do
+    @describetag verifies: "golden-stats"
+
     test "is title, purpose, attribution — in that order, contiguous" do
       [title, purpose, attribution | _] = Golden.render(spec()) |> String.split("\n")
 
@@ -58,6 +61,13 @@ defmodule Surfex.GoldenTest do
   end
 
   describe "determinism" do
+    @describetag verifies: "golden-order"
+
+    test "natural_key/1 orders numbers by value within text" do
+      assert Enum.sort_by(["item10", "item2", "item1"], &Surfex.Golden.natural_key/1) ==
+               ["item1", "item2", "item10"]
+    end
+
     # The property the drift gates rest on. Two scanners that agree on content but not on
     # order must produce identical bytes.
     test "row order does not change the bytes" do
@@ -84,6 +94,8 @@ defmodule Surfex.GoldenTest do
   end
 
   describe "what may never appear" do
+    @describetag verifies: "golden-order"
+
     # A golden is a stable function of source. Anything that varies independently of source
     # makes it drift against itself, and a gate that cries wolf gets disabled.
     test "no date, time or duration reaches the output" do
@@ -166,6 +178,8 @@ defmodule Surfex.GoldenTest do
   end
 
   describe "stats" do
+    @describetag verifies: "golden-stats"
+
     test "stat/2 keeps the counts as data and renders the same line" do
       stat = Golden.stat("2 items", [{"verified", 1}, {"nothing", 1}])
 

@@ -49,11 +49,13 @@ defmodule Surfex.StatusTaskTest do
     end
   end
 
+  @tag verifies: ["status-report-forms"]
   test "a current relation passes, and the report says so", %{root: root} do
     task(root, [])
     assert output() =~ "relation status: ok\n  implements: current 1"
   end
 
+  @tag verifies: ["status-report-forms"]
   test "an edit to the code dangles it and fails, naming the end", %{root: root} do
     path = Path.join(root, "lib/my_app/cart.ex")
 
@@ -66,6 +68,7 @@ defmodule Surfex.StatusTaskTest do
     assert output() =~ "changed: MyApp.Cart.total/0 (lib/my_app/cart.ex:22-22)"
   end
 
+  @tag verifies: ["status-report-forms"]
   test "--format json is the work list", %{root: root} do
     task(root, ["--format", "json"])
     json = :json.decode(output())
@@ -76,6 +79,7 @@ defmodule Surfex.StatusTaskTest do
     assert Enum.any?(json["new"], &(&1["id"] == "MyApp.Cart.add/2"))
   end
 
+  @tag verifies: ["status-report-forms"]
   test "the require policy fails on unrelated code", %{root: root} do
     File.write!(
       Path.join(root, ".surfex.exs"),
@@ -88,6 +92,7 @@ defmodule Surfex.StatusTaskTest do
              "Unmet (required relation missing):\n  code MyApp.Cart needs one of: implements"
   end
 
+  @tag verifies: ["status-report-forms"]
   test "--verify fails on an edited log line", %{root: root} do
     path = Path.join(Log.dir(root), "surfex.log")
 
@@ -100,6 +105,7 @@ defmodule Surfex.StatusTaskTest do
   end
 
   # #52: the spec can't name what the code doesn't have.
+  @tag verifies: ["status-report-forms"]
   test "a citation of nothing is a broken citation, and fails", %{root: root} do
     File.write!(
       Path.join(root, "spec.md"),
@@ -114,6 +120,8 @@ defmodule Surfex.StatusTaskTest do
   end
 
   describe "broken_citations/4" do
+    @describetag verifies: "status-config-read"
+
     alias Surfex.Item
 
     @items [

@@ -1,5 +1,6 @@
 defmodule Surfex.RecordTest do
   use ExUnit.Case, async: true
+  @moduletag verifies: "recording-by-name"
 
   alias Surfex.{Record, Scan, Status}
   alias Surfex.Log.Entry
