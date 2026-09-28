@@ -6,7 +6,7 @@ A row per public module and function in `lib/`. `Cited by` names the sections of
 `spec.md` that cite it. A GAP is code the spec does not describe, and the gate fails
 on any; a citation of something that does not exist fails it too.
 
-**112 items** · cited 112 · expected-silent 0 · GAPS 0 · citations 123 · unresolved 0 · ambiguous 0
+**114 items** · cited 114 · expected-silent 0 · GAPS 0 · citations 126 · unresolved 0 · ambiguous 0
 
 ## Modules
 
@@ -16,10 +16,10 @@ on any; a citation of something that does not exist fails it too.
 | `Mix.Tasks.Surfex.Goldens` | `:module` | `50134dd4` | `spec — 10.4 The tasks` | `lib/mix/tasks/surfex.goldens.ex` |
 | `Mix.Tasks.Surfex.History` | `:module` | `0e53701b` | `spec — 14. Recording` | `lib/mix/tasks/surfex.history.ex` |
 | `Mix.Tasks.Surfex.Log` | `:module` | `3696a44e` | `spec — 12.2 The log` | `lib/mix/tasks/surfex.log.ex` |
-| `Mix.Tasks.Surfex.Relate` | `:module` | `3c3e9d94` | `spec — 14. Recording` | `lib/mix/tasks/surfex.relate.ex` |
+| `Mix.Tasks.Surfex.Relate` | `:module` | `22b48234` | `spec — 14. Recording` | `lib/mix/tasks/surfex.relate.ex` |
 | `Mix.Tasks.Surfex.Resolve` | `:module` | `2316888b` | `spec — 14. Recording` | `lib/mix/tasks/surfex.resolve.ex` |
 | `Mix.Tasks.Surfex.Retire` | `:module` | `818a8b50` | `spec — 14. Recording` | `lib/mix/tasks/surfex.retire.ex` |
-| `Mix.Tasks.Surfex.Status` | `:module` | `e88eee55` | `spec — 13.3 Reports and the check` | `lib/mix/tasks/surfex.status.ex` |
+| `Mix.Tasks.Surfex.Status` | `:module` | `22229d41` | `spec — 13.3 Reports and the check` | `lib/mix/tasks/surfex.status.ex` |
 | `Mix.Tasks.Surfex.Suggest` | `:module` | `5ee4e45d` | `spec — 15. Suggesting relations` | `lib/mix/tasks/surfex.suggest.ex` |
 | `Mix.Tasks.Surfex.Trace` | `:module` | `868b312c` | `spec — 10.4 The tasks` | `lib/mix/tasks/surfex.trace.ex` |
 | `Surfex.Cite` | `:module` | `679d9b4b` | `spec — 6. Citations` | `lib/surfex/cite.ex` |
@@ -29,15 +29,15 @@ on any; a citation of something that does not exist fails it too.
 | `Surfex.Goldens` | `:module` | `0f1e0826` | `spec — 10.3 Every golden at once` | `lib/surfex/goldens.ex` |
 | `Surfex.Item` | `:module` | `c2646a65` | `spec — 4. Items` | `lib/surfex/item.ex` |
 | `Surfex.Log` | `:module` | `22952823` | `spec — 12.2 The log` | `lib/surfex/log.ex` |
-| `Surfex.Log.Entry` | `:module` | `2f028a44` | `spec — 12.1 Entries` | `lib/surfex/log/entry.ex` |
+| `Surfex.Log.Entry` | `:module` | `8fa62411` | `spec — 12.1 Entries` | `lib/surfex/log/entry.ex` |
 | `Surfex.Profile` | `:module` | `622c495c` | `spec — 1.2 Policies, spec — 8. Profiles` | `lib/surfex/profile.ex` |
-| `Surfex.Record` | `:module` | `6ac4018a` | `spec — 14. Recording` | `lib/surfex/record.ex` |
+| `Surfex.Record` | `:module` | `5ea556b9` | `spec — 14. Recording` | `lib/surfex/record.ex` |
 | `Surfex.Scan` | `:module` | `1cbc20d7` | `spec — 11. Scan records` | `lib/surfex/scan.ex` |
 | `Surfex.Scan.Markdown` | `:module` | `9899d1ab` | `spec — 11. Scan records` | `lib/surfex/scan/markdown.ex` |
 | `Surfex.Scanner` | `:module` | `f6893413` | `spec — 5.1 The contract, spec — 9.1 Definition` | `lib/surfex/scanner.ex` |
 | `Surfex.Scanner.Elixir` | `:module` | `2fc24816` | `spec — 5.2 The built-in Elixir scanner` | `lib/surfex/scanner/elixir.ex` |
 | `Surfex.SourceScan` | `:module` | `6da732c6` | `spec — 3. Reading source` | `lib/surfex/source_scan.ex` |
-| `Surfex.Status` | `:module` | `6f7b5cb8` | `spec — 13. Relation status` | `lib/surfex/status.ex` |
+| `Surfex.Status` | `:module` | `75427a17` | `spec — 13. Relation status` | `lib/surfex/status.ex` |
 | `Surfex.Status.Config` | `:module` | `2cc1bc32` | `spec — 13.2 Configuration` | `lib/surfex/status/config.ex` |
 | `Surfex.Status.Report` | `:module` | `4b9fea23` | `spec — 13.3 Reports and the check` | `lib/surfex/status/report.ex` |
 | `Surfex.Suggest` | `:module` | `99bcf40a` | `spec — 15. Suggesting relations` | `lib/surfex/suggest.ex` |
@@ -66,7 +66,7 @@ on any; a citation of something that does not exist fails it too.
 | `Surfex.Goldens.needs_compile?/2` | `:function` | `36b9650b` | `spec — 10.3 Every golden at once, spec — 10.4 The tasks` | `lib/surfex/goldens.ex` |
 | `Surfex.Goldens.run/6` | `:function` | `3ef67e7e` | `spec — 10.3 Every golden at once` | `lib/surfex/goldens.ex` |
 | `Surfex.Item.key/1` | `:function` | `6378a7aa` | `spec — 4. Items` | `lib/surfex/item.ex` |
-| `Surfex.Log.Entry.build/1` | `:function` | `e7f5ed23` | `spec — 12.1 Entries` | `lib/surfex/log/entry.ex` |
+| `Surfex.Log.Entry.build/1` | `:function` | `3729af79` | `spec — 12.1 Entries` | `lib/surfex/log/entry.ex` |
 | `Surfex.Log.Entry.decode!/1` | `:function` | `4728faeb` | `spec — 12.1 Entries` | `lib/surfex/log/entry.ex` |
 | `Surfex.Log.Entry.decode/1` | `:function` | `c33356b5` | `spec — 12.1 Entries` | `lib/surfex/log/entry.ex` |
 | `Surfex.Log.Entry.directed/0` | `:function` | `1adc2086` | `spec — 12.1 Entries` | `lib/surfex/log/entry.ex` |
@@ -88,7 +88,8 @@ on any; a citation of something that does not exist fails it too.
 | `Surfex.Profile.new!/1` | `:function` | `a7ebba6b` | `spec — 8. Profiles` | `lib/surfex/profile.ex` |
 | `Surfex.Record.confirm/4` | `:function` | `d96c329c` | `spec — 14. Recording` | `lib/surfex/record.ex` |
 | `Surfex.Record.history/2` | `:function` | `acf0b424` | `spec — 14. Recording` | `lib/surfex/record.ex` |
-| `Surfex.Record.relate/6` | `:function` | `b61dac70` | `spec — 14. Recording` | `lib/surfex/record.ex` |
+| `Surfex.Record.plan/7` | `:function` | `974fe393` | `spec — 14. Recording` | `lib/surfex/record.ex` |
+| `Surfex.Record.relate/6` | `:function` | `d0e4bb1d` | `spec — 14. Recording` | `lib/surfex/record.ex` |
 | `Surfex.Record.resolve/7` | `:function` | `e4ae4a48` | `spec — 14. Recording` | `lib/surfex/record.ex` |
 | `Surfex.Record.retire/6` | `:function` | `cf36dc24` | `spec — 14. Recording` | `lib/surfex/record.ex` |
 | `Surfex.Scan.Markdown.records/2` | `:function` | `afbbdb08` | `spec — 11. Scan records` | `lib/surfex/scan/markdown.ex` |
@@ -108,13 +109,14 @@ on any; a citation of something that does not exist fails it too.
 | `Surfex.SourceScan.project_root/2` | `:function` | `cb99a577` | `spec — 3.1 Finding source` | `lib/surfex/source_scan.ex` |
 | `Surfex.Status.Config.require!/1` | `:function` | `f660fc23` | `spec — 13.2 Configuration` | `lib/surfex/status/config.ex` |
 | `Surfex.Status.Config.scans/2` | `:function` | `0ccfb069` | `spec — 13.2 Configuration` | `lib/surfex/status/config.ex` |
-| `Surfex.Status.Report.golden/1` | `:function` | `47924bb8` | `spec — 13.3 Reports and the check` | `lib/surfex/status/report.ex` |
-| `Surfex.Status.Report.golden/2` | `:function` | `47924bb8` | `spec — 13.3 Reports and the check` | `lib/surfex/status/report.ex` |
-| `Surfex.Status.Report.json/1` | `:function` | `6b913902` | `spec — 13.3 Reports and the check` | `lib/surfex/status/report.ex` |
-| `Surfex.Status.Report.text/1` | `:function` | `717e2324` | `spec — 13.3 Reports and the check` | `lib/surfex/status/report.ex` |
-| `Surfex.Status.derive/2` | `:function` | `b4666844` | `spec — 13. Relation status` | `lib/surfex/status.ex` |
-| `Surfex.Status.derive/3` | `:function` | `b4666844` | `spec — 13. Relation status` | `lib/surfex/status.ex` |
-| `Surfex.Status.failing?/1` | `:function` | `9ef17a15` | `spec — 13.1 States` | `lib/surfex/status.ex` |
+| `Surfex.Status.Report.golden/1` | `:function` | `ccaa2392` | `spec — 13.3 Reports and the check` | `lib/surfex/status/report.ex` |
+| `Surfex.Status.Report.golden/2` | `:function` | `ccaa2392` | `spec — 13.3 Reports and the check` | `lib/surfex/status/report.ex` |
+| `Surfex.Status.Report.json/1` | `:function` | `22f0cbe8` | `spec — 13.3 Reports and the check` | `lib/surfex/status/report.ex` |
+| `Surfex.Status.Report.text/1` | `:function` | `b928eb59` | `spec — 13.3 Reports and the check` | `lib/surfex/status/report.ex` |
+| `Surfex.Status.derive/2` | `:function` | `9d28eb53` | `spec — 13. Relation status` | `lib/surfex/status.ex` |
+| `Surfex.Status.derive/3` | `:function` | `9d28eb53` | `spec — 13. Relation status` | `lib/surfex/status.ex` |
+| `Surfex.Status.derive/4` | `:function` | `9d28eb53` | `spec — 13. Relation status, spec — 13.1 States` | `lib/surfex/status.ex` |
+| `Surfex.Status.failing?/1` | `:function` | `46ef71e5` | `spec — 13.1 States` | `lib/surfex/status.ex` |
 | `Surfex.Status.summary/1` | `:function` | `a081eab5` | `spec — 13.1 States` | `lib/surfex/status.ex` |
 | `Surfex.Status.tips/2` | `:function` | `304fce6b` | `spec — 13.1 States` | `lib/surfex/status.ex` |
 | `Surfex.Suggest.accept/4` | `:function` | `1fb41589` | `spec — 15. Suggesting relations` | `lib/surfex/suggest.ex` |

@@ -61,6 +61,28 @@ defmodule Surfex.LogTest do
       end
     end
 
+    test "a planned end has no hash, written as null; two planned ends are refused" do
+      planned = [
+        %{kind: :code, id: "M.later/1", hash: nil},
+        %{kind: :spec, id: "spec.md#S", hash: "s"}
+      ]
+
+      e = Entry.new!(at: "2026-09-28T10:00:00Z", op: :relate, type: :implements, ends: planned)
+      line = Entry.encode(e)
+      assert line =~ ~s({"kind":"code","id":"M.later/1","hash":null})
+      assert Entry.decode!(line) == e
+
+      assert {:error, msg} =
+               Entry.build(
+                 at: "2026-09-28T10:00:00Z",
+                 op: :relate,
+                 type: :implements,
+                 ends: Enum.map(planned, &%{&1 | hash: nil})
+               )
+
+      assert msg =~ ":ends"
+    end
+
     test "an edited line no longer decodes as its id" do
       line = entry(1) |> Entry.encode() |> String.replace(~s("hash":"c1"), ~s("hash":"cX"))
       assert {:error, msg} = Entry.decode(line)

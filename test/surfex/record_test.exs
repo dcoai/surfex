@@ -162,4 +162,56 @@ defmodule Surfex.RecordTest do
     assert Record.history([dep, first], "spec:" <> @spec_id) == [first]
     assert Record.history([dep, first], "M.nothing/0") == []
   end
+
+  describe "plan" do
+    @anything &__MODULE__.plausible/2
+    def plausible(_kind, id), do: not String.contains?(id, "typo")
+
+    test "records the unscanned end without a hash, and the relation is planned" do
+      {:ok, [e]} =
+        Record.plan(scans(), [], @spec_id, "M.later/1", :implements, @anything, @meta)
+
+      assert %{kind: :code, id: "M.later/1", hash: nil} in e.ends
+      assert %{kind: :spec, id: @spec_id, hash: "s1"} in e.ends
+      assert state(scans(), [e]) == [:planned]
+
+      # The code appears: the relation dangles on it until someone confirms it.
+      written = scans() ++ [scan(:code, "M.later/1", "l1")]
+      assert state(written, [e]) == [:dangling]
+      {:ok, [confirmed]} = Record.confirm(written, [e], ["M.later/1"], later(@meta, 1))
+      assert confirmed.parents == [e.id]
+      assert state(written, [e, confirmed]) == [:current]
+    end
+
+    test "the unscanned end's kind comes from its prefix, or from a # for a spec id" do
+      {:ok, [e]} =
+        Record.plan(scans(), [], "spec.md#Later", @code_id, :implements, @anything, @meta)
+
+      assert %{kind: :spec, id: "spec.md#Later", hash: nil} in e.ends
+
+      {:ok, [e]} = Record.plan(scans(), [], "code:Odd#1", @code_id, :depends_on, @anything, @meta)
+      assert %{kind: :code, id: "Odd#1", hash: nil} in e.ends
+    end
+
+    test "refuses when both ends or neither end is scanned, and an implausible id" do
+      assert {:error, "M.add/2 and M.helper/1 are both scanned" <> _} =
+               Record.plan(scans(), [], @code_id, "M.helper/1", :depends_on, @anything, @meta)
+
+      assert {:error, "neither" <> _} =
+               Record.plan(scans(), [], "M.a/0", "M.b/0", :depends_on, @anything, @meta)
+
+      assert {:error, "M.typo/0 is not scanned and doesn't look like a code id" <> _} =
+               Record.plan(scans(), [], @spec_id, "M.typo/0", :implements, @anything, @meta)
+    end
+
+    test "a planned relation retires like any other" do
+      {:ok, [e]} = Record.plan(scans(), [], @spec_id, "M.later/1", :implements, @anything, @meta)
+
+      {:ok, [retired]} =
+        Record.retire(scans(), [e], @spec_id, "M.later/1", :implements, later(@meta, 1))
+
+      assert retired.parents == [e.id]
+      assert state(scans(), [e, retired]) == [:retired]
+    end
+  end
 end

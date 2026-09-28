@@ -33,9 +33,48 @@ defmodule Surfex.Record do
   def relate(scans, entries, from, to, type, meta) do
     with {:ok, a} <- find(scans, from),
          {:ok, b} <- find(scans, to),
-         {:ok, entry} <-
-           entry(:relate, type, [end_(a), end_(b)], parents(entries, type, a, b), meta) do
+         [a, b] = [end_(a), end_(b)],
+         {:ok, entry} <- entry(:relate, type, [a, b], parents(entries, type, a, b), meta) do
       {:ok, [entry]}
+    end
+  end
+
+  @doc """
+  Relates `from` and `to` as `type` when one of them doesn't exist yet: a **planned**
+  relation, the intent recorded before the code (or the section) is written. A scanned end
+  is recorded at its current hash and the unscanned one without a hash. `Surfex.Status`
+  reports the relation as planned until the id appears, then as dangling until someone
+  confirms it.
+
+  The unscanned end's kind is its `spec:` or `code:` prefix, or `:spec` when the id has a
+  `#`, and `:code` otherwise. `plausible?` is asked whether such an id could exist (a spec
+  id in a known file, a code name of the scanner's shape), so a typo doesn't become a
+  permanent plan. At least one end must be scanned: use `relate/6` when both are.
+  """
+  @spec plan(
+          [Scan.t()],
+          [Entry.t()],
+          String.t(),
+          String.t(),
+          atom,
+          (atom, String.t() -> boolean),
+          meta
+        ) :: {:ok, [Entry.t()]} | {:error, String.t()}
+  def plan(scans, entries, from, to, type, plausible?, meta) do
+    case {find(scans, from), find(scans, to)} do
+      {{:ok, _}, {:ok, _}} ->
+        {:error, "#{from} and #{to} are both scanned: relate them, nothing is planned"}
+
+      {{:error, _}, {:error, _}} ->
+        {:error, "neither #{from} nor #{to} is scanned: a planned relation needs one that is"}
+
+      {a, b} ->
+        with {:ok, a} <- planned_end(a, from, plausible?),
+             {:ok, b} <- planned_end(b, to, plausible?),
+             {:ok, entry} <-
+               entry(:relate, type, [a, b], parents(entries, type, a, b), meta) do
+          {:ok, [entry]}
+        end
     end
   end
 
@@ -181,8 +220,24 @@ defmodule Surfex.Record do
     end
   end
 
+  defp planned_end({:ok, scan}, _id, _plausible?), do: {:ok, end_(scan)}
+
+  defp planned_end({:error, _}, id, plausible?) do
+    {kind, bare} =
+      case split_kind(id) do
+        {nil, bare} -> {if(String.contains?(bare, "#"), do: :spec, else: :code), bare}
+        known -> known
+      end
+
+    if plausible?.(kind, bare),
+      do: {:ok, %{kind: kind, id: bare, hash: nil}},
+      else:
+        {:error,
+         "#{id} is not scanned and doesn't look like a #{kind} id this project could have: check it for a typo"}
+  end
+
   defp parents(entries, type, a, b) do
-    entries |> Status.tips(Entry.relation(type, end_(a), end_(b))) |> Enum.map(& &1.id)
+    entries |> Status.tips(Entry.relation(type, a, b)) |> Enum.map(& &1.id)
   end
 
   defp entry(op, type, ends, parents, meta, note \\ nil) do

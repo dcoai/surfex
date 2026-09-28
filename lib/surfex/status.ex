@@ -13,7 +13,9 @@ defmodule Surfex.Status do
     * **conflicted** — more than one tip: two entries recorded without seeing each other
       (sharing a parent, or both with none, on two branches)
     * **retired** — the tip retires it
-    * **orphaned** — an end's id is no longer scanned (removed, or renamed)
+    * **orphaned** — an end recorded at a hash is no longer scanned (removed, or renamed)
+    * **planned** — an end was recorded without a hash, before it existed, and still
+      isn't scanned. When it appears, the relation dangles on that end until confirmed.
     * **dangling** — both ids are scanned, but at least one is at a different hash than
       the tip recorded; the report names which ends changed
     * **current** — both ends are at the hashes the tip recorded
@@ -23,21 +25,25 @@ defmodule Surfex.Status do
   a failure: re-confirming everything downstream of every change would train people to
   confirm without reading.
 
-  A scanned id in no relation at all is **new**.
+  A scanned id in no relation at all is **new**. A spec id whose every live `implements`
+  relation is planned is **unimplemented**.
 
   ## Policy
 
   `require:` in `.surfex.exs` names, per kind, the relation types every scanned id of that
   kind must take part in, e.g. `require: [code: [:implements, :excuses], spec:
   [:implements]]`. An id with no non-retired relation of one of those types is **unmet**.
+  A planned relation counts: the intent is on record.
 
-  **Failing** means any dangling, orphaned or conflicted relation, or any unmet id.
+  **Failing** means any dangling, orphaned or conflicted relation, or any unmet id. Planned
+  relations fail too when derived with `planned: :fail` (`mix surfex.status --no-planned`),
+  for a check that everything planned has been built, such as a release's.
   """
 
   alias Surfex.Log.Entry
   alias Surfex.Scan
 
-  @type state :: :current | :dangling | :orphaned | :conflicted | :retired
+  @type state :: :current | :dangling | :orphaned | :conflicted | :retired | :planned
   @type relation_status :: %{
           relation: {atom, {atom, String.t()}, {atom, String.t()}},
           type: atom,
@@ -50,6 +56,8 @@ defmodule Surfex.Status do
           relations: [relation_status],
           new: [Scan.t()],
           unmet: [%{scan: Scan.t(), requires: [atom]}],
+          unimplemented: [Scan.t()],
+          planned: :allow | :fail,
           scans: %{{atom, String.t()} => Scan.t()}
         }
 
@@ -57,8 +65,13 @@ defmodule Surfex.Status do
   The status of every relation in `entries` against `scans`, the new ids, and the ids that
   fail the `require` policy.
   """
-  @spec derive([Scan.t()], [Entry.t()], keyword) :: t
-  def derive(scans, entries, require \\ []) do
+  @spec derive([Scan.t()], [Entry.t()], keyword, keyword) :: t
+  def derive(scans, entries, require \\ [], opts \\ []) do
+    planned = Keyword.get(opts, :planned, :allow)
+
+    unless planned in [:allow, :fail],
+      do: raise(ArgumentError, "planned: must be :allow or :fail, got #{inspect(planned)}")
+
     by_id = Map.new(scans, &{{&1.kind, &1.id}, &1})
 
     relations =
@@ -79,16 +92,22 @@ defmodule Surfex.Status do
         |> Enum.reject(&MapSet.member?(related, {&1.kind, &1.id}))
         |> Enum.sort_by(&{&1.kind, &1.id}),
       unmet: unmet(scans, relations, require),
+      unimplemented: unimplemented(scans, relations),
+      planned: planned,
       scans: by_id
     }
   end
 
-  @doc "Whether the status fails the check: any dangling, orphaned, conflicted or unmet."
+  @doc """
+  Whether the status fails the check: any dangling, orphaned, conflicted or unmet, and any
+  planned relation when it was derived with `planned: :fail`.
+  """
   @spec failing?(t) :: boolean
-  def failing?(status),
-    do:
-      status.unmet != [] or
-        Enum.any?(status.relations, &(&1.state in [:dangling, :orphaned, :conflicted]))
+  def failing?(status) do
+    failing = [:dangling, :orphaned, :conflicted]
+    failing = if status.planned == :fail, do: [:planned | failing], else: failing
+    status.unmet != [] or Enum.any?(status.relations, &(&1.state in failing))
+  end
 
   @doc """
   Counts per relation type and state, plus the new and unmet totals: the summary a person
@@ -131,12 +150,22 @@ defmodule Surfex.Status do
 
   defp judge_tip(%Entry{op: :retire}, _by_id), do: {:retired, []}
 
+  # An end recorded at a hash and no longer scanned is gone: orphaned. An end recorded
+  # without one (planned) and still not scanned is waiting: planned. Once a planned id is
+  # scanned it differs from the recorded nil, so the relation dangles on that end until
+  # someone confirms it, as with any other change.
   defp judge_tip(%Entry{ends: ends}, by_id) do
     looked = Enum.map(ends, &{{&1.kind, &1.id}, &1.hash, Map.get(by_id, {&1.kind, &1.id})})
 
+    gone = for {key, hash, nil} <- looked, hash != nil, do: key
+    waiting = for {key, nil, nil} <- looked, do: key
+
     cond do
-      Enum.any?(looked, fn {_, _, scan} -> scan == nil end) ->
-        {:orphaned, for({key, _, nil} <- looked, do: key)}
+      gone != [] ->
+        {:orphaned, gone}
+
+      waiting != [] ->
+        {:planned, waiting}
 
       true ->
         case for({key, hash, scan} <- looked, scan.hash != hash, do: key) do
@@ -162,6 +191,23 @@ defmodule Surfex.Status do
             r.type != :depends_on and (MapSet.member?(troubled, a) or MapSet.member?(troubled, b))
       }
     end)
+  end
+
+  # A spec id whose every live `implements` relation is still planned: meant to be built,
+  # and not built yet.
+  defp unimplemented(scans, relations) do
+    by_spec =
+      for %{type: :implements, state: state, relation: {_, a, b}} <- relations,
+          state != :retired,
+          {:spec, _} = end_ <- [a, b],
+          reduce: %{},
+          do: (acc -> Map.update(acc, end_, [state], &[state | &1]))
+
+    for scan <- Enum.sort_by(scans, &{&1.kind, &1.id}),
+        scan.kind == :spec,
+        states = Map.get(by_spec, {:spec, scan.id}, []),
+        states != [] and Enum.all?(states, &(&1 == :planned)),
+        do: scan
   end
 
   # ── Policy ──────────────────────────────────────────────────────────────
