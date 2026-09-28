@@ -18,6 +18,10 @@ release it merely follows.
 
 ### Fixed
 
+- **The JSON status report wrote a missing value as the string `"nil"`.** A gone end's
+  hash and location, and a conflicted relation's recorded hashes, reached tools as a hash
+  named `nil`. They are now `null`.
+
 - **The markdown scanner read code fences wrongly.** A tilde fence wasn't a fence, and a
   shorter inner fence closed a longer outer one, so a `#` line in a code block could
   become a section and shift the ids and versions after it. Fences now follow
@@ -86,6 +90,10 @@ The first release published to GitHub. It fixes a GAP that a shared key could hi
 
 ### Fixed
 
+- **The JSON status report wrote a missing value as the string `"nil"`.** A gone end's
+  hash and location, and a conflicted relation's recorded hashes, reached tools as a hash
+  named `nil`. They are now `null`.
+
 - **A GAP could be hidden by a key two items share.** `Surfex.Coverage.verdicts/3` kept
   one verdict per key, so when two items shared a key, one item's verdict overwrote the
   other's. A GAP could then vanish from the golden and from the gate. Every item now keeps
@@ -129,6 +137,10 @@ has been added since 0.1.0.
   release guide.
 
 ### Fixed
+
+- **The JSON status report wrote a missing value as the string `"nil"`.** A gone end's
+  hash and location, and a conflicted relation's recorded hashes, reached tools as a hash
+  named `nil`. They are now `null`.
 
 - `Surfex.SourceScan.lib_sources/1` no longer counts test fixtures or the `tmp/` trees
   ExUnit leaves behind as first-party source. A `lib/` counts only when its parent has a

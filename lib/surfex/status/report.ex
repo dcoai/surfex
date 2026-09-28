@@ -68,7 +68,7 @@ defmodule Surfex.Status.Report do
           Map.put(scan_json(scan), "requires", Enum.map(requires, &Atom.to_string/1))
         end)
     }
-    |> :json.encode()
+    |> :json.encode(&encode/2)
     |> IO.iodata_to_binary()
   end
 
@@ -192,6 +192,12 @@ defmodule Surfex.Status.Report do
   defp at(%{location: %{file: file}}), do: " (#{file})"
 
   # ── JSON ────────────────────────────────────────────────────────────────
+
+  # OTP's encoder writes only the atom `:null` as null, and any other atom, `nil` too, as a
+  # string. Absent values (a gone end's hash and location, a conflicted relation's recorded
+  # hashes) must reach tools as null, not as a hash named "nil".
+  defp encode(nil, _encoder), do: "null"
+  defp encode(value, encoder), do: :json.encode_value(value, encoder)
 
   defp relation_json(r, status) do
     {type, a, b} = r.relation
