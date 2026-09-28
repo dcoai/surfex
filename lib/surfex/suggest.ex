@@ -4,9 +4,10 @@ defmodule Surfex.Suggest do
   code item is a candidate `implements` relation between the two.
 
   It reads the spec's citations as the trace does (`Surfex.Cite`, with the project's
-  profile). For each **resolved** citation, the candidate is the pair *(the spec section
-  containing the citation's line, each code item the citation names)*. A family (`Mod.fun`)
-  names every member. Leaving things out:
+  profile). For each **resolved** citation, the candidate is the pair *(the innermost spec
+  unit containing the citation's line, each code item the citation names)*: a citation in
+  a marked block relates the block, not its section. A family (`Mod.fun`) names every
+  member. Leaving things out:
 
     * a pair already related, in any state, including retired: suggesting it again would
       overrule a decision already on record
@@ -71,11 +72,14 @@ defmodule Surfex.Suggest do
     end)
   end
 
-  # The section whose lines contain `line` in `file`: sections don't overlap, since each
-  # stops at the next heading of any level.
+  # The innermost spec unit whose lines contain `line` in `file`. Sections don't overlap
+  # (each stops at the next heading), but a marked block sits inside its section, and a
+  # citation in the block is about the block's requirement.
   defp section_at(sections, file, line) do
-    Enum.find(sections, fn %Scan{location: %{file: f, lines: {first, last}}} ->
+    sections
+    |> Enum.filter(fn %Scan{location: %{file: f, lines: {first, last}}} ->
       f == file and line >= first and line <= last
     end)
+    |> Enum.max_by(fn %Scan{location: %{lines: {first, _}}} -> first end, fn -> nil end)
   end
 end

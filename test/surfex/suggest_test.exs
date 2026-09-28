@@ -83,4 +83,37 @@ defmodule Surfex.SuggestTest do
 
     assert [%{state: :dangling}] = Status.derive(moved, [related]).relations
   end
+
+  # #37: a citation inside a marked block is about the block's requirement.
+  @tag :tmp_dir
+  test "a citation in a marked block relates the block, not its section", %{tmp_dir: root} do
+    File.write!(Path.join(root, "spec.md"), """
+    # Limits
+
+    `Wren.send/3` sends.
+
+    <!-- surfex: max-len -->
+    `Wren.max_len/0` is 512.
+    <!-- /surfex -->
+    """)
+
+    items = [
+      %Item{kind: :function, name: "send/3", parent: "Wren", file: "lib/w.ex", hash: "00000001"},
+      %Item{
+        kind: :function,
+        name: "max_len/0",
+        parent: "Wren",
+        file: "lib/w.ex",
+        hash: "00000002"
+      }
+    ]
+
+    scans = Markdown.records(root, ["spec.md"]) ++ Scan.code(items)
+    trace = Trace.new!(namespace: "Wren", sources: ["spec.md"])
+
+    assert pairs(Suggest.candidates(trace, items, scans, [], root)) == [
+             {"spec.md#Limits", "Wren.send/3"},
+             {"spec.md#max-len", "Wren.max_len/0"}
+           ]
+  end
 end

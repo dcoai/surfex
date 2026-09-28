@@ -14,6 +14,14 @@ defmodule Surfex.Scan do
       **Never part of a relation:** moving code, or adding text above a section, changes
       its location and nothing else.
 
+  A spec record also says what part of the spec it is:
+
+    * `role` — `:section` (a heading and its body), `:block` (a marked requirement inside
+      a section) or `:test_hint` (a fenced `test` block saying how to test something);
+      `nil` for records that aren't spec
+    * `within` — the id of the section or block it sits in, `nil` for a section. It is a
+      fact about the text, not a relation.
+
   `code/1` makes code records from any `Surfex.Scanner`'s items. `Surfex.Scan.Markdown`
   makes spec records.
   """
@@ -21,10 +29,18 @@ defmodule Surfex.Scan do
   alias Surfex.Item
 
   @enforce_keys [:kind, :id, :hash, :location]
-  defstruct [:kind, :id, :hash, :location]
+  defstruct [:kind, :id, :hash, :location, :role, :within]
 
   @type location :: %{file: String.t(), lines: {pos_integer, pos_integer} | nil}
-  @type t :: %__MODULE__{kind: atom, id: String.t(), hash: String.t(), location: location}
+  @type role :: :section | :block | :test_hint | nil
+  @type t :: %__MODULE__{
+          kind: atom,
+          id: String.t(),
+          hash: String.t(),
+          location: location,
+          role: role,
+          within: String.t() | nil
+        }
 
   @doc "Code records from a scanner's items: the item's key, version and place."
   @spec code([Item.t()]) :: [t]

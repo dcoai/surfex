@@ -485,12 +485,17 @@ the code are now, and an append-only log records which versions of them someone 
 confirmed belong together.
 It is being built alongside the trace of §6–§10, which stays until it is replaced.
 
-`Surfex.Scan` is a scan record: `{kind, id, hash, location}`.
+`Surfex.Scan` is a scan record: `{kind, id, hash, location}`, plus `role` and `within`
+for spec records.
 - **kind:** `:spec` or `:code`
-- **id:** the identity: a code item's key (`MyApp.Cart.add/2`), or a spec section's
-  file and heading path (`spec.md#Carts/Adding items`)
+- **id:** the identity: a code item's key (`MyApp.Cart.add/2`), or a spec unit's file
+  and name (`spec.md#Carts/Adding items`, `spec.md#cart-add`)
 - **hash:** the content version, 8 hex characters
 - **location:** the file and first and last lines
+- **role:** what part of the spec a record is: `:section`, `:block` or `:test_hint`
+  (below); `nil` for code
+- **within:** the id of the section or block a block or hint sits in; `nil` for a
+  section. It is a fact about the text, not a relation.
 
 **Scanners only ever produce scan records.** They never read or write relations, and a
 record is a pure function of the source. Location is never part of a relation: moving
@@ -501,12 +506,16 @@ key, version (§3.3) and line range.
 
 `Surfex.Scan.Markdown` is the spec scanner for markdown. `Surfex.Scan.Markdown.records/2`
 reads every file matching a list of globs under a root; `Surfex.Scan.Markdown.sections/2`
-scans one text.
+scans one text. Both give every unit (sections, marked blocks and test hints) in the
+order they start.
 - **A section** is a heading and the lines under it, up to the next heading of any
   level. Subsections are sections of their own, so editing one changes only its own
   version. Text before the first heading is the section `(preamble)`, when it has any.
 - **Its id** is the file and the path of headings down to it. Two sections with the
-  same path in one file are told apart as `~2`, `~3`, in order.
+  same path in one file are told apart as `~2`, `~3`, in order. A heading **anchor**,
+  `{#cart-add}` at the end of the heading, makes the id `spec.md#cart-add` instead: it
+  survives renaming the heading or any heading above it. The anchor is not part of the
+  heading text, so subsections' paths don't include it.
 - **Its hash** covers its own body, **not its heading**, with runs of whitespace
   collapsed. Rewording the body changes it. Renaming the heading, reflowing a
   paragraph or adding blank lines doesn't, so a renamed section keeps its version
@@ -518,6 +527,30 @@ scans one text.
   holds a backtick doesn't open). It closes only on a line of the same character, at least
   as long, with nothing after it but whitespace, so a longer fence can quote a shorter
   one. A fence that never closes runs to the end of the file.
+
+Two finer units sit inside a section. Each is a record of its own, with its own version,
+and is **left out of the version of what it sits in**, so editing one changes only its
+own:
+- **A marked block** is one requirement: the lines between an opening marker, the HTML
+  comment `<!-- surfex: ID -->`, and a closing one, `<!-- /surfex -->`, each on a line
+  of its own. Its id is `file#ID`, its role `:block`, and it sits in its section. The
+  comments don't render, so the spec reads as prose. A block can't nest in another
+  block or span a heading.
+- **A test hint** says how to test something: a fenced code block whose info string is
+  exactly `test ID`. Its id is `file#ID`, its role `:test_hint`, and it sits in the
+  block or section around it. Its version covers the fence's content. It renders, since
+  readers should see test guidance. A `test` fence without an id is an ordinary code
+  block.
+
+Anchors, block ids and hint ids share one namespace per file with the section ids, and
+are lowercase letters, digits and `-`, starting with a letter or digit. Markers and hint
+fences inside a fenced code block are text. A spec that uses none of these scans exactly
+as it did before they existed. Every problem raises, naming the file and line:
+- an unclosed block or hint;
+- a block that nests or spans a heading;
+- a close marker with no block;
+- a malformed id;
+- a duplicate id, naming both lines.
 
 ## 12. The relation log
 
@@ -695,8 +728,9 @@ Each reads `.surfex.exs` as `mix surfex.status` does. Each needs the log to exis
 
 `Surfex.Suggest` proposes candidate `implements` relations from what the spec already
 says. `Surfex.Suggest.candidates/5` reads the spec's citations as the trace does (§6),
-and for each **resolved** citation proposes the pair *(the spec section containing the
-citation's line, each code item it names)*. A family names every member. Left out:
+and for each **resolved** citation proposes the pair *(the innermost spec unit
+containing the citation's line, each code item it names)*. A citation in a marked block
+relates the block, not its section. A family names every member. Left out:
 - a pair already related, in any state, including retired: suggesting it again would
   overrule a decision already on record
 - a citation inside a fenced code block, which has no line to place it in a section
