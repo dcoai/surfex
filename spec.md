@@ -611,6 +611,8 @@ records when `classes:` is present.
 A declaration is a claim in the source, not a relation. `Surfex.Scan.resolve/2` finds""")
   |> edit.("- **tests**: each test paired with each scanned code item in its `calls` (§11).\n", ~S"""
 - **tests**: each test paired with each scanned code item in its `calls` (§11).
+- **undeclared**: each undeclared `verifies` relation (§13.1), which accepting retires:
+  the test's own source says the claim is gone.
 - **excuses**: each code item that nothing implements, and that no `implements`
   candidate in the same run will, paired with the class of the first rule it matches.
   Matching is `Surfex.Coverage`'s (§7), where a parent counts as cited when something
@@ -833,6 +835,11 @@ other entry of it names as a parent (`Surfex.Status.tips/2`).
   `implements` relation, some test with a current `verifies` relation to the unit (or
   inside it) and a current `tests` relation to the code must pass. Without `evidence:`
   nothing is checked, and a relation confirmed by hand never is.
+- **Undeclared:** a live `verifies` relation whose test no longer declares its spec unit
+  (§11): the tag was removed or changed. A tag isn't part of a test's version, so without
+  this the relation would stay current, asserting a claim the source no longer makes. A
+  `verifies` relation recorded by hand, with no declaration, is undeclared too: a test must
+  say what it verifies.
 - **Stale:** a live `excuses` relation whose code item its class no longer covers,
   judged by `Surfex.Coverage.verdict/3` as the suggestion was (§15). The item may now be
   implemented, no rule of any class may match it, or another class's rule may match it
@@ -841,8 +848,8 @@ other entry of it names as a parent (`Surfex.Status.tips/2`).
   `coverage:`.
 
 `Surfex.Status.failing?/1` is true when any relation is dangling, orphaned or conflicted,
-any id is unmet, any declaration or citation is broken, any excuse is stale, or any
-confirmation by evidence is unproven. New,
+any id is unmet, any `verifies` relation is undeclared, any declaration or citation is
+broken, any excuse is stale, or any confirmation by evidence is unproven. New,
 retired, impacted, planned and unimplemented don't fail on their own. A status derived with
 `planned: :fail` (`Surfex.Status.derive/4`) fails on any planned relation too: the check
 that everything planned has been built, such as a release's.
@@ -890,6 +897,11 @@ else by default
 
 ```test units-by-role
 the spec units scanned are counted by role: sections, blocks and test hints
+```
+
+```test undeclared-verifies
+a verifies relation whose test no longer declares its spec unit is undeclared and fails;
+suggest --accept retires it
 ```
 
 ### 13.2 Configuration {#status-config}

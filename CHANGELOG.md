@@ -20,6 +20,13 @@ release it merely follows.
 
 ### Fixed
 
+- **A `verifies` relation outlived its test's declaration.** Removing a
+  `@tag verifies:` left the relation current, because a tag isn't part of a test's
+  version. Such a relation is now **undeclared**, and fails the check;
+  `mix surfex.suggest --accept` retires it, since the test's own source says the claim is
+  gone.
+- A test of the scanner contract could fail when its scanner module, defined later in the
+  file, wasn't loaded yet as async tests started.
 - **The triangle reported false gaps.** A test's `calls` now include every module it calls
   or names (a module handed to a helper, as a Mix task is), so a module a section names
   counts as exercised. The private helpers defined inside a `describe` block are followed,

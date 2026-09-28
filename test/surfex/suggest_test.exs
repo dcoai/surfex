@@ -280,6 +280,22 @@ defmodule Surfex.SuggestTest do
       status = Status.derive(scans, entries)
       assert status.triangle == []
 
+      # The tag goes: suggest retires the verifies relation the test no longer declares.
+      dropped = Enum.map(scans, fn s -> if s.kind == :test, do: %{s | declares: []}, else: s end)
+      s2 = Suggest.all(profile, items, dropped, entries, root)
+      assert [%{test: "WrenTest: the limit", spec: "spec.md#limits"}] = s2.undeclared
+
+      {:ok, [retired]} =
+        Suggest.accept_all(%{s2 | tests: [], implements: []}, dropped, entries, @meta)
+
+      assert %{
+               op: :retire,
+               type: :verifies,
+               note: "the test no longer declares that it verifies this"
+             } = retired
+
+      assert Status.derive(dropped, entries ++ [retired]).undeclared == []
+
       assert Suggest.all(profile, items, scans, entries, root) |> Map.values() |> List.flatten() ==
                []
     end

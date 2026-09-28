@@ -40,13 +40,16 @@ defmodule Surfex.Status do
   An id with no non-retired relation of one of those types is **unmet**, once per rule it
   fails. A planned relation counts: the intent is on record.
 
+  A `verifies` relation whose test no longer declares its spec unit (the tag was removed or
+  changed) is **undeclared**: a claim the source no longer makes.
+
   An `excuses` relation whose item its class no longer covers is **stale**: the item is
   now implemented, no rule matches it any more, or another class's rule matches it first.
   An excuse must stay true to its class's rules, not only to the versions it was confirmed
   at. Judging it needs the rules, given as `coverage:` (`Surfex.Profile.coverage!/1`).
 
   **Failing** means any dangling, orphaned or conflicted relation, any unmet id, any
-  broken declaration, any stale excuse, or any broken citation. Planned relations fail too when derived with
+  undeclared `verifies` relation, any broken declaration, any stale excuse, or any broken citation. Planned relations fail too when derived with
   `planned: :fail` (`mix surfex.status --no-planned`), for a check that everything planned
   has been built, such as a release's.
 
@@ -84,6 +87,7 @@ defmodule Surfex.Status do
           unmet: [%{scan: Scan.t(), requires: [atom]}],
           broken: [%{scan: Scan.t(), type: atom, ref: String.t(), reason: term}],
           triangle: [gap],
+          undeclared: [%{test: String.t(), spec: String.t()}],
           unproven: [%{relation: tuple, test: String.t() | nil, reason: atom}],
           citations: [Surfex.Cite.t()],
           stale: [
@@ -136,6 +140,7 @@ defmodule Surfex.Status do
         |> Enum.sort_by(&{&1.kind, &1.id}),
       unmet: unmet(scans, relations, require),
       broken: broken(scans),
+      undeclared: undeclared(scans, relations),
       citations: Keyword.get(opts, :citations, []),
       stale: stale(scans, relations, Keyword.get(opts, :coverage)),
       unproven: unproven(scans, relations, Keyword.get(opts, :evidence)),
@@ -157,6 +162,7 @@ defmodule Surfex.Status do
     failing = if status.planned == :fail, do: [:planned | failing], else: failing
 
     status.unmet != [] or status.broken != [] or status.stale != [] or status.citations != [] or
+      status.undeclared != [] or
       status.unproven != [] or
       (status.policy.triangle == :fail and status.triangle != []) or
       Enum.any?(status.relations, &(&1.state in failing))
@@ -529,6 +535,26 @@ defmodule Surfex.Status do
 
   defp hash_of(%{ends: ends}, kind, id),
     do: Enum.find_value(ends, fn e -> if e.kind == kind and e.id == id, do: e.hash end)
+
+  # A live verifies relation whose test no longer declares its spec unit: the claim was
+  # removed from the test's source, but the relation still asserts it. A tag is not part of
+  # a test's version, so without this the relation would stay current.
+  defp undeclared(scans, relations) do
+    tests = for %Scan{kind: :test} = s <- scans, into: %{}, do: {s.id, s}
+
+    for %{type: :verifies, state: state, relation: {_, {:test, t}, {:spec, unit}}} <- relations,
+        state != :retired,
+        test = Map.get(tests, t),
+        test != nil,
+        unit not in declared(scans, test),
+        do: %{test: t, spec: unit}
+  end
+
+  @doc false
+  # The spec units a test declares it verifies, resolved.
+  def declared(scans, %Scan{declares: declares}) do
+    for {:verifies, ref} <- declares, {:ok, unit} <- [Scan.resolve(scans, ref)], do: unit.id
+  end
 
   defp broken(scans) do
     for scan <- Enum.sort_by(scans, &{&1.kind, &1.id}),
