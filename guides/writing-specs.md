@@ -205,10 +205,20 @@ require: [code: [:implements], test_hint: [:verifies]]
    nothing implements the section yet.
 3. **Write the code** until the test passes (green). The planned relation now
    **dangles** on the code's end: the code exists, and nobody has yet said it matches.
-4. **Record and confirm.** `mix surfex.suggest --accept` records that the test `tests`
-   the code it calls. Read the section against the code, then
-   `mix surfex.confirm Wren.send/3`.
-5. **Check:** `mix surfex.status` is current and the triangle is closed: the section is
+4. **Let the evidence confirm it.** With `Surfex.ExUnitFormatter` in `test_helper.exs`,
+   each `mix test` records every test's result at its exact version. The red run and the
+   green one are the evidence:
+
+   ```sh
+   mix surfex.suggest --accept      # the test `tests` the code it calls
+   mix surfex.confirm --evidence    # confirmed: red, then green against the new code
+   ```
+
+   The test went red against the old code and green against the new, unchanged itself, so
+   the `tests` relation is confirmed. So is `implements`, because the test `verifies` the
+   section's hint. No one had to confirm the code by hand. Whether the test expresses the
+   requirement stays a judgement: `verifies` is only ever confirmed by name.
+5. **Check:** `mix surfex.status` is current, and the triangle is closed: the section is
    implemented by `Wren.send/3`, verified by the test, and the test exercises
    `Wren.send/3`. A release pipeline runs `mix surfex.status --no-planned`, which also
    fails on anything planned and not built. A project that wants every open side of the
@@ -216,10 +226,22 @@ require: [code: [:implements], test_hint: [:verifies]]
 
 `mix test --only verifies:sending-queues` runs exactly the tests of that requirement.
 
-When the spec changes later, its relations dangle. Update the test to the new words
-first, see it fail, then change the code, then `mix surfex.confirm` the section. A test
-is versioned like code (its body, its helpers, its setups, its table of cases), so a
-test weakened to pass dangles its relations too.
+When the code changes later, a green run re-confirms it:
+
+```sh
+mix test && mix surfex.confirm --evidence
+```
+
+When the spec changes, its relations dangle and need a judgement:
+1. Update the test to the new words first. That makes it a new test version, which must
+   fail and pass again.
+2. `mix surfex.confirm` its `verifies` relation by name.
+3. Let the evidence confirm the rest.
+
+A test is versioned like code (its body, its helpers, its setups, its table of cases), so
+a test weakened to pass dangles its relations too. In CI, `mix surfex.status --verify
+--evidence` checks every confirmation by evidence against CI's own run, and records
+nothing.
 
 ## 8. Code the spec doesn't describe
 

@@ -56,6 +56,15 @@ defmodule Surfex.Status.Report do
           "#{c.file}:#{c.line} (#{c.section}): `#{c.span}` #{citation_text(c)}"
         end
       ),
+      items(
+        "Unproven (a confirmation by evidence this run doesn't bear out)",
+        status.unproven,
+        fn u ->
+          {type, {ak, a}, {bk, b}} = u.relation
+          test = if u.test, do: "#{u.test} ", else: ""
+          "#{type}  #{ak} #{a} ↔ #{bk} #{b}: #{test}#{unproven_text(u.reason)}"
+        end
+      ),
       items("Stale (an excuse its class no longer covers)", status.stale, fn s ->
         "class #{s.class} ↔ code #{s.code}: #{stale_text(s.reason)}"
       end),
@@ -111,6 +120,20 @@ defmodule Surfex.Status.Report do
             "section" => c.section,
             "status" => Atom.to_string(c.status),
             "items" => c.items
+          }
+        end),
+      "unproven" =>
+        Enum.map(status.unproven, fn u ->
+          {type, {ak, a}, {bk, b}} = u.relation
+
+          %{
+            "type" => Atom.to_string(type),
+            "ends" => [
+              %{"kind" => Atom.to_string(ak), "id" => a},
+              %{"kind" => Atom.to_string(bk), "id" => b}
+            ],
+            "test" => u.test,
+            "reason" => unproven_text(u.reason)
           }
         end),
       "stale" =>
@@ -297,6 +320,11 @@ defmodule Surfex.Status.Report do
 
   defp citation_text(%{status: :ambiguous, items: items}),
     do: "names more than one item: #{Enum.join(items, ", ")}"
+
+  defp unproven_text(:not_run), do: "didn't run"
+  defp unproven_text(:failed), do: "failed"
+  defp unproven_text(:other_code), do: "ran against another version of the code"
+  defp unproven_text(:no_verifying_test), do: "no current verifying test exercises the code"
 
   defp stale_text(:implemented), do: "something implements it now"
   defp stale_text(:unmatched), do: "no rule of its class matches it"

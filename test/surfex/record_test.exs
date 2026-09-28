@@ -395,4 +395,53 @@ defmodule Surfex.RecordTest do
       assert {:ok, [_, _]} = Record.confirm(world("s1", "c2"), entries, [@code_id], @meta)
     end
   end
+
+  # #54: CI validates the claims; it records nothing.
+  describe "checking confirmations by evidence" do
+    @describetag verifies: "evidence-checked"
+
+    defp claimed do
+      evidence = [ev(:failed, "c1", 1), ev(:passed, "c2", 2)]
+
+      {:ok, recorded} =
+        Record.confirm_by_evidence(world("s1", "c2"), confirmed(), evidence, @meta)
+
+      confirmed() ++ recorded
+    end
+
+    defp unproven(run),
+      do: Status.derive(world("s1", "c2"), claimed(), [], evidence: run).unproven
+
+    test "a run where the test passes against the code as confirmed bears the claims out" do
+      assert unproven([ev(:passed, "c2", 5)]) == []
+
+      refute Status.failing?(
+               Status.derive(world("s1", "c2"), claimed(), [], evidence: [ev(:passed, "c2", 5)])
+             )
+    end
+
+    test "a test that didn't run, failed, or ran against other code, disproves them" do
+      assert [%{reason: :not_run}, %{reason: :not_run}] = unproven([])
+
+      assert [%{reason: :failed, test: @t} | _] =
+               unproven([ev(:passed, "c2", 5), ev(:failed, "c2", 6)])
+
+      assert [%{reason: :other_code} | _] = unproven([ev(:passed, "c9", 5)])
+
+      status = Status.derive(world("s1", "c2"), claimed(), [], evidence: [])
+      assert Status.failing?(status)
+
+      assert Surfex.Status.Report.text(status) =~
+               "Unproven (a confirmation by evidence this run doesn't bear out)"
+    end
+
+    test "without evidence given, nothing is checked; relations confirmed by hand never are" do
+      assert Status.derive(world("s1", "c2"), claimed(), []).unproven == []
+
+      {:ok, by_hand} = Record.confirm(world("s1", "c2"), confirmed(), [@code_id], @meta)
+
+      assert Status.derive(world("s1", "c2"), confirmed() ++ by_hand, [], evidence: []).unproven ==
+               []
+    end
+  end
 end

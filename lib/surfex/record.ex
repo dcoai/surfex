@@ -268,7 +268,7 @@ defmodule Surfex.Record do
          %{result: :passed, code: versions} = latest <-
            Surfex.Evidence.latest(evidence, test.id, test.hash),
          true <- Map.get(versions, code.id) == code.hash do
-      "confirmed by evidence: #{test.id}@#{test.hash} failed at #{red.at} (#{versions_text(red)}) " <>
+      "#{Surfex.Evidence.note()}: #{test.id}@#{test.hash} failed at #{red.at} (#{versions_text(red)}) " <>
         "and passes at #{latest.at} against #{code.id}@#{code.hash}" <>
         if(green != latest, do: " (first green #{green.at})", else: "")
     else
