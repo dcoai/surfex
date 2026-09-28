@@ -276,11 +276,14 @@ defmodule Surfex.Status do
       live = Enum.reject(relations, &(&1.state == :retired))
       implements = pairs(live, :implements, fn {{:code, c}, {:spec, s}} -> {s, c} end)
       verifies = pairs(live, :verifies, fn {{:test, t}, {:spec, s}} -> {s, t} end)
-      exercises = pairs(live, :tests, fn {{:test, t}, {:code, c}} -> {t, c} end)
+      # Code is compared by its definition, so a test calling `f/1` exercises the `f/2`
+      # that a spec unit names, when both are one function with a default argument.
+      definition = definitions(scans)
+      exercises = pairs(live, :tests, fn {{:test, t}, {:code, c}} -> {t, definition.(c)} end)
       within = for %Scan{kind: :spec, within: w} = s <- scans, w != nil, into: %{}, do: {s.id, w}
 
       for {spec, codes} <- Enum.sort(implements),
-          gap <- gaps(spec, codes, verifying(spec, verifies, within), exercises),
+          gap <- gaps(spec, codes, verifying(spec, verifies, within), exercises, definition),
           do: gap
     else
       []
@@ -313,23 +316,31 @@ defmodule Surfex.Status do
     end
   end
 
-  defp gaps(spec, codes, tests, exercises) do
-    if MapSet.size(tests) == 0,
-      do: [%{spec: spec, gap: :no_test, test: nil, code: nil}],
-      else: sides(spec, codes, tests, exercises)
+  # code id => its definition (`Surfex.Scan.definition/1`); an id no longer scanned is its
+  # own.
+  defp definitions(scans) do
+    by_id = for %Scan{kind: :code} = s <- scans, into: %{}, do: {s.id, Scan.definition(s)}
+    fn id -> Map.get(by_id, id, {:code, id}) end
   end
 
-  defp sides(spec, codes, tests, exercises) do
+  defp gaps(spec, codes, tests, exercises, definition) do
+    if MapSet.size(tests) == 0,
+      do: [%{spec: spec, gap: :no_test, test: nil, code: nil}],
+      else: sides(spec, codes, tests, exercises, definition)
+  end
+
+  defp sides(spec, codes, tests, exercises, definition) do
     reached = fn test -> Map.get(exercises, test, MapSet.new()) end
+    implemented = MapSet.new(codes, definition)
 
     misses =
       for test <- Enum.sort(tests),
-          MapSet.disjoint?(reached.(test), codes),
+          MapSet.disjoint?(reached.(test), implemented),
           do: %{spec: spec, gap: :test_misses_code, test: test, code: nil}
 
     untested =
       for code <- Enum.sort(codes),
-          not Enum.any?(tests, &MapSet.member?(reached.(&1), code)),
+          not Enum.any?(tests, &MapSet.member?(reached.(&1), definition.(code))),
           do: %{spec: spec, gap: :code_untested, test: nil, code: code}
 
     misses ++ untested
@@ -436,6 +447,7 @@ defmodule Surfex.Status do
   defp unproven(_scans, _relations, nil), do: []
 
   defp unproven(scans, relations, evidence) do
+    definition = definitions(scans)
     within = for %Scan{kind: :spec, within: w} = s <- scans, w != nil, into: %{}, do: {s.id, w}
     current = for %{state: :current, tips: [tip]} = r <- relations, do: {r, tip}
     pairs = fn type -> for {%{type: ^type, relation: {_, a, b}}, _} <- current, do: {a, b} end
@@ -444,13 +456,20 @@ defmodule Surfex.Status do
 
     for {%{relation: relation} = r, tip} <- current,
         Surfex.Evidence.claimed?(tip),
-        failure = disproved(r, tip, evidence, tests, verifies, within),
+        failure = disproved(r, tip, evidence, tests, verifies, {within, definition}),
         failure != nil,
         do: Map.put(failure, :relation, relation)
   end
 
-  defp disproved(%{type: :tests, relation: {_, {:test, t}, {:code, c}}}, tip, evidence, _, _, _) do
-    passes(evidence, t, hash_of(tip, :test, t), c, hash_of(tip, :code, c))
+  defp disproved(
+         %{type: :tests, relation: {_, {:test, t}, {:code, c}}},
+         tip,
+         evidence,
+         _,
+         _,
+         {_, definition}
+       ) do
+    passes(evidence, t, hash_of(tip, :test, t), [c], hash_of(tip, :code, c), definition)
   end
 
   defp disproved(
@@ -459,13 +478,14 @@ defmodule Surfex.Status do
          evidence,
          tests,
          verifies,
-         within
+         {within, definition}
        ) do
     code_hash = hash_of(tip, :code, c)
 
     candidates =
       for {{:test, t}, {:spec, unit}} <- verifies,
-          {{:test, ^t}, {:code, ^c}} <- tests,
+          {{:test, ^t}, {:code, other}} <- tests,
+          definition.(other) == definition.(c),
           inside?(unit, s, within),
           uniq: true,
           do: t
@@ -473,7 +493,9 @@ defmodule Surfex.Status do
     if candidates == [] do
       %{test: nil, reason: :no_verifying_test}
     else
-      failures = for t <- candidates, f = passes(evidence, t, nil, c, code_hash), do: f
+      failures =
+        for t <- candidates, f = passes(evidence, t, nil, [c], code_hash, definition), do: f
+
       if length(failures) == length(candidates), do: hd(failures), else: nil
     end
   end
@@ -481,18 +503,27 @@ defmodule Surfex.Status do
   defp disproved(_other, _tip, _evidence, _tests, _verifies, _within), do: nil
 
   # nil when the evidence has `test` (at `test_hash`, or its latest version when nil)
-  # passing against `code` at `code_hash`; otherwise why not.
-  defp passes(evidence, test, test_hash, code, code_hash) do
+  # passing against the code (any id of its definition) at `code_hash`; otherwise why not.
+  defp passes(evidence, test, test_hash, [code], code_hash, definition) do
     latest =
       evidence
       |> Enum.filter(&(&1.test == test and (test_hash == nil or &1.test_hash == test_hash)))
       |> List.last()
 
     cond do
-      latest == nil -> %{test: test, reason: :not_run}
-      latest.result != :passed -> %{test: test, reason: :failed}
-      Map.get(latest.code, code) != code_hash -> %{test: test, reason: :other_code}
-      true -> nil
+      latest == nil ->
+        %{test: test, reason: :not_run}
+
+      latest.result != :passed ->
+        %{test: test, reason: :failed}
+
+      not Enum.any?(latest.code, fn {id, h} ->
+        h == code_hash and definition.(id) == definition.(code)
+      end) ->
+        %{test: test, reason: :other_code}
+
+      true ->
+        nil
     end
   end
 

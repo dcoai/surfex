@@ -209,6 +209,23 @@ defmodule Surfex.StatusTest do
                gaps([rel(:implements, @s, @c), rel(:verifies, @t, @s), rel(:tests, @t, @other)])
     end
 
+    # #62: a function with a default argument is one code, whatever arity a test calls.
+    test "a test calling one arity of a function exercises the arity a section names" do
+      two = %{scan(:code, "M.add/2", "c1") | location: %{file: "lib/m.ex", lines: {3, 5}}}
+      three = %{two | id: "M.add/3"}
+      scans = [scan(:test, "T: a", "t1"), scan(:spec, @spec_id, "s1"), two, three]
+
+      entries = [
+        rel(:implements, @s, {:code, "M.add/3", "c1"}),
+        rel(:verifies, @t, @s),
+        rel(:tests, @t, {:code, "M.add/2", "c1"})
+      ]
+
+      assert Status.derive(scans, entries).triangle == []
+      assert Scan.definition(two) == Scan.definition(three)
+      refute Scan.definition(two) == Scan.definition(%{three | hash: "c2"})
+    end
+
     test "a test verifying a block or hint inside the section counts for it" do
       hint = %{scan(:spec, "spec.md#h", "h1") | role: :test_hint, within: @spec_id}
 
