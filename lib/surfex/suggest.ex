@@ -74,7 +74,14 @@ defmodule Surfex.Suggest do
 
   @type move :: %{from: String.t(), to: Scan.t()}
   @type refinement :: %{from: Scan.t(), to: Scan.t()}
-  @type suggestions :: %{moves: [move], refines: [refinement], implements: [candidate]}
+  @type pair :: %{from: Scan.t(), to: Scan.t()}
+  @type suggestions :: %{
+          moves: [move],
+          refines: [refinement],
+          implements: [candidate],
+          verifies: [pair],
+          tests: [pair]
+        }
 
   @doc """
   Every suggestion at once, computed together so none repeats another:
@@ -85,6 +92,10 @@ defmodule Surfex.Suggest do
     * **refines** — each marked block and test hint `refines` the section or block it sits
       in (`within`), unless that relation exists in any state.
     * **implements** — `candidates/5`.
+    * **verifies** — each test's declaration (`@tag verifies: "id"`) that resolves to a
+      spec unit (`Surfex.Scan.resolve/2`).
+    * **tests** — each test paired with each scanned code item it calls (in its body or
+      the private helpers it reaches).
 
   Refines and implements are computed as if the moves were already recorded, so a moved
   section's relations aren't suggested again under its new id.
@@ -105,7 +116,9 @@ defmodule Surfex.Suggest do
     %{
       moves: moves,
       refines: refinements(scans, moved),
-      implements: candidates(trace, items, scans, moved, root)
+      implements: candidates(trace, items, scans, moved, root),
+      verifies: verifications(scans, moved),
+      tests: exercised(scans, moved)
     }
   end
 
@@ -124,6 +137,12 @@ defmodule Surfex.Suggest do
       end) ++
         Enum.map(suggestions.refines, fn r ->
           &Record.relate(scans, &1, "spec:" <> r.from.id, "spec:" <> r.to.id, :refines, meta)
+        end) ++
+        Enum.map(suggestions.verifies, fn v ->
+          &Record.relate(scans, &1, "test:" <> v.from.id, "spec:" <> v.to.id, :verifies, meta)
+        end) ++
+        Enum.map(suggestions.tests, fn t ->
+          &Record.relate(scans, &1, "test:" <> t.from.id, "code:" <> t.to.id, :tests, meta)
         end)
 
     with {:ok, recorded} <-
@@ -162,6 +181,29 @@ defmodule Surfex.Suggest do
     for {hash, [old]} <- gone_by_hash,
         [new] <- [Map.get(fresh_by_hash, hash, [])],
         do: %{from: old, to: new}
+  end
+
+  defp verifications(scans, entries) do
+    related = MapSet.new(entries, &Entry.relation/1)
+
+    for %Scan{kind: :test, declares: declares} = test <- scans,
+        {:verifies, ref} <- declares,
+        {:ok, spec} <- [Scan.resolve(scans, ref)],
+        not MapSet.member?(related, Entry.relation(:verifies, test, spec)),
+        uniq: true,
+        do: %{from: test, to: spec}
+  end
+
+  defp exercised(scans, entries) do
+    code = for %Scan{kind: :code} = s <- scans, into: %{}, do: {s.id, s}
+    related = MapSet.new(entries, &Entry.relation/1)
+
+    for %Scan{kind: :test, calls: calls} = test <- scans,
+        id <- calls,
+        item = Map.get(code, id),
+        item != nil,
+        not MapSet.member?(related, Entry.relation(:tests, test, item)),
+        do: %{from: test, to: item}
   end
 
   defp refinements(scans, entries) do

@@ -67,6 +67,7 @@ defmodule Surfex.SuggestTest do
     assert candidates(c, entries) == []
   end
 
+  @tag verifies: "suggest-never-confirms"
   test "a pair already related in any state is left alone, never re-confirmed", c do
     [one | _] = candidates(c)
     {:ok, [related]} = Suggest.accept([one], c.scans, [], @meta)
@@ -161,6 +162,7 @@ defmodule Surfex.SuggestTest do
         implements: pairs(s.implements)
       }
 
+    @tag verifies: "suggest-moves"
     test "an added anchor is a move, and nothing is suggested twice", %{tmp_dir: root} do
       entries = adopted(root)
 
@@ -194,6 +196,7 @@ defmodule Surfex.SuggestTest do
       assert summary(s).implements == [{"spec.md#Sizes", "Wren.max_len/0"}]
     end
 
+    @tag verifies: "suggest-moves"
     test "two candidates at one version are ambiguous, and not suggested", %{tmp_dir: root} do
       entries = adopted(root)
 
@@ -228,6 +231,55 @@ defmodule Surfex.SuggestTest do
                ],
                implements: [{"spec.md#max-len", "Wren.max_len/0"}]
              }
+    end
+  end
+
+  describe "all/5: verifies and tests" do
+    @moduletag :tmp_dir
+
+    test "a declaration proposes verifies; a call to scanned code proposes tests", %{
+      tmp_dir: root
+    } do
+      File.write!(Path.join(root, "spec.md"), "# Limits {#limits}\n\n`Wren.max_len/0` is 512.\n")
+
+      items = [
+        %Item{
+          kind: :function,
+          name: "max_len/0",
+          parent: "Wren",
+          file: "lib/w.ex",
+          hash: "00000002"
+        }
+      ]
+
+      test_scan = %Scan{
+        kind: :test,
+        id: "WrenTest: the limit",
+        hash: "t1",
+        location: %{file: "test/w_test.exs", lines: {3, 5}},
+        declares: [{:verifies, "limits"}, {:verifies, "nothing"}],
+        calls: ["Wren.max_len/0", "Enum.map/2"]
+      }
+
+      scans = Markdown.records(root, ["spec.md"]) ++ Scan.code(items) ++ [test_scan]
+      trace = Trace.new!(namespace: "Wren", sources: ["spec.md"])
+      s = Suggest.all(trace, items, scans, [], root)
+
+      assert Enum.map(s.verifies, &{&1.from.id, &1.to.id}) == [
+               {"WrenTest: the limit", "spec.md#limits"}
+             ]
+
+      assert Enum.map(s.tests, &{&1.from.id, &1.to.id}) == [
+               {"WrenTest: the limit", "Wren.max_len/0"}
+             ]
+
+      {:ok, entries} = Suggest.accept_all(s, scans, [], @meta)
+      assert Enum.frequencies_by(entries, & &1.type) == %{implements: 1, verifies: 1, tests: 1}
+      status = Status.derive(scans, entries)
+      assert status.triangle == []
+
+      assert Suggest.all(trace, items, scans, entries, root) |> Map.values() |> List.flatten() ==
+               []
     end
   end
 end

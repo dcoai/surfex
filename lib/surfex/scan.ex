@@ -25,7 +25,9 @@ defmodule Surfex.Scan do
   A test record (`Surfex.Scan.ExUnit`) can also **declare** what it relates to, in its
   own source: `declares` is a list of `{type, id}`, such as `{:verifies, "cart-add"}`
   from `@tag verifies: "cart-add"`. A declaration is a claim in the source, not a
-  relation; `resolve/2` finds the spec unit it names.
+  relation; `resolve/2` finds the spec unit it names. A test record also lists what it
+  `calls`: the functions its source calls (`MyApp.Cart.add/3`), as facts to suggest
+  `tests` relations from.
 
   `code/1` makes code records from any `Surfex.Scanner`'s items. `Surfex.Scan.Markdown`
   makes spec records and `Surfex.Scan.ExUnit` test records.
@@ -34,7 +36,7 @@ defmodule Surfex.Scan do
   alias Surfex.Item
 
   @enforce_keys [:kind, :id, :hash, :location]
-  defstruct [:kind, :id, :hash, :location, :role, :within, declares: []]
+  defstruct [:kind, :id, :hash, :location, :role, :within, declares: [], calls: []]
 
   @type location :: %{file: String.t(), lines: {pos_integer, pos_integer} | nil}
   @type role :: :section | :block | :test_hint | nil
@@ -45,7 +47,8 @@ defmodule Surfex.Scan do
           location: location,
           role: role,
           within: String.t() | nil,
-          declares: [{atom, String.t()}]
+          declares: [{atom, String.t()}],
+          calls: [String.t()]
         }
 
   @doc """

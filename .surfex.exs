@@ -1,14 +1,17 @@
 # Surfex holds its own specification to its own code, two ways:
 #
-#   * the relation log (.surfex/): which spec sections and which functions were confirmed
-#     to belong together, at which versions. `mix surfex.status` is the check, and every
-#     public module and function must implement some section (require:).
+#   * the relation log (.surfex/): which spec units, functions and tests were confirmed
+#     to belong together, at which versions. `mix surfex.status` is the check: every
+#     public module and function must implement some section, and every test hint in
+#     spec.md must be verified by a test tagged `@tag verifies: "<hint id>"` (require:).
+#     Its tests are scanned (tests:), and the spec/test/code triangle is reported.
 #   * the v0.2 trace (SPEC_TRACE.md), deprecated, kept alongside until it is removed.
 #
 # `mix surfex.goldens` gates both goldens: SPEC_TRACE.md and RELATIONS.md.
 [
   goldens: [:trace, :status],
-  require: [code: [:implements]],
+  require: [code: [:implements], test_hint: [:verifies]],
+  tests: ["test/*_test.exs", "test/surfex/*_test.exs"],
   sources: ["spec.md"],
   file_labels: [{~r/^spec\.md$/, "spec"}],
   purpose: "Every public module and function of Surfex, and the spec section that covers it.",

@@ -83,6 +83,7 @@ defmodule Surfex.LogTest do
       assert msg =~ ":ends"
     end
 
+    @tag verifies: "entry-tamper"
     test "an edited line no longer decodes as its id" do
       line = entry(1) |> Entry.encode() |> String.replace(~s("hash":"c1"), ~s("hash":"cX"))
       assert {:error, msg} = Entry.decode(line)
@@ -143,6 +144,7 @@ defmodule Surfex.LogTest do
       assert Log.verify(root) == []
     end
 
+    @tag verifies: "entry-tamper"
     test "an edited line is caught", %{tmp_dir: root} do
       path = Path.join(Log.dir(root), "surfex.log")
       File.write!(path, String.replace(File.read!(path), ~s("hash":"c3"), ~s("hash":"cX")))
@@ -180,6 +182,7 @@ defmodule Surfex.LogTest do
 
   # The claim the whole design leans on: git's union merge of two branches' appends loads
   # to the same state, with nothing lost and no conflict.
+  @tag verifies: "union-merge"
   test "two branches' appends merge without conflict and load to one state", %{tmp_dir: root} do
     git = fn args ->
       {out, 0} = System.cmd("git", args, cd: root, stderr_to_stdout: true)

@@ -44,6 +44,11 @@ defmodule Surfex.Status.Report do
                                                                   } ->
         "#{scan.kind} #{scan.id} needs one of: #{Enum.join(requires, ", ")}#{at(scan)}"
       end),
+      items(
+        "Triangle (a spec unit, its tests and its code don't meet)",
+        status.triangle,
+        &gap_text/1
+      ),
       items("Broken (a test declares what no spec unit is)", status.broken, fn b ->
         "#{b.scan.kind} #{b.scan.id} #{b.type} #{inspect(b.ref)}: #{reason(b.reason)}#{at(b.scan)}"
       end)
@@ -82,6 +87,10 @@ defmodule Surfex.Status.Report do
       "unmet" =>
         Enum.map(status.unmet, fn %{scan: scan, requires: requires} ->
           Map.put(scan_json(scan), "requires", Enum.map(requires, &Atom.to_string/1))
+        end),
+      "triangle" =>
+        Enum.map(status.triangle, fn g ->
+          %{"spec" => g.spec, "gap" => Atom.to_string(g.gap), "test" => g.test, "code" => g.code}
         end),
       "broken" =>
         Enum.map(status.broken, fn b ->
@@ -144,7 +153,8 @@ defmodule Surfex.Status.Report do
           {"unimplemented", length(status.unimplemented)},
           {"new", length(status.new)},
           {"unmet", length(status.unmet)},
-          {"broken", length(status.broken)}
+          {"broken", length(status.broken)},
+          {"triangle gaps", length(status.triangle)}
         ]),
         units_stat(Status.units(status))
       ],
@@ -163,6 +173,9 @@ defmodule Surfex.Status.Report do
             status.new,
             &%{"Item" => {:code, "#{&1.kind} #{&1.id}"}}
           ) ++
+          id_group.("triangle", ["Item", "Gap"], status.triangle, fn g ->
+            %{"Item" => {:code, "spec #{g.spec}"}, "Gap" => {:raw, gap_text(g, false)}}
+          end) ++
           id_group.("broken", ["Item", "Declares"], status.broken, fn b ->
             %{
               "Item" => {:code, "#{b.scan.kind} #{b.scan.id}"},
@@ -228,6 +241,17 @@ defmodule Surfex.Status.Report do
       nil -> id
       scan -> "#{id}#{at(scan)}"
     end
+  end
+
+  defp gap_text(g, with_spec? \\ true) do
+    what =
+      case g.gap do
+        :no_test -> "no test verifies it"
+        :test_misses_code -> "`#{g.test}` verifies it but calls none of its code"
+        :code_untested -> "`#{g.code}` implements it but no verifying test calls it"
+      end
+
+    if with_spec?, do: "spec #{g.spec}: #{String.replace(what, "`", "")}", else: what
   end
 
   defp reason(:unknown), do: "no spec unit has that id"

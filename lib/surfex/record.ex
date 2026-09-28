@@ -9,7 +9,7 @@ defmodule Surfex.Record do
   ## Ids
 
   An id is a scan id: `MyApp.Cart.add/2`, `spec.md#Carts/Adding items`. When the same id
-  is scanned under two kinds, a `spec:` or `code:` prefix picks one. An id that isn't
+  is scanned under two kinds, a `spec:`, `code:` or `test:` prefix picks one. An id that isn't
   scanned is an error that names it, since relating what doesn't exist would be
   orphaned from the moment it was recorded.
 
@@ -340,6 +340,7 @@ defmodule Surfex.Record do
 
   defp split_kind("spec:" <> rest), do: {:spec, rest}
   defp split_kind("code:" <> rest), do: {:code, rest}
+  defp split_kind("test:" <> rest), do: {:test, rest}
   defp split_kind(id), do: {nil, id}
 
   defp strip_kind(id), do: id |> split_kind() |> elem(1)

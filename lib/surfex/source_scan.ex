@@ -146,6 +146,14 @@ defmodule Surfex.SourceScan do
     Surfex.SourceScan.Closure.hash_nodes(nodes, groups, attributes)
   end
 
+  @doc false
+  # `nodes` and the clauses of the private definitions they reach in the module.
+  @spec closure_nodes(Macro.t(), [Macro.t()]) :: [Macro.t()]
+  def closure_nodes({:defmodule, _, [_aliases, [do: body]]}, nodes) do
+    {_grouped, groups, _attributes} = definitions(body)
+    Surfex.SourceScan.Closure.reach(nodes, groups)
+  end
+
   # The module's definitions grouped by name and arity (each clause kept), the same as
   # hashing needs them (%{nodes, defaults, private}), and its attributes' values.
   defp definitions(body) do

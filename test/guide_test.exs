@@ -11,6 +11,7 @@ defmodule Surfex.GuideTest do
   alias Surfex.Scan.Markdown
 
   @moduletag :tmp_dir
+  @moduletag verifies: "spec-guide"
   @guide Path.expand("../guides/writing-specs.md", __DIR__)
   @meta [by: "guide", at: "2026-09-28T10:00:00Z"]
 

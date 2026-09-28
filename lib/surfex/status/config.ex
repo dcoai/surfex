@@ -10,12 +10,28 @@ defmodule Surfex.Status.Config do
       a spec role (`:section`, `:block`, `:test_hint`), validated with the types
     * `:tests` — globs of ExUnit test files, scanned for tests (`Surfex.Scan.ExUnit`)
       when present
+    * `:triangle` — `:report` (the default) or `:fail`: whether gaps in the spec/test/code
+      triangle fail the check or are only reported
   """
 
   alias Surfex.Log.Entry
   alias Surfex.Scan
 
   @roles [:section, :block, :test_hint]
+
+  @doc """
+  The options `Surfex.Status.derive/4` takes from `.surfex.exs`: `triangle:`, validated.
+  Raises `ArgumentError` naming what is wrong.
+  """
+  @spec options!(keyword) :: keyword
+  def options!(config) do
+    triangle = Keyword.get(config, :triangle, :report)
+
+    unless triangle in [:report, :fail],
+      do: raise(ArgumentError, "triangle: must be :report or :fail, got #{inspect(triangle)}")
+
+    [triangle: triangle]
+  end
 
   @doc "The `require:` policy, validated. Raises `ArgumentError` naming what is wrong."
   @spec require!(keyword) :: keyword

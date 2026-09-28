@@ -149,6 +149,7 @@ defmodule Surfex.WalkthroughTest do
   end
 
   # #36: the spec is written first, the relation planned, and the code follows.
+  @tag verifies: "planned-state"
   test "plan → planned → write the code → dangling → confirm", %{root: root} do
     planned = "MyApp.Cart.discount/1"
     task(root, Mix.Tasks.Surfex.Relate, ["--planned", @section, planned, "--type", "implements"])
@@ -201,5 +202,109 @@ defmodule Surfex.WalkthroughTest do
     assert_raise OptionParser.ParseError, fn ->
       task(root, Mix.Tasks.Surfex.Confirm, ["--planned", @function])
     end
+  end
+
+  # #38: the whole test-first flow, from a test hint to a closed triangle.
+  test "hint → tagged test → planned code → code → suggest: the triangle closes", %{root: root} do
+    File.write!(Path.join(root, "spec.md"), """
+    # Totals {#totals}
+
+    A cart's discount is taken off its total.
+
+    ```test discount-test
+    discounting an empty cart gives an empty cart
+    ```
+    """)
+
+    File.write!(
+      Path.join(root, ".surfex.exs"),
+      ~s([sources: ["spec.md"], tests: ["test/*_test.exs"], require: [test_hint: [:verifies]]])
+    )
+
+    File.mkdir_p!(Path.join(root, "test"))
+
+    File.write!(
+      Path.join(root, "test/placeholder_test.exs"),
+      "defmodule PlaceholderTest do\nend\n"
+    )
+
+    commit(root, "spec with a hint")
+
+    # The hint needs a test: unmet.
+    assert %{"unmet" => [%{"id" => "spec.md#discount-test"}]} = failing_json(root)
+
+    # The test, written from the hint, before the code; and the relation, planned.
+    File.write!(Path.join(root, "test/cart_test.exs"), """
+    defmodule MyApp.CartTest do
+      use ExUnit.Case
+      alias MyApp.Cart
+
+      @tag verifies: "discount-test"
+      test "an empty cart stays empty" do
+        assert Cart.discount([]) == []
+      end
+    end
+    """)
+
+    task(root, Mix.Tasks.Surfex.Relate, [
+      "--planned",
+      "spec.md#totals",
+      "MyApp.Cart.discount/1",
+      "--type",
+      "implements"
+    ])
+
+    task(root, Mix.Tasks.Surfex.Suggest, ["--accept"])
+    commit(root, "test first")
+
+    # Met, and the triangle shows the code is missing: the test calls what isn't there.
+    json = passing_json(root)
+    assert json["unmet"] == []
+
+    assert [
+             %{"gap" => "test_misses_code"},
+             %{"gap" => "code_untested", "code" => "MyApp.Cart.discount/1"}
+           ] =
+             json["triangle"]
+
+    # The code: the planned relation dangles until confirmed, and suggest adds tests.
+    path = Path.join(root, "lib/my_app/cart.ex")
+
+    File.write!(
+      path,
+      String.replace(
+        File.read!(path),
+        "  def total,",
+        "  def discount(cart), do: cart\n\n  def total,"
+      )
+    )
+
+    task(root, Mix.Tasks.Surfex.Suggest, ["--accept"])
+    task(root, Mix.Tasks.Surfex.Confirm, ["MyApp.Cart.discount/1"])
+    commit(root, "code")
+
+    json = passing_json(root)
+    assert json["triangle"] == []
+    assert Enum.all?(json["relations"], &(&1["state"] == "current"))
+
+    assert Enum.sort(Enum.map(json["relations"], & &1["type"])) ==
+             ["implements", "refines", "tests", "verifies"]
+  end
+
+  defp passing_json(root) do
+    task(root, Mix.Tasks.Surfex.Status, ["--format", "json"])
+    decode_report()
+  end
+
+  defp failing_json(root) do
+    assert_raise Mix.Error, fn -> task(root, Mix.Tasks.Surfex.Status, ["--format", "json"]) end
+    decode_report()
+  end
+
+  defp decode_report do
+    {json, :ok, _} =
+      drain() |> Enum.find(&String.starts_with?(&1, "{")) |> :json.decode(:ok, %{null: nil})
+
+    json
   end
 end

@@ -93,7 +93,14 @@ defmodule Surfex.Goldens do
   # relations are healthy is `mix surfex.status`'s question.
   defp run_one({:status, output}, config, root, _defaults, command, write?) do
     entries = if File.dir?(Log.dir(root)), do: Log.load(root), else: []
-    status = Status.derive(Config.scans(config, root), entries, Config.require!(config))
+
+    status =
+      Status.derive(
+        Config.scans(config, root),
+        entries,
+        Config.require!(config),
+        Config.options!(config)
+      )
 
     Gate.run(
       Path.join(root, output),

@@ -54,6 +54,15 @@ release it merely follows.
   - The new relation type `verifies` runs from a test to a spec unit.
   - `require:` takes spec roles as keys: `test_hint: [:verifies]` requires a test for
     every hint.
+- **The spec/test/code triangle.** When tests are scanned, `mix surfex.status` checks
+  each spec unit that something implements.
+  - It reports the unit if no test verifies it, if a verifying test calls none of the
+    implementing code, or if implementing code is called by no verifying test.
+  - Gaps are reported, and fail the check with `triangle: :fail`.
+  - `mix surfex.suggest` proposes `verifies` from tests' tags, and `tests` from what each
+    test calls, with aliases, pipes, captures, imports and private helpers followed.
+  - Surfex runs on it: its spec carries test hints, the tests that verify them are
+    tagged, and every hint must be verified.
 - The status reports count spec units by role (`Surfex.Status.units/1`), and the JSON
   gives each id's role and what it sits in.
 - Surfex's own spec now has an anchor on every heading. Its relations moved across and
