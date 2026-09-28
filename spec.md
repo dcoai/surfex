@@ -479,3 +479,61 @@ scans one text.
   under a new id, which is what lets a tool recognise the move.
 - **Its location** runs from the heading's line to its last non-blank line.
 - A line inside a fenced code block is never a heading.
+
+## 12. The relation log
+
+The relation log records judgements: that two things relate, at two versions. It is the
+only state surfex keeps. Scanners never read or write it (§11).
+
+### 12.1 Entries
+
+`Surfex.Log.Entry` is one entry:
+
+| Field | Meaning |
+|---|---|
+| `id` | SHA-256 of the entry's canonical line without `id`: stable, and changed by any edit |
+| `at` | when it was recorded, UTC ISO 8601: orders the history |
+| `commit` | HEAD when it was recorded: context only, since squash merges can make it unreachable |
+| `parents` | the entry ids it follows for the same relation; two means it resolves a fork |
+| `op` | `relate` or `retire` (`Surfex.Log.Entry.ops/0`) |
+| `type` | `implements`, `refines`, `depends_on`, `tests` or `excuses` (`Surfex.Log.Entry.types/0`) |
+| `ends` | two `{kind, id, hash}`, of the kinds `Surfex.Log.Entry.kinds/0` lists |
+| `by` | who recorded it |
+| `note` | why, optionally |
+
+- **A relation is its type and its two ends' kinds and ids** (`Surfex.Log.Entry.relation/1`).
+  Ends are sorted, so A↔B and B↔A are one relation.
+- `Surfex.Log.Entry.build/1` makes an entry from its fields and computes its id, or says
+  which field is invalid. `Surfex.Log.Entry.new!/1` raises instead.
+- **The canonical line is JSON**, keys in the order above (`Surfex.Log.Entry.encode/1`). It
+  is readable by anything, and parsing it never evaluates code.
+- `Surfex.Log.Entry.decode/1` reads a line back, or says why it isn't an entry: a missing
+  or unknown field, or an id that no longer matches the content, meaning the line was
+  edited. `Surfex.Log.Entry.decode!/1` raises instead. Text that is not JSON at all always
+  raises, since the file is then corrupt. `Surfex.Log.Entry.json/1` reads one JSON value
+  with `null` as `nil`.
+
+### 12.2 The log
+
+`Surfex.Log` keeps the entries in `.surfex/` under the project root
+(`Surfex.Log.dir/1`). **Nothing is ever edited or removed.** A newer entry for a relation
+supersedes an older one and names it as a parent, and any question about history is
+answered from the log alone.
+
+- **Segments:** entries are appended to `surfex.log`. `Surfex.Log.break/1` closes it as the
+  next `surfex_N.log` and starts a new one.
+- **Headers:** every file starts with `{"segment": N, "previous": HASH}`, where `HASH` is
+  the SHA-256 of the previous segment's sorted entry ids (`null` for the first). Headers
+  are not judgements, so `Surfex.Log.rechain/1` may rewrite them. That's needed only when
+  two branches each started a segment and a merge combined them.
+- `Surfex.Log.init/1` creates the log and adds `.surfex/*.log merge=union` to
+  `.gitattributes`, so git merges concurrent appends by keeping both sides' lines.
+- `Surfex.Log.append/2` adds entries to the open segment.
+- `Surfex.Log.load/1` reads every segment, drops duplicate ids, and orders entries by `at`
+  and then `id`. Every checkout derives the same order, whatever order the lines arrive
+  in, which is what makes the union merge correct.
+- `Surfex.Log.verify/1` reports every edited line, every parent no entry has (a removed
+  line), and every segment header that doesn't match the segments before it (truncation).
+
+`Mix.Tasks.Surfex.Log` is `mix surfex.log`, with exactly one of `--init`, `--break`,
+`--verify` (fails on any problem) or `--rechain`. It never edits or removes an entry.

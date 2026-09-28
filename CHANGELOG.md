@@ -15,6 +15,10 @@ release it merely follows.
   location}`), a markdown spec scanner that hashes each section's own body
   (`Surfex.Scan.Markdown`), and line ranges on code items (`Surfex.Item` `lines`,
   `Surfex.SourceScan.line_range/1`).
+- **The relation log**: `Surfex.Log.Entry` (canonical JSON lines, content-hash ids) and
+  `Surfex.Log` (append-only segments in `.surfex/`, verified loading, union merge), with
+  `mix surfex.log --init | --break | --verify | --rechain`. Nothing is ever edited or
+  removed.
 
 ### Changed
 

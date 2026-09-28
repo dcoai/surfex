@@ -43,6 +43,9 @@ test:
   extends: .elixir
   stage: check
   script:
+    # The relation log's tests drive real git (a union merge of two branches' appends is
+    # the claim the log rests on), and the slim image has none.
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends git > /dev/null
     - mix test
 
 goldens:
