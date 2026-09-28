@@ -1,7 +1,7 @@
 defmodule Surfex.MixProject do
   use Mix.Project
 
-  @version "0.3.1-dev"
+  @version "0.4.0-dev"
   @source_url "https://github.com/dcoai/surfex"
 
   @moduledoc """
@@ -28,7 +28,7 @@ defmodule Surfex.MixProject do
       deps: [],
       name: "Surfex",
       description:
-        "Trace a specification against the code it describes, both ways, and render drift-gated goldens from source without compiling it",
+        "Keep a specification, its tests and its code in step: a log of which versions were confirmed to belong together, checked from source without compiling it",
       package: [
         licenses: ["MIT"],
         links: %{"GitHub" => @source_url},

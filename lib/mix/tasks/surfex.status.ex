@@ -19,7 +19,7 @@ defmodule Mix.Tasks.Surfex.Status do
 
   use Mix.Task
 
-  alias Surfex.{Gate, Log, Status}
+  alias Surfex.{Log, Status}
   alias Surfex.Status.{Config, Report}
 
   @impl Mix.Task
@@ -30,7 +30,7 @@ defmodule Mix.Tasks.Surfex.Status do
       )
 
     root = File.cwd!()
-    config = Gate.config!(Path.join(root, opts[:config] || ".surfex.exs"))
+    config = Config.read!(Path.join(root, opts[:config] || ".surfex.exs"))
 
     if Keyword.get(config, :scanner, :elixir) != :elixir, do: Mix.Task.run("compile")
 

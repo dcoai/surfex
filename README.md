@@ -126,12 +126,15 @@ way, from the other side.
 - **Ask how it got here:** `mix surfex.history MyApp.Cart.total/1` lists every relation
   it has had, from the log alone.
 
-## The trace (deprecated)
+## Upgrading from the v0.2 trace
 
-Earlier versions checked the spec against the code by rendering `SPEC_TRACE.md` from the
-spec's citations (`mix surfex.trace`, or `:trace` in `goldens:`). It still works, and it
-is what `mix surfex.suggest` reads, but it records no reconciliation, so the relation log
-replaces it. It will be removed in a later release.
+The trace (`mix surfex.trace`, `SPEC_TRACE.md`) was removed in 0.4.0; the relation log
+replaces it. Its checks all live on: citations become suggested `implements` relations,
+excusing classes become `excuses` relations, uncited code is **unmet** under `require:`,
+and a citation of something that doesn't exist fails `mix surfex.status`. To move a project
+over, delete the trace-only keys from `.surfex.exs` (Surfex names them), replace `:trace`
+in `goldens:` with `:status`, then run `mix surfex.log --init` and
+`mix surfex.suggest --accept`.
 
 ## Reference
 

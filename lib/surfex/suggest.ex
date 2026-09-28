@@ -3,8 +3,8 @@ defmodule Surfex.Suggest do
   Candidate relations from what the spec already says: every place a spec section names a
   code item is a candidate `implements` relation between the two.
 
-  It reads the spec's citations as the trace does (`Surfex.Cite`, with the project's
-  profile). For each **resolved** citation, the candidate is the pair *(the innermost spec
+  It reads the spec's citations with `Surfex.Cite`, under the project's profile
+  (`Surfex.Status.Config.profile!/2`). For each **resolved** citation, the candidate is the pair *(the innermost spec
   unit containing the citation's line, each code item the citation names)*: a citation in
   a marked block relates the block, not its section. A family (`Mod.fun`) names every
   member. Leaving things out:
@@ -18,7 +18,7 @@ defmodule Surfex.Suggest do
   `mix surfex.suggest --accept`.
   """
 
-  alias Surfex.{Record, Scan, Trace}
+  alias Surfex.{Cite, Profile, Record, Scan}
   alias Surfex.Log.Entry
 
   @type candidate :: %{spec: Scan.t(), code: Scan.t(), cited_at: {String.t(), pos_integer}}
@@ -27,11 +27,11 @@ defmodule Surfex.Suggest do
   The candidates, sorted by section then item, one per pair: the first citation that
   proposes a pair is where it was cited.
   """
-  @spec candidates(Trace.t(), [Surfex.Item.t()], [Scan.t()], [Entry.t()], String.t()) :: [
+  @spec candidates(Profile.t(), [Surfex.Item.t()], [Scan.t()], [Entry.t()], String.t()) :: [
           candidate
         ]
-  def candidates(trace, items, scans, entries, root) do
-    citations = Trace.analyse(trace, items, root).citations
+  def candidates(profile, items, scans, entries, root) do
+    citations = Cite.citations(items, profile, root)
     sections = Enum.filter(scans, &(&1.kind == :spec))
     code = for s <- scans, s.kind == :code, into: %{}, do: {s.id, s}
     related = MapSet.new(entries, &Entry.relation/1)
@@ -108,8 +108,8 @@ defmodule Surfex.Suggest do
   # Only for computing what the moves would leave; never recorded.
   @epoch "1970-01-01T00:00:00Z"
 
-  @spec all(Trace.t(), [Surfex.Item.t()], [Scan.t()], [Entry.t()], String.t()) :: suggestions
-  def all(trace, items, scans, entries, root) do
+  @spec all(Profile.t(), [Surfex.Item.t()], [Scan.t()], [Entry.t()], String.t()) :: suggestions
+  def all(profile, items, scans, entries, root) do
     moves = moves(scans, entries)
 
     {:ok, moved} =
@@ -118,13 +118,13 @@ defmodule Surfex.Suggest do
         {:ok, acc ++ recorded}
       end)
 
-    implements = candidates(trace, items, scans, moved, root)
+    implements = candidates(profile, items, scans, moved, root)
 
     %{
       moves: moves,
       refines: refinements(scans, moved),
       implements: implements,
-      excuses: excusals(trace, items, scans, moved, implements),
+      excuses: excusals(profile, items, scans, moved, implements),
       verifies: verifications(scans, moved),
       tests: exercised(scans, moved)
     }
@@ -194,7 +194,7 @@ defmodule Surfex.Suggest do
         do: %{from: old, to: new}
   end
 
-  defp excusals(trace, items, scans, entries, implements) do
+  defp excusals(profile, items, scans, entries, implements) do
     classes = for %Scan{kind: :class} = s <- scans, into: %{}, do: {s.id, s}
     code = for %Scan{kind: :code} = s <- scans, into: %{}, do: {s.id, s}
     related = MapSet.new(entries, &Entry.relation/1)
@@ -212,7 +212,7 @@ defmodule Surfex.Suggest do
         scan = Map.get(code, Surfex.Item.key(item)),
         scan != nil,
         not MapSet.member?(implemented, scan.id),
-        {:expected, class} <- [Surfex.Coverage.verdict(item, implemented, trace.profile)],
+        {:expected, class} <- [Surfex.Coverage.verdict(item, implemented, profile)],
         class_scan = Map.get(classes, class),
         class_scan != nil,
         not MapSet.member?(related, Entry.relation(:excuses, class_scan, scan)),

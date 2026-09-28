@@ -1,14 +1,15 @@
 # Surfex specification {#surfex}
 
-Surfex keeps a document honest about code. It reads source without compiling it,
-catalogues what the code declares, relates that catalogue to a specification's prose,
-and renders the result as a **surface golden**: a markdown document that CI regenerates
-and byte-compares, so that the document cannot disagree with the code without the build
-failing.
+Surfex keeps a specification, its tests and its code in step. It reads source without
+compiling it, versions every spec section, test and public definition, and keeps an
+append-only log of which versions someone confirmed belong together (§11–§15). When
+either side changes, the relation dangles until it is confirmed again. It also renders
+**surface goldens**: markdown documents that CI regenerates and byte-compares, so a
+document cannot disagree with the code without the build failing (§2, §10).
 
-This document is the specification of Surfex itself. It is traced against Surfex's own
-code by `mix surfex.goldens` (see §10), so every public module and function named here
-exists, and every public module and function that exists is named here.
+This document is the specification of Surfex itself. Surfex holds it to its own code and
+tests with its own relation log: every public module and function implements a section,
+every test hint is verified by a test, and every name cited here exists.
 
 ## 1. Scope and policies {#scope}
 
@@ -19,12 +20,14 @@ Surfex is a build-time tool. A project takes it as a dev/test dependency
 
 It serves two uses:
 
-1. **Surface goldens.** A project scans its own source for whatever it catalogues and
-   renders a golden with `Surfex.Golden`. The scanner is the project's; the notation is
-   Surfex's.
-2. **Two-way spec traces.** A project's specification cites its code in prose, and Surfex
-   checks both directions: every citation names something that exists, and every item
-   the code declares is cited or deliberately excused (§6–§10).
+1. **Keeping a spec, its tests and its code in step** (§11–§15). The spec, the tests and
+   the code are scanned into versioned records. A log records which versions were
+   confirmed to belong together, and `mix surfex.status` checks it: nothing changed
+   since it was confirmed, every item described or deliberately excused, and every name
+   the spec cites exists (§6–§8).
+2. **Surface goldens** (§2, §10). A project scans its own source for whatever it
+   catalogues and renders a golden with `Surfex.Golden`. The scanner is the project's; the
+   notation is Surfex's.
 
 How precisely Surfex can relate a spec depends on how the spec is written.
 `guides/writing-specs.md` (§16) says how to write one that it relates well.
@@ -37,12 +40,12 @@ How precisely Surfex can relate a spec depends on how the spec is written.
   independently of, the code it inspects, so it cannot be fooled by a module that failed
   to build.
 - **No project-specific code.** Surfex knows no project's vocabulary. What differs between
-  projects is data: a `Surfex.Profile` and a `Surfex.Trace` definition.
+  projects is data: `.surfex.exs`, read as a `Surfex.Profile` and the log's own keys.
 - **Goldens are a pure function of source.** No timestamps, dates or VCS data ever
   appear in one. A date makes a golden drift against itself on a quiet day.
 - **Loud over silent.** Configuration that cannot be right (an unknown key, a pattern
   that matches nothing, a scan that found nothing) raises before anything renders. A
-  misconfigured gate must never render a golden that passes.
+  misconfigured check must never pass.
 
 ## 2. Surface goldens {#goldens}
 
@@ -165,8 +168,8 @@ doesn't dangle for it.
 
 ## 4. Items {#items}
 
-`Surfex.Item` is one thing a scanner found: the unit a citation resolves to and a trace
-row describes.
+`Surfex.Item` is one thing a scanner found: the unit a citation resolves to, and the
+source of a code record (§11).
 
 | Field | Meaning |
 |---|---|
@@ -190,8 +193,8 @@ identity.
 
 `Surfex.Scanner` is the behaviour a scanner implements: `items(root, opts)` returns every
 item under `root`. A scanner reads source and never compiles or loads it. The contract
-is language-agnostic: a project whose code is in C implements it for C, and the rest of
-the trace is unchanged.
+is language-agnostic: a project whose code is in C implements it for C, and the rest is
+unchanged.
 
 ### 5.2 The built-in Elixir scanner {#elixir-scanner}
 
@@ -211,8 +214,8 @@ options) returns:
 - The `:paths` option (globs relative to the root) defaults to `lib/**/*.ex`: one
   project's own source. A poncho lists its members.
 
-`Surfex.Scanner.Elixir.profile_defaults/1` gives the profile settings an Elixir trace
-starts from, for a root namespace:
+`Surfex.Scanner.Elixir.profile_defaults/1` gives the profile settings reading an Elixir
+project's citations starts from, for a root namespace:
 - `shape`: the namespace's module and function names, with or without an arity
 - `token`: the same names, found inside longer text
 - a `normalise` rule that drops a call's arguments, so `MyApp.Cart.add(cart, item)` names
@@ -248,9 +251,8 @@ Every citation has exactly one status:
 - `Surfex.Cite.sources/2` lists the source files: the profile's globs under a root, minus
   its exclusions, de-duplicated and sorted.
 - **Code spans**, line by line, credited to the nearest heading above them (a markdown
-  heading, or the `defmodule` in an `.ex` source), or `(preamble)` before the first.
-  `Surfex.Cite.headings/2` lists those headings. A heading's anchor (`{#id}`, §11) is
-  not part of its name.
+  heading, or the `defmodule` in an `.ex` source), or `(preamble)` before the first. A
+  heading's anchor (`{#id}`, §11) is not part of its name.
 - **Subject headings** (§6.6) cite the items their section is about.
 - **Table cells** under the profile's `table_columns`, backticked or not. A cell holding a
   code span is already cited as one.
@@ -295,41 +297,33 @@ until the next heading of the same or higher level, resolves as that item's memb
 inside such a section the member wins over a global of the same name. A subject key
 that names nothing makes the heading's citation unresolved.
 
-### 6.7 The join {#citation-join}
-
-`Surfex.Cite.by_item/2` maps each item key to the labels of the sections citing it
-(resolved citations only), de-duplicated and sorted. `Surfex.Cite.section_label/2`
-formats a label as `<file label> — <section>`. The file label is the first matching
-`file_labels` rewrite of the path, or the file's base name without its extension.
-
 ## 7. Coverage {#coverage}
 
-`Surfex.Coverage` decides an item's verdict. `Surfex.Coverage.verdict/3` gives one item's,
-and `Surfex.Coverage.verdicts/3` gives every item's from the join:
+`Surfex.Coverage.verdict/3` adjudicates an item nothing describes: is the silence
+expected, or is it a gap? The relation log asks it when suggesting an `excuses` relation
+(§15) and when judging whether an excuse is stale (§13). Given the set of item keys that
+count as cited (described), the verdict is:
 
-- `:cited` when any section cites it
-- a `never_excused` kind that is not cited is a **gap**, whatever the rules say
-- otherwise the first rule that matches (kinds, optional name pattern, optionally "only
-  while its parent is cited") excuses it into that rule's class: `{:expected, class}`
+- `:cited` when the item's key is in it
+- a **gap** for a `never_excused` kind that is not cited, whatever the rules say
+- otherwise `{:expected, class}` for the first rule that matches (kinds, an optional name
+  pattern, and optionally "only while its parent is cited")
 - otherwise a **gap**
 
-Rules are by class, never by item. A new helper falls into its class and stays quiet;
-a new entry point matches no rule and is a gap. Each class carries the reason the golden
-prints, so silence is always attributable.
+Rules are by class, never by item. A new helper falls into its class and stays quiet,
+while a new entry point matches no rule and is a gap. Each class carries its reason, so
+silence is always attributable. `Surfex.Coverage.verdict/3` reads only the rules and the
+`never_excused` kinds: a whole `Surfex.Profile`, or the map `Surfex.Profile.coverage!/1`
+gives.
 
-Both read only the rules and `never_excused` kinds: a whole `Surfex.Profile`, or the map
-`Surfex.Profile.coverage!/1` gives. The relation log judges excuses with the same
-function (§13, §15), so the log and the trace can't disagree about what a class covers.
-
-**A verdict belongs to an item, not to a key.** `Surfex.Coverage.verdicts/3` pairs each
-item with its own verdict, in item order. Two items may share a key (a citation of it is
-then ambiguous), and each keeps its own verdict, row and failure. A failure message about
-such an item names its kind as well as its key.
+**A verdict belongs to an item, not to a key.** Two items may share a key (a citation of
+it is then ambiguous), and each is judged on its own.
 
 ## 8. Profiles {#profiles}
 
-`Surfex.Profile` is everything project-specific about reading a spec against code, as
-data with no functions. `Surfex.Profile.new!/1` builds one and validates it:
+`Surfex.Profile` is everything project-specific about reading a spec's citations and
+excusing code, as data with no functions. `Surfex.Profile.new!/1` builds one and validates
+it, and `Surfex.Profile.keys/0` lists its keys:
 
 | Key | Meaning |
 |---|---|
@@ -342,81 +336,40 @@ data with no functions. `Surfex.Profile.new!/1` builds one and validates it:
 | `subjects` | `%{file, heading, items}` subject sections (§6.6) |
 | `table_columns` | header names whose cells are citations |
 | `file_targets` | file names citable in their own right; `:item_files` adds every item's file |
-| `file_labels` | `{regex, replacement}` rewrites of a path into its label |
 | `known_external` | `%{name => reason}` |
 | `documented_absences` | `%{{name, file} => reason}` |
-| `classes` | `[{class, reason}]`, in printing order |
+| `classes` | `[{class, reason}]` |
 | `rules` | `%{class, kinds, name, parent_cited}` excusal rules |
 | `never_excused` | kinds that are the spec's subject matter |
 
 It raises, naming the key, on an unknown key, a missing required key, a wrong type, a
 rule naming an undeclared class, and a rule that would excuse a never-excused kind.
 
-## 9. Traces {#traces}
+A project writes these keys in `.surfex.exs`, alongside the relation log's own (§13.2).
+For the built-in Elixir scanner, `shape`, `token` and `normalise` default from the
+project's namespace (§5.2).
 
-> **Deprecated.** The relation log (§11–§15) replaces the trace: the trace proves that
-> the spec and the code cite each other, not that anyone reconciled them after either
-> changed. The trace keeps working, and suggesting relations (§15) reads its citations,
-> until a later release removes it.
+## 9. The v0.2 trace, removed {#traces}
 
-`Surfex.Trace` is a whole trace: a profile, a scanner, and the golden's definition.
+Versions 0.2 and 0.3 had a **trace**: `SPEC_TRACE.md`, rendered from the spec's citations,
+giving every item a verdict (cited, excused by a class, or GAP). It was removed in 0.4.0.
+It could show that the spec and the code cite each other, but not that anyone reconciled
+them after either changed: regenerating the golden cleared its signal. The relation log
+records that reconciliation, and each of the trace's checks lives on:
 
-### 9.1 Definition {#trace-definition}
+| The trace | The relation log |
+|---|---|
+| a citation | a suggested `implements` relation (§15) |
+| cited | a current relation (§13) |
+| excused by a class | an `excuses` relation (§11, §15) |
+| GAP | an unmet id under `require:` (§13.1) |
+| an unresolved or ambiguous citation | a broken citation, failing the check (§13.1) |
+| drift since the golden | a dangling relation, naming the side that changed |
 
-`Surfex.Trace.new!/1` builds one from a keyword list of profile keys (§8) plus:
-
-| Key | Default | Meaning |
-|---|---|---|
-| `scanner` | `:elixir` | `:elixir`, or a module implementing `Surfex.Scanner` |
-| `scanner_opts` | `[]` | passed to the scanner |
-| `namespace` | none | the root module for `:elixir`, which fills in `profile_defaults` |
-| `output` | `SPEC_TRACE.md` | the golden's path |
-| `purpose`, `task`, `gate`, `hardness` | `task`: `surfex.goldens` | the header block; `task` is the command that regenerates it |
-| `item_noun` | `items` | the stats line's lead |
-| `columns` | all six; `:elixir` omits `Value` | any of `Item`, `Kind`, `Value`, `Version`, `Cited by`, `Locus` |
-| `groups` | none; `:elixir`: Modules, Functions, Macros | `[{kind, heading}]`: table order |
-| `locus_prefix` | none | prepended to each item's file in `Locus` |
-| `not_catalogued` | none | `[{what, why}]`: what the scanner knowingly omits |
-| `prose` | none | the text before the stats line, as blocks (§9.3) |
-| `require_citation` | none | a heading regex: matching sections must cite code |
-
-Keys the project sets win over the Elixir defaults. `Surfex.Trace.load!/1` and
-`Surfex.Trace.load!/2` evaluate a `.surfex.exs` data file, which must return a keyword
-list, with optional defaults under it. The same file carries keys other tools read
-(`goldens:` for §10.3, `require:` and `tests:` for §13), which `Surfex.Trace.own_keys/1`
-drops.
-
-### 9.2 Analysis {#trace-analysis}
-
-`Surfex.Trace.items/2` runs the trace's scanner. `Surfex.Trace.analyse/3` cites the items
-from the sources and computes every verdict. It raises when there is nothing meaningful
-to trace: no source matched, no item was scanned, or a `require_citation` pattern matches
-no heading.
-
-`Surfex.Trace.failures/2` lists every reason the trace must fail a gate, all of them, in
-a stable order:
-- each item whose verdict is a gap
-- each unresolved or ambiguous citation, with where it is
-- with `require_citation`, each matching section that cites nothing
-
-### 9.3 The golden {#trace-golden}
-
-`Surfex.Trace.render/2` renders the trace as a surface golden (§2):
-- **prose**: each block is either literal markdown or `{list, heading}`, which prints
-  `### heading` and a generated list. `:not_catalogued`, `:known_external`, `:classes`
-  or `:documented_absences`, so what the golden says about silence cannot drift from the
-  rules that produce it. An empty list is omitted with its heading.
-- **one stats line**: items, cited, expected-silent, GAPS, citations (resolved),
-  unresolved, ambiguous
-- **one table per kind**, in `groups` order. A kind not listed still gets a table
-  after them, so rows are never dropped.
-- **`Cited by`**: the citing sections, `— <class>` for an excused item, or `GAP`
-
-### 9.4 Drift {#trace-drift}
-
-`Surfex.Trace.drift/2` compares a committed trace golden with a fresh render. It is
-`Surfex.Gate.drift/2` (§10.1), whose `Cited by` column makes each changed item name the
-sections citing it: the sections to revisit.
+A `.surfex.exs` that still has a trace-only key (`output`, `purpose`, `task`, `gate`,
+`hardness`, `item_noun`, `columns`, `groups`, `locus_prefix`, `not_catalogued`, `prose`,
+`require_citation`, `file_labels`) raises, naming the keys and why (§13.2). So does a
+`:trace` entry in `goldens:`.
 
 ## 10. Gating goldens {#gating}
 
@@ -430,11 +383,9 @@ sections citing it: the sections to revisit.
 - `Surfex.Gate.drift/2` compares committed bytes with a fresh render. Identical texts
   give `nil`. Otherwise it names the rows that changed, appeared and went. A row is keyed
   by its table's `Item` column, or the first column when there is none, and compared by
-  its `Version` cell, or the whole row when there is none. A changed row with a `Cited by`
-  cell lists the sections citing it, and only such a golden words its report in terms of
-  the spec (sections to revisit, items the spec does not cover yet). A change outside
-  every row is reported as a change to prose or a stats line. The committed side is
-  parsed from its bytes, never re-derived.
+  its `Version` cell, or the whole row when there is none. A change outside every row is
+  reported as a change to prose or a stats line. The committed side is parsed from its
+  bytes, never re-derived.
 - `Surfex.Gate.config!/1` evaluates a `.surfex.exs`-style data file, which must return a
   keyword list.
 
@@ -442,54 +393,48 @@ sections citing it: the sections to revisit.
 
 `Surfex.Surface` is the behaviour for a golden only the project can scan for (the
 endpoints a router declares, the actions a model defines): `spec(opts)` returns a
-`Surfex.Golden` spec, which is rendered and gated like the trace.
+`Surfex.Golden` spec, which is rendered and gated like any golden.
 
 ### 10.3 Every golden at once {#all-goldens}
 
 `Surfex.Goldens` runs every golden a project lists in `.surfex.exs`'s `goldens:` key.
 Each entry is one of:
-- `:trace`: the trace the rest of the file defines
 - `:status` or `{:status, output}`: the relation status as a golden (§13.3),
   `RELATIONS.md` by default. Its drift fails here; whether the relations are healthy is
   `mix surfex.status`'s question.
 - `{output, module, opts}`: a `Surfex.Surface`
 
-With no key, the list is `[:trace]`.
+With no key, the list is `[:status]`.
 
 - `Surfex.Goldens.entries!/1` validates the list. It raises naming an entry that is
-  neither form, an empty list, and two entries writing one file.
+  neither form, the removed `:trace` entry (§9), an empty list, and two entries writing
+  one file.
 - `Surfex.Goldens.needs_compile?/2`: only project code needs the project compiled, meaning
-  a surface module, or a trace scanner other than the built-in one.
+  a surface module, or a project scanner the status reads.
 - `Surfex.Goldens.run/6` renders every entry, writes or checks each, and returns every
-  failure in entry order: each drift, and the trace's failures (§9.2). A module that does
-  not implement `Surfex.Surface` raises, naming it.
+  drift in entry order. A module that does not implement `Surfex.Surface` raises, naming
+  it.
 
-### 10.4 The tasks {#golden-tasks}
+### 10.4 The task {#golden-tasks}
 
-`Mix.Tasks.Surfex.Goldens` is `mix surfex.goldens`, and `Mix.Tasks.Surfex.Trace` is
-`mix surfex.trace`, which is the `:trace` entry on its own:
+`Mix.Tasks.Surfex.Goldens` is `mix surfex.goldens`:
 
-- Without `--write`, the task checks. It fails if any golden is missing or has drifted,
-  and on every failure of §9.2.
-- `--write` regenerates. It writes every golden even when there are failures, so they
-  show up in the diff, and then fails.
+- Without `--write`, the task checks. It fails if any golden is missing or has drifted.
+- `--write` regenerates. It writes every golden even when some have drifted, so the
+  drift shows up in the diff, and then fails.
 - `--config PATH` reads a definition other than `.surfex.exs`.
-- The trace's namespace defaults to the app's name camelized. The task compiles the
-  project only when `Surfex.Goldens.needs_compile?/2` says so.
+- The namespace citations are read under defaults to the app's name camelized. The task
+  compiles the project only when `Surfex.Goldens.needs_compile?/2` says so.
 - Every failure of every golden is reported in one run.
 
-Surfex gates itself this way: its `.surfex.exs` traces this document against its own
-`lib/`, and CI runs `mix surfex.goldens`, which gates both `SPEC_TRACE.md` and
-`RELATIONS.md`. It also keeps its own relation log (`.surfex/`), in which every public
-module and function implements a section of this document (`require: [code:
-[:implements]]`), and CI runs `mix surfex.status --verify`.
+Surfex gates itself this way: CI runs `mix surfex.goldens`, which gates `RELATIONS.md`,
+and `mix surfex.status --verify`, which checks the relation log itself (§13.3).
 
 ## 11. Scan records {#scan-records}
 
-Sections 11 onwards describe the relation log: pure scanners report what the spec and
-the code are now, and an append-only log records which versions of them someone has
-confirmed belong together.
-It is being built alongside the trace of §6–§10, which stays until it is replaced.
+Sections 11 onwards describe the relation log: pure scanners report what the spec, the
+tests and the code are now, and an append-only log records which versions of them
+someone has confirmed belong together.
 
 `Surfex.Scan` is a scan record: `{kind, id, hash, location}`, plus `role` and `within`
 for spec records.
@@ -544,8 +489,7 @@ scans one text.
 record of kind `:class` per class in `.surfex.exs`. A class names a kind of code the spec
 deliberately doesn't describe, and says why (`classes: [{name, reason}]`). Its rules say
 which items fall into it (`rules: [%{class:, kinds:, name:, parent_cited:}]`). These are
-the trace's own keys (§8), validated the same way by `Surfex.Profile.coverage!/1`, so an
-existing trace config needs no change.
+the profile's keys (§8), validated the same way by `Surfex.Profile.coverage!/1`.
 - **Its id** is the class's name.
 - **Its hash** covers its reason and every rule naming it (kinds, name pattern,
   `parent_cited`), in any order. Rewording the reason or changing a rule changes it.
@@ -800,7 +744,14 @@ code no verifying test calls are each reported, naming the test or the code
 
 ### 13.2 Configuration {#status-config}
 
-`Surfex.Status.Config` reads `.surfex.exs`, the same file the trace reads:
+`Surfex.Status.Config` reads `.surfex.exs`. It holds the profile keys (§8) and the
+log's own: `scanner`, `scanner_opts`, `namespace`, `goldens` (§10.3), `require`, `tests`
+and `triangle`.
+- `Surfex.Status.Config.read!/1` reads and validates it. It raises on an unknown key, and
+  on a key of the removed trace, saying so (§9). Every task reads its config through
+  it, so a misspelt key is never silently ignored.
+- `Surfex.Status.Config.items/2` runs the code scanner: the built-in Elixir scanner, or
+  the project's `scanner:` module (`Surfex.Scanner`) with its `scanner_opts:`.
 - `Surfex.Status.Config.scans/2` scans each markdown unit of `sources`, each item the
   code scanner (`scanner`, `scanner_opts`) finds, and, when `tests:` names globs of
   test files, each test in them (`Surfex.Scan.ExUnit`). A missing `sources`, or one
@@ -907,7 +858,8 @@ moved, or the other end changed, the moved relation dangles
 ## 15. Suggesting relations {#suggesting}
 
 `Surfex.Suggest` proposes relations from what the spec already says. Its candidate
-`implements` relations come from citations. `Surfex.Suggest.candidates/5` reads the spec's citations as the trace does (§6),
+`implements` relations come from citations. `Surfex.Suggest.candidates/5` reads the spec's
+citations (§6) under the project's profile (`Surfex.Status.Config.profile!/2`),
 and for each **resolved** citation proposes the pair *(the innermost spec unit
 containing the citation's line, each code item it names)*. A citation in a marked block
 relates the block, not its section. A family names every member. Left out:

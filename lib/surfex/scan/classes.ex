@@ -6,7 +6,7 @@ defmodule Surfex.Scan.Classes do
   callbacks, generated functions) and says why: `classes: [{"plumbing", "process
   wiring, not behaviour"}]`. **Rules** say which items fall into it:
   `rules: [%{class: "plumbing", kinds: [:function], name: ~r/^handle_/}]`. These are the
-  trace's own keys (`Surfex.Profile`), validated the same way.
+  profile's keys (`Surfex.Profile`), validated the same way.
 
     * **id** — the class's name
     * **hash** — over its reason and every rule naming it (kinds, name pattern,

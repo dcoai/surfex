@@ -1,4 +1,4 @@
-# The three checks the sibling projects gate on, plus the goldens (spec.md traced against lib/).
+# The three checks the sibling projects gate on, plus the goldens and the relation status.
 # There is nothing to boot: this package reads source and renders markdown.
 variables:
   ELIXIR_IMAGE: hexpm/elixir:1.20.4-erlang-29.0.5-debian-bookworm-20260824-slim
@@ -52,8 +52,7 @@ goldens:
   extends: .elixir
   stage: check
   script:
-    # Every golden in .surfex.exs: spec.md against lib/, where a GAP, a broken citation or
-    # a stale SPEC_TRACE.md fails.
+    # Every golden in .surfex.exs: RELATIONS.md, where a stale committed record fails.
     - mix surfex.goldens
 
 status:

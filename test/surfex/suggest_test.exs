@@ -1,24 +1,25 @@
 defmodule Surfex.SuggestTest do
   use ExUnit.Case, async: true
 
-  alias Surfex.{Item, Scan, Status, Suggest, Trace}
+  alias Surfex.{Item, Scan, Status, Suggest}
+  alias Surfex.Status.Config
   alias Surfex.Scan.Markdown
 
-  @fixture Path.expand("../fixtures/reference_trace", __DIR__)
+  @fixture Path.expand("../fixtures/reference", __DIR__)
   @root Path.join(@fixture, "sources")
   @meta [by: "tester", at: "2026-09-28T10:00:00Z"]
 
   setup_all do
     {items, _} = Code.eval_file(Path.join(@fixture, "items.exs"))
     items = Enum.map(items, &struct!(Item, &1))
-    {config, _} = Code.eval_file(Path.join(@fixture, "trace.exs"))
-    trace = Trace.new!(config)
+    {config, _} = Code.eval_file(Path.join(@fixture, "surfex.exs"))
+    profile = Config.profile!(config, nil)
     scans = Markdown.records(@root, ["spec/**/*.md", "notes/**/*.md"]) ++ Scan.code(items)
-    %{trace: trace, items: items, scans: scans}
+    %{profile: profile, items: items, scans: scans}
   end
 
   defp candidates(c, entries \\ []),
-    do: Suggest.candidates(c.trace, c.items, c.scans, entries, @root)
+    do: Suggest.candidates(c.profile, c.items, c.scans, entries, @root)
 
   defp pairs(candidates), do: Enum.map(candidates, &{&1.spec.id, &1.code.id})
 
@@ -79,7 +80,7 @@ defmodule Surfex.SuggestTest do
       end)
 
     refute {one.spec.id, one.code.id} in pairs(
-             Suggest.candidates(c.trace, c.items, moved, [related], @root)
+             Suggest.candidates(c.profile, c.items, moved, [related], @root)
            )
 
     assert [%{state: :dangling}] = Status.derive(moved, [related]).relations
@@ -110,9 +111,9 @@ defmodule Surfex.SuggestTest do
     ]
 
     scans = Markdown.records(root, ["spec.md"]) ++ Scan.code(items)
-    trace = Trace.new!(namespace: "Wren", sources: ["spec.md"])
+    profile = Config.profile!([sources: ["spec.md"]], "Wren")
 
-    assert pairs(Suggest.candidates(trace, items, scans, [], root)) == [
+    assert pairs(Suggest.candidates(profile, items, scans, [], root)) == [
              {"spec.md#Limits", "Wren.send/3"},
              {"spec.md#max-len", "Wren.max_len/0"}
            ]
@@ -145,8 +146,8 @@ defmodule Surfex.SuggestTest do
     defp suggest(root, text, entries) do
       File.write!(Path.join(root, "spec.md"), text)
       scans = Markdown.records(root, ["spec.md"]) ++ Scan.code(@wren)
-      trace = Trace.new!(namespace: "Wren", sources: ["spec.md"])
-      {Suggest.all(trace, @wren, scans, entries, root), scans}
+      profile = Config.profile!([sources: ["spec.md"]], "Wren")
+      {Suggest.all(profile, @wren, scans, entries, root), scans}
     end
 
     defp adopted(root) do
@@ -262,8 +263,8 @@ defmodule Surfex.SuggestTest do
       }
 
       scans = Markdown.records(root, ["spec.md"]) ++ Scan.code(items) ++ [test_scan]
-      trace = Trace.new!(namespace: "Wren", sources: ["spec.md"])
-      s = Suggest.all(trace, items, scans, [], root)
+      profile = Config.profile!([sources: ["spec.md"]], "Wren")
+      s = Suggest.all(profile, items, scans, [], root)
 
       assert Enum.map(s.verifies, &{&1.from.id, &1.to.id}) == [
                {"WrenTest: the limit", "spec.md#limits"}
@@ -278,7 +279,7 @@ defmodule Surfex.SuggestTest do
       status = Status.derive(scans, entries)
       assert status.triangle == []
 
-      assert Suggest.all(trace, items, scans, entries, root) |> Map.values() |> List.flatten() ==
+      assert Suggest.all(profile, items, scans, entries, root) |> Map.values() |> List.flatten() ==
                []
     end
   end

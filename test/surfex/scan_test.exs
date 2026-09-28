@@ -74,7 +74,7 @@ defmodule Surfex.ScanTest do
     end
 
     test "records/2 reads globs under a root, with paths relative to it" do
-      root = Path.expand("../fixtures/reference_trace/sources", __DIR__)
+      root = Path.expand("../fixtures/reference/sources", __DIR__)
       ids = root |> Markdown.records(["spec/*.md"]) |> Enum.map(& &1.id)
       assert "spec/02-wire.md#02 — Wire format/2. Packet types" in ids
       assert Enum.all?(ids, &String.starts_with?(&1, "spec/"))

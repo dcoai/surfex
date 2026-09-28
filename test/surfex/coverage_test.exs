@@ -53,25 +53,12 @@ defmodule Surfex.CoverageTest do
     assert Coverage.verdict(both, MapSet.new(), p) == {:expected, "members"}
   end
 
-  test "verdicts/3 joins by_item, one pair per item, in item order" do
-    items = [item(:wire, "hdr"), item(:field, "len", "hdr"), item(:function, "main")]
-
-    assert Coverage.verdicts(items, %{"hdr" => ["spec — 1"]}, profile()) == [
-             {Enum.at(items, 0), :cited},
-             {Enum.at(items, 1), {:expected, "members"}},
-             {Enum.at(items, 2), :gap}
-           ]
-  end
-
-  # #15: keyed by Item.key/1, the second item's verdict overwrote the first's, and a GAP
-  # could vanish from the gate.
+  # #15: two items sharing a key are judged each on its own: the gap stays a gap.
   test "two items sharing a key each keep their own verdict" do
     excused = item(:function, "do_twin")
     gap = item(:macro, "do_twin")
 
-    assert Coverage.verdicts([gap, excused], %{}, profile()) == [
-             {gap, :gap},
-             {excused, {:expected, "helpers"}}
-           ]
+    assert Coverage.verdict(gap, MapSet.new(), profile()) == :gap
+    assert Coverage.verdict(excused, MapSet.new(), profile()) == {:expected, "helpers"}
   end
 end

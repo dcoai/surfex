@@ -1,5 +1,5 @@
 # The items a scanner of an invented reference implementation, "Wren", would report: a tiny
-# packet protocol written in C. Plain data, so the trace is tested without any scanner.
+# packet protocol written in C. Plain data, so the reading is tested without any scanner.
 #
 # Every item is here for a reason, noted beside it. Hashes are fixed strings: this fixture
 # tests citation and coverage, not hashing.

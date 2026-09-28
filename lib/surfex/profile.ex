@@ -1,13 +1,14 @@
 defmodule Surfex.Profile do
   @moduledoc """
-  Everything project-specific about a trace, **as data**. `Surfex.Cite` and
+  Everything project-specific about reading a spec's citations and excusing code, **as
+  data**. `Surfex.Cite` and
   `Surfex.Coverage` are generic; a profile is what makes them read one project's spec
   against one project's code. A profile holds no functions, so it can live in a data file
   and be read in review like any other configuration.
 
   Build one with `new!/1`. It rejects an unknown key, a wrong type, and a rule that is
   inconsistent with the rest of the profile, **loudly and before anything is scanned**: a
-  misconfigured trace must not render a golden that passes.
+  misconfigured check must never pass.
 
   ## Where the spec is
 
@@ -43,23 +44,13 @@ defmodule Surfex.Profile do
       a code reference. A cell holding a code span is already cited as one.
     * `:file_targets` — file names that are citation targets in their own right.
       `:item_files` in the list adds every file an item is declared in.
-    * `:file_labels` — `{regex, replacement}` rewrites of a source's path into the label a
-      golden cell prints before `— <section>`. The first matching rewrite wins; with none,
-      the label is the file's base name without its extension.
-
-  Member paths need no configuration: `` `field.member` `` resolves `field` (directly or
-  through a subject), then `member` within the field's `Surfex.Item` `:type`, and cites
-  both.
-
-  ## Citations that are not failures
-
     * `:known_external` — `%{name => reason}`: real, but outside the scanned tree
     * `:documented_absences` — `%{{name, file} => reason}`: a section that names something
       deliberately *because* the code does not have it
 
   ## Coverage
 
-    * `:classes` — `[{class, reason}]`, in the order a golden prints them
+    * `:classes` — `[{class, reason}]`: a kind of code the spec doesn't describe, and why
     * `:rules` — `[%{class:, kinds:, name: regex | nil, parent_cited: boolean}]`. The first
       matching rule excuses an uncited item into its class. Rules are by class, never by
       item, so a new helper falls into its class and a new entry point is a gap.
@@ -80,7 +71,6 @@ defmodule Surfex.Profile do
           subjects: [subject],
           table_columns: [String.t()],
           file_targets: [String.t() | :item_files],
-          file_labels: [{Regex.t(), String.t()}],
           known_external: %{String.t() => String.t()},
           documented_absences: %{{String.t(), String.t()} => String.t()},
           classes: [{String.t(), String.t()}],
@@ -98,7 +88,6 @@ defmodule Surfex.Profile do
             subjects: [],
             table_columns: [],
             file_targets: [],
-            file_labels: [],
             known_external: %{},
             documented_absences: %{},
             classes: [],
@@ -115,7 +104,6 @@ defmodule Surfex.Profile do
     :subjects,
     :table_columns,
     :file_targets,
-    :file_labels,
     :known_external,
     :documented_absences,
     :classes,
@@ -155,7 +143,7 @@ defmodule Surfex.Profile do
   @doc """
   The coverage keys of a config (`classes:`, `rules:`, `never_excused:`), validated as
   `new!/1` validates them, for the relation log's classes (`Surfex.Scan.Classes`) without
-  a whole trace profile. Rules get their defaults (`name: nil`, `parent_cited: false`).
+  a whole profile. Rules get their defaults (`name: nil`, `parent_cited: false`).
   Raises `ArgumentError` naming what is wrong.
   """
   @spec coverage!(keyword | map) :: %{
@@ -202,7 +190,6 @@ defmodule Surfex.Profile do
   defp valid?(:token, v), do: regex?(v)
   defp valid?(:known_shape, v), do: is_nil(v) or regex?(v)
   defp valid?(:normalise, v), do: is_list(v) and Enum.all?(v, &rewrite?/1)
-  defp valid?(:file_labels, v), do: is_list(v) and Enum.all?(v, &rewrite?/1)
   defp valid?(:subjects, v), do: is_list(v) and Enum.all?(v, &subject?/1)
   defp valid?(:known_external, v), do: is_map(v)
   defp valid?(:documented_absences, v), do: is_map(v) and Enum.all?(Map.keys(v), &pair?/1)

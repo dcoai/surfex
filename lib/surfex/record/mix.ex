@@ -3,7 +3,7 @@ defmodule Surfex.Record.Mix do
   # What the recording tasks share: read `.surfex.exs`, scan, load the log, fill in who and
   # when from git, append what `Surfex.Record` returns, and say what was recorded.
 
-  alias Surfex.{Gate, Log}
+  alias Surfex.Log
   alias Surfex.Log.Entry
   alias Surfex.Status.Config
 
@@ -17,7 +17,7 @@ defmodule Surfex.Record.Mix do
   # {scans, entries, meta} for the project in the working directory.
   def context(opts) do
     root = File.cwd!()
-    config = Gate.config!(Path.join(root, opts[:config] || ".surfex.exs"))
+    config = Config.read!(Path.join(root, opts[:config] || ".surfex.exs"))
     if Keyword.get(config, :scanner, :elixir) != :elixir, do: Mix.Task.run("compile")
 
     unless File.dir?(Log.dir(root)),
@@ -32,9 +32,9 @@ defmodule Surfex.Record.Mix do
   # Whether an unscanned id could be one of this project's (`Surfex.Record.plan/7`). A spec
   # id must be in a file the spec scanner read. A code id must have the scanner's shape:
   # for the built-in Elixir scanner, a name under a namespace the project already has; for
-  # a project scanner, the `shape:` its trace configures, when it configures one.
+  # a project scanner, the `shape:` its config gives, when it gives one.
   def plausible(opts, scans) do
-    config = Gate.config!(Path.join(File.cwd!(), opts[:config] || ".surfex.exs"))
+    config = Config.read!(Path.join(File.cwd!(), opts[:config] || ".surfex.exs"))
     files = for %{kind: :spec, location: %{file: f}} <- scans, into: MapSet.new(), do: f
     shapes = code_shapes(config, scans)
 

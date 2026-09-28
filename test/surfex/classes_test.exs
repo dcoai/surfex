@@ -1,7 +1,8 @@
 defmodule Surfex.ClassesTest do
   use ExUnit.Case, async: true
 
-  alias Surfex.{Item, Profile, Scan, Status, Suggest, Trace}
+  alias Surfex.{Item, Profile, Scan, Status, Suggest}
+  alias Surfex.Status.Config
   alias Surfex.Scan.{Classes, Markdown}
 
   @meta [by: "tester", at: "2026-09-28T10:00:00Z"]
@@ -96,9 +97,9 @@ defmodule Surfex.ClassesTest do
 
     defp suggest(root, config \\ @config, entries \\ []) do
       File.write!(Path.join(root, "spec.md"), @spec_md)
-      trace = Trace.new!([namespace: "App", sources: ["spec.md"]] ++ config)
+      profile = Config.profile!([sources: ["spec.md"]] ++ config, "App")
       scans = Markdown.records(root, ["spec.md"]) ++ Scan.code(@items) ++ Classes.records(config)
-      {Suggest.all(trace, @items, scans, entries, root), scans}
+      {Suggest.all(profile, @items, scans, entries, root), scans}
     end
 
     defp excuses(s), do: s.excuses |> Enum.map(&{&1.from.id, &1.to.id}) |> Enum.sort()
@@ -146,30 +147,6 @@ defmodule Surfex.ClassesTest do
       {s, _} = suggest(root, config)
       assert excuses(s) == [{"all", "App.Server.handle_call/3"}]
     end
-  end
-
-  # The v0.2 trace's verdicts, expressed in the relation log: the reference fixture's
-  # classes excuse exactly the items its trace golden prints as excused.
-  test "the reference fixture's excusals match its trace" do
-    fixture = Path.expand("../fixtures/reference_trace", __DIR__)
-    {items, _} = Code.eval_file(Path.join(fixture, "items.exs"))
-    items = Enum.map(items, &struct!(Item, &1))
-    {config, _} = Code.eval_file(Path.join(fixture, "trace.exs"))
-    trace = Trace.new!(config)
-    root = Path.join(fixture, "sources")
-
-    scans =
-      Markdown.records(root, ["spec/**/*.md", "notes/**/*.md"]) ++
-        Scan.code(items) ++ Classes.records(config)
-
-    suggested = Suggest.all(trace, items, scans, [], root) |> excuses()
-
-    traced =
-      for {item, {:expected, class}} <- Trace.analyse(trace, items, root).verdicts,
-          do: {class, Item.key(item)}
-
-    assert suggested == Enum.sort(traced)
-    assert length(suggested) == 5
   end
 
   # #51: an excuse must stay true to its class's rules.
