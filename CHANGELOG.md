@@ -6,9 +6,15 @@ All notable changes to Surfex are recorded here, following
 
 ## [Unreleased]
 
-`mix.exs` reads `0.4.0-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
-release it merely follows. The next release is a **minor** one, since it removes the v0.2
-trace.
+Specs and tests in step. Tests are scanned and say what they verify, and each spec unit is
+checked from three sides: its code implements it, a test verifies it, and that test
+exercises the code. Test runs record evidence, and a test that went red and then green
+confirms its code, with no human confirmation, while CI checks every such claim against
+its own run and records nothing. The spec gains finer units (anchors, marked
+requirements, test hints), code the spec doesn't describe is excused by class, and a spec
+naming what doesn't exist fails. A **minor** release that breaks: the v0.2 trace is
+removed, and a config written for it fails naming the keys and why (see the README's
+upgrade section).
 
 ### Removed
 
