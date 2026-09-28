@@ -633,7 +633,9 @@ or any id is unmet. New, retired and impacted don't fail on their own.
   conflict in it is resolved by regenerating.
 - `Surfex.Status.Report.json/1`: the work list for tools and agents. For each relation,
   its type, state and impact, and per end the recorded hash, the current hash, whether
-  it changed, and its location. Plus the new and unmet ids.
+  it changed, and its location. Plus the new and unmet ids. A value that doesn't exist
+  (a gone end's hash and location, or a conflicted relation's recorded hashes, since it
+  has no one tip) is JSON `null`.
 
 `Mix.Tasks.Surfex.Status` is `mix surfex.status`:
 - `--format text|json` (text by default)

@@ -110,7 +110,7 @@ on any; a citation of something that does not exist fails it too.
 | `Surfex.Status.Config.scans/2` | `:function` | `0ccfb069` | `spec — 13.2 Configuration` | `lib/surfex/status/config.ex` |
 | `Surfex.Status.Report.golden/1` | `:function` | `47924bb8` | `spec — 13.3 Reports and the check` | `lib/surfex/status/report.ex` |
 | `Surfex.Status.Report.golden/2` | `:function` | `47924bb8` | `spec — 13.3 Reports and the check` | `lib/surfex/status/report.ex` |
-| `Surfex.Status.Report.json/1` | `:function` | `52c657e9` | `spec — 13.3 Reports and the check` | `lib/surfex/status/report.ex` |
+| `Surfex.Status.Report.json/1` | `:function` | `6b913902` | `spec — 13.3 Reports and the check` | `lib/surfex/status/report.ex` |
 | `Surfex.Status.Report.text/1` | `:function` | `717e2324` | `spec — 13.3 Reports and the check` | `lib/surfex/status/report.ex` |
 | `Surfex.Status.derive/2` | `:function` | `b4666844` | `spec — 13. Relation status` | `lib/surfex/status.ex` |
 | `Surfex.Status.derive/3` | `:function` | `b4666844` | `spec — 13. Relation status` | `lib/surfex/status.ex` |

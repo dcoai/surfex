@@ -168,6 +168,40 @@ defmodule Surfex.StatusTest do
              }
     end
 
+    # #47: absent values are JSON null, never the string "nil".
+    test "JSON: a gone end's hash and location, and a conflict's recorded hashes, are null" do
+      decode = &(&1 |> Report.json() |> :json.decode(:ok, %{null: nil}) |> elem(0))
+
+      orphaned = decode.(Status.derive([scan(:spec, @spec_id, "s1")], [relate("s1", "c1")]))
+      [%{"ends" => ends}] = orphaned["relations"]
+
+      assert %{"now" => nil, "location" => nil, "recorded" => "c1"} =
+               Enum.find(ends, &(&1["kind"] == "code"))
+
+      a = relate("s1", "c1")
+      b = relate("s1", "c2", at: "2026-09-28T11:00:00Z")
+
+      [%{"state" => "conflicted", "ends" => ends}] =
+        decode.(Status.derive(scans(), [a, b]))["relations"]
+
+      assert Enum.all?(ends, &(&1["recorded"] == nil))
+    end
+
+    test "JSON: no state writes the string \"nil\"" do
+      first = relate("s1", "c1")
+      retired = relate("s1", "c1", op: :retire, parents: [first.id], at: "2026-09-28T11:00:00Z")
+
+      for {scans, entries} <- [
+            {scans(), [first]},
+            {scans("s1", "c2"), [first]},
+            {[scan(:spec, @spec_id, "s1")], [first]},
+            {scans(), [first, relate("s1", "c2", at: "2026-09-28T11:00:00Z")]},
+            {scans(), [first, retired]}
+          ] do
+        refute Report.json(Status.derive(scans, entries)) =~ ~s("nil")
+      end
+    end
+
     test "with no relations, it says so" do
       assert Report.text(Status.derive(scans(), [])) =~ "(no relations)"
     end
