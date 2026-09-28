@@ -6,7 +6,7 @@ A row per public module and function in `lib/`. `Cited by` names the sections of
 `spec.md` that cite it. A GAP is code the spec does not describe, and the gate fails
 on any; a citation of something that does not exist fails it too.
 
-**104 items** · cited 104 · expected-silent 0 · GAPS 0 · citations 115 · unresolved 0 · ambiguous 0
+**105 items** · cited 105 · expected-silent 0 · GAPS 0 · citations 116 · unresolved 0 · ambiguous 0
 
 ## Modules
 
@@ -35,7 +35,7 @@ on any; a citation of something that does not exist fails it too.
 | `Surfex.Scan.Markdown` | `:module` | `d0231dfd` | `spec — 11. Scan records` | `lib/surfex/scan/markdown.ex` |
 | `Surfex.Scanner` | `:module` | `0305a8dd` | `spec — 5.1 The contract, spec — 9.1 Definition` | `lib/surfex/scanner.ex` |
 | `Surfex.Scanner.Elixir` | `:module` | `fdfd1448` | `spec — 5.2 The built-in Elixir scanner` | `lib/surfex/scanner/elixir.ex` |
-| `Surfex.SourceScan` | `:module` | `2ac40371` | `spec — 3. Reading source` | `lib/surfex/source_scan.ex` |
+| `Surfex.SourceScan` | `:module` | `142b094a` | `spec — 3. Reading source` | `lib/surfex/source_scan.ex` |
 | `Surfex.Status` | `:module` | `3ac14966` | `spec — 13. Relation status` | `lib/surfex/status.ex` |
 | `Surfex.Status.Config` | `:module` | `762c0ba0` | `spec — 13.2 Configuration` | `lib/surfex/status/config.ex` |
 | `Surfex.Status.Report` | `:module` | `dcb37725` | `spec — 13.3 Reports and the check` | `lib/surfex/status/report.ex` |
@@ -101,7 +101,8 @@ on any; a citation of something that does not exist fails it too.
 | `Surfex.SourceScan.hidden_module?/1` | `:function` | `50cc9f12` | `spec — 3.2 Modules and definitions` | `lib/surfex/source_scan.ex` |
 | `Surfex.SourceScan.lib_sources/1` | `:function` | `32efa98a` | `spec — 3.1 Finding source` | `lib/surfex/source_scan.ex` |
 | `Surfex.SourceScan.line_range/1` | `:function` | `3b4ffe1b` | `spec — 3.2 Modules and definitions` | `lib/surfex/source_scan.ex` |
-| `Surfex.SourceScan.project_root/1` | `:function` | `a25d7754` | `spec — 3.1 Finding source` | `lib/surfex/source_scan.ex` |
+| `Surfex.SourceScan.project_root/1` | `:function` | `cb99a577` | `spec — 3.1 Finding source` | `lib/surfex/source_scan.ex` |
+| `Surfex.SourceScan.project_root/2` | `:function` | `cb99a577` | `spec — 3.1 Finding source` | `lib/surfex/source_scan.ex` |
 | `Surfex.Status.Config.require!/1` | `:function` | `f660fc23` | `spec — 13.2 Configuration` | `lib/surfex/status/config.ex` |
 | `Surfex.Status.Config.scans/2` | `:function` | `0ccfb069` | `spec — 13.2 Configuration` | `lib/surfex/status/config.ex` |
 | `Surfex.Status.Report.json/1` | `:function` | `52c657e9` | `spec — 13.3 Reports and the check` | `lib/surfex/status/report.ex` |

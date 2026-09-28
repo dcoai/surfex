@@ -21,8 +21,12 @@ defmodule Surfex.SourceScan do
   """
 
   @doc """
-  The project root: ascend from the working directory to the first directory containing
-  `marker`, falling back to the working directory when none is found.
+  The project root: ascend from `start` (the working directory by default) to the first
+  directory containing `marker`, falling back to `start` when none is found.
+
+  `start` exists so that nothing has to change the working directory to ask. The working
+  directory belongs to the whole VM: changing it for one caller changes it for every
+  process running alongside.
 
   `marker` is explicit and has no default, deliberately. A poncho's root is the directory
   holding its aggregate build marker (`"scripts/poncho.exs"`); a single library's is the
@@ -32,12 +36,15 @@ defmodule Surfex.SourceScan do
 
       project_root("mix.exs")             # a library
       project_root("scripts/poncho.exs")  # a poncho
+      project_root("mix.exs", "lib/my_app/deep")
   """
-  @spec project_root(String.t()) :: String.t()
-  def project_root(marker) do
-    Stream.iterate(File.cwd!(), &Path.dirname/1)
+  @spec project_root(String.t(), String.t()) :: String.t()
+  def project_root(marker, start \\ File.cwd!()) do
+    start = Path.expand(start)
+
+    Stream.iterate(start, &Path.dirname/1)
     |> Stream.take_while(&(&1 != "/"))
-    |> Enum.find(File.cwd!(), &File.exists?(Path.join(&1, marker)))
+    |> Enum.find(start, &File.exists?(Path.join(&1, marker)))
   end
 
   @doc """

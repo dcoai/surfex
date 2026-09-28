@@ -99,7 +99,9 @@ defmodule Surfex.SourceScanTest do
     end
   end
 
-  describe "project_root/1" do
+  # Given a starting directory, never by changing the working directory: that belongs to
+  # the whole VM, and this module runs async (#27).
+  describe "project_root/2" do
     setup do
       root = Path.join(System.tmp_dir!(), "surfex-root-#{System.unique_integer([:positive])}")
       File.mkdir_p!(Path.join(root, "nested/deeper"))
@@ -109,23 +111,18 @@ defmodule Surfex.SourceScanTest do
     end
 
     test "ascends to the directory holding the marker", %{root: root} do
-      here = File.cwd!()
-      File.cd!(Path.join(root, "nested/deeper"))
-      found = SourceScan.project_root("mix.exs")
-      File.cd!(here)
-
+      found = SourceScan.project_root("mix.exs", Path.join(root, "nested/deeper"))
       # Compared through `Path.expand/1` because a tmp dir is often reached via a symlink.
       assert Path.expand(found) == Path.expand(root)
     end
 
-    test "falls back to the working directory when the marker is nowhere", %{root: root} do
-      here = File.cwd!()
-      File.cd!(root)
-      found = SourceScan.project_root("no-such-marker-anywhere")
-      cwd = File.cwd!()
-      File.cd!(here)
+    test "falls back to the starting directory when the marker is nowhere", %{root: root} do
+      start = Path.join(root, "nested")
+      assert SourceScan.project_root("no-such-marker-anywhere", start) == Path.expand(start)
+    end
 
-      assert found == cwd
+    test "starts from the working directory by default" do
+      assert SourceScan.project_root("mix.exs") == Path.expand(Path.join(__DIR__, "../.."))
     end
   end
 

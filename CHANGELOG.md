@@ -29,6 +29,9 @@ release it merely follows.
 
 ### Changed
 
+- `Surfex.SourceScan.project_root/2` takes a starting directory; `/1` is unchanged. Its tests
+  had to change the VM-wide working directory, which made the suite fail about once in
+  fifteen runs, and a test now keeps async tests from doing that.
 - **A function's version covers what it depends on.** It used to hash only the function's
   own clauses, so a change made through a private helper, or a module attribute, went
   unseen. It now also covers every private definition the function calls (transitively,
