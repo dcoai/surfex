@@ -80,7 +80,8 @@ defmodule Surfex.Suggest do
           refines: [refinement],
           implements: [candidate],
           verifies: [pair],
-          tests: [pair]
+          tests: [pair],
+          excuses: [pair]
         }
 
   @doc """
@@ -96,6 +97,10 @@ defmodule Surfex.Suggest do
       spec unit (`Surfex.Scan.resolve/2`).
     * **tests** — each test paired with each scanned code item it calls (in its body or
       the private helpers it reaches).
+    * **excuses** — each code item nothing implements (and no implements candidate will),
+      paired with the class of the first rule it matches, as `Surfex.Coverage` matches
+      them. A parent counts as cited when something implements it. `never_excused`
+      kinds are never excused.
 
   Refines and implements are computed as if the moves were already recorded, so a moved
   section's relations aren't suggested again under its new id.
@@ -113,10 +118,13 @@ defmodule Surfex.Suggest do
         {:ok, acc ++ recorded}
       end)
 
+    implements = candidates(trace, items, scans, moved, root)
+
     %{
       moves: moves,
       refines: refinements(scans, moved),
-      implements: candidates(trace, items, scans, moved, root),
+      implements: implements,
+      excuses: excusals(trace, items, scans, moved, implements),
       verifies: verifications(scans, moved),
       tests: exercised(scans, moved)
     }
@@ -143,6 +151,9 @@ defmodule Surfex.Suggest do
         end) ++
         Enum.map(suggestions.tests, fn t ->
           &Record.relate(scans, &1, "test:" <> t.from.id, "code:" <> t.to.id, :tests, meta)
+        end) ++
+        Enum.map(suggestions.excuses, fn x ->
+          &Record.relate(scans, &1, "class:" <> x.from.id, "code:" <> x.to.id, :excuses, meta)
         end)
 
     with {:ok, recorded} <-
@@ -181,6 +192,44 @@ defmodule Surfex.Suggest do
     for {hash, [old]} <- gone_by_hash,
         [new] <- [Map.get(fresh_by_hash, hash, [])],
         do: %{from: old, to: new}
+  end
+
+  defp excusals(trace, items, scans, entries, implements) do
+    classes = for %Scan{kind: :class} = s <- scans, into: %{}, do: {s.id, s}
+    code = for %Scan{kind: :code} = s <- scans, into: %{}, do: {s.id, s}
+    related = MapSet.new(entries, &Entry.relation/1)
+
+    implemented =
+      MapSet.new(
+        for(
+          %Entry{type: :implements, op: :relate, ends: ends} <- live_tips(entries),
+          %{kind: :code, id: id} <- ends,
+          do: id
+        ) ++ Enum.map(implements, & &1.code.id)
+      )
+
+    for item <- items,
+        scan = Map.get(code, Surfex.Item.key(item)),
+        scan != nil,
+        not MapSet.member?(implemented, scan.id),
+        {:expected, class} <- [Surfex.Coverage.verdict(item, implemented, trace.profile)],
+        class_scan = Map.get(classes, class),
+        class_scan != nil,
+        not MapSet.member?(related, Entry.relation(:excuses, class_scan, scan)),
+        uniq: true,
+        do: %{from: class_scan, to: scan}
+  end
+
+  # The judgement in force for each relation, when there is exactly one.
+  defp live_tips(entries) do
+    entries
+    |> Enum.group_by(&Entry.relation/1)
+    |> Enum.flat_map(fn {relation, _} ->
+      case Surfex.Status.tips(entries, relation) do
+        [tip] -> [tip]
+        _ -> []
+      end
+    end)
   end
 
   defp verifications(scans, entries) do

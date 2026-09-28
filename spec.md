@@ -534,7 +534,30 @@ scans one text.
   are facts about the source; which of them are code the project has is for
   `Surfex.Suggest` to find (§15).
 
-A declaration is a claim in the source, not a relation. `Surfex.Scan.resolve/2` finds
+`Surfex.Scan.Classes` is the class scanner. `Surfex.Scan.Classes.records/1` makes one
+record of kind `:class` per class in `.surfex.exs`. A class names a kind of code the spec
+deliberately doesn't describe, and says why (`classes: [{name, reason}]`). Its rules say
+which items fall into it (`rules: [%{class:, kinds:, name:, parent_cited:}]`). These are
+the trace's own keys (§8), validated the same way by `Surfex.Profile.coverage!/1`, so an
+existing trace config needs no change.
+- **Its id** is the class's name.
+- **Its hash** covers its reason and every rule naming it (kinds, name pattern,
+  `parent_cited`), in any order. Rewording the reason or changing a rule changes it.
+- **Its location** is `.surfex.exs`, with no lines, since the config is evaluated data.
+
+It is pure: a function of the config alone. `Surfex.Status.Config.scans/2` includes class
+records when `classes:` is present.
+
+A declaration is a claim in the source, not a relation. `Surfex.Scan.resolve/2` finds""")
+  |> edit.("- **tests**: each test paired with each scanned code item in its `calls` (§11).\n", ~S"""
+- **tests**: each test paired with each scanned code item in its `calls` (§11).
+- **excuses**: each code item that nothing implements, and that no `implements`
+  candidate in the same run will, paired with the class of the first rule it matches.
+  Matching is `Surfex.Coverage`'s (§7), where a parent counts as cited when something
+  implements it. A `never_excused` kind is never proposed. With `require: [code:
+  [:implements, :excuses]]`, every public item is then either described or deliberately
+  excused, and both are on record. An excuse dangles when its item or its class changes.
+
 the spec unit it names: a full id (`spec.md#cart-add`, `spec.md#Carts/Adding items`), or
 a bare anchor, block or hint id (`cart-add`) looked up across every spec file. A bare
 id never names a heading path. It gives `{:error, :unknown}` when nothing has the id,
@@ -813,10 +836,10 @@ or the reason there are none. **Nothing edits or removes an entry**: a new entry
 supersedes the relation's tips by naming them as parents.
 
 **Ids** are scan ids (`MyApp.Cart.add/2`, `spec.md#Carts/Adding items`). A `spec:`,
-`code:` or `test:` prefix picks between kinds when an id is scanned as more than one. An
-id that isn't scanned is an error, since the relation would be orphaned from the moment
-it was recorded. Every entry carries who recorded it (git's user), HEAD at the time
-(context only), and when.
+`code:`, `test:` or `class:` prefix picks between kinds when an id is scanned as more than
+one. An id that isn't scanned is an error, since the relation would be orphaned from the
+moment it was recorded. Every entry carries who recorded it (git's user), HEAD at the
+time (context only), and when.
 
 | Function | Records |
 |---|---|
