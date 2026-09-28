@@ -4,6 +4,63 @@ All notable changes to Surfex are recorded here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] — 2026-09-28
+
+The relation log. Surfex now records which versions of the spec and the code were
+confirmed to belong together, and fails on anything that changed since, by name, on
+either side. A **minor** release: a new public API, and every module's and function's
+version changes once. The v0.2 trace is deprecated.
+
+### Added
+
+- **Scan records**, the first part of the relation log: `Surfex.Scan` (`{kind, id, hash,
+  location}`), a markdown spec scanner that hashes each section's own body
+  (`Surfex.Scan.Markdown`), and line ranges on code items (`Surfex.Item` `lines`,
+  `Surfex.SourceScan.line_range/1`).
+- **The relation log**: `Surfex.Log.Entry` (canonical JSON lines, content-hash ids) and
+  `Surfex.Log` (append-only segments in `.surfex/`, verified loading, union merge), with
+  `mix surfex.log --init | --break | --verify | --rechain`. Nothing is ever edited or
+  removed.
+- **Relation status**: `Surfex.Status` derives each relation's state (current, dangling
+  with the side that changed, orphaned, conflicted, retired; impacted as a flag), the new
+  ids and the ids a `require:` policy leaves unmet. `mix surfex.status [--format json]
+  [--verify]` reports it and is the check. Directed relation types (`depends_on`,
+  `refines`, `tests`) keep their ends in order.
+- **Recording**: `Surfex.Record` and `mix surfex.relate`, `confirm`, `retire`, `resolve` and
+  `history`. A relation moves back to current only when someone names it in `confirm`.
+- **Suggesting relations**: `Surfex.Suggest` and `mix surfex.suggest [--accept]` propose
+  `implements` relations from the spec's existing citations, which is also how a project
+  adopts the relation log. `--accept` never confirms a dangling relation.
+- **A committed status golden**: `:status` (or `{:status, output}`) in `goldens:` gates
+  `RELATIONS.md`, the relation status as a reviewable record.
+- **Surfex runs on its own relation log**: `.surfex/` holds 120 relations adopted from
+  `spec.md`, every public item must implement a section, `RELATIONS.md` is committed, and
+  CI runs `mix surfex.status --verify`.
+
+### Deprecated
+
+- **The trace** (`Surfex.Trace`, `mix surfex.trace`, `:trace` goldens): the relation log
+  replaces it. It keeps working until a later release removes it.
+
+### Changed
+
+- The README leads with the relation log.
+- **A module's version is its public surface** (`Surfex.SourceScan.module_hash/1`): its
+  moduledoc, public definitions, behaviours, `use`s, struct fields and types, not its
+  functions' bodies. A function edit no longer dangles its module's relations as well.
+  Every module's version moves once with this change.
+- `Surfex.SourceScan.project_root/2` takes a starting directory; `/1` is unchanged. Its tests
+  had to change the VM-wide working directory, which made the suite fail about once in
+  fifteen runs, and a test now keeps async tests from doing that.
+- **A function's version covers what it depends on.** It used to hash only the function's
+  own clauses, so a change made through a private helper, or a module attribute, went
+  unseen. It now also covers every private definition the function calls (transitively,
+  including piped calls, captures and default arguments) and the module attributes they
+  read, and renaming a variable no longer counts as a change. **Every function's version
+  changes once**, with this release; regenerate goldens after upgrading.
+- The README is rewritten: shorter, installing from GitHub, with one worked example, and
+  `spec.md` for everything else. `spec.md` now ships in the package and the docs.
+
 ## [0.2.8] — 2026-09-26
 
 The first release published to GitHub. It fixes a GAP that a shared key could hide.

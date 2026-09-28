@@ -102,9 +102,19 @@ was made from.
 A patch on the 0.2 line (the number is derived):
 
 ```sh
-elixir ~/Projects/claude-tools/release.exs                # dry run
-elixir ~/Projects/claude-tools/release.exs --prepare      # then MR, merge
-elixir ~/Projects/claude-tools/release.exs --tag          # on main, at the merge commit
-elixir ~/Projects/claude-tools/release.exs --post-bump    # then MR
+elixir ~/Projects/claude-tools/release.exs                                # dry run: says vX.Y.Z
+elixir ~/Projects/claude-tools/release.exs --prepare                      # then MR, merge
+elixir ~/Projects/claude-tools/release.exs --tag --version X.Y.Z          # on main, at the merge commit
 elixir ~/Projects/claude-tools/publish_snapshot.exs vX.Y.Z --remote github --forbid 'h[o]ma'
+elixir ~/Projects/claude-tools/release.exs --post-bump --version X.Y.Z    # then MR
 ```
+
+**Pin the version after `--prepare`.** The patch number is a commit count, and the
+prepare commit plus its merge commit add two. Run bare, `--tag` computes a number two
+higher than the one prepared, and refuses because the changelog has no section for it.
+`--version X.Y.Z` tags what was prepared, and `--post-bump` needs it to name the next
+`-dev`.
+
+**Wait for the tag's pipeline before publishing.** Pushing the tag starts a pipeline
+on the same commit. `publish_snapshot.exs` asks for the newest run on that commit, and
+refuses while it is still running.

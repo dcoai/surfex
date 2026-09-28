@@ -21,8 +21,12 @@ defmodule Surfex.SourceScan do
   """
 
   @doc """
-  The project root: ascend from the working directory to the first directory containing
-  `marker`, falling back to the working directory when none is found.
+  The project root: ascend from `start` (the working directory by default) to the first
+  directory containing `marker`, falling back to `start` when none is found.
+
+  `start` exists so that nothing has to change the working directory to ask. The working
+  directory belongs to the whole VM: changing it for one caller changes it for every
+  process running alongside.
 
   `marker` is explicit and has no default, deliberately. A poncho's root is the directory
   holding its aggregate build marker (`"scripts/poncho.exs"`); a single library's is the
@@ -32,12 +36,15 @@ defmodule Surfex.SourceScan do
 
       project_root("mix.exs")             # a library
       project_root("scripts/poncho.exs")  # a poncho
+      project_root("mix.exs", "lib/my_app/deep")
   """
-  @spec project_root(String.t()) :: String.t()
-  def project_root(marker) do
-    Stream.iterate(File.cwd!(), &Path.dirname/1)
+  @spec project_root(String.t(), String.t()) :: String.t()
+  def project_root(marker, start \\ File.cwd!()) do
+    start = Path.expand(start)
+
+    Stream.iterate(start, &Path.dirname/1)
     |> Stream.take_while(&(&1 != "/"))
-    |> Enum.find(File.cwd!(), &File.exists?(Path.join(&1, marker)))
+    |> Enum.find(start, &File.exists?(Path.join(&1, marker)))
   end
 
   @doc """
@@ -90,7 +97,9 @@ defmodule Surfex.SourceScan do
           name: atom,
           arity: non_neg_integer,
           kind: :function | :macro,
-          hash: String.t()
+          hash: String.t(),
+          # First and last line of all its clauses (see line_range/1), or nil.
+          lines: {pos_integer, pos_integer} | nil
         }
 
   @doc """
@@ -112,21 +121,124 @@ defmodule Surfex.SourceScan do
     {clauses, _} =
       Enum.flat_map_reduce(exprs(body), %{doc: nil, impl: false, seen: %{}}, &clause/2)
 
-    clauses
-    |> Enum.group_by(&{&1.name, &1.arity})
-    |> Enum.flat_map(fn {{name, arity}, [first | _] = group} ->
-      defaults = group |> Enum.map(& &1.defaults) |> Enum.max()
-      hash = group |> Enum.map(& &1.node) |> definition_hash()
+    grouped = Enum.group_by(clauses, &{&1.name, &1.arity})
 
-      if first.visible,
-        do:
-          for(
-            a <- (arity - defaults)..arity//1,
-            do: %{name: name, arity: a, kind: first.kind, hash: hash}
-          ),
-        else: []
+    groups =
+      Map.new(grouped, fn {key, [first | _] = group} ->
+        {key,
+         %{
+           nodes: Enum.map(group, & &1.node),
+           defaults: group |> Enum.map(& &1.defaults) |> Enum.max(),
+           private: first.kind == :private
+         }}
+      end)
+
+    attributes = attributes(body)
+
+    grouped
+    |> Enum.flat_map(fn {{name, arity} = key, [first | _]} ->
+      if first.kind != :private and first.visible do
+        hash = Surfex.SourceScan.Closure.hash(key, groups, attributes)
+        defaults = groups[key].defaults
+        lines = line_range(groups[key].nodes)
+
+        for a <- (arity - defaults)..arity//1,
+            do: %{name: name, arity: a, kind: first.kind, hash: hash, lines: lines}
+      else
+        []
+      end
     end)
     |> Enum.sort_by(&{&1.name, &1.arity})
+  end
+
+  # Every value assigned to each module attribute in the module's own body, in order.
+  # Attributes Elixir itself reads (docs, specs, callbacks) are never read by a clause as
+  # `@name`, so collecting them all does no harm.
+  defp attributes(body) do
+    for {:@, _, [{name, _, [value]}]} <- exprs(body), is_atom(name), reduce: %{} do
+      acc -> Map.update(acc, name, [value], &(&1 ++ [value]))
+    end
+  end
+
+  @doc """
+  The first and last source lines a quoted node spans, from its metadata, or `nil` when it
+  carries none. Parse with `token_metadata: true` so a `do … end` block's closing line is
+  known. Metadata never reaches a hash, so parsing this way changes no version.
+  """
+  @spec line_range(Macro.t()) :: {pos_integer, pos_integer} | nil
+  def line_range(ast) do
+    {_, lines} =
+      Macro.prewalk(ast, [], fn
+        {_, meta, _} = node, acc when is_list(meta) -> {node, meta_lines(meta) ++ acc}
+        node, acc -> {node, acc}
+      end)
+
+    case lines do
+      [] -> nil
+      lines -> {Enum.min(lines), Enum.max(lines)}
+    end
+  end
+
+  defp meta_lines(meta) do
+    Enum.flat_map(meta, fn
+      {:line, line} when is_integer(line) ->
+        [line]
+
+      {_key, nested} when is_list(nested) ->
+        if Keyword.keyword?(nested), do: meta_lines(nested), else: []
+
+      _ ->
+        []
+    end)
+  end
+
+  @doc """
+  A module's version: a `definition_hash/1` over its **public surface**, not its whole
+  body. That covers:
+
+    * its `@moduledoc`
+    * its public definitions, as name, arity and kind (`defs/1`)
+    * its `@behaviour`s and `use`s
+    * its `defstruct` or `defexception` fields
+    * its `@type`, `@opaque`, `@callback` and `@macrocallback` declarations
+
+  Each list is sorted, so reordering is not a change. Function bodies are left out: each
+  public function has its own item and version, so a body edit changes that function's
+  version and not its module's. Private definitions and nested modules are left out too.
+  """
+  @spec module_hash(Macro.t()) :: String.t()
+  def module_hash({:defmodule, _, [_aliases, [do: body]]} = node) do
+    top = exprs(body)
+
+    pick = fn match -> top |> Enum.flat_map(match) |> Enum.map(&strip_meta/1) |> Enum.sort() end
+
+    [
+      pick.(fn
+        {:@, _, [{:moduledoc, _, [doc]}]} -> [doc]
+        _ -> []
+      end),
+      node
+      |> defs()
+      |> Enum.map(&[Atom.to_string(&1.name), &1.arity, Atom.to_string(&1.kind)])
+      |> Enum.sort(),
+      pick.(fn
+        {:@, _, [{:behaviour, _, [mod]}]} -> [[:behaviour, mod]]
+        {:use, _, args} -> [[:use, args]]
+        _ -> []
+      end),
+      pick.(fn
+        {definer, _, args} when definer in [:defstruct, :defexception] -> [[definer, args]]
+        _ -> []
+      end),
+      pick.(fn
+        {:@, _, [{kind, _, [spec]}]} when kind in [:type, :opaque, :callback, :macrocallback] ->
+          [[kind, spec]]
+
+        _ ->
+          []
+      end)
+    ]
+    |> definition_hash()
   end
 
   @doc "Whether a `defmodule` node declares `@moduledoc false` in its own body."
@@ -150,15 +262,17 @@ defmodule Surfex.SourceScan do
     st = %{st | doc: nil, impl: false}
 
     case signature(head) do
-      {name, args} when is_map_key(@public, definer) ->
+      {name, args} ->
         arity = length(args)
         key = {name, arity}
         visible = Map.get(st.seen, key, not hidden)
 
+        # Private definitions are kept too: a public function's hash follows its calls
+        # into them (Surfex.SourceScan.Closure).
         clause = %{
           name: name,
           arity: arity,
-          kind: Map.fetch!(@public, definer),
+          kind: Map.get(@public, definer, :private),
           defaults: Enum.count(args, &match?({:\\, _, _}, &1)),
           visible: visible,
           node: node

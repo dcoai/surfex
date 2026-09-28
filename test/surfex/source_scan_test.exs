@@ -99,7 +99,9 @@ defmodule Surfex.SourceScanTest do
     end
   end
 
-  describe "project_root/1" do
+  # Given a starting directory, never by changing the working directory: that belongs to
+  # the whole VM, and this module runs async (#27).
+  describe "project_root/2" do
     setup do
       root = Path.join(System.tmp_dir!(), "surfex-root-#{System.unique_integer([:positive])}")
       File.mkdir_p!(Path.join(root, "nested/deeper"))
@@ -109,23 +111,18 @@ defmodule Surfex.SourceScanTest do
     end
 
     test "ascends to the directory holding the marker", %{root: root} do
-      here = File.cwd!()
-      File.cd!(Path.join(root, "nested/deeper"))
-      found = SourceScan.project_root("mix.exs")
-      File.cd!(here)
-
+      found = SourceScan.project_root("mix.exs", Path.join(root, "nested/deeper"))
       # Compared through `Path.expand/1` because a tmp dir is often reached via a symlink.
       assert Path.expand(found) == Path.expand(root)
     end
 
-    test "falls back to the working directory when the marker is nowhere", %{root: root} do
-      here = File.cwd!()
-      File.cd!(root)
-      found = SourceScan.project_root("no-such-marker-anywhere")
-      cwd = File.cwd!()
-      File.cd!(here)
+    test "falls back to the starting directory when the marker is nowhere", %{root: root} do
+      start = Path.join(root, "nested")
+      assert SourceScan.project_root("no-such-marker-anywhere", start) == Path.expand(start)
+    end
 
-      assert found == cwd
+    test "starts from the working directory by default" do
+      assert SourceScan.project_root("mix.exs") == Path.expand(Path.join(__DIR__, "../.."))
     end
   end
 
@@ -277,6 +274,132 @@ defmodule Surfex.SourceScanTest do
 
       assert SourceScan.hidden_module?(hidden)
       refute SourceScan.hidden_module?(shown)
+    end
+  end
+
+  # #20: a function's hash covers what it depends on, not only its own clauses.
+  describe "defs/1: what a function's hash depends on" do
+    @base ~S"""
+    defmodule M do
+      @rate 5
+      @other 1
+      def price(x), do: x * @rate + fee(x)
+      def piped(x), do: x |> fee()
+      def cap, do: Enum.map([1], &fee/1)
+      def dflt(x), do: opt(x)
+      def rec(n), do: loop(n)
+      def total, do: sub()
+      def sub, do: 1
+      defp fee(x), do: deep(x) + 1
+      defp deep(x), do: x * 2
+      defp unused(x), do: x
+      defp opt(a, b \\ 1), do: a + b
+      defp loop(0), do: 0
+      defp loop(n), do: loop(n - 1)
+    end
+    """
+
+    defp hashes(source) do
+      [mod] = source |> Code.string_to_quoted!() |> SourceScan.defmodules()
+      Map.new(SourceScan.defs(mod), &{&1.name, &1.hash})
+    end
+
+    defp changes?(fun, from, to) do
+      assert @base =~ from
+      hashes(@base)[fun] != hashes(String.replace(@base, from, to))[fun]
+    end
+
+    test "a private helper it calls, directly or transitively" do
+      assert changes?(:price, "deep(x) + 1", "deep(x) + 2")
+      assert changes?(:price, "do: x * 2", "do: x * 3")
+    end
+
+    test "a module attribute it reads, and no other" do
+      assert changes?(:price, "@rate 5", "@rate 7")
+      refute changes?(:price, "@other 1", "@other 2")
+    end
+
+    test "a helper it does not call is not part of it" do
+      refute changes?(:price, "defp unused(x), do: x", "defp unused(x), do: x + 1")
+    end
+
+    test "piped calls, captures and default-argument calls are followed" do
+      assert changes?(:piped, "deep(x) + 1", "deep(x) + 9")
+      assert changes?(:cap, "deep(x) + 1", "deep(x) + 9")
+      assert changes?(:dflt, "do: a + b", "do: a - b")
+    end
+
+    test "public callees are not followed: they have their own rows" do
+      refute changes?(:total, "def sub, do: 1", "def sub, do: 2")
+    end
+
+    test "renaming a variable is not a change; changing an expression is" do
+      refute changes?(
+               :price,
+               "def price(x), do: x * @rate + fee(x)",
+               "def price(y), do: y * @rate + fee(y)"
+             )
+
+      assert changes?(:price, "x * @rate", "x + @rate")
+    end
+
+    test "recursion terminates" do
+      assert is_binary(hashes(@base)[:rec])
+    end
+  end
+
+  # #33: a module's version is its public surface, so its relations don't dangle on every
+  # function edit.
+  describe "module_hash/1" do
+    @mod ~S"""
+    defmodule M do
+      @moduledoc "doc"
+      @behaviour B
+      use GenServer
+      defstruct [:a, :b]
+      @type t :: integer
+      @type u :: atom
+      def f(x), do: x
+      def g, do: 1
+      defp p(x), do: x
+    end
+    """
+
+    defp module_hash(source) do
+      [mod | _] = source |> Code.string_to_quoted!() |> SourceScan.defmodules()
+      SourceScan.module_hash(mod)
+    end
+
+    defp surface_changes?(from, to) do
+      assert @mod =~ from
+      module_hash(@mod) != module_hash(String.replace(@mod, from, to))
+    end
+
+    test "a function body or a private helper is not part of it" do
+      refute surface_changes?("def f(x), do: x", "def f(x), do: x + 1")
+      refute surface_changes?("defp p(x), do: x", "defp p(x), do: x * 2")
+      refute surface_changes?("defp p(x), do: x", "defp p(x), do: x\n  defp q, do: 0")
+    end
+
+    test "its public definitions, docs, behaviours, uses, struct and types are" do
+      assert surface_changes?("def g, do: 1", "def g, do: 1\n  def h, do: 2")
+      assert surface_changes?(~s("doc"), ~s("docs"))
+      assert surface_changes?("@behaviour B", "@behaviour C")
+      assert surface_changes?("use GenServer", "use Agent")
+      assert surface_changes?("[:a, :b]", "[:a, :c]")
+      assert surface_changes?("@type t :: integer", "@type t :: float")
+    end
+
+    test "reordering is not a change" do
+      refute surface_changes?(
+               "  @type t :: integer\n  @type u :: atom\n",
+               "  @type u :: atom\n  @type t :: integer\n"
+             )
+
+      refute surface_changes?(
+               "  def f(x), do: x\n  def g, do: 1\n",
+               "  def g, do: 1\n  def f(x), do: x\n"
+             )
     end
   end
 end

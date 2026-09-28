@@ -1,7 +1,7 @@
 defmodule Surfex.MixProject do
   use Mix.Project
 
-  @version "0.2.8"
+  @version "0.3.0"
   @source_url "https://github.com/dcoai/surfex"
 
   @moduledoc """
@@ -32,14 +32,14 @@ defmodule Surfex.MixProject do
       package: [
         licenses: ["MIT"],
         links: %{"GitHub" => @source_url},
-        files: ~w(lib mix.exs README.md CHANGELOG.md LICENSE)
+        files: ~w(lib mix.exs README.md CHANGELOG.md spec.md LICENSE)
       ],
       source_url: @source_url,
       docs: [
         main: "readme",
         source_url: @source_url,
         source_ref: "v#{@version}",
-        extras: ["README.md", "CHANGELOG.md"]
+        extras: ["README.md", "spec.md", "CHANGELOG.md"]
       ]
     ]
   end

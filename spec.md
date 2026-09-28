@@ -86,9 +86,12 @@ before `Foo.10`). Two specs differing only in those orderings render identical b
 
 ### 3.1 Finding source
 
-- `Surfex.SourceScan.project_root/1` ascends from the working directory to the first
-  directory containing the given marker (`"mix.exs"` for a library). The marker has no
-  default, because a default would be silently wrong for some layout.
+- `Surfex.SourceScan.project_root/2` ascends from a starting directory to the first
+  directory containing the given marker (`"mix.exs"` for a library), falling back to the
+  starting directory. `Surfex.SourceScan.project_root/1` starts from the working
+  directory. The marker has no default, because a default would be silently wrong for
+  some layout. The starting directory exists so that nothing has to change the working
+  directory, which belongs to the whole VM, to ask.
 - `Surfex.SourceScan.lib_sources/1` lists the `.ex` files of every first-party `lib/`
   under a root, sorted. It serves a library and a multi-project tree alike, with nothing
   to configure. A `lib/` is first-party when:
@@ -106,6 +109,9 @@ before `Foo.10`). Two specs differing only in those orderings render identical b
 - `Surfex.SourceScan.defmodules/1` returns every `defmodule` node in a quoted AST, in
   source order, nested ones included.
 - `Surfex.SourceScan.hidden_module?/1` says whether a module declares `@moduledoc false`.
+- `Surfex.SourceScan.line_range/1` gives the first and last source lines a node spans,
+  from its metadata (parsed with `token_metadata: true`). Metadata never reaches a hash, so
+  a line range is where something is, never what it is.
 - `Surfex.SourceScan.defs/1` returns a module's **public definitions**, from its own body
   only (a nested module's definitions are that module's):
   - public means `def`, `defmacro`, `defdelegate` and `defguard`
@@ -114,7 +120,7 @@ before `Foo.10`). Two specs differing only in those orderings render identical b
   - clauses are grouped by name and arity, and a later clause takes the first clause's
     visibility
   - a default argument declares every arity it generates
-  - each function carries one hash over all its clauses
+  - each function carries one hash over what it depends on (§3.3)
 
 ### 3.3 Content versions
 
@@ -127,6 +133,32 @@ or re-indentation above a definition leaves its hash unchanged; changing its bod
 it. A line number reports movement, and this hash reports change. That is what lets a
 golden locate items by path and version, not `file:line`, so two people editing
 different items touch different rows.
+
+A public function's version, from `Surfex.SourceScan.defs/1`, covers what the function
+depends on, not only its own clauses. A change made through a helper is a change to the
+function:
+- **its own clauses**, with variables renamed by order of first appearance, so renaming
+  a variable is not a change
+- **every private definition it calls**, transitively: direct calls, piped calls
+  (`x |> fee()` is `fee/1`), local captures (`&fee/1`), and calls that rely on default
+  arguments. Recursion terminates.
+- **the values assigned to every module attribute** it, or one of those callees, reads
+
+Calls to other modules, and to the module's own public functions, are not followed:
+those have their own rows and their own versions.
+
+A module's version, from `Surfex.SourceScan.module_hash/1`, covers its **public surface**,
+not its whole body:
+- its `@moduledoc`
+- its public definitions, as name, arity and kind
+- its `@behaviour`s and `use`s
+- its `defstruct` or `defexception` fields
+- its `@type`, `@opaque`, `@callback` and `@macrocallback` declarations
+
+Each list is sorted, so reordering is not a change. Function bodies, private definitions
+and nested modules are left out: each public function has its own version, so a body edit
+changes that function's version and not its module's, and a relation to the module
+doesn't dangle for it.
 
 ## 4. Items
 
@@ -143,6 +175,7 @@ row describes.
 | `parent` | the enclosing item's key, for a member |
 | `type` | the key of the item a member is an instance of (a field holding a struct) |
 | `aliases` | other names that cite it (§6.4) |
+| `lines` | its first and last line in `file`, when the scanner knows them: never part of its key or its hash |
 
 `Surfex.Item.key/1` is an item's identity: `parent.name` for a member, otherwise `name`.
 The hash is never part of the key, so an edit changes a row's version and not its
@@ -313,6 +346,11 @@ rule naming an undeclared class, and a rule that would excuse a never-excused ki
 
 ## 9. Traces
 
+> **Deprecated.** The relation log (§11–§15) replaces the trace: the trace proves that
+> the spec and the code cite each other, not that anyone reconciled them after either
+> changed. The trace keeps working, and suggesting relations (§15) reads its citations,
+> until a later release removes it.
+
 `Surfex.Trace` is a whole trace: a profile, a scanner, and the golden's definition.
 
 ### 9.1 Definition
@@ -336,7 +374,8 @@ rule naming an undeclared class, and a rule that would excuse a never-excused ki
 
 Keys the project sets win over the Elixir defaults. `Surfex.Trace.load!/1` and
 `Surfex.Trace.load!/2` evaluate a `.surfex.exs` data file, which must return a keyword
-list, with optional defaults under it.
+list, with optional defaults under it. The same file carries keys other tools read
+(`goldens:` for §10.3, `require:` for §13), which `Surfex.Trace.own_keys/1` drops.
 
 ### 9.2 Analysis
 
@@ -399,8 +438,14 @@ endpoints a router declares, the actions a model defines): `spec(opts)` returns 
 ### 10.3 Every golden at once
 
 `Surfex.Goldens` runs every golden a project lists in `.surfex.exs`'s `goldens:` key.
-Each entry is `:trace` (the trace the rest of the file defines) or
-`{output, module, opts}` (a `Surfex.Surface`). With no key, the list is `[:trace]`.
+Each entry is one of:
+- `:trace`: the trace the rest of the file defines
+- `:status` or `{:status, output}`: the relation status as a golden (§13.3),
+  `RELATIONS.md` by default. Its drift fails here; whether the relations are healthy is
+  `mix surfex.status`'s question.
+- `{output, module, opts}`: a `Surfex.Surface`
+
+With no key, the list is `[:trace]`.
 
 - `Surfex.Goldens.entries!/1` validates the list. It raises naming an entry that is
   neither form, an empty list, and two entries writing one file.
@@ -425,4 +470,218 @@ Each entry is `:trace` (the trace the rest of the file defines) or
 - Every failure of every golden is reported in one run.
 
 Surfex gates itself this way: its `.surfex.exs` traces this document against its own
-`lib/`, and CI runs `mix surfex.goldens`.
+`lib/`, and CI runs `mix surfex.goldens`, which gates both `SPEC_TRACE.md` and
+`RELATIONS.md`. It also keeps its own relation log (`.surfex/`), in which every public
+module and function implements a section of this document (`require: [code:
+[:implements]]`), and CI runs `mix surfex.status --verify`.
+
+## 11. Scan records
+
+Sections 11 onwards describe the relation log: pure scanners report what the spec and
+the code are now, and an append-only log records which versions of them someone has
+confirmed belong together.
+It is being built alongside the trace of §6–§10, which stays until it is replaced.
+
+`Surfex.Scan` is a scan record: `{kind, id, hash, location}`.
+- **kind:** `:spec` or `:code`
+- **id:** the identity: a code item's key (`MyApp.Cart.add/2`), or a spec section's
+  file and heading path (`spec.md#Carts/Adding items`)
+- **hash:** the content version, 8 hex characters
+- **location:** the file and first and last lines
+
+**Scanners only ever produce scan records.** They never read or write relations, and a
+record is a pure function of the source. Location is never part of a relation: moving
+code, or adding text above a section, changes where something is and not what it is.
+
+`Surfex.Scan.code/1` makes code records from any scanner's items (§5), with the item's
+key, version (§3.3) and line range.
+
+`Surfex.Scan.Markdown` is the spec scanner for markdown. `Surfex.Scan.Markdown.records/2`
+reads every file matching a list of globs under a root; `Surfex.Scan.Markdown.sections/2`
+scans one text.
+- **A section** is a heading and the lines under it, up to the next heading of any
+  level. Subsections are sections of their own, so editing one changes only its own
+  version. Text before the first heading is the section `(preamble)`, when it has any.
+- **Its id** is the file and the path of headings down to it. Two sections with the
+  same path in one file are told apart as `~2`, `~3`, in order.
+- **Its hash** covers its own body, **not its heading**, with runs of whitespace
+  collapsed. Rewording the body changes it. Renaming the heading, reflowing a
+  paragraph or adding blank lines doesn't, so a renamed section keeps its version
+  under a new id, which is what lets a tool recognise the move.
+- **Its location** runs from the heading's line to its last non-blank line.
+- A line inside a fenced code block is never a heading.
+
+## 12. The relation log
+
+The relation log records judgements: that two things relate, at two versions. It is the
+only state surfex keeps. Scanners never read or write it (§11).
+
+### 12.1 Entries
+
+`Surfex.Log.Entry` is one entry:
+
+| Field | Meaning |
+|---|---|
+| `id` | SHA-256 of the entry's canonical line without `id`: stable, and changed by any edit |
+| `at` | when it was recorded, UTC ISO 8601: orders the history |
+| `commit` | HEAD when it was recorded: context only, since squash merges can make it unreachable |
+| `parents` | the entry ids it follows for the same relation; two means it resolves a fork |
+| `op` | `relate` or `retire` (`Surfex.Log.Entry.ops/0`) |
+| `type` | `implements`, `refines`, `depends_on`, `tests` or `excuses` (`Surfex.Log.Entry.types/0`) |
+| `ends` | two `{kind, id, hash}`, of the kinds `Surfex.Log.Entry.kinds/0` lists |
+| `by` | who recorded it |
+| `note` | why, optionally |
+
+- **A relation is its type and its two ends' kinds and ids** (`Surfex.Log.Entry.relation/1`).
+  For the undirected types (`implements`, `excuses`), ends are sorted, so A↔B and B↔A are
+  one relation. The directed types (`Surfex.Log.Entry.directed/0`: `depends_on`,
+  `refines`, `tests`) keep their ends in the order given, from → to, because "A depends on
+  B" is not "B depends on A". `Surfex.Log.Entry.relation/3` gives the relation of a type
+  between two ends without an entry, oriented the same way.
+- `Surfex.Log.Entry.build/1` makes an entry from its fields and computes its id, or says
+  which field is invalid. `Surfex.Log.Entry.new!/1` raises instead.
+- **The canonical line is JSON**, keys in the order above (`Surfex.Log.Entry.encode/1`). It
+  is readable by anything, and parsing it never evaluates code.
+- `Surfex.Log.Entry.decode/1` reads a line back, or says why it isn't an entry: a missing
+  or unknown field, or an id that no longer matches the content, meaning the line was
+  edited. `Surfex.Log.Entry.decode!/1` raises instead. Text that is not JSON at all always
+  raises, since the file is then corrupt. `Surfex.Log.Entry.json/1` reads one JSON value
+  with `null` as `nil`.
+
+### 12.2 The log
+
+`Surfex.Log` keeps the entries in `.surfex/` under the project root
+(`Surfex.Log.dir/1`). **Nothing is ever edited or removed.** A newer entry for a relation
+supersedes an older one and names it as a parent, and any question about history is
+answered from the log alone.
+
+- **Segments:** entries are appended to `surfex.log`. `Surfex.Log.break/1` closes it as the
+  next `surfex_N.log` and starts a new one.
+- **Headers:** every file starts with `{"segment": N, "previous": HASH}`, where `HASH` is
+  the SHA-256 of the previous segment's sorted entry ids (`null` for the first). Headers
+  are not judgements, so `Surfex.Log.rechain/1` may rewrite them. That's needed only when
+  two branches each started a segment and a merge combined them.
+- `Surfex.Log.init/1` creates the log and adds `.surfex/*.log merge=union` to
+  `.gitattributes`, so git merges concurrent appends by keeping both sides' lines.
+- `Surfex.Log.append/2` adds entries to the open segment.
+- `Surfex.Log.load/1` reads every segment, drops duplicate ids, and orders entries by `at`
+  and then `id`. Every checkout derives the same order, whatever order the lines arrive
+  in, which is what makes the union merge correct.
+- `Surfex.Log.verify/1` reports every edited line, every parent no entry has (a removed
+  line), and every segment header that doesn't match the segments before it (truncation).
+
+`Mix.Tasks.Surfex.Log` is `mix surfex.log`, with exactly one of `--init`, `--break`,
+`--verify` (fails on any problem) or `--rechain`. It never edits or removes an entry.
+
+## 13. Relation status
+
+`Surfex.Status` derives the state of every relation from the scans (§11) and the log
+(§12). `Surfex.Status.derive/2` and `Surfex.Status.derive/3` (with a `require:` policy)
+are pure: the same scans and log always give the same status.
+
+### 13.1 States
+
+The judgement in force for a relation is its **tip**: an entry of the relation that no
+other entry of it names as a parent (`Surfex.Status.tips/2`).
+
+| State | When |
+|---|---|
+| **conflicted** | more than one tip: entries recorded without seeing each other (sharing a parent, or both with none) |
+| **retired** | the tip retires the relation |
+| **orphaned** | an end's id is no longer scanned (removed or renamed) |
+| **dangling** | both ids are scanned, but at least one is at a different hash than the tip recorded; the report names which ends changed |
+| **current** | both ends are at the hashes the tip recorded |
+
+- **Impacted** is a flag, not a state. A relation is impacted when one of its ends has a
+  `depends_on` relation to something that is not current. It doesn't fail the check:
+  re-confirming everything downstream of every change would train people to confirm
+  without reading.
+- **New:** a scanned id in no relation at all.
+- **Unmet:** a scanned id that the `require:` policy (`[kind: [type, …]]`) says must take
+  part in a non-retired relation of one of those types, and doesn't.
+
+`Surfex.Status.failing?/1` is true when any relation is dangling, orphaned or conflicted,
+or any id is unmet. New, retired and impacted don't fail on their own.
+`Surfex.Status.summary/1` counts relations per type and state.
+
+### 13.2 Configuration
+
+`Surfex.Status.Config` reads `.surfex.exs`, the same file the trace reads:
+- `Surfex.Status.Config.scans/2` scans each markdown section of `sources` and each item
+  the code scanner (`scanner`, `scanner_opts`) finds. A missing `sources`, or one that
+  matches no section, raises.
+- `Surfex.Status.Config.require!/1` validates the `require:` policy against the known
+  kinds and types, and raises naming what's wrong.
+
+### 13.3 Reports and the check
+
+`Surfex.Status.Report` presents a status:
+- `Surfex.Status.Report.text/1`: the verdict, the counts per type, then each dangling,
+  orphaned, conflicted and impacted relation, and the new and unmet ids, with locations.
+- `Surfex.Status.Report.golden/2` (`Surfex.Status.Report.golden/1` writes `RELATIONS.md`):
+  the status as a golden to commit. It has a table per relation type (end, other end,
+  state, the ends that changed), then the new and unmet ids. It holds no hashes and no times, so it changes when a relation's state changes,
+  not on every confirmation. It's a pure function of the scans and the log, so a merge
+  conflict in it is resolved by regenerating.
+- `Surfex.Status.Report.json/1`: the work list for tools and agents. For each relation,
+  its type, state and impact, and per end the recorded hash, the current hash, whether
+  it changed, and its location. Plus the new and unmet ids.
+
+`Mix.Tasks.Surfex.Status` is `mix surfex.status`:
+- `--format text|json` (text by default)
+- `--verify` verifies the log (§12.2) **before** loading it, so a tampered log gets its
+  report, not the first decode error
+- it fails when the status is failing, or the log doesn't verify
+- it compiles the project first only when `.surfex.exs` names a project scanner
+
+## 14. Recording
+
+`Surfex.Record` turns a decision into the entries to append. It's pure: the tasks read
+the scans and the log, and append what it returns. Every function returns the entries
+or the reason there are none. **Nothing edits or removes an entry**: a new entry
+supersedes the relation's tips by naming them as parents.
+
+**Ids** are scan ids (`MyApp.Cart.add/2`, `spec.md#Carts/Adding items`). A `spec:` or
+`code:` prefix picks between kinds when an id is scanned as both. An id that isn't
+scanned is an error, since the relation would be orphaned from the moment it was
+recorded. Every entry carries who recorded it (git's user), HEAD at the time (context
+only), and when.
+
+| Function | Records |
+|---|---|
+| `Surfex.Record.relate/6` | a relation of a type between two ids at their current hashes, from → to for a directed type, superseding the relation's tips |
+| `Surfex.Record.confirm/4` | for every **dangling** relation touching one of the named ids, the relation again at the current hashes, superseding its tip. Only named ids, and an id with nothing dangling is an error, never a silent no-op. Orphaned and conflicted relations aren't confirmed: they need re-pointing or resolving. |
+| `Surfex.Record.retire/6` | that a relation no longer applies, naming every tip as a parent, with the ends as the tip recorded them. An end need not still be scanned: this is how an orphaned relation is put to rest. |
+| `Surfex.Record.resolve/7` | the chosen tip of a **conflicted** relation, recorded again with every tip as a parent. If the scans have moved since, the relation is then dangling, and confirming it is next. |
+
+`Surfex.Record.history/2` lists every entry touching an id, oldest first, from the log
+alone.
+
+The tasks:
+- `Mix.Tasks.Surfex.Relate`: `mix surfex.relate FROM TO --type T [--note N]`
+- `Mix.Tasks.Surfex.Confirm`: `mix surfex.confirm ID… [--note N]`
+- `Mix.Tasks.Surfex.Retire`: `mix surfex.retire FROM TO --type T [--note N]`
+- `Mix.Tasks.Surfex.Resolve`: `mix surfex.resolve FROM TO --type T --pick ID_PREFIX`
+- `Mix.Tasks.Surfex.History`: `mix surfex.history ID`
+
+Each reads `.surfex.exs` as `mix surfex.status` does. Each needs the log to exist
+(`mix surfex.log --init`), and prints every entry it recorded.
+
+## 15. Suggesting relations
+
+`Surfex.Suggest` proposes candidate `implements` relations from what the spec already
+says. `Surfex.Suggest.candidates/5` reads the spec's citations as the trace does (§6),
+and for each **resolved** citation proposes the pair *(the spec section containing the
+citation's line, each code item it names)*. A family names every member. Left out:
+- a pair already related, in any state, including retired: suggesting it again would
+  overrule a decision already on record
+- a citation inside a fenced code block, which has no line to place it in a section
+- a named item that is not a code scan
+
+Each candidate records where it was first cited. `Surfex.Suggest.accept/4` records one
+`relate` per candidate, at the current hashes. It only ever creates relations that don't
+exist. **It never confirms a dangling relation**, which stays a named `confirm` (§14).
+
+`Mix.Tasks.Surfex.Suggest` is `mix surfex.suggest [--accept] [--note N]`: without
+`--accept` it lists the candidates and writes nothing. Adopting the relation log is
+`mix surfex.log --init` followed by `mix surfex.suggest --accept`.

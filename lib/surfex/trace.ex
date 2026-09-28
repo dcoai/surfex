@@ -1,5 +1,10 @@
 defmodule Surfex.Trace do
   @moduledoc """
+  > **Deprecated.** The relation log (`Surfex.Status`, `mix surfex.status`) replaces the
+  > trace: it records which versions of the spec and the code were confirmed to belong
+  > together, where the trace records only that they cite each other. The trace still
+  > works, and `mix surfex.suggest` reads its citations, until a later release removes it.
+
   A two-way trace between a spec and the code: what the code declares, which spec
   sections cite each item, and what is wrong with either.
 
@@ -137,9 +142,17 @@ defmodule Surfex.Trace do
   """
   @spec load!(String.t(), keyword) :: t
   def load!(path, defaults \\ []) do
-    config = path |> Surfex.Gate.config!() |> Keyword.delete(:goldens)
+    config = path |> Surfex.Gate.config!() |> own_keys()
     new!(Keyword.merge(defaults, config))
   end
+
+  # Keys other tools read from the same `.surfex.exs`: `mix surfex.goldens`'s list, and
+  # `mix surfex.status`'s policy.
+  @other_tools [:goldens, :require]
+
+  @doc "A `.surfex.exs` config without the keys other tools read (`goldens:`, `require:`)."
+  @spec own_keys(keyword) :: keyword
+  def own_keys(config), do: Keyword.drop(config, @other_tools)
 
   @doc "A validated trace from a keyword list. Raises `ArgumentError` naming the key."
   @spec new!(keyword) :: t

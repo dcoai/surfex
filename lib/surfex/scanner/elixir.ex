@@ -43,7 +43,12 @@ defmodule Surfex.Scanner.Elixir do
     |> files(Keyword.get(opts, :paths, ["lib/**/*.ex"]))
     |> Enum.flat_map(fn file ->
       rel = Path.relative_to(file, root)
-      file |> File.read!() |> Code.string_to_quoted!(file: file) |> modules([]) |> items_in(rel)
+
+      file
+      |> File.read!()
+      |> Code.string_to_quoted!(file: file, token_metadata: true)
+      |> modules([])
+      |> items_in(rel)
     end)
     |> Enum.sort_by(&{Item.key(&1), &1.kind})
   end
@@ -96,15 +101,25 @@ defmodule Surfex.Scanner.Elixir do
     |> Enum.flat_map(fn {parts, node} ->
       module = Enum.map_join(parts, ".", &Atom.to_string/1)
 
-      [%Item{kind: :module, name: module, file: file, hash: SourceScan.definition_hash(node)}] ++
-        for %{name: name, arity: arity, kind: kind, hash: hash} <- SourceScan.defs(node) do
+      [
+        %Item{
+          kind: :module,
+          name: module,
+          file: file,
+          hash: SourceScan.module_hash(node),
+          lines: SourceScan.line_range(node)
+        }
+      ] ++
+        for %{name: name, arity: arity, kind: kind, hash: hash, lines: lines} <-
+              SourceScan.defs(node) do
           %Item{
             kind: kind,
             name: "#{name}/#{arity}",
             parent: module,
             file: file,
             hash: hash,
-            aliases: ["#{module}.#{name}"]
+            aliases: ["#{module}.#{name}"],
+            lines: lines
           }
         end
     end)

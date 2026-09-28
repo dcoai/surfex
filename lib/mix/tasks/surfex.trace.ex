@@ -2,6 +2,11 @@ defmodule Mix.Tasks.Surfex.Trace do
   @shortdoc "Render (--write) or check the spec↔code trace golden"
 
   @moduledoc """
+  > **Deprecated.** The relation log (`Surfex.Status`, `mix surfex.status`) replaces the
+  > trace: it records which versions of the spec and the code were confirmed to belong
+  > together, where the trace records only that they cite each other. The trace still
+  > works, and `mix surfex.suggest` reads its citations, until a later release removes it.
+
   Traces the project's spec against its code (`Surfex.Trace`) and gates the result: the
   `:trace` entry of `mix surfex.goldens`, on its own.
 
