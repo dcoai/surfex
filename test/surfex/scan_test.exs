@@ -82,6 +82,46 @@ defmodule Surfex.ScanTest do
     defp text_ids(text), do: text |> Markdown.sections("spec.md") |> Enum.map(& &1.id)
   end
 
+  # #39: fences follow CommonMark. Each case is a body under `# A`; `# H` must stay in it
+  # when it is inside a fence, and becomes a section of its own when it isn't.
+  describe "code fences" do
+    @inside [
+      {"a longer fence quoting a shorter one", "````\n```\n# H\n```\n````"},
+      {"a tilde fence", "~~~\n# H\n~~~"},
+      {"a tilde fence quoting backticks", "~~~\n```\n# H\n~~~"},
+      {"a backtick fence quoting tildes", "```\n~~~\n# H\n```"},
+      {"a fence indented three spaces", "   ```\n# H\n   ```"},
+      {"a fence with an info string", "```elixir\n# H\n```"},
+      {"a closing line followed by text does not close", "```\n``` not a close\n# H\n```"},
+      {"a shorter line does not close", "`````\n````\n# H\n`````"},
+      {"an unclosed fence runs to the end", "```\n# H"}
+    ]
+
+    for {name, body} <- @inside do
+      test "inside: #{name}" do
+        text = "# A\n\n" <> unquote(body) <> "\n"
+        assert text_ids(text) == ["spec.md#A"]
+        # The fenced `# H` is body text, so it counts in A's version.
+        refute hash_of(text) == hash_of(String.replace(text, "# H", "# I"))
+      end
+    end
+
+    @outside [
+      {"an indented block is not a fence", "    ```\n# H"},
+      {"a backtick in the info string is not a fence", "``` a`b\n# H"},
+      {"a closed fence ends", "````\nx\n````\n# H"},
+      {"a longer line closes", "```\nx\n`````\n# H"}
+    ]
+
+    for {name, body} <- @outside do
+      test "outside: #{name}" do
+        assert text_ids("# A\n\n" <> unquote(body) <> "\n") == ["spec.md#A", "spec.md#H"]
+      end
+    end
+
+    defp hash_of(text), do: hd(Markdown.sections(text, "spec.md")).hash
+  end
+
   describe "code records" do
     test "carry the item's key, version and location" do
       item = %Item{

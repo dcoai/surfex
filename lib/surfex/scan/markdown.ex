@@ -16,9 +16,12 @@ defmodule Surfex.Scan.Markdown do
     * **location** — the file, from the heading's line to the section's last line.
 
   A line inside a fenced code block is never a heading; the block is part of the body.
+  Fences follow CommonMark: backticks or tildes, closed only by the same character at
+  least as many times, so a longer fence can quote a shorter one.
   """
 
   alias Surfex.Scan
+  alias Surfex.Scan.Markdown.Fence
 
   @doc "Every section of every markdown file matching `globs` under `root`, in order."
   @spec records(String.t(), [String.t()]) :: [Scan.t()]
@@ -60,8 +63,9 @@ defmodule Surfex.Scan.Markdown do
     start = %{heading: nil, path: "(preamble)", first: 1, last: 1, body: []}
 
     {sections, current, _stack, _fence} =
-      Enum.reduce(lines, {[], start, [], false}, fn {line, no}, {done, current, stack, fence} ->
-        heading = if fence, do: nil, else: heading(line)
+      Enum.reduce(lines, {[], start, [], nil}, fn {line, no}, {done, current, stack, fence} ->
+        {prose?, fence} = Fence.step(line, fence)
+        heading = if prose?, do: heading(line)
 
         cond do
           heading != nil ->
@@ -72,7 +76,6 @@ defmodule Surfex.Scan.Markdown do
             {[current | done], next, stack, fence}
 
           true ->
-            fence = if String.starts_with?(line, "```"), do: not fence, else: fence
             current = %{current | body: [line | current.body], last: last(current, line, no)}
             {done, current, stack, fence}
         end
