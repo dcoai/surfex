@@ -459,7 +459,9 @@ key, version (§3.3) and line range, its kind as `role` and its parent as `withi
 The id is the item's key. When two items share a key (a C function and a constant both
 called `twin`), each id carries its kind, `twin (function)` and `twin (const)`, so each is
 a relation end of its own. `Surfex.Scan.for_item/2` finds an item's record whatever its
-id. A citation of a shared key stays ambiguous (§6.2). `Surfex.Status.derive/4` raises on
+id. A citation of a shared key stays ambiguous (§6.2). `Surfex.Scan.definition/1` is
+what a code record is a version of: its file, lines and version. A function with default
+arguments is one definition reported as several items (`f/1`, `f/2`), and they share it. `Surfex.Status.derive/4` raises on
 two records with one kind and id, naming both locations: no record may shadow another.
 
 `Surfex.Scan.ExUnit` is the test scanner. It makes one record of kind `:test` per ExUnit
@@ -474,6 +476,8 @@ scans one text.
   (transitively) and the module attributes they read, with variables normalised. Every
   `setup` that applies to it (the module's and its `describe`'s, including named
   callbacks) and the generators of a comprehension that defines it are also part of it.
+  A private helper defined inside a `describe` block counts like one at the module's top
+  level, as ExUnit compiles it there.
   Weakening a test through a helper, a setup or its table of cases changes its version.
 - **Its location** is the file and the test's lines.
 - **What it declares**: a test says what it verifies with ExUnit's own tags.
@@ -483,7 +487,8 @@ scans one text.
   runs exactly the tests of one requirement. A `verifies` value that isn't a literal
   string or list of strings raises, naming the file and line.
 - **What it calls**: the record's `calls` lists the functions the test's body and the
-  private helpers it reaches call, as `Module.fun/arity`. Aliases are resolved, a
+  private helpers it reaches call, as `Module.fun/arity`, and every module it calls or
+  names as a value (a module handed to a helper is exercised through it). Aliases are resolved, a
   piped call counts the piped value, and a capture (`&Mod.fun/2`) is a call. A local
   call the module doesn't define is listed under each module it imports. Setups are
   left out: they prepare a test, and what a test tests is what it calls itself. These
@@ -732,7 +737,10 @@ missing:
 - `:code_untested`: code implements it that no verifying test exercises, naming the
   code.
 
-The gaps are the status's `triangle`. They are reported, and fail the check only when
+Code is compared by its definition (§11), so a test calling `f/1` exercises the `f/2` a
+unit names when both are one function with a default argument. The same holds when
+evidence confirms `implements` (§17) and when CI checks the claim. The gaps are the
+status's `triangle`. They are reported, and fail the check only when
 derived with `triangle: :fail`. Without scanned tests there is no triangle, since
 every unit would otherwise report a missing test for a project that doesn't scan them.
 `Surfex.Status.summary/1` counts relations per type and state. `Surfex.Status.units/1`

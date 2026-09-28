@@ -9,6 +9,16 @@ All notable changes to Surfex are recorded here, following
 `mix.exs` reads `0.4.1-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
 release it merely follows.
 
+### Fixed
+
+- **The triangle reported false gaps.** A test's `calls` now include every module it calls
+  or names (a module handed to a helper, as a Mix task is), so a module a section names
+  counts as exercised. The private helpers defined inside a `describe` block are followed,
+  for a test's calls and for its **version**: weakening such a helper now changes the
+  test's version, as weakening a top-level one always did. Code is compared by definition
+  (`Surfex.Scan.definition/1`), so one function's default arities are one code. On surfex
+  itself this removed 20 of 99 gaps, all false.
+
 ## [0.4.0] — 2026-09-28
 
 Specs and tests in step. Tests are scanned and say what they verify, and each spec unit is

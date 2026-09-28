@@ -260,14 +260,28 @@ defmodule Surfex.Record do
   defp tests_evidence(%{relation: {:tests, {:test, t}, {:code, c}}}, status, evidence) do
     test = Map.fetch!(status.scans, {:test, t})
     code = Map.fetch!(status.scans, {:code, c})
-    green_against(evidence, test, code)
+    green_against(evidence, test, code, definitions(status))
   end
 
-  defp green_against(evidence, test, code) do
+  # code id => its definition (`Surfex.Scan.definition/1`): one function's default arities
+  # are one code.
+  defp definitions(status) do
+    fn id ->
+      case Map.get(status.scans, {:code, id}) do
+        nil -> {:code, id}
+        scan -> Scan.definition(scan)
+      end
+    end
+  end
+
+  defp green_against(evidence, test, code, definition) do
     with {red, green} <- Surfex.Evidence.red_then_green(evidence, test.id, test.hash),
          %{result: :passed, code: versions} = latest <-
            Surfex.Evidence.latest(evidence, test.id, test.hash),
-         true <- Map.get(versions, code.id) == code.hash do
+         true <-
+           Enum.any?(versions, fn {id, h} ->
+             h == code.hash and definition.(id) == Scan.definition(code)
+           end) do
       "#{Surfex.Evidence.note()}: #{test.id}@#{test.hash} failed at #{red.at} (#{versions_text(red)}) " <>
         "and passes at #{latest.at} against #{code.id}@#{code.hash}" <>
         if(green != latest, do: " (first green #{green.at})", else: "")
@@ -301,11 +315,18 @@ defmodule Surfex.Record do
           uniq: true,
           do: t
 
-    exercising = MapSet.new(for {{:test, t}, {:code, ^c}} <- live.(:tests), do: t)
+    definition = definitions(status)
+
+    exercising =
+      MapSet.new(
+        for {{:test, t}, {:code, other}} <- live.(:tests),
+            definition.(other) == Scan.definition(code),
+            do: t
+      )
 
     Enum.find_value(verifying, fn t ->
       if MapSet.member?(exercising, t) do
-        case green_against(evidence, Map.fetch!(status.scans, {:test, t}), code) do
+        case green_against(evidence, Map.fetch!(status.scans, {:test, t}), code, definition) do
           nil -> nil
           note -> "#{note}; #{t} verifies #{s}"
         end

@@ -49,12 +49,15 @@ defmodule Surfex.Scan.ExUnit do
 
   # ── One module ──────────────────────────────────────────────────────────
 
-  defp module_tests({:defmodule, _, [{:__aliases__, _, parts}, [do: body]]} = mod, file) do
+  defp module_tests({:defmodule, meta, [{:__aliases__, _, parts} = aliases, [do: body]]}, file) do
+    # A `describe` block's helpers are the module's functions too: ExUnit compiles them at
+    # the module's top level. Flattened, a test's version and calls follow them.
+    mod = {:defmodule, meta, [aliases, [do: {:__block__, [], flatten(exprs(body))}]]}
     name = parts |> Enum.filter(&is_atom/1) |> Enum.map_join(".", &Atom.to_string/1)
     ctx = %{file: file, describe: nil, tags: [], setups: [], wrappers: []}
     {found, _pending} = walk(exprs(body), ctx, [])
     module = %{tags: module_tags(exprs(body), file), setups: setups(exprs(body))}
-    names = names(exprs(body))
+    names = names(flatten(exprs(body)))
 
     for t <- found do
       nodes = t.wrappers ++ module.setups ++ t.setups ++ [t.node]
@@ -76,26 +79,46 @@ defmodule Surfex.Scan.ExUnit do
 
   # ── What a test calls ───────────────────────────────────────────────────
 
-  # The functions a test calls, in its body and the private helpers it reaches, as
-  # `Module.fun/arity` with the module's aliases resolved. A local call that the module
-  # doesn't define may come from an `import`: it is listed under each imported module, and
-  # whichever one the code scanner knows is the one that counts. Setups are left out: they
-  # prepare a test, and what a test tests is what it calls itself.
+  # What a test exercises, from its body and the private helpers it reaches: each function
+  # it calls, as `Module.fun/arity` with the module's aliases resolved, and each module it
+  # names. A local call that the module doesn't define may come from an `import`: it is
+  # listed under each imported module, and whichever one the code scanner knows is the one
+  # that counts. Setups are left out: they prepare a test, and what a test tests is what it
+  # calls itself.
   defp calls(mod, test, names) do
-    mod
-    |> SourceScan.closure_nodes([test])
-    |> Enum.flat_map(&(&1 |> body() |> remote_calls()))
-    |> Enum.flat_map(fn
-      {:remote, parts, fun, arity} ->
-        [call(expand(parts, names.aliases), fun, arity)]
+    bodies = mod |> SourceScan.closure_nodes([test]) |> Enum.map(&body/1)
 
-      {:local, fun, arity} ->
-        if {fun, arity} in names.defined,
-          do: [],
-          else: Enum.map(names.imports, &call(&1, fun, arity))
-    end)
-    |> Enum.uniq()
-    |> Enum.sort()
+    functions =
+      bodies
+      |> Enum.flat_map(&remote_calls/1)
+      |> Enum.flat_map(fn
+        {:remote, parts, fun, arity} ->
+          [call(expand(parts, names.aliases), fun, arity)]
+
+        {:local, fun, arity} ->
+          if {fun, arity} in names.defined,
+            do: [],
+            else: Enum.map(names.imports, &call(&1, fun, arity))
+      end)
+
+    # Every module the test names, as a call's target or as a value (a module handed to a
+    # helper that calls it): naming a module is how a test reaches it.
+    modules = for body <- bodies, parts <- aliases_in(body), do: expand(parts, names.aliases)
+
+    (functions ++ modules) |> Enum.uniq() |> Enum.sort()
+  end
+
+  defp aliases_in(ast) do
+    {_, found} =
+      Macro.prewalk(ast, [], fn
+        {:__aliases__, _, parts} = node, acc when is_list(parts) ->
+          if Enum.all?(parts, &is_atom/1), do: {node, [parts | acc]}, else: {node, acc}
+
+        node, acc ->
+          {node, acc}
+      end)
+
+    found
   end
 
   defp call(module, fun, arity), do: "#{module}.#{fun}/#{arity}"
@@ -292,6 +315,14 @@ defmodule Surfex.Scan.ExUnit do
   defp text(name) do
     source = Macro.to_string(name)
     if String.starts_with?(source, "\""), do: String.slice(source, 1..-2//1), else: source
+  end
+
+  # The module's own expressions with every `describe` block's inlined, recursively.
+  defp flatten(exprs) do
+    Enum.flat_map(exprs, fn
+      {:describe, _, [_name, [do: block]]} -> flatten(exprs(block))
+      expr -> [expr]
+    end)
   end
 
   defp exprs({:__block__, _, list}), do: list

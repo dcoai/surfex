@@ -280,15 +280,17 @@ defmodule Surfex.WalkthroughTest do
     )
 
     task(root, Mix.Tasks.Surfex.Suggest, ["--accept"])
-    task(root, Mix.Tasks.Surfex.Confirm, ["MyApp.Cart.discount/1"])
+    # The test names MyApp.Cart, whose public surface grew: that relation dangles too.
+    task(root, Mix.Tasks.Surfex.Confirm, ["MyApp.Cart.discount/1", "MyApp.Cart"])
     commit(root, "code")
 
     json = passing_json(root)
     assert json["triangle"] == []
     assert Enum.all?(json["relations"], &(&1["state"] == "current"))
 
+    # The test tests the function it calls and the module it names.
     assert Enum.sort(Enum.map(json["relations"], & &1["type"])) ==
-             ["implements", "refines", "tests", "verifies"]
+             ["implements", "refines", "tests", "tests", "verifies"]
   end
 
   defp passing_json(root) do

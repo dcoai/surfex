@@ -342,6 +342,29 @@ defmodule Surfex.RecordTest do
       assert state(world("s1", "c2"), confirmed() ++ recorded) |> Enum.all?(&(&1 == :current))
     end
 
+    test "evidence for one arity of a function carries the arity the spec names" do
+      located = &%{scan(:code, &1, &2) | location: %{file: "lib/m.ex", lines: {3, 5}}}
+
+      scans = [
+        scan(:spec, @spec_id, "s1"),
+        located.(@code_id, "c2"),
+        located.("M.add/3", "c2"),
+        scan(:test, @t, "t1")
+      ]
+
+      entries = [
+        rel(:implements, {:spec, @spec_id, "s1"}, {:code, "M.add/3", "c1"}),
+        rel(:verifies, {:test, @t, "t1"}, {:spec, @spec_id, "s1"}),
+        rel(:tests, {:test, @t, "t1"}, {:code, @code_id, "c1"})
+      ]
+
+      # The test calls add/2; the section is implemented by add/3, the same definition.
+      assert confirmed_types(scans, entries, [ev(:failed, "c1", 1), ev(:passed, "c2", 2)]) == [
+               :implements,
+               :tests
+             ]
+    end
+
     test "a test never red, failing now, or green against other code confirms nothing" do
       assert confirmed_types(world("s1", "c2"), confirmed(), [
                ev(:passed, "c1", 1),

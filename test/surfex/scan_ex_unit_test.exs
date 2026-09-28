@@ -177,7 +177,7 @@ defmodule Surfex.ScanExUnitTest do
     end
   end
 
-  test "calls: aliases, pipes, captures and imports resolved, helpers followed" do
+  test "calls: aliases, pipes, captures and imports resolved, helpers followed, modules named" do
     source = ~S'''
     defmodule MyApp.CartTest do
       use ExUnit.Case
@@ -202,15 +202,53 @@ defmodule Surfex.ScanExUnitTest do
 
     [test] = Tests.tests(source, "t.exs")
 
+    # Each function it calls, and each module it calls or names (#62).
     assert test.calls == [
+             "Enum",
              "Enum.map/2",
+             "MyApp.Cart",
              "MyApp.Cart.add/2",
              "MyApp.Cart.new/0",
              "MyApp.Cart.total/1",
              "MyApp.Fixtures.fixture/1",
+             "MyApp.Line",
              "MyApp.Line.new/1",
+             "MyApp.Price",
              "MyApp.Price.of/2",
+             "MyApp.Tax",
              "MyApp.Tax.apply/1"
            ]
+  end
+
+  test "a module handed to a helper counts as exercised" do
+    source = ~S"""
+    defmodule T do
+      use ExUnit.Case
+      defp run(module, args), do: module.run(args)
+      test "a", do: run(Mix.Tasks.Surfex.Status, [])
+    end
+    """
+
+    assert "Mix.Tasks.Surfex.Status" in hd(Tests.tests(source, "t.exs")).calls
+  end
+
+  # #62: a helper defined inside a describe block is the module's function too.
+  test "a describe block's helpers are followed, for the version and the calls" do
+    source = ~S"""
+    defmodule T do
+      use ExUnit.Case
+
+      describe "d" do
+        defp check(x), do: MyApp.Cart.total(x) == 0
+        test "a", do: assert(check([]))
+      end
+    end
+    """
+
+    [test] = Tests.tests(source, "t.exs")
+    assert "MyApp.Cart.total/1" in test.calls
+
+    [weakened] = Tests.tests(String.replace(source, "== 0", ">= 0"), "t.exs")
+    refute weakened.hash == test.hash
   end
 end
