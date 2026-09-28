@@ -4,10 +4,12 @@ All notable changes to Surfex are recorded here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] — 2026-09-28
 
-`mix.exs` reads `0.2.9-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
-release it merely follows.
+The relation log. Surfex now records which versions of the spec and the code were
+confirmed to belong together, and fails on anything that changed since, by name, on
+either side. A **minor** release: a new public API, and every module's and function's
+version changes once. The v0.2 trace is deprecated.
 
 ### Added
 
