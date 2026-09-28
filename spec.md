@@ -509,7 +509,12 @@ scans one text.
   paragraph or adding blank lines doesn't, so a renamed section keeps its version
   under a new id, which is what lets a tool recognise the move.
 - **Its location** runs from the heading's line to its last non-blank line.
-- A line inside a fenced code block is never a heading.
+- A line inside a fenced code block is never a heading; the block is body, and counts in
+  the section's version. Fences follow CommonMark. A fence opens on three or more
+  backticks or tildes, indented at most three spaces (a backtick fence whose info string
+  holds a backtick doesn't open). It closes only on a line of the same character, at least
+  as long, with nothing after it but whitespace, so a longer fence can quote a shorter
+  one. A fence that never closes runs to the end of the file.
 
 ## 12. The relation log
 
