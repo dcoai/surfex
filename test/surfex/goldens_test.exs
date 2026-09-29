@@ -99,6 +99,23 @@ defmodule Surfex.GoldensTest do
       refute message =~ "RELATIONS.md"
     end
 
+    # #84: regenerating is how a drift is resolved, so --write never fails for one.
+    test "--write after a drift regenerates every golden and succeeds; a check then passes",
+         %{root: root} do
+      task(root, ["--write"])
+      config(root, "CartController.index", "CartController.list")
+      relate(root)
+      assert fails(root) =~ "API.md: out of date."
+
+      task(root, ["--write"])
+      assert_received {:mix_shell, :info, ["wrote 2 golden(s): all current, nothing failing"]}
+      assert File.read!(Path.join(root, "API.md")) =~ "CartController.list"
+      assert File.read!(Path.join(root, "RELATIONS.md")) =~ "| `code MyApp.Cart` |"
+
+      task(root)
+      assert_received {:mix_shell, :info, ["checked 2 golden(s): all current, nothing failing"]}
+    end
+
     test "--config reads another definition", %{root: root} do
       File.rename!(Path.join(root, ".surfex.exs"), Path.join(root, "other.exs"))
       task(root, ["--config", "other.exs", "--write"])
