@@ -608,18 +608,7 @@ the profile's keys (§8), validated the same way by `Surfex.Profile.coverage!/1`
 It is pure: a function of the config alone. `Surfex.Status.Config.scans/2` includes class
 records when `classes:` is present.
 
-A declaration is a claim in the source, not a relation. `Surfex.Scan.resolve/2` finds""")
-  |> edit.("- **tests**: each test paired with each scanned code item in its `calls` (§11).\n", ~S"""
-- **tests**: each test paired with each scanned code item in its `calls` (§11).
-- **undeclared**: each undeclared `verifies` relation (§13.1), which accepting retires:
-  the test's own source says the claim is gone.
-- **excuses**: each code item that nothing implements, and that no `implements`
-  candidate in the same run will, paired with the class of the first rule it matches.
-  Matching is `Surfex.Coverage`'s (§7), where a parent counts as cited when something
-  implements it. A `never_excused` kind is never proposed. With `require: [code:
-  [:implements, :excuses]]`, every public item is then either described or deliberately
-  excused, and both are on record. An excuse dangles when its item or its class changes.
-
+A declaration is a claim in the source, not a relation. `Surfex.Scan.resolve/2` finds
 the spec unit it names: a full id (`spec.md#cart-add`, `spec.md#Carts/Adding items`), or
 a bare anchor, block or hint id (`cart-add`) looked up across every spec file. A bare
 id never names a heading path. It gives `{:error, :unknown}` when nothing has the id,
@@ -1095,15 +1084,24 @@ repeats another:
   whose block or hint is still `within` the unit. These relations record what the source
   says, not a judgement, so reading the source again re-establishes them. Judgement
   relations are never refreshed.
+- **undeclared**: each undeclared `verifies` relation (§13.1), which accepting retires:
+  the test's own source says the claim is gone.
+- **excuses**: each code item that nothing implements, and that no `implements`
+  candidate in the same run will, paired with the class of the first rule it matches.
+  Matching is `Surfex.Coverage`'s (§7), where a parent counts as cited when something
+  implements it. A `never_excused` kind is never proposed. With `require: [code:
+  [:implements, :excuses]]`, every public item is then either described or deliberately
+  excused, and both are on record. An excuse dangles when its item or its class changes.
 
 The others are computed as if the moves were already recorded, so a moved
 section's relations are not suggested again under its new id.
 `Surfex.Suggest.accept_all/5` records them (its options carry the test evidence): each
 move (`Surfex.Record.move/5`), then each other suggestion as a `relate` at the current
-hashes. **Accepting validates nothing:** an
-`implements` or `verifies` relation is recorded as proposed, since a citation or a tag is a
-claim, not a judgement (§18). A `verifies` relation whose test has already failed at its
-current version is recorded on that evidence.
+hashes, except an undeclared relation, which is retired. **Accepting validates nothing:**
+an `implements`, `verifies` or `excuses` relation is recorded as proposed, since a
+citation, a tag or a matching rule is a claim, not a judgement (§18). A `verifies`
+relation whose test has already failed at its current version is recorded on that
+evidence.
 
 `Mix.Tasks.Surfex.Suggest` is `mix surfex.suggest [--accept] [--note N]`: without
 `--accept` it lists every suggestion and writes nothing. Adopting the relation log is

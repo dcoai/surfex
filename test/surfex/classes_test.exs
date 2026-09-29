@@ -21,11 +21,25 @@ defmodule Surfex.ClassesTest do
   describe "class records" do
     @describetag verifies: "scan-records-pure"
 
-    test "one per class, located in .surfex.exs" do
+    @tag :tmp_dir
+    test "one per class, located in .surfex.exs; Config.scans/2 includes them", %{
+      tmp_dir: root
+    } do
       assert [
-               %Scan{kind: :class, id: "members", location: %{file: ".surfex.exs", lines: nil}},
-               %Scan{kind: :class, id: "plumbing"}
+               %Scan{
+                 kind: :class,
+                 id: "members",
+                 location: %{file: ".surfex.exs", lines: nil},
+                 role: nil
+               },
+               %Scan{kind: :class, id: "plumbing", role: nil}
              ] = Classes.records(@config)
+
+      File.write!(Path.join(root, "spec.md"), "# A\n\ntext\n")
+      config = [sources: ["spec.md"]]
+      classes = &for(%Scan{kind: :class, id: id} <- Config.scans(&1, root), do: id)
+      assert classes.(config ++ @config) == ["members", "plumbing"]
+      assert classes.(config) == []
     end
 
     test "the version covers the reason and the class's rules, not their order" do
