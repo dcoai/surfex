@@ -55,6 +55,12 @@ defmodule Mix.Tasks.Surfex.Suggest do
     for v <- suggestions.verifies, do: Mix.shell().info("verifies    #{v.from.id} → #{v.to.id}")
     for t <- suggestions.tests, do: Mix.shell().info("tests       #{t.from.id} → #{t.to.id}")
 
+    for f <- suggestions.refresh,
+        do:
+          Mix.shell().info(
+            "refresh     #{f.type} #{f.from.id} → #{f.to.id} (the source still states it)"
+          )
+
     for u <- suggestions.undeclared,
         do: Mix.shell().info("retire      verifies #{u.test} → #{u.spec} (no longer declared)")
 
@@ -73,7 +79,8 @@ defmodule Mix.Tasks.Surfex.Suggest do
 
       opts[:accept] ->
         {^root, scans, entries, meta} = R.context(Keyword.take(opts, [:note, :config]))
-        R.record(root, Suggest.accept_all(suggestions, scans, entries, meta))
+        evidence = Surfex.Evidence.load(Surfex.Evidence.path(root))
+        R.record(root, Suggest.accept_all(suggestions, scans, entries, meta, evidence: evidence))
 
       true ->
         Mix.shell().info("#{count} suggested; `mix surfex.suggest --accept` records them")

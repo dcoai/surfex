@@ -6,8 +6,43 @@ All notable changes to Surfex are recorded here, following
 
 ## [Unreleased]
 
-`mix.exs` reads `0.4.1-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
-release it merely follows.
+`mix.exs` reads `0.5.0-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
+release it merely follows. The next release is a **minor** one: code can no longer be
+confirmed by hand.
+
+### Changed
+
+- **A relation is validated by the process, never asserted** (§18).
+  - Code relations (`implements`) become current only on evidence (a verifying test that
+    went red and then green) or a review (`mix surfex.validate`).
+  - Test relations (`verifies`) are recorded on the test's failing run.
+  - A citation, a tag on a test that never failed, or a pair named by hand is recorded as
+    **proposed**, which fails the check until validated. `mix surfex.suggest --accept`
+    validates nothing.
+  - Each entry records its `basis` (`evidence`, `review`, `judgement`, `proposed`). It is
+    written only when set, so every existing entry keeps its id.
+  - Relations current without a validating basis are reported as **unvalidated**, and
+    `mix surfex.status --validated` fails on them.
+  - A move keeps the basis it carries.
+  - The text report lists proposed relations with the other failing states, and counts
+    unvalidated ones, listing them under `--validated`. The JSON report lists them as
+    `unvalidated`.
+- **`mix surfex.confirm` confirms one relation, with a note:**
+  `confirm FROM TO --type T --note N`. It is the judgement path (a spec reworded without
+  a change of behaviour, an excuse), and it refuses `implements`. `confirm ID`, which
+  confirmed every relation touching an id, is removed, as are
+  `Surfex.Record.confirm/4` and `/5` (now `/6` and `/7`, one relation).
+  `mix surfex.confirm --evidence` also records a test relation on its failing run.
+- **`mix surfex.validate TEST SPEC_UNIT --note N`** (`Surfex.Record.validate/6`) records a
+  review: the test was examined against the unit, judged to validate it, and passes
+  against the code. The unit may be a section whose hint or block the test verifies, once
+  that relation is validated: the review then records the section's `implements` alone.
+- **`mix surfex.suggest --accept` refreshes structural relations** (§15): a dangling
+  `tests` relation whose test still calls the code, or `refines` relation whose block is
+  still within its unit, is recorded again. They record facts read from source, so reading
+  it again re-establishes them. Judgement relations are never refreshed.
+- The README's worked example, and the guide's test-first and LLM sections, now describe
+  the process.
 
 ### Changed
 

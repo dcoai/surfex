@@ -10,6 +10,7 @@ defmodule Mix.Tasks.Surfex.Status do
       mix surfex.status --verify         # also verify the log (edits, removals, truncation)
       mix surfex.status --no-planned     # also fail on planned relations: everything built
       mix surfex.status --evidence       # also check confirmations by evidence against the last run
+      mix surfex.status --validated      # also fail on relations nothing has validated (§18)
 
   It fails on any dangling, orphaned or conflicted relation, on any id the `require:`
   policy in `.surfex.exs` says must be related and isn't, and, with `--verify`, on any
@@ -35,7 +36,8 @@ defmodule Mix.Tasks.Surfex.Status do
           verify: :boolean,
           config: :string,
           planned: :boolean,
-          evidence: :boolean
+          evidence: :boolean,
+          validated: :boolean
         ]
       )
 
@@ -60,7 +62,7 @@ defmodule Mix.Tasks.Surfex.Status do
         scans,
         entries,
         Config.require!(config),
-        [planned: planned] ++ options ++ evidence(opts, root)
+        [planned: planned, validated: opts[:validated] == true] ++ options ++ evidence(opts, root)
       )
 
     case opts[:format] || "text" do

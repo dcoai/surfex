@@ -12,6 +12,7 @@ defmodule Surfex.WalkthroughTest do
   @project Path.expand("../fixtures/elixir_project", __DIR__)
   @section "spec.md#Totals"
   @function "MyApp.Cart.total/0"
+  @other "MyApp.Cart.add/2"
 
   setup %{tmp_dir: root} do
     File.cp_r!(@project, root)
@@ -94,7 +95,9 @@ defmodule Surfex.WalkthroughTest do
 
   @tag verifies: ["recording-by-name", "log-append-only"]
   test "relate → dangling → confirm → conflict across branches → resolve", %{root: root} do
-    task(root, Mix.Tasks.Surfex.Relate, [@section, @function, "--type", "implements"])
+    # A structural relation, which a judgement can confirm: code is only ever validated
+    # by evidence or a review (§18).
+    task(root, Mix.Tasks.Surfex.Relate, [@function, @other, "--type", "depends_on"])
     commit(root, "relate")
     assert %{"state" => "current"} = status(root)
 
@@ -106,9 +109,17 @@ defmodule Surfex.WalkthroughTest do
     assert %{"changed" => true, "location" => %{"file" => "lib/my_app/cart.ex"}} =
              Enum.find(ends, &(&1["kind"] == "code"))
 
-    assert %{"changed" => false} = Enum.find(ends, &(&1["kind"] == "spec"))
+    assert %{"changed" => false} = Enum.find(ends, &(&1["id"] == @other))
 
-    task(root, Mix.Tasks.Surfex.Confirm, [@function])
+    task(root, Mix.Tasks.Surfex.Confirm, [
+      @function,
+      @other,
+      "--type",
+      "depends_on",
+      "--note",
+      "total/0 still uses add/2"
+    ])
+
     commit(root, "confirm")
     assert %{"state" => "current"} = status(root)
 
@@ -116,20 +127,38 @@ defmodule Surfex.WalkthroughTest do
     edit_total(root, 2)
     commit(root, "edit again")
     git(root, ["checkout", "--quiet", "-b", "other"])
-    task(root, Mix.Tasks.Surfex.Confirm, [@function, "--note", "checked on other"])
+
+    task(root, Mix.Tasks.Surfex.Confirm, [
+      @function,
+      @other,
+      "--type",
+      "depends_on",
+      "--note",
+      "checked on other"
+    ])
+
     commit(root, "confirm on other")
     git(root, ["checkout", "--quiet", "main"])
-    task(root, Mix.Tasks.Surfex.Confirm, [@function, "--note", "checked on main"])
+
+    task(root, Mix.Tasks.Surfex.Confirm, [
+      @function,
+      @other,
+      "--type",
+      "depends_on",
+      "--note",
+      "checked on main"
+    ])
+
     commit(root, "confirm on main")
     git(root, ["merge", "--quiet", "--no-edit", "other"])
 
     assert %{"state" => "conflicted", "tips" => [tip, _]} = failing_status(root)
 
     task(root, Mix.Tasks.Surfex.Resolve, [
-      @section,
       @function,
+      @other,
       "--type",
-      "implements",
+      "depends_on",
       "--pick",
       String.slice(tip, 0, 10)
     ])
@@ -150,7 +179,8 @@ defmodule Surfex.WalkthroughTest do
   end
 
   # #36: the spec is written first, the relation planned, and the code follows.
-  test "plan → planned → write the code → dangling → confirm", %{root: root} do
+  @tag verifies: ["recording-by-name", "process-proposed", "process-one-at-a-time"]
+  test "plan → planned → write the code → proposed until validated", %{root: root} do
     planned = "MyApp.Cart.discount/1"
     task(root, Mix.Tasks.Surfex.Relate, ["--planned", @section, planned, "--type", "implements"])
     assert Enum.any?(drain(), &(&1 =~ "code #{planned}@planned"))
@@ -179,13 +209,82 @@ defmodule Surfex.WalkthroughTest do
     )
 
     commit(root, "write discount/1")
-    assert %{"state" => "dangling", "ends" => ends} = failing_status(root)
+
+    # The code exists: the relation is a claim until evidence or a review validates it,
+    # and saying so by hand is refused (§18).
+    assert %{"state" => "proposed", "ends" => ends} = failing_status(root)
     assert %{"changed" => true, "planned" => false} = Enum.find(ends, &(&1["id"] == planned))
 
-    task(root, Mix.Tasks.Surfex.Confirm, [planned])
-    commit(root, "confirm")
-    assert %{"state" => "current"} = status(root)
-    task(root, Mix.Tasks.Surfex.Status, ["--no-planned"])
+    error =
+      assert_raise Mix.Error, fn ->
+        task(root, Mix.Tasks.Surfex.Confirm, [
+          @section,
+          planned,
+          "--type",
+          "implements",
+          "--note",
+          "written"
+        ])
+      end
+
+    assert error.message =~ "implements is validated by evidence or a review"
+
+    # A review validates it: a test declared against the section, examined against it and
+    # run green against the code; then `mix surfex.validate` records both relations.
+    File.write!(
+      Path.join(root, ".surfex.exs"),
+      ~s([sources: ["spec.md"], tests: ["test/*_test.exs"]])
+    )
+
+    File.mkdir_p!(Path.join(root, "test"))
+
+    File.write!(Path.join(root, "test/cart_test.exs"), """
+    defmodule MyApp.CartTest do
+      use ExUnit.Case
+
+      @tag verifies: "spec.md#Totals"
+      test "an empty cart stays empty" do
+        assert MyApp.Cart.discount([]) == []
+      end
+    end
+    """)
+
+    test_id = "test:MyApp.CartTest: an empty cart stays empty"
+    # The tag never failed, so its verifies relation is proposed like the code's.
+    task(root, Mix.Tasks.Surfex.Suggest, ["--accept"])
+    assert %{"relations" => relations} = failing_json(root)
+
+    assert Enum.frequencies_by(relations, &{&1["type"], &1["state"]}) == %{
+             {"implements", "proposed"} => 1,
+             {"verifies", "proposed"} => 1,
+             {"tests", "current"} => 2
+           }
+
+    commit(root, "a test for discount/1")
+    drain()
+
+    validate = [test_id, @section, "--note", "the test checks the section's one claim"]
+
+    # Without a green run there is nothing to review against.
+    error = assert_raise Mix.Error, fn -> task(root, Mix.Tasks.Surfex.Validate, validate) end
+    assert error.message =~ "no green run"
+
+    run_test(root, nil)
+
+    # A review says what it checked.
+    error =
+      assert_raise Mix.Error, fn ->
+        task(root, Mix.Tasks.Surfex.Validate, Enum.take(validate, 2))
+      end
+
+    assert error.message =~ "a note is required"
+
+    task(root, Mix.Tasks.Surfex.Validate, validate)
+    assert drain() |> Enum.count(&(&1 =~ "recorded relate")) == 2
+
+    task(root, Mix.Tasks.Surfex.Status, ["--format", "json", "--validated"])
+    %{"relations" => relations, "triangle" => []} = decode_report()
+    assert Enum.map(relations, & &1["state"]) |> Enum.uniq() == ["current"]
   end
 
   test "a planned id that couldn't be the project's is refused", %{root: root} do
@@ -255,6 +354,8 @@ defmodule Surfex.WalkthroughTest do
       "implements"
     ])
 
+    # The failing test, then the test relation, recorded on that failing run (§18).
+    run_test(root, {:failed, []}, 6)
     task(root, Mix.Tasks.Surfex.Suggest, ["--accept"])
     commit(root, "test first")
 
@@ -268,7 +369,7 @@ defmodule Surfex.WalkthroughTest do
            ] =
              json["triangle"]
 
-    # The code: the planned relation dangles until confirmed, and suggest adds tests.
+    # The code: the planned relation is proposed until validated, and suggest adds tests.
     path = Path.join(root, "lib/my_app/cart.ex")
 
     File.write!(
@@ -280,9 +381,12 @@ defmodule Surfex.WalkthroughTest do
       )
     )
 
+    # The code, green, then the code relation on the red run and the green one. The test
+    # names MyApp.Cart too, whose public surface grew: the test still names it, so suggest
+    # refreshes that tests relation (§15).
     task(root, Mix.Tasks.Surfex.Suggest, ["--accept"])
-    # The test names MyApp.Cart, whose public surface grew: that relation dangles too.
-    task(root, Mix.Tasks.Surfex.Confirm, ["MyApp.Cart.discount/1", "MyApp.Cart"])
+    run_test(root, nil, 6)
+    task(root, Mix.Tasks.Surfex.Confirm, ["--evidence"])
     commit(root, "code")
 
     json = passing_json(root)
@@ -372,7 +476,7 @@ defmodule Surfex.WalkthroughTest do
 
     # The planned relation dangles now the code exists; green, and evidence confirms it.
     assert %{"relations" => relations} = failing_json(root)
-    assert Enum.any?(relations, &(&1["type"] == "implements" and &1["state"] == "dangling"))
+    assert Enum.any?(relations, &(&1["type"] == "implements" and &1["state"] == "proposed"))
 
     run_test(root, nil)
     task(root, Mix.Tasks.Surfex.Confirm, ["--evidence"])
@@ -405,7 +509,7 @@ defmodule Surfex.WalkthroughTest do
   end
 
   # One run of the suite, as ExUnit reports it to the formatter.
-  defp run_test(root, state) do
+  defp run_test(root, state, line \\ 5) do
     {:ok, pid} = GenServer.start_link(Surfex.ExUnitFormatter, surfex_root: root)
     GenServer.cast(pid, {:suite_started, []})
     file = Path.join(root, "test/cart_test.exs")
@@ -414,7 +518,7 @@ defmodule Surfex.WalkthroughTest do
       name: :t,
       module: MyApp.CartTest,
       state: state,
-      tags: %{file: file, line: 5}
+      tags: %{file: file, line: line}
     }
 
     GenServer.cast(pid, {:test_finished, test})
@@ -424,14 +528,14 @@ defmodule Surfex.WalkthroughTest do
 
   @tag verifies: "recording-by-name"
   test "move carries a renamed section's relation, retire puts one to rest", %{root: root} do
-    task(root, Mix.Tasks.Surfex.Relate, [@section, @function, "--type", "implements"])
+    task(root, Mix.Tasks.Surfex.Relate, [@section, @function, "--type", "depends_on"])
     File.write!(Path.join(root, "spec.md"), "# Totals {#totals}\n\nA cart's total.\n")
     task(root, Mix.Tasks.Surfex.Move, [@section, "spec.md#totals"])
 
     assert %{"state" => "current"} =
              Enum.find(passing_json(root)["relations"], &(&1["state"] != "retired"))
 
-    task(root, Mix.Tasks.Surfex.Retire, ["spec.md#totals", @function, "--type", "implements"])
+    task(root, Mix.Tasks.Surfex.Retire, ["spec.md#totals", @function, "--type", "depends_on"])
     assert Enum.all?(passing_json(root)["relations"], &(&1["state"] == "retired"))
   end
 end

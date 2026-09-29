@@ -14,6 +14,7 @@ defmodule Surfex.Log.Entry do
   | `ends` | two `%{kind, id, hash}`: in order, from → to, for a directed type; sorted for an undirected one, so A↔B and B↔A are one relation. A `nil` hash (JSON `null`) is a **planned** end: an id that didn't exist when the relation was recorded. At most one end is planned. |
   | `by` | who recorded it |
   | `note` | why, optionally |
+  | `basis` | how it validates the relation: `:evidence`, `:review`, `:judgement` or `:proposed`; absent when it validates nothing |
 
   An entry is never edited or removed. A later entry for the same relation supersedes it
   and names it as a parent.
@@ -23,9 +24,10 @@ defmodule Surfex.Log.Entry do
   """
 
   @enforce_keys [:id, :at, :parents, :op, :type, :ends]
-  defstruct [:id, :at, :commit, :op, :type, :by, :note, parents: [], ends: []]
+  defstruct [:id, :at, :commit, :op, :type, :by, :note, :basis, parents: [], ends: []]
 
   @ops [:relate, :retire]
+  @bases [:evidence, :review, :judgement, :proposed]
   @types [:implements, :refines, :depends_on, :tests, :verifies, :excuses]
   @kinds [:spec, :code, :test, :config, :class]
   # "A depends on B" is not "B depends on A": these keep their ends in the order given.
@@ -41,7 +43,8 @@ defmodule Surfex.Log.Entry do
           type: atom,
           ends: [end_],
           by: String.t() | nil,
-          note: String.t() | nil
+          note: String.t() | nil,
+          basis: :evidence | :review | :judgement | :proposed | nil
         }
 
   @doc "The operations an entry may record."
@@ -55,6 +58,10 @@ defmodule Surfex.Log.Entry do
   @doc "The directed types: their ends are from → to, in the order given."
   @spec directed() :: [atom]
   def directed, do: @directed
+
+  @doc "The bases an entry may record for validating its relation."
+  @spec bases() :: [atom]
+  def bases, do: @bases
 
   @doc "The kinds an end may be."
   @spec kinds() :: [atom]
@@ -83,7 +90,8 @@ defmodule Surfex.Log.Entry do
            type: fields[:type],
            ends: orient(fields[:type], ends),
            by: fields[:by],
-           note: fields[:note]
+           note: fields[:note],
+           basis: fields[:basis]
          },
          :ok <- check(entry) do
       {:ok, %{entry | id: id(entry)}}
@@ -129,6 +137,7 @@ defmodule Surfex.Log.Entry do
         with {:ok, op} <- atom(map["op"], @ops, "op"),
              {:ok, type} <- atom(map["type"], @types, "type"),
              {:ok, ends} <- decode_ends(map["ends"]),
+             {:ok, basis} <- basis(map["basis"]),
              {:ok, entry} <-
                build(
                  at: map["at"],
@@ -138,7 +147,8 @@ defmodule Surfex.Log.Entry do
                  type: type,
                  ends: ends,
                  by: map["by"],
-                 note: map["note"]
+                 note: map["note"],
+                 basis: basis
                ) do
           if entry.id == id,
             do: {:ok, entry},
@@ -194,6 +204,8 @@ defmodule Surfex.Log.Entry do
       {"note", entry.note}
     ]
 
+    # Written only when set, so an entry recorded before bases existed keeps its line and id.
+    fields = if entry.basis, do: fields ++ [{"basis", Atom.to_string(entry.basis)}], else: fields
     fields = if with_id?, do: [{"id", entry.id} | fields], else: fields
     IO.iodata_to_binary(value({:object, fields}))
   end
@@ -271,6 +283,9 @@ defmodule Surfex.Log.Entry do
       not (is_list(e.parents) and Enum.all?(e.parents, &is_binary/1)) ->
         bad(:parents, e.parents)
 
+      not (is_nil(e.basis) or e.basis in @bases) ->
+        bad(:basis, e.basis)
+
       not Enum.all?([e.commit, e.by, e.note], &(is_nil(&1) or is_binary(&1))) ->
         bad(:commit_by_note, {e.commit, e.by, e.note})
 
@@ -281,6 +296,9 @@ defmodule Surfex.Log.Entry do
 
   defp bad(field, value),
     do: {:error, "log entry field #{inspect(field)} is invalid: #{inspect(value)}"}
+
+  defp basis(nil), do: {:ok, nil}
+  defp basis(text), do: atom(text, @bases, "basis")
 
   defp atom(text, allowed, field) do
     case Enum.find(allowed, &(Atom.to_string(&1) == text)) do

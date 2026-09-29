@@ -32,6 +32,7 @@ defmodule Surfex.Evidence do
   its note begins `confirmed by evidence`. That is the claim CI checks against its own run.
   """
   @spec claimed?(Surfex.Log.Entry.t()) :: boolean
+  def claimed?(%{basis: :evidence}), do: true
   def claimed?(%{note: note}), do: is_binary(note) and String.starts_with?(note, @note)
 
   @doc "How a confirmation by evidence's note begins."

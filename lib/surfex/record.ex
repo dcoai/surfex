@@ -27,17 +27,39 @@ defmodule Surfex.Record do
   @doc """
   Relates `from` and `to` as `type`, at their current hashes. For a directed type the
   order is from → to. Supersedes the relation's current tips, if any.
+
+  Naming a pair validates nothing (§18). An `implements` or `excuses` relation is recorded
+  as **proposed**, and so is a `verifies` relation unless the test's current version has
+  failed in `opts[:evidence]`: then it is recorded on that run, basis `:evidence`, the
+  process's "failing test, then the test relation". Structural relations (`refines`,
+  `tests`, `depends_on`) record facts and carry no basis.
   """
-  @spec relate([Scan.t()], [Entry.t()], String.t(), String.t(), atom, meta) ::
+  @spec relate([Scan.t()], [Entry.t()], String.t(), String.t(), atom, meta, keyword) ::
           {:ok, [Entry.t()]} | {:error, String.t()}
-  def relate(scans, entries, from, to, type, meta) do
+  def relate(scans, entries, from, to, type, meta, opts \\ []) do
     with {:ok, a} <- find(scans, from),
          {:ok, b} <- find(scans, to),
+         basis = relate_basis(type, a, Keyword.get(opts, :evidence, [])),
          [a, b] = [end_(a), end_(b)],
-         {:ok, entry} <- entry(:relate, type, [a, b], parents(entries, type, a, b), meta) do
+         {:ok, entry} <-
+           entry(:relate, type, [a, b], parents(entries, type, a, b), with_basis(meta, basis)) do
       {:ok, [entry]}
     end
   end
+
+  defp relate_basis(type, _from, _evidence) when type in [:implements, :excuses], do: :proposed
+
+  defp relate_basis(:verifies, %Scan{kind: :test} = test, evidence),
+    do: if(red?(evidence, test), do: :evidence, else: :proposed)
+
+  defp relate_basis(_type, _from, _evidence), do: nil
+
+  # Whether the test's current version has failed in `evidence`.
+  defp red?(evidence, %Scan{id: id, hash: hash}),
+    do: Enum.any?(evidence, &(&1.test == id and &1.test_hash == hash and &1.result == :failed))
+
+  defp with_basis(meta, nil), do: Keyword.delete(meta, :basis)
+  defp with_basis(meta, basis), do: Keyword.put(meta, :basis, basis)
 
   @doc """
   Relates `from` and `to` as `type` when one of them doesn't exist yet: a **planned**
@@ -72,45 +94,64 @@ defmodule Surfex.Record do
         with {:ok, a} <- planned_end(a, from, plausible?),
              {:ok, b} <- planned_end(b, to, plausible?),
              {:ok, entry} <-
-               entry(:relate, type, [a, b], parents(entries, type, a, b), meta) do
+               entry(
+                 :relate,
+                 type,
+                 [a, b],
+                 parents(entries, type, a, b),
+                 with_basis(meta, relate_basis(type, nil, []))
+               ) do
           {:ok, [entry]}
         end
     end
   end
 
   @doc """
-  For every **dangling** relation touching one of `ids`, a `relate` at the current hashes,
-  superseding its tip. Only named ids: there is no confirming everything at once. An id
-  with nothing dangling is an error, so a confirmation never quietly does nothing.
-  """
-  @spec confirm([Scan.t()], [Entry.t()], [String.t()], meta) ::
-          {:ok, [Entry.t()]} | {:error, String.t()}
-  def confirm(scans, entries, ids, meta), do: confirm(scans, entries, ids, meta, [])
+  Confirms one relation, named by its ends and `type`, that is **dangling** or
+  **proposed**: a `relate` at the current hashes, superseding its tip, with basis
+  `:judgement` (§18). The note (`meta[:note]`) is required: it records what was judged.
 
-  @doc """
-  `confirm/4`, under the `require_red:` policy: with `require_red: true` and the project's
-  `evidence:`, a `tests` relation is only confirmed when its test's current version has
-  discriminated (`Surfex.Evidence.discriminating?/3`). A test that has never been red
-  can't be confirmed by hand either.
+  An `implements` relation is refused: code is validated by evidence
+  (`confirm_by_evidence/4`) or a review (`validate/6`), never asserted. The judgement path
+  is for what only a judgement can settle: a `verifies` relation after a spec rewording
+  that changes no behaviour, an `excuses` relation, a structural relation after a change.
+  Under `require_red: true` (`opts`, with `evidence:`), a `tests` relation is refused until
+  its test's current version has discriminated.
   """
-  @spec confirm([Scan.t()], [Entry.t()], [String.t()], meta, keyword) ::
+  @spec confirm([Scan.t()], [Entry.t()], String.t(), String.t(), atom, meta, keyword) ::
           {:ok, [Entry.t()]} | {:error, String.t()}
-  def confirm(scans, entries, ids, meta, opts) do
-    status = Status.derive(scans, entries)
+  def confirm(scans, entries, from, to, type, meta, opts \\ []) do
+    note = meta[:note]
 
-    Enum.reduce_while(ids, {:ok, []}, fn id, {:ok, acc} ->
-      with {:ok, scan} <- find(scans, id),
-           key = {scan.kind, scan.id},
-           dangling = for(r <- status.relations, r.state == :dangling, key in ends(r), do: r),
-           :ok <- some(dangling, id),
-           :ok <- red_first(dangling, status, opts),
-           {:ok, confirmed} <- confirm_each(dangling, status, meta) do
-        {:cont, {:ok, acc ++ confirmed}}
-      else
-        error -> {:halt, error}
-      end
-    end)
-    |> dedupe()
+    cond do
+      type == :implements ->
+        {:error,
+         "implements is validated by evidence or a review, never by hand: " <>
+           "`mix surfex.confirm --evidence` or `mix surfex.validate`"}
+
+      not (is_binary(note) and String.trim(note) != "") ->
+        {:error, "a note is required: say what was judged"}
+
+      true ->
+        with {:ok, a} <- find_or_recorded(scans, entries, from),
+             {:ok, b} <- find_or_recorded(scans, entries, to) do
+          status = Status.derive(scans, entries)
+          relation = Entry.relation(type, a, b)
+
+          case Enum.find(status.relations, &(&1.relation == relation)) do
+            %{state: state} = r when state in [:dangling, :proposed] ->
+              with :ok <- red_first([r], status, opts),
+                   do: confirm_each([r], status, with_basis(meta, :judgement))
+
+            %{state: state} ->
+              {:error,
+               "the #{type} relation between #{from} and #{to} is #{state}: nothing to confirm"}
+
+            nil ->
+              {:error, "no #{type} relation between #{from} and #{to} in the log"}
+          end
+        end
+    end
   end
 
   @doc """
@@ -161,14 +202,15 @@ defmodule Surfex.Record do
       Enum.reduce_while(groups, {:ok, []}, fn {relation, tips}, {:ok, acc} ->
         with [tip] <- tips,
              ends = Enum.map(tip.ends, &moved_end(&1, target, old_id)),
-             {:ok, retired} <- entry(:retire, tip.type, tip.ends, [tip.id], meta),
+             {:ok, retired} <- entry(:retire, tip.type, tip.ends, [tip.id], with_basis(meta, nil)),
+             # A move changes where a relation points, not what validates it (§18).
              {:ok, moved} <-
                entry(
                  :relate,
                  tip.type,
                  ends,
                  parents(entries ++ acc, tip.type, hd(ends), List.last(ends)),
-                 meta
+                 with_basis(meta, tip.basis)
                ) do
           {:cont, {:ok, acc ++ [retired, moved]}}
         else
@@ -220,15 +262,38 @@ defmodule Surfex.Record do
   @spec confirm_by_evidence([Scan.t()], [Entry.t()], [Surfex.Evidence.t()], meta) ::
           {:ok, [Entry.t()]} | {:error, String.t()}
   def confirm_by_evidence(scans, entries, evidence, meta) do
+    meta = with_basis(meta, :evidence)
     status = Status.derive(scans, entries)
 
-    with {:ok, tests} <- by_evidence(status, :tests, &tests_evidence(&1, status, evidence), meta) do
-      status = Status.derive(scans, entries ++ tests)
+    with {:ok, verifies} <-
+           by_evidence(status, :verifies, &verifies_evidence(&1, status, evidence), meta),
+         status = Status.derive(scans, entries ++ verifies),
+         {:ok, tests} <- by_evidence(status, :tests, &tests_evidence(&1, status, evidence), meta) do
+      status = Status.derive(scans, entries ++ verifies ++ tests)
 
       implemented =
         by_evidence(status, :implements, &implements_evidence(&1, status, evidence), meta)
 
-      with {:ok, implements} <- implemented, do: {:ok, tests ++ implements}
+      with {:ok, implements} <- implemented, do: {:ok, verifies ++ tests ++ implements}
+    end
+  end
+
+  # A verifies relation on its failing run: the test's current version has failed, so it
+  # is live and tests something the code didn't do (§18). When only the spec end changed,
+  # a failing run says nothing about the rewording: that is the judgement path.
+  defp verifies_evidence(%{relation: {:verifies, {:test, t}, {:spec, _}}} = r, status, evidence) do
+    test = Map.fetch!(status.scans, {:test, t})
+    spec_only? = r.changed != [] and {:test, t} not in r.changed
+
+    with false <- spec_only?,
+         %{} = red <-
+           Enum.find(
+             evidence,
+             &(&1.test == t and &1.test_hash == test.hash and &1.result == :failed)
+           ) do
+      "#{Surfex.Evidence.note()}: #{t}@#{test.hash} failed at #{red.at}, the test relation on its failing run"
+    else
+      _ -> nil
     end
   end
 
@@ -236,7 +301,8 @@ defmodule Surfex.Record do
   # nil), a relate at the current versions.
   defp by_evidence(status, type, why, meta) do
     Enum.reduce_while(status.relations, {:ok, []}, fn
-      %{type: ^type, state: :dangling, tips: [tip]} = r, {:ok, acc} ->
+      %{type: ^type, state: state, tips: [tip]} = r, {:ok, acc}
+      when state in [:dangling, :proposed] ->
         case why.(r) do
           nil ->
             {:cont, {:ok, acc}}
@@ -305,8 +371,12 @@ defmodule Surfex.Record do
     code = Map.fetch!(status.scans, {:code, c})
     spec_changed? = {:spec, s} in r.changed
 
+    # Only a validated test relation carries the code relation: an unvalidated one is a
+    # claim, and code derived from a claim would be a guess again (§18).
     live = fn type ->
-      for %{type: ^type, state: :current, relation: {_, a, b}} <- status.relations, do: {a, b}
+      for %{type: ^type, state: :current, tips: [tip], relation: {_, a, b}} <- status.relations,
+          type != :verifies or validated?(tip),
+          do: {a, b}
     end
 
     verifying =
@@ -332,6 +402,114 @@ defmodule Surfex.Record do
         end
       end
     end)
+  end
+
+  defp validated?(%Entry{basis: basis}), do: basis in [:evidence, :review, :judgement]
+
+  @doc """
+  Records a **review** (§18): `test` was examined against `unit` and judged to validate
+  it, and it passes against the code. It is how a relation made before validation existed
+  gets validated, by doing the work rather than asserting it.
+
+  It needs a live `verifies` relation from the test to the unit, and green evidence for
+  the test's current version (its latest run passed). It records that `verifies` relation,
+  and each live `implements` relation of the unit, not validated already, whose code the
+  test's latest run exercised at its current version, at the current hashes with basis `:review`. The note
+  (`meta[:note]`) is required: it says which claim each assertion checks. One test and one
+  unit per call.
+
+  The unit may be a section whose block or hint the test verifies, since code implements
+  the section while its tests verify what is inside it. The test's relation to that inner
+  unit must already be validated (reviewed against it first), and only the section's
+  `implements` relations are recorded.
+  """
+  @spec validate([Scan.t()], [Entry.t()], String.t(), String.t(), [Surfex.Evidence.t()], meta) ::
+          {:ok, [Entry.t()]} | {:error, String.t()}
+  def validate(scans, entries, test_id, unit_id, evidence, meta) do
+    note = meta[:note]
+    status = Status.derive(scans, entries)
+    meta = with_basis(meta, :review)
+
+    with :ok <-
+           if(is_binary(note) and String.trim(note) != "",
+             do: :ok,
+             else: {:error, "a note is required: say which claim each assertion checks"}
+           ),
+         {:ok, test} <- find(scans, "test:" <> strip_kind(test_id)),
+         {:ok, unit} <- find(scans, "spec:" <> strip_kind(unit_id)),
+         {:ok, reviewed} <- reviewed(status, test, unit),
+         {:ok, green} <- green_run(evidence, test) do
+      # What the run exercised at its current version, by definition: a function's default
+      # arities are one code (§11), as they are for evidence.
+      ran =
+        MapSet.new(
+          for {id, hash} <- green.code,
+              scan = Map.get(status.scans, {:code, id}),
+              scan != nil and scan.hash == hash,
+              do: Scan.definition(scan)
+        )
+
+      exercised = &MapSet.member?(ran, Scan.definition(&1))
+      spec_id = unit.id
+
+      implements =
+        for %{type: :implements, state: state, relation: {_, {:code, c}, {:spec, ^spec_id}}} = r <-
+              status.relations,
+            state not in [:retired, :orphaned, :planned, :conflicted],
+            not (state == :current and validated?(hd(r.tips))),
+            code = Map.fetch!(status.scans, {:code, c}),
+            exercised.(code),
+            do: r
+
+      confirm_each(reviewed ++ implements, status, meta)
+    end
+  end
+
+  # What the review records besides the unit's code: the test's relation to the unit
+  # itself, or nothing when the test verifies a unit inside it whose relation is already
+  # validated (§18).
+  defp reviewed(status, test, unit) do
+    missing = "no verifies relation from #{test.id} to #{unit.id} or a unit inside it"
+
+    case live_relation(status, Entry.relation(:verifies, end_(test), end_(unit)), missing) do
+      {:ok, direct} ->
+        {:ok, [direct]}
+
+      {:error, _} ->
+        inner =
+          for %{type: :verifies, relation: {_, {:test, t}, {:spec, s}}} = r <- status.relations,
+              t == test.id,
+              s != unit.id,
+              r.state not in [:retired, :orphaned],
+              inside?(s, unit.id, status.scans),
+              do: r
+
+        cond do
+          inner == [] ->
+            {:error, missing}
+
+          Enum.any?(inner, &(&1.state == :current and validated?(hd(&1.tips)))) ->
+            {:ok, []}
+
+          true ->
+            %{relation: {_, _, {:spec, s}}} = hd(inner)
+            {:error, "validate #{test.id} against #{s} first: its relation there isn't validated"}
+        end
+    end
+  end
+
+  defp live_relation(status, relation, missing) do
+    case Enum.find(status.relations, &(&1.relation == relation)) do
+      %{state: state} = r when state not in [:retired, :orphaned, :conflicted] -> {:ok, r}
+      _ -> {:error, missing}
+    end
+  end
+
+  defp green_run(evidence, test) do
+    case Surfex.Evidence.latest(evidence, test.id, test.hash) do
+      %{result: :passed} = green -> {:ok, green}
+      _ -> {:error, "no green run of #{test.id} at its current version: run the tests first"}
+    end
   end
 
   defp inside?(unit, unit, _scans), do: true
@@ -415,14 +593,6 @@ defmodule Surfex.Record do
     end
   end
 
-  defp dedupe({:ok, entries}), do: {:ok, Enum.uniq_by(entries, &Entry.relation/1)}
-  defp dedupe(error), do: error
-
-  defp some([], id), do: {:error, "nothing dangling touches #{id}: nothing to confirm"}
-  defp some(_list, _id), do: :ok
-
-  defp ends(%{relation: {_type, a, b}}), do: [a, b]
-
   defp tips(scans, entries, from, to, type) do
     with {:ok, a} <- find_or_recorded(scans, entries, from),
          {:ok, b} <- find_or_recorded(scans, entries, to) do
@@ -499,7 +669,8 @@ defmodule Surfex.Record do
       op: op,
       type: type,
       parents: parents,
-      ends: ends
+      ends: ends,
+      basis: meta[:basis]
     )
   end
 
