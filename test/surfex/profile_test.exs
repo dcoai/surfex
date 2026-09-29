@@ -57,7 +57,10 @@ defmodule Surfex.ProfileTest do
   end
 
   test "keys/0 lists every key new!/1 accepts" do
-    assert :sources in Surfex.Profile.keys() and :never_excused in Surfex.Profile.keys()
+    assert Surfex.Profile.keys() ==
+             ~w(sources exclude shape token known_shape normalise subjects table_columns
+                file_targets known_external documented_absences classes rules never_excused)a
+
     refute :file_labels in Surfex.Profile.keys()
     assert %Surfex.Profile{} = Surfex.Profile.new!(sources: ["s.md"], shape: ~r/x/)
   end

@@ -17,6 +17,14 @@ defmodule Surfex.GateTest do
     assert message =~ "Gone:\n  b\n"
   end
 
+  test "without Item or Version, a row is keyed by its first column and compared whole" do
+    old = "| Name | Note |\n|---|---|\n| `a` | x |\n| `b` | y |\n"
+    new = "| Name | Note |\n|---|---|\n| `a` | x |\n| `b` | z |\n"
+    message = Gate.drift(old, new)
+    assert message =~ "Changed:\n  b\n"
+    refute message =~ "  a\n"
+  end
+
   test "a change outside every row says the prose or a stats line changed" do
     assert Gate.drift("# A\nold\n" <> @old, "# A\nnew\n" <> @old) =~ "No row changed"
   end

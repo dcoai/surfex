@@ -41,8 +41,14 @@ defmodule Surfex.CoverageTest do
     assert verdict(item(:field, "len")) == :gap
   end
 
-  test "a never-excused kind is a gap" do
+  test "a never-excused kind is a gap, whatever the rules say" do
     assert verdict(item(:wire, "hdr")) == :gap
+
+    # A rule that would excuse it (new!/1 refuses one; a hand-built map may carry it).
+    excusing = %{class: "helpers", kinds: [:wire], name: nil, parent_cited: false}
+
+    assert Coverage.verdict(item(:wire, "hdr"), MapSet.new(), %{profile() | rules: [excusing]}) ==
+             :gap
   end
 
   test "the first matching rule wins" do

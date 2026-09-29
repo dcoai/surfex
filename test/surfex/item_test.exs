@@ -16,5 +16,9 @@ defmodule Surfex.ItemTest do
              hash: "1"
            }) ==
              "MyApp.Cart.add/2"
+
+    # The hash is never part of the key: an edit changes the version, not the identity.
+    item = %Item{kind: :module, name: "MyApp.Cart", file: "c.ex", hash: "1"}
+    assert Item.key(item) == Item.key(%{item | hash: "2"})
   end
 end
