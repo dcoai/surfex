@@ -99,6 +99,12 @@ defmodule Surfex.GoldensTest do
       refute message =~ "RELATIONS.md"
     end
 
+    test "--config reads another definition", %{root: root} do
+      File.rename!(Path.join(root, ".surfex.exs"), Path.join(root, "other.exs"))
+      task(root, ["--config", "other.exs", "--write"])
+      assert File.exists?(Path.join(root, "API.md"))
+    end
+
     test "every drifted golden is named in one run", %{root: root} do
       task(root, ["--write"])
       config(root, "CartController.index", "CartController.list")

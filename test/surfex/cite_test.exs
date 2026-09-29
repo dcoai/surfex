@@ -83,6 +83,12 @@ defmodule Surfex.CiteTest do
       cites = cite(root)
       assert [%{section: "(preamble)", line: 1}] = one(cites, "app_send")
       assert [%{section: "1.2 Detail", line: 4}] = one(cites, "app_recv")
+
+      # citations/3 comes sorted by file, line and span.
+      write(root, "spec/00.md", "`app_recv` `app_hdr`\n")
+      cites = cite(root)
+      assert cites == Enum.sort_by(cites, &{&1.file, &1.line, &1.span})
+      assert [%{file: "spec/00.md"} | _] = cites
     end
 
     test "a heading's anchor is not part of its name", %{tmp_dir: root} do
@@ -111,6 +117,23 @@ defmodule Surfex.CiteTest do
       assert [%{name: "app_send"}] = index["app_send"]
       assert length(index["app_twice"]) == 2
       assert [%{kind: :file}] = index["lib/x.ex"]
+    end
+
+    test "the rules apply in order: an absence and an external before a key, a key before an alias",
+         %{tmp_dir: root} do
+      write(root, "spec/01.md", "`app_gone` `app_daemon` `app_send`\n")
+
+      # Each name is also an item key; app_send is also another family's alias.
+      extra = [
+        item("app_gone"),
+        item("app_daemon"),
+        item("s/1", parent: "fam", aliases: ["app_send"])
+      ]
+
+      cites = Cite.citations(items() ++ extra, profile(), root)
+      assert [%{status: :documented_absence}] = one(cites, "app_gone")
+      assert [%{status: :external}] = one(cites, "app_daemon")
+      assert [%{status: :resolved, items: ["app_send"]}] = one(cites, "app_send")
     end
 
     test "normalisation applies before lookup", %{tmp_dir: root} do

@@ -44,9 +44,15 @@ defmodule Surfex.Scanner.ElixirTest do
   end
 
   test ":paths narrows the scan" do
-    assert Scanner.items(@project, paths: ["lib/my_app/hidden.ex"])
-           |> Enum.map(&Item.key/1)
-           |> Enum.all?(&(String.starts_with?(&1, "MyApp.Hidden") or &1 =~ "Server"))
+    # Only hidden.ex: its @moduledoc false module is skipped, the module nested in it isn't.
+    assert Scanner.items(@project, paths: ["lib/my_app/hidden.ex"]) |> Enum.map(&Item.key/1) ==
+             [
+               "MyApp.Hidden.Visible",
+               "MyApp.Hidden.Visible.shown/0",
+               "MyApp.Server",
+               "MyApp.Server.handle_call/3",
+               "MyApp.Server.start_link/1"
+             ]
   end
 
   test "surfex's own lib scans to its public API, compile-free" do
@@ -72,6 +78,11 @@ defmodule Surfex.Scanner.ElixirTest do
 
       for name <- ~w(Enum.map/2 :ok MyAppX.Cart myapp.cart Other.MyApp.Cart),
           do: refute(Regex.match?(d[:shape], name), name)
+
+      # token: the same names, found inside longer text.
+      assert Regex.scan(d[:token], "see MyApp.Cart.add/2 and Other.MyApp.x here",
+               capture: :all_but_first
+             ) == [["MyApp.Cart.add/2"]]
     end
 
     test "citing a function without its arity cites every arity; a call's arguments drop" do
