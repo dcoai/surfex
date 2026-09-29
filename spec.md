@@ -512,8 +512,9 @@ reason, and every golden's drift is reported in one run
 `Mix.Tasks.Surfex.Goldens` is `mix surfex.goldens`:
 
 - Without `--write`, the task checks. It fails if any golden is missing or has drifted.
-- `--write` regenerates. It writes every golden even when some have drifted, so the
-  drift shows up in the diff, and then fails.
+- `--write` regenerates. It writes every golden, drifted or not, so a drift shows up in
+  the diff, and succeeds, saying how many it wrote. Regenerating is how a drift is
+  resolved, so it never fails for one; checking is what fails.
 - `--config PATH` reads a definition other than `.surfex.exs`.
 - The namespace citations are read under defaults to the app's name camelized. The task
   compiles the project only when `Surfex.Goldens.needs_compile?/2` says so.
@@ -526,8 +527,8 @@ every section something implements states its claims as test hints, each verifie
 tagged test that exercises the implementing code.
 
 ```test goldens-task
-mix surfex.goldens checks every golden, and --write regenerates them all, even when
-some have drifted
+mix surfex.goldens checks every golden and fails on a drift; --write regenerates them
+all, even when some have drifted, and succeeds
 ```
 
 ## 11. Scan records {#scan-records}
