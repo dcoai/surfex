@@ -141,10 +141,13 @@ defmodule Surfex.Suggest do
   end
 
   @doc """
-  Records suggestions: each move (`Surfex.Record.move/5`), then each refinement and
-  implements candidate as a `relate` at the current hashes. It only creates relations
-  that don't exist and carries judgements across moves; it never confirms a dangling
-  relation.
+  Records suggestions: each move (`Surfex.Record.move/5`), then each other suggestion as
+  a `relate` at the current hashes, and each undeclared `verifies` relation as a
+  `retire`. `implements`, `verifies` and `excuses` relations are recorded as proposed,
+  a `verifies` relation on its failing run when `opts[:evidence]` shows one (§18).
+  Moves carry each relation's basis across. It re-records a dangling relation only
+  when it is structural and the source still states it (refresh); it never confirms a
+  dangling judgement.
   """
   @spec accept_all(suggestions, [Scan.t()], [Entry.t()], keyword, keyword) ::
           {:ok, [Entry.t()]} | {:error, String.t()}

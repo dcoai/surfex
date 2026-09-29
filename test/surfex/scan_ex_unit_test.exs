@@ -221,6 +221,32 @@ defmodule Surfex.ScanExUnitTest do
            ]
   end
 
+  test "a setup's calls are not the test's: it prepares, the test is what it calls" do
+    source = ~S"""
+    defmodule T do
+      use ExUnit.Case
+      setup_all do
+        %{seeded: MyApp.Seed.run()}
+      end
+
+      setup do
+        %{cart: MyApp.Cart.new()}
+      end
+
+      test "a", %{cart: cart}, do: assert(MyApp.Cart.total(cart) == 0)
+    end
+    """
+
+    [test] = Tests.tests(source, "t.exs")
+    assert test.calls == ["MyApp.Cart", "MyApp.Cart.total/1"]
+
+    # A setup is still part of the test's version.
+    [changed] =
+      Tests.tests(String.replace(source, "MyApp.Seed.run()", "MyApp.Seed.run(:all)"), "t.exs")
+
+    refute changed.hash == test.hash
+  end
+
   test "a module handed to a helper counts as exercised" do
     source = ~S"""
     defmodule T do

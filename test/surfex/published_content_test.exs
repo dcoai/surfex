@@ -35,4 +35,36 @@ defmodule Surfex.PublishedContentTest do
 
     assert offending == []
   end
+
+  # #83: a scripted edit once wrote its own source into spec.md. Prose never holds a pipe
+  # into a call, a sigil heredoc or a heredoc's close; the guides show Elixir only in fences.
+  @markdown ~w(spec.md README.md CHANGELOG.md RELEASING.md guides/**/*.md)
+  @residue [~r/^\s*\|> /, ~r/~S("""|''')/, ~r/"""\)/]
+
+  test "no published Markdown carries script residue outside a fence" do
+    files = Enum.flat_map(@markdown, &Path.wildcard(Path.join(@root, &1)))
+    assert length(files) > 4
+
+    offending =
+      for file <- files,
+          {line, n} <- unfenced(File.read!(file)),
+          Enum.any?(@residue, &Regex.match?(&1, line)),
+          do: "#{Path.relative_to(file, @root)}:#{n}: #{line}"
+
+    assert offending == []
+  end
+
+  # The lines outside fenced blocks, with their numbers.
+  defp unfenced(text) do
+    text
+    |> String.split("\n")
+    |> Enum.with_index(1)
+    |> Enum.map_reduce(false, fn {line, n}, fenced ->
+      if String.match?(line, ~r/^\s*(```|~~~)/),
+        do: {nil, not fenced},
+        else: {if(fenced, do: nil, else: {line, n}), fenced}
+    end)
+    |> elem(0)
+    |> Enum.reject(&is_nil/1)
+  end
 end

@@ -168,6 +168,22 @@ defmodule Surfex.ScanTest do
       assert %Scan{id: "alone"} = Scan.for_item(scans, Enum.at(items, 2))
       # Each is its own definition: they differ in file and version.
       refute Scan.definition(Enum.at(scans, 1)) == Scan.definition(Enum.at(scans, 2))
+
+      # A function's default arities are one definition: same file, lines and version.
+      arities =
+        for n <- ["f/1", "f/2"],
+            do: %Item{
+              kind: :function,
+              name: n,
+              parent: "M",
+              file: "m.ex",
+              hash: "9",
+              lines: {2, 4}
+            }
+
+      [f1, f2] = Scan.code(arities)
+      assert Scan.definition(f1) == Scan.definition(f2)
+      assert Scan.definition(f1) == {:code, "m.ex", {2, 4}, "9"}
     end
 
     @tag verifies: ["scan-records-pure"]
