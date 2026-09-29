@@ -18,6 +18,8 @@ defmodule Surfex.Status.Report do
         "  #{type}: #{Enum.join(parts, " · ")}"
       end
 
+    unvalidated_relations = MapSet.new(status.unvalidated, & &1.relation)
+
     lists = [
       section(
         "Dangling (an end changed since it was confirmed)",
@@ -29,6 +31,11 @@ defmodule Surfex.Status.Report do
         "Conflicted (recorded on two branches without seeing each other)",
         status,
         &(&1.state == :conflicted)
+      ),
+      section(
+        "Proposed (a claim nothing has validated yet)",
+        status,
+        &(&1.state == :proposed)
       ),
       section("Impacted (an end depends on something not current)", status, & &1.impacted),
       section("Planned (an end doesn't exist yet)", status, &(&1.state == :planned)),
@@ -65,6 +72,12 @@ defmodule Surfex.Status.Report do
           "#{type}  #{ak} #{a} ↔ #{bk} #{b}: #{test}#{unproven_text(u.reason)}"
         end
       ),
+      # Listed only where they fail: a project moving over has many (§13.3).
+      section(
+        "Unvalidated (current, but nothing has validated it)",
+        status,
+        &(status.policy.validated and &1.relation in unvalidated_relations)
+      ),
       items("Undeclared (a test no longer declares what it verifies)", status.undeclared, fn u ->
         "verifies  test #{u.test} → spec #{u.spec}"
       end),
@@ -84,9 +97,16 @@ defmodule Surfex.Status.Report do
     units =
       "  spec units: sections #{u.section} · blocks #{u.block} · test hints #{u.test_hint}\n"
 
+    unvalidated =
+      case length(status.unvalidated) do
+        0 -> []
+        n -> "  unvalidated: #{n}\n"
+      end
+
     IO.iodata_to_binary([
       "relation status: #{verdict}\n",
       Enum.map(counts, &[&1, "\n"]),
+      unvalidated,
       units,
       lists
     ])
@@ -140,6 +160,16 @@ defmodule Surfex.Status.Report do
           }
         end),
       "undeclared" => Enum.map(status.undeclared, &%{"test" => &1.test, "spec" => &1.spec}),
+      "unvalidated" =>
+        Enum.map(status.unvalidated, fn %{relation: {type, {ak, a}, {bk, b}}} ->
+          %{
+            "type" => Atom.to_string(type),
+            "ends" => [
+              %{"kind" => Atom.to_string(ak), "id" => a},
+              %{"kind" => Atom.to_string(bk), "id" => b}
+            ]
+          }
+        end),
       "stale" =>
         Enum.map(status.stale, fn s ->
           %{"class" => s.class, "code" => s.code, "reason" => stale_text(s.reason)}

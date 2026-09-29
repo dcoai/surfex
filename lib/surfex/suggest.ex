@@ -82,7 +82,8 @@ defmodule Surfex.Suggest do
           verifies: [pair],
           tests: [pair],
           excuses: [pair],
-          undeclared: [%{test: String.t(), spec: String.t()}]
+          undeclared: [%{test: String.t(), spec: String.t()}],
+          refresh: [%{type: atom, from: Scan.t(), to: Scan.t()}]
         }
 
   @doc """
@@ -98,6 +99,10 @@ defmodule Surfex.Suggest do
       spec unit (`Surfex.Scan.resolve/2`).
     * **tests** — each test paired with each scanned code item it calls (in its body or
       the private helpers it reaches).
+    * **refresh** — each dangling structural relation (`tests`, `refines`) whose fact the
+      source still states: the test still calls or names the code, the unit still holds
+      the block or hint. Judgement relations (`implements`, `verifies`, `excuses`) are never
+      refreshed.
     * **undeclared** — each `verifies` relation whose test no longer declares it
       (`Surfex.Status`), to retire: the test's source no longer makes the claim.
     * **excuses** — each code item nothing implements (and no implements candidate will),
@@ -130,6 +135,7 @@ defmodule Surfex.Suggest do
       excuses: excusals(profile, items, scans, moved, implements),
       verifies: verifications(scans, moved),
       undeclared: Surfex.Status.derive(scans, moved).undeclared,
+      refresh: refreshed(scans, moved),
       tests: exercised(scans, moved)
     }
   end
@@ -140,9 +146,9 @@ defmodule Surfex.Suggest do
   that don't exist and carries judgements across moves; it never confirms a dangling
   relation.
   """
-  @spec accept_all(suggestions, [Scan.t()], [Entry.t()], keyword) ::
+  @spec accept_all(suggestions, [Scan.t()], [Entry.t()], keyword, keyword) ::
           {:ok, [Entry.t()]} | {:error, String.t()}
-  def accept_all(suggestions, scans, entries, meta) do
+  def accept_all(suggestions, scans, entries, meta, opts \\ []) do
     steps =
       Enum.map(suggestions.moves, fn m ->
         &Record.move(scans, &1, m.from, "spec:" <> m.to.id, meta)
@@ -151,10 +157,28 @@ defmodule Surfex.Suggest do
           &Record.relate(scans, &1, "spec:" <> r.from.id, "spec:" <> r.to.id, :refines, meta)
         end) ++
         Enum.map(suggestions.verifies, fn v ->
-          &Record.relate(scans, &1, "test:" <> v.from.id, "spec:" <> v.to.id, :verifies, meta)
+          &Record.relate(
+            scans,
+            &1,
+            "test:" <> v.from.id,
+            "spec:" <> v.to.id,
+            :verifies,
+            meta,
+            opts
+          )
         end) ++
         Enum.map(suggestions.tests, fn t ->
           &Record.relate(scans, &1, "test:" <> t.from.id, "code:" <> t.to.id, :tests, meta)
+        end) ++
+        Enum.map(suggestions.refresh, fn f ->
+          &Record.relate(
+            scans,
+            &1,
+            "#{f.from.kind}:#{f.from.id}",
+            "#{f.to.kind}:#{f.to.id}",
+            f.type,
+            Keyword.put_new(meta, :note, "the source still states it")
+          )
         end) ++
         Enum.map(suggestions.undeclared, fn u ->
           &Record.retire(
@@ -245,6 +269,25 @@ defmodule Surfex.Suggest do
       end
     end)
   end
+
+  # A dangling structural relation whose fact the source still states: the test still
+  # calls or names the code (`tests`), the block or hint still sits in the unit
+  # (`refines`). It records a fact read from source, not a judgement, so re-reading the
+  # source is what re-establishes it (§18). Judgement relations are never refreshed.
+  defp refreshed(scans, entries) do
+    by_id = Map.new(scans, &{{&1.kind, &1.id}, &1})
+
+    for %{state: :dangling, type: type, relation: {_, a, b}} <-
+          Surfex.Status.derive(scans, entries).relations,
+        type in [:tests, :refines],
+        from = by_id[a],
+        to = by_id[b],
+        still?(type, from, to),
+        do: %{type: type, from: from, to: to}
+  end
+
+  defp still?(:tests, %Scan{calls: calls}, %Scan{id: id}), do: id in calls
+  defp still?(:refines, %Scan{within: within}, %Scan{id: id}), do: within == id
 
   defp verifications(scans, entries) do
     related = MapSet.new(entries, &Entry.relation/1)

@@ -65,7 +65,7 @@ defmodule Surfex.LogTest do
 
     test "the vocabulary is fixed: ops, types, kinds, and which types are directed" do
       assert Entry.ops() == [:relate, :retire]
-      assert :verifies in Entry.types() and :excuses in Entry.types()
+      assert Entry.types() == [:implements, :refines, :depends_on, :tests, :verifies, :excuses]
       assert Entry.kinds() == [:spec, :code, :test, :config, :class]
       assert Entry.directed() == [:depends_on, :refines, :tests, :verifies]
 
@@ -74,6 +74,22 @@ defmodule Surfex.LogTest do
       assert Entry.relation(:implements, a, b) == Entry.relation(:implements, b, a)
       refute Entry.relation(:depends_on, a, b) == Entry.relation(:depends_on, b, a)
       assert Entry.json(~s({"hash":null})) == %{"hash" => nil}
+    end
+
+    test "a basis is one of four, written only when set, so an entry without one keeps its id" do
+      assert Entry.bases() == [:evidence, :review, :judgement, :proposed]
+
+      plain = entry(1)
+      refute Entry.encode(plain) =~ "basis"
+
+      for basis <- Entry.bases() do
+        e = entry(1, basis: basis)
+        assert Entry.encode(e) =~ ~s("basis":"#{basis}")
+        assert Entry.decode!(Entry.encode(e)) == e
+        refute e.id == plain.id
+      end
+
+      assert_raise ArgumentError, ~r/:basis/, fn -> entry(1, basis: :hunch) end
     end
 
     test "a planned end has no hash, written as null; two planned ends are refused" do
@@ -96,6 +112,23 @@ defmodule Surfex.LogTest do
                )
 
       assert msg =~ ":ends"
+    end
+
+    @tag verifies: "log-entries"
+    test "decode says why a line isn't an entry; text that isn't JSON raises" do
+      line = Entry.encode(entry(1))
+      map = Entry.json(line)
+
+      missing = map |> Map.delete("op") |> :json.encode() |> IO.iodata_to_binary()
+      assert {:error, msg} = Entry.decode(missing)
+      assert msg =~ "op"
+
+      unknown = map |> Map.put("type", "likes") |> :json.encode() |> IO.iodata_to_binary()
+      assert {:error, msg} = Entry.decode(unknown)
+      assert msg =~ "type"
+
+      assert_raise ArgumentError, ~r/field op is invalid/, fn -> Entry.decode!(missing) end
+      assert_raise ErlangError, fn -> Entry.decode("{not json") end
     end
 
     @tag verifies: "entry-tamper"

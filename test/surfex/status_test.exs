@@ -380,14 +380,56 @@ defmodule Surfex.StatusTest do
   end
 
   @tag verifies: ["status-pure", "status-failing"]
-  test "failing: dangling, orphaned, conflicted or unmet; not new, retired or impacted" do
-    refute Status.failing?(Status.derive(scans(), [relate("s1", "c1")]))
+  test "failing: each failing state, and nothing else by default; planned: :fail and validated: true add theirs" do
+    ok = relate("s1", "c1")
+    fails = &Status.failing?(Status.derive(&1, &2))
+    fails_with = &Status.failing?(Status.derive(&1, &2, [], &3))
 
-    refute Status.failing?(
-             Status.derive([scan(:code, "M.x/0", "x") | scans()], [relate("s1", "c1")])
-           )
+    # A current relation passes, and so do new, retired and unvalidated ones.
+    refute fails.(scans(), [ok])
+    refute fails.([scan(:code, "M.x/0", "x") | scans()], [ok])
+    retired = relate("s1", "c1", op: :retire, parents: [ok.id], at: "2026-09-28T11:00:00Z")
+    refute fails.(scans("s9", "c9"), [ok, retired])
 
-    assert Status.failing?(Status.derive(scans("s1", "c2"), [relate("s1", "c1")]))
+    # Impacted needs a dependency that isn't current, which fails on its own; its flag is
+    # checked in its own test.
+
+    # Dangling, orphaned, conflicted and proposed fail.
+    assert fails.(scans("s1", "c2"), [ok])
+    assert fails.([scan(:spec, @spec_id, "s1")], [ok])
+    assert fails.(scans(), [relate("s1", "c1", note: "one"), relate("s1", "c1", note: "two")])
+
+    proposed =
+      Entry.new!(at: ok.at, op: :relate, type: :implements, ends: ok.ends, basis: :proposed)
+
+    assert fails.(scans(), [proposed])
+
+    # So does an unmet id, under a require: policy.
+    assert Status.failing?(Status.derive(scans(), [], code: [:implements]))
+
+    # A planned relation passes, unless planned: :fail.
+    planned =
+      Entry.new!(
+        at: ok.at,
+        op: :relate,
+        type: :implements,
+        ends: [
+          %{kind: :spec, id: @spec_id, hash: "s1"},
+          %{kind: :code, id: "M.later/1", hash: nil}
+        ]
+      )
+
+    refute fails.(scans(), [ok, planned])
+    assert fails_with.(scans(), [ok, planned], planned: :fail)
+
+    # A current relation with no validating basis passes, unless validated: true.
+    refute fails.(scans(), [ok])
+    assert fails_with.(scans(), [ok], validated: true)
+
+    validated =
+      Entry.new!(at: ok.at, op: :relate, type: :implements, ends: ok.ends, basis: :review)
+
+    refute fails_with.(scans(), [validated], validated: true)
   end
 
   describe "the report" do
@@ -500,6 +542,50 @@ defmodule Surfex.StatusTest do
       refute golden =~ "spec.md:3"
     end
 
+    # #76: a proposed relation fails, so the report must say which; unvalidated ones are
+    # counted, and listed where they fail.
+    test "proposed relations are listed; unvalidated ones counted, and listed under validated: true" do
+      proposed =
+        Entry.new!(
+          at: "2026-09-28T10:00:00Z",
+          op: :relate,
+          type: :implements,
+          ends: [
+            %{kind: :spec, id: @spec_id, hash: "s1"},
+            %{kind: :code, id: @code_id, hash: "c1"}
+          ],
+          basis: :proposed
+        )
+
+      text = Report.text(Status.derive(scans(), [proposed]))
+      assert text =~ "Proposed (a claim nothing has validated yet)"
+      assert text =~ "implements  code M.add/2 ↔ spec spec.md#Carts/Adding items"
+
+      legacy = relate("s1", "c1")
+      text = Report.text(Status.derive(scans(), [legacy]))
+      assert text =~ "relation status: ok"
+      assert text =~ "  unvalidated: 1"
+      refute text =~ "Unvalidated ("
+
+      strict = Status.derive(scans(), [legacy], [], validated: true)
+      text = Report.text(strict)
+      assert text =~ "relation status: FAILING"
+      assert text =~ "Unvalidated (current, but nothing has validated it)"
+      assert text =~ "implements  code M.add/2 ↔ spec spec.md#Carts/Adding items"
+
+      {json, :ok, _} = strict |> Report.json() |> :json.decode(:ok, %{null: nil})
+
+      assert json["unvalidated"] == [
+               %{
+                 "type" => "implements",
+                 "ends" => [
+                   %{"kind" => "code", "id" => @code_id},
+                   %{"kind" => "spec", "id" => @spec_id}
+                 ]
+               }
+             ]
+    end
+
     test "with no relations, it says so" do
       assert Report.text(Status.derive(scans(), [])) =~ "(no relations)"
     end
@@ -513,8 +599,13 @@ defmodule Surfex.StatusTest do
         Surfex.Golden.render(Report.golden(Status.derive(scans, entries)))
       end
 
-      assert render.([extra | scans("s1", "c3")], [first, second]) ==
-               render.(Enum.reverse([extra | scans("s1", "c3")]), [second, first])
+      golden = render.([extra | scans("s1", "c3")], [first, second])
+      assert golden == render.(Enum.reverse([extra | scans("s1", "c3")]), [second, first])
+
+      # No hashes and no times: only a change of state changes it.
+      for value <- ["s1", "c1", "c2", "c3", "2026-09-28"], do: refute(golden =~ value)
+      assert golden =~ "dangling"
+      assert %{name: "RELATIONS.md"} = Report.golden(Status.derive(scans(), [first]))
     end
   end
 

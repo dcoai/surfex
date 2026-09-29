@@ -104,6 +104,18 @@ defmodule Surfex.StatusTaskTest do
     assert_raise Mix.Error, ~r/does not verify/, fn -> task(root, ["--verify"]) end
   end
 
+  # #76: the relation here was recorded with no basis, as before validation existed.
+  @tag verifies: ["status-report-forms"]
+  test "--validated fails on a relation nothing has validated, and lists it", %{root: root} do
+    task(root, [])
+    assert output() =~ "relation status: ok\n  implements: current 1\n  unvalidated: 1\n"
+
+    assert_raise Mix.Error, ~r/relations need attention/, fn -> task(root, ["--validated"]) end
+
+    assert output() =~
+             "Unvalidated (current, but nothing has validated it):\n  implements  code MyApp.Cart.total/0 ↔ spec spec.md#Totals"
+  end
+
   # #52: the spec can't name what the code doesn't have.
   @tag verifies: ["status-report-forms"]
   test "a citation of nothing is a broken citation, and fails", %{root: root} do

@@ -5,6 +5,7 @@ defmodule Surfex.SuggestTest do
   alias Surfex.{Item, Scan, Status, Suggest}
   alias Surfex.Status.Config
   alias Surfex.Scan.Markdown
+  alias Surfex.Log.Entry
 
   @fixture Path.expand("../fixtures/reference", __DIR__)
   @root Path.join(@fixture, "sources")
@@ -65,14 +66,27 @@ defmodule Surfex.SuggestTest do
     {:ok, entries} = Suggest.accept(first, c.scans, [], @meta)
     assert length(entries) == length(first)
     assert Enum.all?(entries, &(&1.op == :relate and &1.type == :implements))
-    assert Enum.all?(Status.derive(c.scans, entries).relations, &(&1.state == :current))
+    # A citation is a claim, not a validation (§18): each is proposed.
+    assert Enum.all?(Status.derive(c.scans, entries).relations, &(&1.state == :proposed))
     assert candidates(c, entries) == []
   end
 
   @tag verifies: "suggest-never-confirms"
   test "a pair already related in any state is left alone, never re-confirmed", c do
     [one | _] = candidates(c)
-    {:ok, [related]} = Suggest.accept([one], c.scans, [], @meta)
+    {:ok, [accepted]} = Suggest.accept([one], c.scans, [], @meta)
+
+    # Validated, as a review leaves it (§18).
+    related =
+      Entry.new!(
+        at: accepted.at,
+        op: :relate,
+        type: accepted.type,
+        ends: accepted.ends,
+        basis: :review
+      )
+
+    assert [%{state: :current}] = Status.derive(c.scans, [related]).relations
 
     # The item changes: the relation dangles, and suggest must not "fix" it.
     moved =
@@ -84,7 +98,13 @@ defmodule Surfex.SuggestTest do
              Suggest.candidates(c.profile, c.items, moved, [related], @root)
            )
 
-    assert [%{state: :dangling}] = Status.derive(moved, [related]).relations
+    # Accepting everything suggested leaves it dangling: it is never re-confirmed.
+    s = Suggest.all(c.profile, c.items, moved, [related], @root)
+    {:ok, recorded} = Suggest.accept_all(s, moved, [related], @meta)
+    refute Enum.any?(recorded, &(Entry.relation(&1) == Entry.relation(related)))
+    after_accept = Status.derive(moved, [related | recorded]).relations
+    key = Entry.relation(related)
+    assert %{state: :dangling} = Enum.find(after_accept, &(&1.relation == key))
   end
 
   # #37: a citation inside a marked block is about the block's requirement.
@@ -179,7 +199,8 @@ defmodule Surfex.SuggestTest do
 
       {:ok, recorded} = Suggest.accept_all(s, scans, entries, @meta)
       status = Status.derive(scans, entries ++ recorded)
-      assert Enum.frequencies_by(status.relations, & &1.state) == %{current: 2, retired: 1}
+      # The move carries each relation as it was: here, proposed (§18).
+      assert Enum.frequencies_by(status.relations, & &1.state) == %{proposed: 2, retired: 1}
     end
 
     test "a heading renamed and reworded at once is not a move", %{tmp_dir: root} do
@@ -298,6 +319,72 @@ defmodule Surfex.SuggestTest do
 
       assert Suggest.all(profile, items, scans, entries, root) |> Map.values() |> List.flatten() ==
                []
+    end
+
+    @tag verifies: "suggest-refresh"
+    test "a structural relation the source still states is refreshed; a judgement is not", %{
+      tmp_dir: root
+    } do
+      File.write!(Path.join(root, "spec.md"), "# Limits {#limits}\n\n`Wren.max_len/0` is 512.\n")
+
+      item = %Item{
+        kind: :function,
+        name: "max_len/0",
+        parent: "Wren",
+        file: "lib/w.ex",
+        hash: "c1"
+      }
+
+      test_scan = %Scan{
+        kind: :test,
+        id: "WrenTest: the limit",
+        hash: "t1",
+        location: %{file: "test/w_test.exs", lines: {3, 5}},
+        calls: ["Wren.max_len/0"]
+      }
+
+      profile = Config.profile!([sources: ["spec.md"]], "Wren")
+      scans = Markdown.records(root, ["spec.md"]) ++ Scan.code([item]) ++ [test_scan]
+
+      {:ok, accepted} =
+        Suggest.accept_all(Suggest.all(profile, [item], scans, [], root), scans, [], @meta)
+
+      # The implements relation validated, as a review leaves it (§18).
+      entries =
+        Enum.map(accepted, fn
+          %{type: :implements} = e ->
+            Entry.new!(at: e.at, op: e.op, type: e.type, ends: e.ends, basis: :review)
+
+          e ->
+            e
+        end)
+
+      assert Enum.all?(Status.derive(scans, entries).relations, &(&1.state == :current))
+
+      # The code and the test both change; the test still calls the code.
+      changed = %{item | hash: "c2"}
+
+      scans2 =
+        Markdown.records(root, ["spec.md"]) ++ Scan.code([changed]) ++ [%{test_scan | hash: "t2"}]
+
+      s = Suggest.all(profile, [changed], scans2, entries, root)
+
+      assert Enum.map(s.refresh, &{&1.type, &1.from.id, &1.to.id}) == [
+               {:tests, "WrenTest: the limit", "Wren.max_len/0"}
+             ]
+
+      {:ok, recorded} = Suggest.accept_all(s, scans2, entries, @meta)
+      states = Map.new(Status.derive(scans2, entries ++ recorded).relations, &{&1.type, &1.state})
+      # The implements relation dangles on the changed code and is not refreshed: only
+      # evidence or a review settles it.
+      assert states == %{tests: :current, implements: :dangling}
+
+      # A test that no longer calls the code states nothing: no refresh.
+      gone =
+        Markdown.records(root, ["spec.md"]) ++
+          Scan.code([changed]) ++ [%{test_scan | hash: "t2", calls: []}]
+
+      assert Suggest.all(profile, [changed], gone, entries, root).refresh == []
     end
   end
 end

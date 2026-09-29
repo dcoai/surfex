@@ -125,6 +125,10 @@ defmodule Surfex.EvidenceTest do
       finished(pid, file, 9, nil)
       finished(pid, file, 9, {:failed, []})
       finished(pid, file, 4, {:skipped, "no"})
+      finished(pid, file, 4, {:excluded, "no"})
+      finished(pid, file, 4, {:invalid, %ExUnit.TestModule{}})
+      # A test outside `tests:` records nothing.
+      finished(pid, Path.join(root, "other/cart_test.exs"), 4, nil)
       GenServer.cast(pid, {:suite_finished, %{}})
       GenServer.stop(pid)
 
@@ -140,6 +144,15 @@ defmodule Surfex.EvidenceTest do
       assert %{test: "MyApp.CartTest: case #{"\#{n}"}", result: :failed} = generated
       assert generated.run == totals.run
     end
+
+    test "without tests: in .surfex.exs it raises", %{tmp_dir: root} do
+      File.write!(Path.join(root, ".surfex.exs"), ~s([sources: ["spec.md"]]))
+      {:ok, state} = Surfex.ExUnitFormatter.init(surfex_root: root)
+
+      assert_raise ArgumentError, ~r/needs tests: in .surfex.exs/, fn ->
+        Surfex.ExUnitFormatter.handle_cast({:suite_started, []}, state)
+      end
+    end
   end
 
   test "latest/3, claimed?/1 and note/0; require_red! reads the policy" do
@@ -147,7 +160,9 @@ defmodule Surfex.EvidenceTest do
     assert %{result: :passed} = Evidence.latest(evidence, "T: a", "t1")
     assert Evidence.latest(evidence, "T: a", "other") == nil
 
-    assert Evidence.claimed?(%{note: Evidence.note() <> ": T: a@t1 failed at …"})
+    assert Evidence.claimed?(%{basis: :evidence, note: "red then green"})
+    assert Evidence.claimed?(%{basis: nil, note: Evidence.note() <> ": T: a@t1 failed at …"})
+    refute Evidence.claimed?(%{basis: :review, note: "reviewed"})
     refute Evidence.claimed?(%{note: "reviewed by hand"})
     refute Evidence.claimed?(%{note: nil})
 

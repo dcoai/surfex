@@ -106,6 +106,9 @@ defmodule Surfex.ClassesTest do
 
     defp excuses(s), do: s.excuses |> Enum.map(&{&1.from.id, &1.to.id}) |> Enum.sort()
 
+    defp excuses_of(entries),
+      do: for(%{type: :excuses, ends: [%{id: c}, %{id: i}]} <- entries, do: {c, i})
+
     test "the first matching rule excuses what nothing implements", %{tmp_dir: root} do
       {s, _} = suggest(root)
       assert excuses(s) == [{"members", "App.Msg.body"}, {"plumbing", "App.Server.handle_call/3"}]
@@ -122,6 +125,25 @@ defmodule Surfex.ClassesTest do
 
       {s, _} = suggest(root, @config, entries)
       assert excuses(s) == []
+
+      # An excuse is proposed until someone judges the item is what its class says (§18).
+      judge = fn {class, item}, acc ->
+        note = Keyword.put(@meta, :note, "#{item} is #{class}")
+
+        {:ok, e} =
+          Surfex.Record.confirm(
+            scans,
+            entries ++ acc,
+            "class:" <> class,
+            "code:" <> item,
+            :excuses,
+            note
+          )
+
+        acc ++ e
+      end
+
+      entries = entries ++ Enum.reduce(excuses_of(entries), [], judge)
 
       reworded =
         put_in(@config[:classes], [

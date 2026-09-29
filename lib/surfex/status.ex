@@ -66,7 +66,7 @@ defmodule Surfex.Status do
   alias Surfex.Log.Entry
   alias Surfex.Scan
 
-  @type state :: :current | :dangling | :orphaned | :conflicted | :retired | :planned
+  @type state :: :current | :dangling | :orphaned | :conflicted | :retired | :planned | :proposed
   @type relation_status :: %{
           relation: {atom, {atom, String.t()}, {atom, String.t()}},
           type: atom,
@@ -87,6 +87,7 @@ defmodule Surfex.Status do
           unmet: [%{scan: Scan.t(), requires: [atom]}],
           broken: [%{scan: Scan.t(), type: atom, ref: String.t(), reason: term}],
           triangle: [gap],
+          unvalidated: [%{relation: tuple}],
           undeclared: [%{test: String.t(), spec: String.t()}],
           unproven: [%{relation: tuple, test: String.t() | nil, reason: atom}],
           citations: [Surfex.Cite.t()],
@@ -97,7 +98,7 @@ defmodule Surfex.Status do
               reason: :implemented | :unmatched | {:other_class, String.t()}
             }
           ],
-          policy: %{triangle: :report | :fail},
+          policy: %{triangle: :report | :fail, validated: boolean},
           unimplemented: [Scan.t()],
           planned: :allow | :fail,
           scans: %{{atom, String.t()} => Scan.t()}
@@ -111,6 +112,7 @@ defmodule Surfex.Status do
   def derive(scans, entries, require \\ [], opts \\ []) do
     unique!(scans)
     planned = Keyword.get(opts, :planned, :allow)
+    validated = Keyword.get(opts, :validated, false)
     triangle = Keyword.get(opts, :triangle, :report)
 
     unless planned in [:allow, :fail],
@@ -145,7 +147,8 @@ defmodule Surfex.Status do
       stale: stale(scans, relations, Keyword.get(opts, :coverage)),
       unproven: unproven(scans, relations, Keyword.get(opts, :evidence)),
       triangle: triangle(scans, relations),
-      policy: %{triangle: triangle},
+      unvalidated: unvalidated(relations),
+      policy: %{triangle: triangle, validated: validated},
       unimplemented: unimplemented(scans, relations),
       planned: planned,
       scans: by_id
@@ -158,10 +161,11 @@ defmodule Surfex.Status do
   """
   @spec failing?(t) :: boolean
   def failing?(status) do
-    failing = [:dangling, :orphaned, :conflicted]
+    failing = [:dangling, :orphaned, :conflicted, :proposed]
     failing = if status.planned == :fail, do: [:planned | failing], else: failing
 
     status.unmet != [] or status.broken != [] or status.stale != [] or status.citations != [] or
+      (status.policy.validated == true and status.unvalidated != []) or
       status.undeclared != [] or
       status.unproven != [] or
       (status.policy.triangle == :fail and status.triangle != []) or
@@ -234,7 +238,7 @@ defmodule Surfex.Status do
   # without one (planned) and still not scanned is waiting: planned. Once a planned id is
   # scanned it differs from the recorded nil, so the relation dangles on that end until
   # someone confirms it, as with any other change.
-  defp judge_tip(%Entry{ends: ends}, by_id) do
+  defp judge_tip(%Entry{ends: ends, basis: basis}, by_id) do
     looked = Enum.map(ends, &{{&1.kind, &1.id}, &1.hash, Map.get(by_id, {&1.kind, &1.id})})
 
     gone = for {key, hash, nil} <- looked, hash != nil, do: key
@@ -248,11 +252,25 @@ defmodule Surfex.Status do
         {:planned, waiting}
 
       true ->
-        case for({key, hash, scan} <- looked, scan.hash != hash, do: key) do
-          [] -> {:current, []}
-          changed -> {:dangling, changed}
+        changed = for {key, hash, scan} <- looked, scan.hash != hash, do: key
+
+        cond do
+          # A claim nothing has validated (§18): it fails like a dangling relation until
+          # evidence or a review validates it.
+          basis == :proposed -> {:proposed, changed}
+          changed == [] -> {:current, []}
+          true -> {:dangling, changed}
         end
     end
+  end
+
+  # A current implements or verifies relation whose tip has no validating basis (§18): one
+  # recorded before validation existed, or by hand. Reported; failing under `validated:`.
+  defp unvalidated(relations) do
+    for %{type: type, state: :current, tips: [tip], relation: relation} <- relations,
+        type in [:implements, :verifies],
+        tip.basis not in [:evidence, :review, :judgement],
+        do: %{relation: relation}
   end
 
   # A relation is impacted when an end of it depends on something whose dependency
