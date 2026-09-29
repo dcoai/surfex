@@ -161,6 +161,11 @@ defmodule Surfex.LogTest do
 
       assert Enum.map(Log.load(root), & &1.at)
              |> Enum.map(&String.last(String.trim_trailing(&1, "Z"))) == ~w(1 2 3)
+
+      # Entries recorded at one time come in id order, whatever order they were appended.
+      [a, b] = Enum.sort_by([entry(4, note: "a"), entry(4, note: "b")], & &1.id)
+      Log.append(root, [b, a])
+      assert root |> Log.load() |> Enum.take(-2) |> Enum.map(& &1.id) == [a.id, b.id]
     end
 
     test "append without a log says how to make one", %{tmp_dir: root} do
@@ -174,9 +179,23 @@ defmodule Surfex.LogTest do
       Log.append(root, [entry(1), entry(2)])
       Log.break(root)
       Log.append(root, [entry(3), entry(2)])
+      assert Log.dir(root) == Path.join(root, ".surfex")
       assert File.exists?(Path.join(Log.dir(root), "surfex_1.log"))
       assert length(Log.load(root)) == 3
       assert Log.verify(root) == []
+
+      # The new segment's header chains to the closed one: SHA-256 of its sorted ids.
+      previous =
+        [entry(1).id, entry(2).id]
+        |> Enum.sort()
+        |> Enum.join("\n")
+        |> then(&:crypto.hash(:sha256, &1))
+        |> Base.encode16(case: :lower)
+
+      [header | _] =
+        root |> Log.dir() |> Path.join("surfex.log") |> File.read!() |> String.split("\n")
+
+      assert Surfex.Log.Entry.json(header) == %{"segment" => 2, "previous" => previous}
     end
   end
 
