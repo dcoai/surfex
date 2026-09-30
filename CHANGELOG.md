@@ -18,6 +18,12 @@ confirmed by hand.
   the version marked and resolved when the spec changes; `--withdraw` withdraws one.
   Status reports open and orphaned marks in every report, and `--no-marks` fails on them.
   Entries recorded before marks keep their ids.
+- **Change drafts and the hand-off** (§19): `mix surfex.draft [ID…] [--format
+  markdown|json] [--file]` writes up every open mark, unmet id and triangle gap (or the
+  items named) as a draft: the problem, the unit's text, the tests and code it touches, and
+  the process's steps. `process:` in `.surfex.exs` (`:print`, or `{:command, argv}` with
+  `{title}`, `{body}` and `{file}`) is how `--file` hands them to the project's own change
+  process. `mix surfex.mark` prints the new mark's draft.
 
 ### Changed
 

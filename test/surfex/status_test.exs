@@ -805,6 +805,19 @@ defmodule Surfex.StatusTest do
       assert Config.read!(path) == [sources: ["spec.md"]]
     end
 
+    test "status/4 derives the status as mix surfex.status does, with the caller's options",
+         %{tmp_dir: root} do
+      File.cp_r!(Path.expand("../fixtures/elixir_project", __DIR__), root)
+      File.write!(Path.join(root, "spec.md"), "# Carts\n\n`MyApp.Cart.nothing/0` is gone.\n")
+      config = [sources: ["spec.md"], require: [code: [:implements]]]
+
+      status = Config.status(config, root, "MyApp", planned: :fail)
+      assert [%{span: "MyApp.Cart.nothing/0"}] = status.citations
+      assert Enum.any?(status.unmet, &(&1.scan.id == "MyApp.Cart.add/2"))
+      assert status.planned == :fail
+      assert status.relations == []
+    end
+
     test "items/2 and load/3 scan the code once; profile!/2 reads under the namespace",
          %{tmp_dir: root} do
       File.cp_r!(Path.expand("../fixtures/elixir_project", __DIR__), root)

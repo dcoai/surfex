@@ -21,7 +21,17 @@ defmodule Surfex.Status.Config do
   @roles [:section, :block, :test_hint]
 
   # The keys a `.surfex.exs` may hold, besides the profile's (`Surfex.Profile.keys/0`).
-  @own [:scanner, :scanner_opts, :namespace, :goldens, :require, :tests, :triangle, :require_red]
+  @own [
+    :scanner,
+    :scanner_opts,
+    :namespace,
+    :goldens,
+    :require,
+    :tests,
+    :triangle,
+    :require_red,
+    :process
+  ]
 
   # The v0.2 trace's own keys, removed with it in 0.4.0.
   @removed [
@@ -113,6 +123,43 @@ defmodule Surfex.Status.Config do
       flag when is_boolean(flag) -> flag
       other -> raise ArgumentError, "require_red: must be true or false, got #{inspect(other)}"
     end
+  end
+
+  @doc """
+  The `process:` hand-off (§19), validated: `:print` (the default) or `{:command, argv}`
+  with a non-empty list of strings.
+  """
+  @spec process!(keyword) :: :print | {:command, [String.t()]}
+  def process!(config) do
+    case Keyword.get(config, :process, :print) do
+      :print ->
+        :print
+
+      {:command, [_ | _] = argv} = process ->
+        if Enum.all?(argv, &is_binary/1), do: process, else: bad_process(process)
+
+      other ->
+        bad_process(other)
+    end
+  end
+
+  defp bad_process(value),
+    do:
+      raise(
+        ArgumentError,
+        "process: must be :print or {:command, argv} with argv a list of strings, got #{inspect(value)}"
+      )
+
+  @doc """
+  The status of the project at `root` under `config`, as `mix surfex.status` derives it:
+  the scans, the log, the `require:` policy and the options, plus `extra` options. For the
+  tasks that need the whole status, so each derives it the same way.
+  """
+  @spec status(keyword, String.t(), String.t(), keyword) :: Surfex.Status.t()
+  def status(config, root, namespace, extra) do
+    entries = if File.dir?(Surfex.Log.dir(root)), do: Surfex.Log.load(root), else: []
+    {scans, options} = load(config, root, namespace)
+    Surfex.Status.derive(scans, entries, require!(config), extra ++ options)
   end
 
   @doc "The `require:` policy, validated. Raises `ArgumentError` naming what is wrong."

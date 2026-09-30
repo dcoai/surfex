@@ -938,7 +938,7 @@ suggest --accept retires it
 
 `Surfex.Status.Config` reads `.surfex.exs`. It holds the profile keys (§8) and the
 log's own: `scanner`, `scanner_opts`, `namespace`, `goldens` (§10.3), `require`, `tests`,
-`triangle` and `require_red` (§17).
+`triangle`, `require_red` (§17) and `process` (§19).
 - `Surfex.Status.Config.read!/1` reads and validates it. It raises on an unknown key, and
   on a key of the removed trace, saying so (§9). Every task reads its config through
   it, so a misspelt key is never silently ignored.
@@ -959,6 +959,11 @@ log's own: `scanner`, `scanner_opts`, `namespace`, `goldens` (§10.3), `require`
   `Surfex.Cite` under `Surfex.Status.Config.profile!/2`: the config's profile keys
   (`Surfex.Profile.keys/0`) over the Elixir scanner's defaults for `namespace:`, which
   defaults to the project's app name.
+- `Surfex.Status.Config.status/4` derives the whole status as `mix surfex.status` does: the
+  scans, the log, the policy and the options (`load/3`), plus the caller's own options.
+  Every task that needs the status derives it this way.
+- `Surfex.Status.Config.process!/1` validates `process:` (§19): `:print`, the default, or
+  `{:command, argv}` with a non-empty list of strings, and raises on anything else.
 - `Surfex.Status.Config.require!/1` validates the `require:` policy against the known
   kinds, spec roles and types, and raises naming what's wrong.
 
@@ -1355,4 +1360,56 @@ confirm takes one relation and a note, refuses implements, and records a judgeme
 validate needs the verifies relation and green evidence, and records a review; against a
 section it needs the test's current relation to a hint inside it, and records the section's
 implements alone
+```
+
+## 19. Handing off found work {#hand-off}
+
+What Surfex finds is work: a spec unit marked as needing an update (§13.1), an id the
+policy says is unmet, a gap in the triangle. That work is a change to the spec, the tests
+or the code, and **it goes through the change process of the environment Surfex runs
+in**: a tracker, a proposal queue, a pull-request template, a person's inbox. Surfex knows
+no tracker. It drafts, and the environment's process decides.
+
+`Surfex.Change` makes a **change draft** for one piece of found work:
+- a title;
+- the problem: the mark's note, who made it and when; the unmet requirement; or the gap;
+- what it touches: the spec unit (with its location and current text), the tests that
+  verify it and the code that implements it, each with its relation's state;
+- the steps the process implies (§18): spec, failing test, test relation, code, code
+  relation.
+
+`Surfex.Change.drafts/3` gives a draft for every open mark, unmet id and triangle gap of a
+status, or, given ids, for those items: a marked unit's marks, or a draft to change the
+item. `Surfex.Change.markdown/1` renders one for a person; `Surfex.Change.json/1` renders
+a list for tools and agents.
+
+The **hand-off** is the project's own setting, `process:` in `.surfex.exs`
+(`Surfex.Change.hand_off/3`):
+- `:print` (the default): the draft is printed, for a person or an agent to carry into
+  their process;
+- `{:command, argv}`: the command runs once per draft, with `{title}`, `{body}` (the
+  markdown) and `{file}` (a file holding it) substituted into `argv`, and never through a
+  shell. A command that exits non-zero stops the hand-off with its output. The draft is
+  given as arguments, not on standard input: an argument needs no wrapper around the
+  command, and `{file}` serves a command that reads a file.
+
+`Mix.Tasks.Surfex.Draft` is `mix surfex.draft [ID…] [--format markdown|json] [--file]`.
+It prints the drafts and changes nothing. With `--file` it hands each draft to the hook
+instead. Surfex never hands anything off on its own initiative: only `--file` runs the
+hook. `mix surfex.mark` prints the new mark's draft.
+
+Surfex's own `.surfex.exs` hands drafts to this environment's proposal system:
+`{:command, ["glab", "issue", "create", "--label", "Proposal", "--title", "{title}",
+"--description", "{body}"]}`.
+
+```test change-drafts
+a draft is made for each open mark, unmet id and triangle gap, or for a named item, with
+its title, problem, the unit, tests and code it touches, and the process's steps; it
+renders as markdown and JSON
+```
+
+```test change-hand-off
+process: :print prints each draft; {:command, argv} runs once per draft with {title},
+{body} and {file} substituted and no shell; a failing command stops, with its output;
+mix surfex.draft prints unless --file is given
 ```
