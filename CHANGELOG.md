@@ -41,6 +41,8 @@ confirmed by hand.
   `tests` relation whose test still calls the code, or `refines` relation whose block is
   still within its unit, is recorded again. They record facts read from source, so reading
   it again re-establishes them. Judgement relations are never refreshed.
+- Surfex's own relations are all validated by review (§2–§17), and its CI now runs
+  `mix surfex.status --verify --evidence --validated`.
 - Spec §10.4 said `mix surfex.goldens --write` fails after regenerating a drifted golden.
   It never did, and it shouldn't: regenerating is how a drift is resolved. The spec and
   the task's docs now say it succeeds, and a test pins it (#84).
