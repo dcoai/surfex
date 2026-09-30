@@ -77,6 +77,7 @@ defmodule Surfex.ClassesTest do
   end
 
   describe "excuse suggestions" do
+    @describetag verifies: "suggesting"
     @moduletag :tmp_dir
 
     @items [
@@ -189,6 +190,7 @@ defmodule Surfex.ClassesTest do
 
   # #51: an excuse must stay true to its class's rules.
   describe "stale excuses" do
+    @describetag verifies: "status-states"
     alias Surfex.Log.Entry
     alias Surfex.Status.Report
 

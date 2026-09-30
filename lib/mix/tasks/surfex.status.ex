@@ -73,6 +73,17 @@ defmodule Mix.Tasks.Surfex.Status do
     end
 
     if Status.failing?(status), do: Mix.raise("relations need attention (see above)")
+
+    # A floor the maintainer set on the completeness score (§20).
+    min = Config.completeness!(config)
+    report = Surfex.Completeness.report(status)
+
+    if Surfex.Completeness.below?(report, min),
+      do:
+        Mix.raise(
+          "completeness #{report.scores.overall.percent}% is below the minimum, #{min}: " <>
+            "mix surfex.completeness lists what's missing"
+        )
   end
 
   # With --evidence, this run's evidence checks every confirmation by evidence. CI runs it

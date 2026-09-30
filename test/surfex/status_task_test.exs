@@ -116,6 +116,37 @@ defmodule Surfex.StatusTaskTest do
              "Unvalidated (current, but nothing has validated it):\n  implements  code MyApp.Cart.total/0 ↔ spec spec.md#Totals"
   end
 
+  # #74: a score to move, and a floor a project may set.
+  @tag verifies: ["completeness-score", "status-report-forms"]
+  test "below completeness: [min: N] the check fails; mix surfex.completeness reports",
+       %{root: root} do
+    File.write!(
+      Path.join(root, ".surfex.exs"),
+      ~s([sources: ["spec.md"], namespace: "MyApp", completeness: [min: 100]])
+    )
+
+    error = assert_raise Mix.Error, fn -> task(root, []) end
+    assert error.message =~ "completeness 0.0% is below the minimum, 100"
+    assert output() =~ "relation status: ok"
+
+    assert_raise Mix.Error, ~r/below the minimum/, fn -> completeness(root, []) end
+    assert output() =~ "completeness: 0.0%"
+
+    # Without a minimum it only reports, here as JSON for an agent.
+    File.write!(Path.join(root, "open.exs"), ~s([sources: ["spec.md"], namespace: "MyApp"]))
+    completeness(root, ["--format", "json", "--config", "open.exs"])
+    assert %{"scores" => %{"overall" => %{"percent" => _}}} = :json.decode(output())
+  end
+
+  defp completeness(root, args) do
+    File.cd!(root, fn ->
+      Mix.shell(Mix.Shell.Process)
+      Mix.Tasks.Surfex.Completeness.run(args)
+    end)
+  after
+    Mix.shell(Mix.Shell.IO)
+  end
+
   # #52: the spec can't name what the code doesn't have.
   @tag verifies: ["status-report-forms"]
   test "a citation of nothing is a broken citation, and fails", %{root: root} do

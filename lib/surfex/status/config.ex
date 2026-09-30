@@ -30,7 +30,8 @@ defmodule Surfex.Status.Config do
     :tests,
     :triangle,
     :require_red,
-    :process
+    :process,
+    :completeness
   ]
 
   # The v0.2 trace's own keys, removed with it in 0.4.0.
@@ -160,6 +161,25 @@ defmodule Surfex.Status.Config do
     entries = if File.dir?(Surfex.Log.dir(root)), do: Surfex.Log.load(root), else: []
     {scans, options} = load(config, root, namespace)
     Surfex.Status.derive(scans, entries, require!(config), extra ++ options)
+  end
+
+  @doc """
+  The `completeness: [min: N]` floor (§20), a number from 0 to 100, or `nil` with no key.
+  Raises on anything else.
+  """
+  @spec completeness!(keyword) :: number | nil
+  def completeness!(config) do
+    case Keyword.fetch(config, :completeness) do
+      :error ->
+        nil
+
+      {:ok, [min: min]} when is_number(min) and min >= 0 and min <= 100 ->
+        min
+
+      {:ok, other} ->
+        raise ArgumentError,
+              "completeness: must be [min: N] with N from 0 to 100, got #{inspect(other)}"
+    end
   end
 
   @doc "The `require:` policy, validated. Raises `ArgumentError` naming what is wrong."

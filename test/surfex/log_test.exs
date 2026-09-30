@@ -198,6 +198,7 @@ defmodule Surfex.LogTest do
       assert Log.load(root) == []
     end
 
+    @tag verifies: "relation-log"
     test "append then load, ordered by time", %{tmp_dir: root} do
       Log.init(root)
       Log.append(root, [entry(3), entry(1)])

@@ -12,6 +12,7 @@ defmodule Surfex.TestHygieneTest do
 
   @tests Path.expand("..", __DIR__)
 
+  @tag verifies: "policies"
   test "no async test module changes the working directory" do
     offenders =
       for path <- Path.wildcard(Path.join(@tests, "**/*_test.exs")),

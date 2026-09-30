@@ -296,6 +296,13 @@ defmodule Surfex.Scan.Markdown do
 
   defp fail(st, no, why), do: raise(ArgumentError, "#{st.file}:#{no}: #{why}")
 
+  @doc """
+  Whether a spec unit has no text of its own: a heading over subsections, whose version is
+  that of an empty body. Such a unit carries no claims (§20).
+  """
+  @spec empty?(Surfex.Scan.t()) :: boolean
+  def empty?(%Surfex.Scan{kind: :spec, hash: hash}), do: hash == hash([])
+
   # Whitespace carries no meaning in prose: collapse it, so reflowing a paragraph or adding
   # blank lines is not a change.
   defp hash(body) do

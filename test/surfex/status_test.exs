@@ -789,6 +789,7 @@ defmodule Surfex.StatusTest do
 
     alias Surfex.Status.Config
 
+    @tag verifies: "traces"
     test "read!/1 refuses an unknown key, and a key of the removed trace with the reason",
          %{tmp_dir: root} do
       path = Path.join(root, ".surfex.exs")

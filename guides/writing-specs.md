@@ -303,6 +303,13 @@ process: {:command, ["gh", "issue", "create", "--title", "{title}", "--body", "{
 Then `mix surfex.draft --file` hands each draft to it. Without `--file`, nothing leaves
 your terminal.
 
+**See what's missing.** `mix surfex.completeness` scores how much of the project is
+covered: each spec unit verified by a test (and its code validated), each test verifying
+something and exercising code, each code item described or excused, and tested. It lists
+every incomplete item with what it lacks, and `--format json` hands the list to an agent.
+Once a project reaches the score it wants, `completeness: [min: N]` in `.surfex.exs` keeps
+it there: `mix surfex.status` fails below it.
+
 
 ## 8. Code the spec doesn't describe
 

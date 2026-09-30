@@ -6,6 +6,8 @@ defmodule Surfex.Goldens do
 
     * `:status` or `{:status, output}` — the relation status (`Surfex.Status`) as a golden,
       `RELATIONS.md` by default: the committed record of every relation's state
+    * `:completeness` or `{:completeness, output}` — the completeness report (§20) as a
+      golden, `COMPLETENESS.md` by default
     * `{output, module, opts}` — a project golden: `module` implements `Surfex.Surface`,
       and its `c:Surfex.Surface.spec/1` is rendered to `output`
 
@@ -13,10 +15,15 @@ defmodule Surfex.Goldens do
   removed in 0.4.0, and naming it raises with that reason.
   """
 
-  alias Surfex.{Gate, Golden, Log, Status}
+  alias Surfex.{Completeness, Gate, Golden}
   alias Surfex.Status.{Config, Report}
 
-  @type entry :: :status | {:status, String.t()} | {String.t(), module, keyword}
+  @type entry ::
+          :status
+          | {:status, String.t()}
+          | :completeness
+          | {:completeness, String.t()}
+          | {String.t(), module, keyword}
 
   @doc "The validated entries of a `.surfex.exs` config. Raises naming a bad entry."
   @spec entries!(keyword) :: [entry]
@@ -36,7 +43,7 @@ defmodule Surfex.Goldens do
 
     for entry <- entries, not valid?(entry) do
       raise ArgumentError,
-            "goldens entry #{inspect(entry)} is not :status, {:status, output} or {output, module, opts}"
+            "goldens entry #{inspect(entry)} is not :status, :completeness, {:status | :completeness, output} or {output, module, opts}"
     end
 
     outputs = Enum.map(entries, &output/1)
@@ -49,11 +56,15 @@ defmodule Surfex.Goldens do
 
   defp valid?(:status), do: true
   defp valid?({:status, out}), do: is_binary(out)
+  defp valid?(:completeness), do: true
+  defp valid?({:completeness, out}), do: is_binary(out)
   defp valid?({out, mod, opts}), do: is_binary(out) and is_atom(mod) and Keyword.keyword?(opts)
   defp valid?(_), do: false
 
   defp output(:status), do: "RELATIONS.md"
   defp output({:status, out}), do: out
+  defp output(:completeness), do: "COMPLETENESS.md"
+  defp output({:completeness, out}), do: out
   defp output({out, _mod, _opts}), do: out
 
   @doc """
@@ -66,6 +77,8 @@ defmodule Surfex.Goldens do
     Enum.any?(entries, fn
       :status -> Keyword.get(config, :scanner, :elixir) != :elixir
       {:status, _output} -> Keyword.get(config, :scanner, :elixir) != :elixir
+      :completeness -> Keyword.get(config, :scanner, :elixir) != :elixir
+      {:completeness, _output} -> Keyword.get(config, :scanner, :elixir) != :elixir
       {_output, _module, _opts} -> true
     end)
   end
@@ -86,13 +99,27 @@ defmodule Surfex.Goldens do
   # The committed record of the relation status. Its drift is a failure here; whether the
   # relations are healthy is `mix surfex.status`'s question.
   defp run_one({:status, output}, config, root, defaults, command, write?) do
-    entries = if File.dir?(Log.dir(root)), do: Log.load(root), else: []
-    {scans, options} = Config.load(config, root, defaults[:namespace])
-    status = Status.derive(scans, entries, Config.require!(config), options)
+    status = Config.status(config, root, defaults[:namespace], [])
 
     Gate.run(
       Path.join(root, output),
       Golden.render(Report.golden(status, output)),
+      command,
+      write?
+    )
+  end
+
+  defp run_one(:completeness, config, root, defaults, command, write?),
+    do: run_one({:completeness, "COMPLETENESS.md"}, config, root, defaults, command, write?)
+
+  # The committed record of the completeness report (§20). Its drift fails here; whether
+  # the score is high enough is `mix surfex.status`'s question, under `completeness:`.
+  defp run_one({:completeness, output}, config, root, defaults, command, write?) do
+    report = Completeness.report(Config.status(config, root, defaults[:namespace], []))
+
+    Gate.run(
+      Path.join(root, output),
+      Golden.render(Completeness.golden(report, output)),
       command,
       write?
     )
