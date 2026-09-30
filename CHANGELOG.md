@@ -24,6 +24,11 @@ confirmed by hand.
   the process's steps. `process:` in `.surfex.exs` (`:print`, or `{:command, argv}` with
   `{title}`, `{body}` and `{file}`) is how `--file` hands them to the project's own change
   process. `mix surfex.mark` prints the new mark's draft.
+- **Completeness** (§20): `mix surfex.completeness [--format text|json]` scores how much
+  of the spec, the tests and the code is covered by validated relations, per kind and
+  overall, and lists each incomplete item with what it lacks. `completeness: [min: N]`
+  makes `mix surfex.status` fail below a floor, and `:completeness` in `goldens:` commits
+  the report. Surfex scores 100% and holds itself there.
 
 ### Changed
 

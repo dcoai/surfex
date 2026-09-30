@@ -80,6 +80,7 @@ defmodule Surfex.GoldensTest do
   describe "mix surfex.goldens" do
     @describetag verifies: "goldens-task"
 
+    @tag verifies: "purpose"
     test "--write writes every golden, and a check then passes", %{root: root} do
       task(root, ["--write"])
       assert File.read!(Path.join(root, "RELATIONS.md")) =~ "| `code MyApp.Cart` |"
@@ -153,6 +154,7 @@ defmodule Surfex.GoldensTest do
       assert File.read!(Path.join(root, "RELATIONS.md")) =~ "| `code MyApp.Broken.call/0` |"
     end
 
+    @tag verifies: "traces"
     test "a config written for the removed trace says so", %{root: root} do
       config(root, "sources: [\"spec.md\"]", "sources: [\"spec.md\"], output: \"SPEC_TRACE.md\"")
 
@@ -222,6 +224,7 @@ defmodule Surfex.GoldensTest do
       assert Goldens.entries!(sources: ["spec.md"]) == [:status]
     end
 
+    @tag verifies: "traces"
     test "names a malformed entry, and the removed :trace with its reason" do
       assert_raise ArgumentError, ~r/goldens entry "API.md" is not :status/, fn ->
         Goldens.entries!(goldens: ["API.md"])
@@ -238,6 +241,31 @@ defmodule Surfex.GoldensTest do
       assert_raise ArgumentError, ~r/two goldens write \["RELATIONS.md"\]/, fn ->
         Goldens.entries!(goldens: [:status, {"RELATIONS.md", Mod, []}])
       end
+    end
+  end
+
+  # #74: the completeness report as a committed record.
+  describe "the :completeness golden" do
+    @describetag verifies: "goldens-entries"
+
+    test "entries!/1 takes it, and run/6 writes COMPLETENESS.md, then checks it", %{
+      tmp_dir: root
+    } do
+      assert Goldens.entries!(goldens: [:status, :completeness]) == [:status, :completeness]
+
+      assert Goldens.entries!(goldens: [{:completeness, "docs/C.md"}]) == [
+               {:completeness, "docs/C.md"}
+             ]
+
+      config = [sources: ["spec.md"], namespace: "MyApp"]
+      assert Goldens.run([:completeness], config, root, [namespace: "MyApp"], "mix g", true) == []
+
+      assert Goldens.run([:completeness], config, root, [namespace: "MyApp"], "mix g", false) ==
+               []
+
+      golden = File.read!(Path.join(root, "COMPLETENESS.md"))
+      assert golden =~ "# COMPLETENESS.md"
+      assert golden =~ "`code MyApp.Cart`"
     end
   end
 

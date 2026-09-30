@@ -93,7 +93,7 @@ defmodule Surfex.WalkthroughTest do
     )
   end
 
-  @tag verifies: ["recording-by-name", "log-append-only"]
+  @tag verifies: ["recording-by-name", "log-append-only", "surfex"]
   test "relate → dangling → confirm → conflict across branches → resolve", %{root: root} do
     # A structural relation, which a judgement can confirm: code is only ever validated
     # by evidence or a review (§18).
@@ -287,6 +287,7 @@ defmodule Surfex.WalkthroughTest do
     assert Enum.map(relations, & &1["state"]) |> Enum.uniq() == ["current"]
   end
 
+  @tag verifies: "recording"
   test "a planned id that couldn't be the project's is refused", %{root: root} do
     for id <- ["MyAp.Cart.discount/1", "other.md#Totals"] do
       error =
@@ -417,6 +418,7 @@ defmodule Surfex.WalkthroughTest do
 
   # #54: from a hint to current relations, with no confirmation by hand. The evidence is
   # recorded by the real formatter, fed the events ExUnit would send.
+  @tag verifies: ["evidence-confirms", "purpose"]
   test "hint → red test → code → green → confirm --evidence: current, no human confirm",
        %{root: root} do
     File.write!(Path.join(root, "spec.md"), """

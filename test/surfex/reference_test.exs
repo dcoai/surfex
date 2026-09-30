@@ -104,8 +104,11 @@ defmodule Surfex.ReferenceTest do
   end
 
   describe "relating it" do
+    @tag verifies: "suggesting"
     test "a class excuses by kind and name, and parent_cited covers a member", c do
-      assert c.suggestions.excuses |> Enum.map(&{&1.from.id, &1.to.id}) |> Enum.sort() == [
+      suggestions = Suggest.all(c.profile, c.items, c.scans, [], c.root)
+
+      assert suggestions.excuses |> Enum.map(&{&1.from.id, &1.to.id}) |> Enum.sort() == [
                {"internal constants", "WREN_BUCKETS"},
                {"internal constants", "wren_twin (impl_const)"},
                {"locking", "wren_lock"},
@@ -114,6 +117,7 @@ defmodule Surfex.ReferenceTest do
              ]
     end
 
+    @tag verifies: "status-states"
     test "status: what nothing implements or excuses is unmet, and broken citations fail", c do
       {:ok, entries} = Suggest.accept_all(c.suggestions, c.scans, [], @meta)
       citations = Config.broken_citations(c.config, c.items, c.root, nil)

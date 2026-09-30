@@ -46,6 +46,11 @@ How precisely Surfex can relate a spec depends on how the spec is written.
 - **Loud over silent.** Configuration that cannot be right (an unknown key, a pattern
   that matches nothing, a scan that found nothing) raises before anything renders. A
   misconfigured check must never pass.
+- **Published text is prose.** The spec, the README and the guides never carry script
+  text outside a code fence: a scripted edit that writes its own source into them is
+  caught by the tests, not by a reader (#83).
+- **The test suite can't race itself.** The working directory belongs to the whole VM, so
+  a test module that changes it doesn't run async.
 
 ## 2. Surface goldens {#goldens}
 
@@ -489,6 +494,9 @@ Each entry is one of:
 - `:status` or `{:status, output}`: the relation status as a golden (§13.3),
   `RELATIONS.md` by default. Its drift fails here; whether the relations are healthy is
   `mix surfex.status`'s question.
+- `:completeness` or `{:completeness, output}`: the completeness report as a golden (§20),
+  `COMPLETENESS.md` by default. Its drift fails here; whether the project is complete
+  enough is `mix surfex.status`'s question, under `completeness: [min: N]`.
 - `{output, module, opts}`: a `Surfex.Surface`
 
 With no key, the list is `[:status]`.
@@ -938,7 +946,7 @@ suggest --accept retires it
 
 `Surfex.Status.Config` reads `.surfex.exs`. It holds the profile keys (§8) and the
 log's own: `scanner`, `scanner_opts`, `namespace`, `goldens` (§10.3), `require`, `tests`,
-`triangle`, `require_red` (§17) and `process` (§19).
+`triangle`, `require_red` (§17), `process` (§19) and `completeness` (§20).
 - `Surfex.Status.Config.read!/1` reads and validates it. It raises on an unknown key, and
   on a key of the removed trace, saying so (§9). Every task reads its config through
   it, so a misspelt key is never silently ignored.
@@ -1015,6 +1023,8 @@ the code is scanned once, and citations are read under the config's profile
   lists them
 - `--no-marks` fails on any open or orphaned mark as well (`marks: :fail`), for a release
   that must not ship with a known spec problem
+- with `completeness: [min: N]` in `.surfex.exs`, it fails when the overall completeness
+  score (§20) is below `N`, printing the score
 - it fails when the status is failing, or the log doesn't verify
 - it compiles the project first only when `.surfex.exs` names a project scanner
 
@@ -1412,4 +1422,55 @@ renders as markdown and JSON
 process: :print prints each draft; {:command, argv} runs once per draft with {title},
 {body} and {file} substituted and no shell; a failing command stops, with its output;
 mix surfex.draft prints unless --file is given
+```
+
+## 20. Completeness {#completeness}
+
+Status answers whether anything is broken. Completeness answers **how much of the project
+is covered**: which spec units, tests and code are missing a relation they need, and a
+score to move. `Surfex.Completeness.report/1` (`Surfex.Completeness`) derives it from a status, and it is a pure
+function of the scans and the log.
+
+**What counts.** Every spec unit with text of its own (a section, marked block or test
+hint whose own body isn't empty, `Surfex.Scan.Markdown.empty?/1`; a heading over
+subsections carries no claims), every
+test, and every code item. What's complete is judged on **validated** relations (§18):
+complete means validated, not asserted.
+
+| Kind | Complete when | Missing, as listed |
+|---|---|---|
+| spec unit | a test verifies it, or a unit inside it, by a current, validated relation; and every `implements` relation to it is current and validated. A unit no code implements (a policy, say) is complete with its test alone: every unit needs a test, and code only where the spec describes code | `no_relation` (in none), `no_test`, `unvalidated` |
+| test | it verifies a spec unit by a current, validated relation, and exercises code (a current `tests` relation). A test verifying only units no code implements is complete with its `verifies` alone | `no_relation`, `verifies_nothing`, `exercises_nothing` |
+| code | it implements a unit by a current, validated relation, or is excused by a current `excuses` relation; and, when implemented, a test verifying the unit exercises it (no `code_untested` gap, §13.1) | `no_relation`, `not_described` (neither implemented nor excused), `unvalidated`, `untested` |
+
+**The score** is complete items over all items, per kind and overall (every item weighted
+the same), as a percentage to one decimal with the counts. With nothing to count, a kind
+scores 100.
+
+- `Surfex.Completeness.text/1`: the scores, then each incomplete item with what it lacks
+  and where it is.
+- `Surfex.Completeness.json/1`: the work list for an agent: the scores, and each
+  incomplete item with its kind, id, what it lacks and its location.
+- `Surfex.Completeness.golden/2`: the report as a golden, `COMPLETENESS.md` by default, for
+  `goldens:` (§10.3). It holds counts and lists, with no hashes and no times.
+- `Surfex.Status.Config.completeness!/1` reads `completeness: [min: N]` (a number from 0
+  to 100; no key, no minimum), raising on anything else. It is the maintainer's intent,
+  and loud: below it (`Surfex.Completeness.below?/2`), `mix surfex.status` fails with the
+  score. Off by default, since the score is information first.
+
+`Mix.Tasks.Surfex.Completeness` is `mix surfex.completeness [--format text|json]`. It prints
+the report, and fails below `completeness: [min: N]`.
+
+```test completeness-rules
+a spec unit is complete when a validated test verifies it (or a unit inside it) and any
+implementing code is validated, with a test alone for a unit no code implements; a
+heading-only section isn't counted; a test is complete verifying and exercising code, or
+verifying only code-less units; code is complete when validated and exercised, or
+excused; each incomplete item names what it lacks
+```
+
+```test completeness-score
+the score is complete over all per kind and overall, to one decimal, 100 with nothing to
+count; it reads as text, JSON and a golden with no hashes or times; below completeness:
+[min: N] the status check fails
 ```

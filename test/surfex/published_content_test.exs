@@ -17,6 +17,7 @@ defmodule Surfex.PublishedContentTest do
 
   @published ~w(lib/**/* guides/**/* test/**/* spec.md README.md CHANGELOG.md RELEASING.md mix.exs .surfex.exs RELATIONS.md)
 
+  @tag verifies: "policies"
   test "no published file carries another project's material" do
     files =
       @published
@@ -41,6 +42,7 @@ defmodule Surfex.PublishedContentTest do
   @markdown ~w(spec.md README.md CHANGELOG.md RELEASING.md guides/**/*.md)
   @residue [~r/^\s*\|> /, ~r/~S("""|''')/, ~r/"""\)/]
 
+  @tag verifies: "policies"
   test "no published Markdown carries script residue outside a fence" do
     files = Enum.flat_map(@markdown, &Path.wildcard(Path.join(@root, &1)))
     assert length(files) > 4

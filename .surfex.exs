@@ -8,9 +8,12 @@
 #   * the spec/test/code triangle is closed (triangle: :fail): every section something
 #     implements is verified by a test, and that test exercises the implementing code
 #
-# `mix surfex.goldens` gates RELATIONS.md, the relation status as a committed record.
+# `mix surfex.goldens` gates RELATIONS.md, the relation status as a committed record, and
+# COMPLETENESS.md, the completeness report.
 [
-  goldens: [:status],
+  goldens: [:status, :completeness],
+  # Every spec unit, test and code item stays covered by validated relations (§20).
+  completeness: [min: 100],
   require: [code: [:implements], test_hint: [:verifies]],
   tests: ["test/*_test.exs", "test/surfex/*_test.exs"],
   triangle: :fail,
