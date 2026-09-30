@@ -119,6 +119,56 @@ defmodule Surfex.RecordTest do
     assert msg =~ "no implements relation"
   end
 
+  # #73: the tests reflect the spec and the code passes them, but the result is wrong.
+  describe "mark and withdraw" do
+    @describetag verifies: "mark-recorded"
+
+    @note [note: "adding is too slow in use"]
+
+    test "mark records one needs_update mark at the unit's current version, with a note" do
+      {:ok, [m]} = Record.mark(scans(), [], @spec_id, :needs_update, @meta ++ @note)
+
+      assert %Entry{op: :mark, type: :needs_update, by: "tester", parents: []} = m
+      assert m.ends == [%{kind: :spec, id: @spec_id, hash: "s1"}]
+      assert m.note == "adding is too slow in use"
+      assert Record.history([m], @spec_id) == [m]
+
+      assert {:error, "a note is required" <> _} =
+               Record.mark(scans(), [], @spec_id, :needs_update, @meta)
+
+      assert {:error, "M.add/2 is not a spec unit" <> _} =
+               Record.mark(scans(), [], @code_id, :needs_update, @meta ++ @note)
+
+      assert {:error, "spec.md#gone is not scanned" <> _} =
+               Record.mark(scans(), [], "spec.md#gone", :needs_update, @meta ++ @note)
+    end
+
+    test "withdraw retires the open mark, naming it when there are several" do
+      {:ok, [a]} = Record.mark(scans(), [], @spec_id, :needs_update, @meta ++ @note)
+      why = later(@meta, 1) ++ [note: "measured again: it is fast enough"]
+
+      {:ok, [w]} = Record.withdraw(scans(), [a], @spec_id, :needs_update, why)
+      assert %Entry{op: :retire, type: :needs_update, parents: [parent]} = w
+      assert parent == a.id
+      assert Status.derive(scans(), [a, w]).marks == []
+
+      assert {:error, "no open needs_update mark on spec.md#Carts/Adding items"} =
+               Record.withdraw(scans(), [a, w], @spec_id, :needs_update, why)
+
+      {:ok, [b]} = Record.mark(scans(), [a], @spec_id, :needs_update, later(@meta, 2) ++ @note)
+
+      assert {:error, "2 open needs_update marks on " <> _} =
+               Record.withdraw(scans(), [a, b], @spec_id, :needs_update, why)
+
+      pick = why ++ [pick: String.slice(b.id, 0, 8)]
+      {:ok, [w2]} = Record.withdraw(scans(), [a, b], @spec_id, :needs_update, pick)
+      assert w2.parents == [b.id]
+
+      assert {:error, "a note is required" <> _} =
+               Record.withdraw(scans(), [a], @spec_id, :needs_update, later(@meta, 1))
+    end
+  end
+
   describe "resolve" do
     setup do
       {:ok, [base]} = Record.relate(scans(), [], @code_id, "M.helper/1", :depends_on, @meta)

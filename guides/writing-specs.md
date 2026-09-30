@@ -270,6 +270,25 @@ a test weakened to pass dangles its relations too. In CI, `mix surfex.status --v
 --evidence` checks every confirmation by evidence against CI's own run, and records
 nothing. Once the backlog is done, add `--validated`, so CI also fails on any relation
 current without validation.
+**When the spec itself is wrong.** Sometimes the tests reflect the spec, the code passes
+them, and the result is still not right: a price that ignores discounts, a screen that
+reads oddly, a limit that turns out too tight in use. That isn't a failing test or a bug
+in the code; it's the spec that needs to change. Don't patch the code around it, since
+the code does what the spec says. Mark the unit instead:
+
+```
+mix surfex.mark spec.md#totals --needs-update \
+  --note "totals ignore discounts: a customer sees the undiscounted price"
+```
+
+The mark is recorded at the unit's current version, with the note saying what is wrong,
+and `mix surfex.status` reports it (in JSON too, for an agent). It is work for your change
+process: take it there. When the spec is rewritten, the mark is resolved, and the process
+runs again from the spec: its relations dangle, the tests change first, then the code.
+`mix surfex.history` keeps the mark, so the log records why the spec changed. If a mark
+proves unfounded, withdraw it with `--withdraw` and a note. A release that must not ship
+with a known spec problem runs `mix surfex.status --no-marks`.
+
 
 ## 8. Code the spec doesn't describe
 
@@ -318,8 +337,9 @@ only way through. An agent working in it should:
   checked against what. It is the record of the work.
 - **When a relation doesn't hold, change something.** If the test doesn't reflect the
   spec, fix the test. If the code fails the test, fix the code. If the spec is wrong,
-  that's a change to the spec, made through the project's own change process. Never
-  confirm a relation to make it go away.
+  mark the unit (`mix surfex.mark … --needs-update`, §7) and take it to the project's own
+  change process; don't bend the code around it. Never confirm a relation to make it go
+  away.
 - **Read the work list.** `mix surfex.status --format json` gives every relation needing
   attention, which end changed and where both ends are. Give the agent the section, not
   just the file.

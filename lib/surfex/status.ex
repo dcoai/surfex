@@ -98,7 +98,19 @@ defmodule Surfex.Status do
               reason: :implemented | :unmatched | {:other_class, String.t()}
             }
           ],
-          policy: %{triangle: :report | :fail, validated: boolean},
+          marks: [
+            %{
+              id: String.t(),
+              state: :open | :orphaned,
+              type: atom,
+              unit: String.t(),
+              note: String.t() | nil,
+              by: String.t() | nil,
+              at: String.t(),
+              location: map | nil
+            }
+          ],
+          policy: %{triangle: :report | :fail, validated: boolean, marks: :allow | :fail},
           unimplemented: [Scan.t()],
           planned: :allow | :fail,
           scans: %{{atom, String.t()} => Scan.t()}
@@ -121,7 +133,15 @@ defmodule Surfex.Status do
     unless triangle in [:report, :fail],
       do: raise(ArgumentError, "triangle: must be :report or :fail, got #{inspect(triangle)}")
 
+    marks_policy = Keyword.get(opts, :marks, :allow)
+
+    unless marks_policy in [:allow, :fail],
+      do: raise(ArgumentError, "marks: must be :allow or :fail, got #{inspect(marks_policy)}")
+
     by_id = Map.new(scans, &{{&1.kind, &1.id}, &1})
+
+    # A mark is not a relation (§12.1): the relations are judged without them.
+    {mark_entries, entries} = Enum.split_with(entries, &Entry.mark?/1)
 
     relations =
       entries
@@ -148,7 +168,8 @@ defmodule Surfex.Status do
       unproven: unproven(scans, relations, Keyword.get(opts, :evidence)),
       triangle: triangle(scans, relations),
       unvalidated: unvalidated(relations),
-      policy: %{triangle: triangle, validated: validated},
+      marks: marks(mark_entries, by_id),
+      policy: %{triangle: triangle, validated: validated, marks: marks_policy},
       unimplemented: unimplemented(scans, relations),
       planned: planned,
       scans: by_id
@@ -157,7 +178,8 @@ defmodule Surfex.Status do
 
   @doc """
   Whether the status fails the check: any dangling, orphaned, conflicted or unmet, and any
-  planned relation when it was derived with `planned: :fail`.
+  planned relation when it was derived with `planned: :fail`, any open or orphaned mark
+  with `marks: :fail`.
   """
   @spec failing?(t) :: boolean
   def failing?(status) do
@@ -169,8 +191,40 @@ defmodule Surfex.Status do
       status.undeclared != [] or
       status.unproven != [] or
       (status.policy.triangle == :fail and status.triangle != []) or
+      (status.policy.marks == :fail and status.marks != []) or
       Enum.any?(status.relations, &(&1.state in failing))
   end
+
+  # The marks still standing (§13.1): open while the unit is at the version marked,
+  # orphaned once it isn't scanned. A resolved mark (the unit moved) and a withdrawn one (a
+  # retire names it) are history, not status.
+  defp marks(entries, by_id) do
+    withdrawn =
+      for %Entry{op: :retire} = e <- entries, id <- e.parents, into: MapSet.new(), do: id
+
+    for %Entry{op: :mark, ends: [unit]} = m <- entries,
+        not MapSet.member?(withdrawn, m.id),
+        # A generator, not `scan = …`: a `nil` scan (orphaned) must not filter the mark out.
+        scan <- [Map.get(by_id, {:spec, unit.id})],
+        state = mark_state(scan, unit),
+        state != :resolved do
+      %{
+        id: m.id,
+        state: state,
+        type: m.type,
+        unit: unit.id,
+        note: m.note,
+        by: m.by,
+        at: m.at,
+        location: scan && scan.location
+      }
+    end
+    |> Enum.sort_by(&{&1.unit, &1.at, &1.id})
+  end
+
+  defp mark_state(nil, _unit), do: :orphaned
+  defp mark_state(%Scan{hash: hash}, %{hash: hash}), do: :open
+  defp mark_state(_scan, _unit), do: :resolved
 
   @doc """
   Counts per relation type and state, plus the new and unmet totals: the summary a person

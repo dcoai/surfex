@@ -88,6 +88,12 @@ defmodule Surfex.Record.Mix do
 
   def record(_root, {:error, why}), do: Mix.raise(why)
 
+  # A mark has one end (§12.1).
+  def describe(%Entry{ends: [unit]} = e) do
+    note = if e.note, do: " — #{e.note}", else: ""
+    "#{e.op} #{e.type}  #{end_text(unit)}  [#{String.slice(e.id, 0, 12)}]#{note}"
+  end
+
   def describe(%Entry{} = e) do
     [a, b] = e.ends
     arrow = if e.type in Entry.directed(), do: "→", else: "↔"

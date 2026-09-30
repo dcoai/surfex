@@ -78,6 +78,7 @@ defmodule Surfex.Status.Report do
         status,
         &(status.policy.validated and &1.relation in unvalidated_relations)
       ),
+      items("Marked (the spec needs an update)", status.marks, &mark_text/1),
       items("Undeclared (a test no longer declares what it verifies)", status.undeclared, fn u ->
         "verifies  test #{u.test} → spec #{u.spec}"
       end),
@@ -160,6 +161,19 @@ defmodule Surfex.Status.Report do
           }
         end),
       "undeclared" => Enum.map(status.undeclared, &%{"test" => &1.test, "spec" => &1.spec}),
+      "marks" =>
+        Enum.map(status.marks, fn m ->
+          %{
+            "id" => m.id,
+            "type" => Atom.to_string(m.type),
+            "unit" => m.unit,
+            "state" => Atom.to_string(m.state),
+            "note" => m.note,
+            "by" => m.by,
+            "at" => m.at,
+            "location" => m.location && location_json(m.location)
+          }
+        end),
       "unvalidated" =>
         Enum.map(status.unvalidated, fn %{relation: {type, {ak, a}, {bk, b}}} ->
           %{
@@ -238,6 +252,7 @@ defmodule Surfex.Status.Report do
           {"broken", length(status.broken)},
           {"stale", length(status.stale)},
           {"undeclared", length(status.undeclared)},
+          {"marks", length(status.marks)},
           {"broken citations", length(status.citations)},
           {"triangle gaps", length(status.triangle)}
         ]),
@@ -265,6 +280,13 @@ defmodule Surfex.Status.Report do
             %{
               "Item" => {:code, c.span},
               "Cited at" => {:raw, "`#{c.file}` · #{c.section}: #{citation_text(c)}"}
+            }
+          end) ++
+          id_group.("marks", ["Item", "State", "Note"], status.marks, fn m ->
+            %{
+              "Item" => {:code, "spec #{m.unit}"},
+              "State" => Atom.to_string(m.state),
+              "Note" => {:raw, m.note || ""}
             }
           end) ++
           id_group.("undeclared", ["Item", "Verified"], status.undeclared, fn u ->
@@ -385,6 +407,12 @@ defmodule Surfex.Status.Report do
       "#{kind} #{id} (#{String.replace(Atom.to_string(role), "_", " ")} in #{within})#{at(scan)}"
 
   defp unit_text(scan), do: "#{scan.kind} #{scan.id}#{at(scan)}"
+
+  # An open mark: the unit, where it is, what's wrong and who said so when.
+  defp mark_text(%{state: :orphaned} = m),
+    do: "spec #{m.unit} (no longer scanned): #{m.note} (#{m.by}, #{m.at})"
+
+  defp mark_text(m), do: "spec #{m.unit}#{at(m)}: #{m.note} (#{m.by}, #{m.at})"
 
   defp at(%{location: %{file: file, lines: {first, last}}}), do: " (#{file}:#{first}-#{last})"
   defp at(%{location: %{file: file}}), do: " (#{file})"

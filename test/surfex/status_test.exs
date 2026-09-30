@@ -379,6 +379,100 @@ defmodule Surfex.StatusTest do
     end
   end
 
+  # #73: the spec itself needs to change.
+  describe "marks" do
+    @describetag verifies: "mark-states"
+
+    defp mark(hash, extra \\ []) do
+      Entry.new!(
+        [
+          at: "2026-09-28T10:00:00Z",
+          op: :mark,
+          type: :needs_update,
+          ends: [%{kind: :spec, id: @spec_id, hash: hash}],
+          note: "adding is too slow in use",
+          by: "tester"
+        ] ++ extra
+      )
+    end
+
+    defp withdraw(mark),
+      do:
+        Entry.new!(
+          at: "2026-09-28T11:00:00Z",
+          op: :retire,
+          type: :needs_update,
+          ends: mark.ends,
+          parents: [mark.id],
+          note: "unfounded"
+        )
+
+    test "open at the marked version, resolved when the unit changes, withdrawn, orphaned" do
+      m = mark("s1")
+
+      assert [%{state: :open, unit: @spec_id, id: id, note: "adding is too slow in use"}] =
+               Status.derive(scans(), [relate("s1", "c1"), m]).marks
+
+      assert id == m.id
+      # The spec changed: the mark is resolved, and no longer reported.
+      assert Status.derive(scans("s2", "c1"), [m]).marks == []
+      assert Status.derive(scans(), [m, withdraw(m)]).marks == []
+      assert [%{state: :orphaned}] = Status.derive([scan(:code, @code_id, "c1")], [m]).marks
+
+      # A mark is not a relation: it adds none, and the unit it names is still new.
+      status = Status.derive(scans(), [m])
+      assert status.relations == []
+      assert Enum.any?(status.new, &(&1.id == @spec_id))
+    end
+
+    test "each mark is its own: two on one unit, one withdrawn, leaves the other open" do
+      a = mark("s1")
+      b = mark("s1", note: "and it reads oddly", at: "2026-09-28T10:30:00Z")
+      assert [%{id: id}] = Status.derive(scans(), [a, b, withdraw(a)]).marks
+      assert id == b.id
+    end
+
+    test "marks don't fail by default; marks: :fail fails on open and orphaned ones" do
+      m = mark("s1")
+      refute Status.failing?(Status.derive(scans(), [relate("s1", "c1"), m]))
+      assert Status.failing?(Status.derive(scans(), [relate("s1", "c1"), m], [], marks: :fail))
+
+      assert Status.failing?(Status.derive([scan(:code, @code_id, "c1")], [m], [], marks: :fail))
+
+      refute Status.failing?(Status.derive(scans("s2", "c1"), [m], [], marks: :fail))
+
+      assert_raise ArgumentError, ~r/marks: must be :allow or :fail/, fn ->
+        Status.derive(scans(), [m], [], marks: :loud)
+      end
+    end
+
+    @tag verifies: "status-report-forms"
+    test "all three reports show open marks" do
+      status = Status.derive(scans(), [relate("s1", "c1"), mark("s1")])
+
+      assert Report.text(status) =~
+               "Marked (the spec needs an update):\n  spec #{@spec_id} (f:1-2): adding is too slow in use (tester, 2026-09-28T10:00:00Z)"
+
+      {json, :ok, _} = status |> Report.json() |> :json.decode(:ok, %{null: nil})
+
+      assert [
+               %{
+                 "unit" => @spec_id,
+                 "state" => "open",
+                 "note" => "adding is too slow in use",
+                 "by" => "tester",
+                 "at" => "2026-09-28T10:00:00Z",
+                 "location" => %{"file" => "f", "lines" => [1, 2]}
+               }
+             ] = json["marks"]
+
+      golden = status |> Report.golden() |> Surfex.Golden.render()
+      assert golden =~ "## marks"
+      assert golden =~ "adding is too slow in use"
+      refute golden =~ "2026-09-28"
+    end
+  end
+
   @tag verifies: ["status-pure", "status-failing"]
   test "failing: each failing state, and nothing else by default; planned: :fail and validated: true add theirs" do
     ok = relate("s1", "c1")

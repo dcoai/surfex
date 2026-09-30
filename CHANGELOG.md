@@ -10,6 +10,15 @@ All notable changes to Surfex are recorded here, following
 release it merely follows. The next release is a **minor** one: code can no longer be
 confirmed by hand.
 
+### Added
+
+- **Needs-update marks** (§12.1, §13.1, §14): `mix surfex.mark SPEC_UNIT --needs-update
+  --note N` records that a spec unit itself needs to change, because the tests reflect it
+  and the code passes them but the result is wrong. A mark is open while the unit is at
+  the version marked and resolved when the spec changes; `--withdraw` withdraws one.
+  Status reports open and orphaned marks in every report, and `--no-marks` fails on them.
+  Entries recorded before marks keep their ids.
+
 ### Changed
 
 - **A relation is validated by the process, never asserted** (§18).

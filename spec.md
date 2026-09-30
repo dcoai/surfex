@@ -709,13 +709,17 @@ only state surfex keeps. Scanners never read or write it (§11).
 | `at` | when it was recorded, UTC ISO 8601: orders the history |
 | `commit` | HEAD when it was recorded: context only, since squash merges can make it unreachable |
 | `parents` | the entry ids it follows for the same relation; two means it resolves a fork |
-| `op` | `relate` or `retire` (`Surfex.Log.Entry.ops/0`) |
-| `type` | `implements`, `refines`, `depends_on`, `tests`, `verifies` (a test verifies a spec unit) or `excuses` (`Surfex.Log.Entry.types/0`) |
-| `ends` | two `{kind, id, hash}`, of the kinds `Surfex.Log.Entry.kinds/0` lists. A `null` hash is a **planned** end: an id that didn't exist when the relation was recorded (§14). At most one end is planned. |
+| `op` | `relate`, `retire` or `mark` (`Surfex.Log.Entry.ops/0`) |
+| `type` | a relation's: `implements`, `refines`, `depends_on`, `tests`, `verifies` (a test verifies a spec unit) or `excuses` (`Surfex.Log.Entry.types/0`); or a mark's: `needs_update` (`Surfex.Log.Entry.mark_types/0`) |
+| `ends` | a relation's two `{kind, id, hash}`, of the kinds `Surfex.Log.Entry.kinds/0` lists. A `null` hash is a **planned** end: an id that didn't exist when the relation was recorded (§14). At most one end is planned. A mark's one end: the spec unit, at its hash |
 | `by` | who recorded it |
 | `note` | why, optionally |
 | `basis` | how the entry validates the relation (§18): `evidence`, `review`, `judgement` or `proposed` (`Surfex.Log.Entry.bases/0`); absent when it validates nothing, which keeps every older entry's canonical line and id |
 
+- **A mark** is a statement about one spec unit, not a relation: `op: mark`, type
+  `needs_update`, one `spec` end at the unit's version, and a note (required) saying what is
+  wrong in the result. A `retire` of the same type and end, naming the mark as its parent,
+  withdraws it. `Surfex.Log.Entry.mark?/1` tells a mark's entries from a relation's.
 - **A relation is its type and its two ends' kinds and ids** (`Surfex.Log.Entry.relation/1`).
   For the undirected types (`implements`, `excuses`), ends are sorted, so A↔B and B↔A are
   one relation. The directed types (`Surfex.Log.Entry.directed/0`: `depends_on`,
@@ -731,6 +735,11 @@ only state surfex keeps. Scanners never read or write it (§11).
   edited. `Surfex.Log.Entry.decode!/1` raises instead. Text that is not JSON at all always
   raises, since the file is then corrupt. `Surfex.Log.Entry.json/1` reads one JSON value
   with `null` as `nil`.
+
+```test mark-entry
+a mark is one spec end with op mark and type needs_update, refused with two ends or a
+non-spec end; entries recorded before marks existed keep their lines and ids
+```
 
 ```test entry-tamper
 an entry whose line is edited no longer decodes under its id,
@@ -842,6 +851,13 @@ other entry of it names as a parent (`Surfex.Status.tips/2`).
   validating basis (`evidence`, `review` or `judgement`, §18), such as one recorded before
   validation existed. It is reported, and fails the check only when the status is derived
   with `validated: true` (`mix surfex.status --validated`).
+- **Marks** (§14): a `needs_update` mark says the spec unit itself needs to change: the
+  tests reflect it and the code passes them, but the result is wrong or clearly
+  sub-optimal. Each mark is **open** while the unit is at the version it recorded,
+  **resolved** once the unit's version moves (the spec changed, and the process starts
+  over from it), **withdrawn** when a retire names it, and **orphaned** when the unit is
+  no longer scanned. Open and orphaned marks are reported (`Surfex.Status.derive/4`'s
+  `marks`); resolved and withdrawn ones live on in the history.
 - **Stale:** a live `excuses` relation whose code item its class no longer covers,
   judged by `Surfex.Coverage.verdict/3` as the suggestion was (§15). The item may now be
   implemented, no rule of any class may match it, or another class's rule may match it
@@ -856,7 +872,9 @@ retired, impacted, planned, unimplemented and unvalidated don't fail on their ow
 status derived with `planned: :fail` (`Surfex.Status.derive/4`) fails on any planned
 relation too: the check that everything planned has been built, such as a release's. One
 derived with `validated: true` fails on any unvalidated relation: the check that every
-relation was validated by the process (§18).
+relation was validated by the process (§18). Marks don't fail on their own either: a known
+spec problem is backlog, not a broken build. One derived with `marks: :fail` fails on any
+open or orphaned mark: the check that nothing ships with a known spec problem.
 
 **The triangle.** A spec unit, its tests and its code relate three ways: the code
 `implements` the unit, a test `verifies` the unit, and the test `tests` the code. When
@@ -892,6 +910,12 @@ validated or confirmed it is current
 given a spec unit something implements:
 no verifying test, a verifying test that calls none of its code, and implementing
 code no verifying test calls are each reported, naming the test or the code
+```
+
+```test mark-states
+a mark is open while its unit is at the marked version, resolved when the unit changes,
+withdrawn by a retire naming it, and orphaned when the unit is gone; open and orphaned
+marks are reported and fail only under marks: :fail
 ```
 
 ```test status-failing
@@ -949,15 +973,16 @@ the code is scanned once, and citations are read under the config's profile
 - `Surfex.Status.Report.text/1`: the verdict, the counts per type and the spec units by
   role. Then each dangling, orphaned, conflicted, proposed, impacted and planned relation,
   the unimplemented, new and unmet ids, the broken citations, the unproven confirmations,
-  the undeclared relations, the stale excuses, the broken declarations and the triangle's
-  gaps, with locations. A block or hint in a list says what it sits in. Unvalidated
+  the undeclared relations, the stale excuses, the broken declarations, the triangle's
+  gaps and the open and orphaned marks (with their notes, who and when), with locations. A block or hint in a list says what it sits in. Unvalidated
   relations (§18) are counted; they are listed only when the status is derived with
   `validated: true`, where they fail, since a project moving over has many.
 - `Surfex.Status.Report.golden/2` (`Surfex.Status.Report.golden/1` writes `RELATIONS.md`):
   the status as a golden to commit. It has a table per relation type (end, other end,
   state, the ends that changed or are planned), then the unimplemented, new and unmet
   ids, the broken citations (by section, not line), the stale excuses, the broken
-  declarations and the triangle's gaps, with the spec units by role among its stats. It holds no hashes and no times, so it changes when a relation's
+  declarations, the triangle's gaps and the open and orphaned marks (unit, state, note), with
+  the spec units by role among its stats. It holds no hashes and no times, so it changes when a relation's
   state changes, not on every confirmation. It's a pure function of the scans and the
   log, so a merge conflict in it is resolved by regenerating. It leaves unproven
   confirmations out, since they depend on the last test run, not on the source or the log,
@@ -968,7 +993,8 @@ the code is scanned once, and citations are read under the config's profile
   it changed, whether it is planned, and its location. Plus the spec units by role, the
   unimplemented, new and unmet ids (each with its role, what it sits in and what it
   declares), the broken citations, the unproven confirmations, the stale excuses, the
-  broken declarations, the triangle's gaps and the unvalidated relations. A value that
+  broken declarations, the triangle's gaps, the unvalidated relations and the open and
+  orphaned marks (unit, state, note, who, when, entry id, location). A value that
   doesn't exist (a planned end's recorded hash, a gone end's hash and location, or a
   conflicted relation's recorded hashes, since it has no one tip) is JSON `null`.
 
@@ -982,6 +1008,8 @@ the code is scanned once, and citations are read under the config's profile
   pipeline allows plans is the caller's decision, so it is a flag, not a setting
 - `--validated` fails on any unvalidated relation as well (`validated: true`, §18), and
   lists them
+- `--no-marks` fails on any open or orphaned mark as well (`marks: :fail`), for a release
+  that must not ship with a known spec problem
 - it fails when the status is failing, or the log doesn't verify
 - it compiles the project first only when `.surfex.exs` names a project scanner
 
@@ -1022,6 +1050,12 @@ across and never makes one. If the text changed as it moved, or the other end ch
 the moved relation dangles. The new id must be scanned. A conflicted relation must be
 resolved first. An old id with no live relation is an error.
 
+`Surfex.Record.mark/5` records a `needs_update` mark on one spec unit, at its current
+version, with a note (required) saying what is wrong in the result. The id must be a
+scanned spec unit. `Surfex.Record.withdraw/5` withdraws its open mark, with a note saying
+why it proved unfounded: a retire naming the mark as its parent. With no open mark it is
+an error; with several, the one to withdraw is named by an id prefix (`pick:`).
+
 `Surfex.Record.history/2` lists every entry touching an id, oldest first, from the log
 alone.
 
@@ -1034,6 +1068,8 @@ The tasks:
 - `Mix.Tasks.Surfex.Resolve`: `mix surfex.resolve FROM TO --type T --pick ID_PREFIX`
 - `Mix.Tasks.Surfex.Move`: `mix surfex.move OLD NEW [--note N]`
 - `Mix.Tasks.Surfex.History`: `mix surfex.history ID`
+- `Mix.Tasks.Surfex.Mark`: `mix surfex.mark SPEC_UNIT --needs-update --note N`, or
+  `mix surfex.mark SPEC_UNIT --withdraw --note N [--pick ID_PREFIX]`
 
 Each reads `.surfex.exs` as `mix surfex.status` does. Each needs the log to exist
 (`mix surfex.log --init`), and prints every entry it recorded.
@@ -1045,6 +1081,12 @@ confirming a relation with nothing to confirm is an error, never a silent no-op
 ```test move-carries
 a move records the recorded versions under the new id: if the text changed as it
 moved, or the other end changed, the moved relation dangles
+```
+
+```test mark-recorded
+mark records one needs_update mark at the unit's current version with a required note;
+withdraw retires the open mark, naming it when there are several; both refuse what
+isn't a scanned spec unit, and history shows them
 ```
 
 ```test recording-by-name
