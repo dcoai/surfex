@@ -563,6 +563,39 @@ defmodule Surfex.WalkthroughTest do
     end
   end
 
+  # #75: found work goes to the environment's own change process; surfex only drafts.
+  @tag verifies: "change-hand-off"
+  test "mark prints its draft; mix surfex.draft prints, and hands off only with --file",
+       %{root: root} do
+    note = "totals ignore discounts in use"
+    task(root, Mix.Tasks.Surfex.Mark, [@section, "--needs-update", "--note", note])
+    printed = drain() |> Enum.join("\n")
+    assert printed =~ "# Spec needs an update: #{@section}"
+    assert printed =~ note
+
+    task(root, Mix.Tasks.Surfex.Draft, [])
+    assert drain() |> Enum.join("\n") =~ "## Steps"
+
+    task(root, Mix.Tasks.Surfex.Draft, ["--format", "json"])
+    {json, :ok, _} = drain() |> Enum.join() |> :json.decode(:ok, %{null: nil})
+    assert [%{"source" => "mark", "id" => @section}] = json
+
+    # --file hands each draft to process:, here a command that records what it got.
+    out = Path.join(root, "handed.txt")
+    script = Path.join(root, "hand.exs")
+    File.write!(script, "File.write!(#{inspect(out)}, hd(System.argv()))\n")
+
+    File.write!(
+      Path.join(root, ".surfex.exs"),
+      ~s([sources: ["spec.md"], process: {:command, ["elixir", #{inspect(script)}, "{title}"]}])
+    )
+
+    task(root, Mix.Tasks.Surfex.Draft, [])
+    refute File.exists?(out)
+    task(root, Mix.Tasks.Surfex.Draft, ["--file"])
+    assert File.read!(out) == "Spec needs an update: #{@section}"
+  end
+
   @tag verifies: "recording-by-name"
   test "move carries a renamed section's relation, retire puts one to rest", %{root: root} do
     task(root, Mix.Tasks.Surfex.Relate, [@section, @function, "--type", "depends_on"])

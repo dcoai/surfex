@@ -134,6 +134,9 @@ the test against the spec unit, fixed it where it fell short, and it passes.
 - **Say the spec is wrong:** when the tests pass but the result isn't right, `mix
   surfex.mark SPEC_UNIT --needs-update --note N` records it against the unit's version.
   Status reports it until the spec changes; `--no-marks` fails on it.
+- **Hand work to your process:** `mix surfex.draft` writes up every mark, unmet id and
+  triangle gap as a change draft; with `process:` in `.surfex.exs`, `--file` opens each
+  in your tracker.
 - **Rename a section:** give headings anchors (`## Totals {#totals}`) and they keep their
   id. Otherwise `mix surfex.suggest` spots the rename, or `mix surfex.move OLD NEW` carries
   the relations across.

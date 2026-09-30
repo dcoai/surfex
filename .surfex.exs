@@ -14,5 +14,10 @@
   require: [code: [:implements], test_hint: [:verifies]],
   tests: ["test/*_test.exs", "test/surfex/*_test.exs"],
   triangle: :fail,
-  sources: ["spec.md"]
+  sources: ["spec.md"],
+  # Found work goes to this environment's proposal system (§19), only with
+  # `mix surfex.draft --file`.
+  process:
+    {:command,
+     ["glab", "issue", "create", "--label", "Proposal", "--title", "{title}", "--description", "{body}"]}
 ]

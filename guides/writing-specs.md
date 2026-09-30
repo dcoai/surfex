@@ -289,6 +289,20 @@ runs again from the spec: its relations dangle, the tests change first, then the
 proves unfounded, withdraw it with `--withdraw` and a note. A release that must not ship
 with a known spec problem runs `mix surfex.status --no-marks`.
 
+**Found work goes through your change process.** A mark, an unmet requirement and a gap
+in the triangle are all changes to make, and a project already has a way to make changes:
+a tracker, a proposal queue, a review. Surfex doesn't replace it. `mix surfex.draft`
+writes each piece of found work up as a change draft (what's wrong, the spec unit's text,
+the tests and code it touches, and the steps of the process), and prints it. Tell Surfex
+how your process takes work with `process:` in `.surfex.exs`:
+
+```elixir
+process: {:command, ["gh", "issue", "create", "--title", "{title}", "--body", "{body}"]}
+```
+
+Then `mix surfex.draft --file` hands each draft to it. Without `--file`, nothing leaves
+your terminal.
+
 
 ## 8. Code the spec doesn't describe
 
