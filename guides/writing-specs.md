@@ -268,7 +268,8 @@ reported as *unvalidated*. Validate each by doing the work:
 A test is versioned like code (its body, its helpers, its setups, its table of cases), so
 a test weakened to pass dangles its relations too. In CI, `mix surfex.status --verify
 --evidence` checks every confirmation by evidence against CI's own run, and records
-nothing.
+nothing. Once the backlog is done, add `--validated`, so CI also fails on any relation
+current without validation.
 
 ## 8. Code the spec doesn't describe
 

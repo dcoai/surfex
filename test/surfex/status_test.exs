@@ -43,7 +43,7 @@ defmodule Surfex.StatusTest do
   defp only(status), do: hd(status.relations)
 
   describe "a relation's state comes from its tip" do
-    @describetag verifies: ["status-pure"]
+    @describetag verifies: "status-states"
 
     test "current: both ends at the recorded hashes" do
       assert %{state: :current, changed: []} = only(Status.derive(scans(), [relate("s1", "c1")]))
@@ -100,6 +100,7 @@ defmodule Surfex.StatusTest do
     end
   end
 
+  @tag verifies: "status-states"
   test "impacted: an end depends on something not current" do
     helper = scan(:code, "M.helper/1", "h2")
 
@@ -124,13 +125,14 @@ defmodule Surfex.StatusTest do
     assert {:depends_on, {:code, @code_id}, {:code, "M.helper/1"}} = dependency.relation
   end
 
+  @tag verifies: "status-states"
   test "new: a scanned id in no relation" do
     status = Status.derive([scan(:code, "M.other/0", "o") | scans()], [relate("s1", "c1")])
     assert [%Scan{id: "M.other/0"}] = status.new
   end
 
   describe "policy" do
-    @describetag verifies: ["status-pure"]
+    @describetag verifies: "status-states"
 
     @tag verifies: ["status-failing"]
     test "an id the policy requires to be related, and isn't, is unmet" do
@@ -151,7 +153,7 @@ defmodule Surfex.StatusTest do
 
   # #38: tests declare what they verify; a declaration naming nothing fails.
   describe "declarations and role rules" do
-    @describetag verifies: ["status-pure"]
+    @describetag verifies: "status-states"
 
     defp hint(id), do: %{scan(:spec, "spec.md##{id}", "h1") | role: :test_hint, within: @spec_id}
     defp test_scan(declares), do: %{scan(:test, "T: a", "t1") | declares: declares}
@@ -223,7 +225,7 @@ defmodule Surfex.StatusTest do
 
   # #38: spec ↔ code (implements), test → spec (verifies), test → code (tests).
   describe "the triangle" do
-    @describetag verifies: ["status-pure"]
+    @describetag verifies: "triangle-gaps"
 
     defp rel(type, {ak, aid, ah}, {bk, bid, bh}),
       do:
@@ -302,8 +304,6 @@ defmodule Surfex.StatusTest do
   end
 
   describe "planned relations" do
-    @describetag verifies: ["status-pure"]
-
     @describetag verifies: "planned-state"
 
     # The spec section exists; the code it will be implemented by doesn't yet.
@@ -433,8 +433,6 @@ defmodule Surfex.StatusTest do
   end
 
   describe "the report" do
-    @describetag verifies: ["status-pure"]
-
     @describetag verifies: "status-report-forms"
 
     test "text names the verdict, the counts, and each relation needing attention" do
@@ -544,6 +542,7 @@ defmodule Surfex.StatusTest do
 
     # #76: a proposed relation fails, so the report must say which; unvalidated ones are
     # counted, and listed where they fail.
+    @tag verifies: "status-pure"
     test "proposed relations are listed; unvalidated ones counted, and listed under validated: true" do
       proposed =
         Entry.new!(
@@ -590,6 +589,7 @@ defmodule Surfex.StatusTest do
       assert Report.text(Status.derive(scans(), [])) =~ "(no relations)"
     end
 
+    @tag verifies: "status-pure"
     test "the golden is the same whatever order the scans and the log's lines come in" do
       extra = scan(:code, "M.other/0", "o")
       first = relate("s1", "c1")
@@ -633,6 +633,11 @@ defmodule Surfex.StatusTest do
       assert_raise ArgumentError, ~r/triangle: must be :report or :fail/, fn ->
         Config.options!(triangle: :loud)
       end
+
+      # With classes:, the class rules come too, for judging stale excuses.
+      classes = [classes: [{"c", "why"}], rules: [%{class: "c", kinds: [:function]}]]
+      assert %{rules: [%{class: "c"}]} = Config.options!(classes)[:coverage]
+      refute Keyword.has_key?(Config.options!([]), :coverage)
     end
 
     test "require: takes spec roles as keys" do
@@ -667,6 +672,8 @@ defmodule Surfex.StatusTest do
       assert_raise ArgumentError, ~r/no spec sections found/, fn ->
         Config.scans([sources: ["spec.md"]], root)
       end
+
+      assert_raise ArgumentError, ~r/sources/, fn -> Config.scans([], root) end
     end
   end
 
@@ -718,7 +725,7 @@ defmodule Surfex.StatusTest do
     end
   end
 
-  @tag verifies: ["status-pure", "status-failing"]
+  @tag verifies: ["status-states", "status-failing"]
   test "summary/1 counts relations per type and state; tips/2 are the judgements in force" do
     first = relate("s1", "c1")
     second = relate("s1", "c2", parents: [first.id], at: "2026-09-28T11:00:00Z")

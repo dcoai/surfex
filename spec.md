@@ -521,10 +521,12 @@ reason, and every golden's drift is reported in one run
 - Every failure of every golden is reported in one run.
 
 Surfex gates itself this way: CI runs `mix surfex.goldens`, which gates `RELATIONS.md`,
-and, after its tests, `mix surfex.status --verify --evidence`, which checks the relation
-log itself (§13.3, §17). Surfex's own triangle is closed and gated (`triangle: :fail`):
-every section something implements states its claims as test hints, each verified by a
-tagged test that exercises the implementing code.
+and, after its tests, `mix surfex.status --verify --evidence --validated`, which checks
+the relation log itself (§13.3, §17): every relation holds, every confirmation by evidence
+is borne out, and every relation was validated by the process (§18). Surfex's own
+triangle is closed and gated (`triangle: :fail`): every section something implements
+states its claims as test hints, each verified by a tagged test that exercises the
+implementing code.
 
 ```test goldens-task
 mix surfex.goldens checks every golden and fails on a drift; --write regenerates them
@@ -1220,8 +1222,9 @@ then `mix surfex.status --verify --evidence`. That checks that every relation ho
 that every confirmation by evidence (`Surfex.Evidence.claimed?/1`: its basis is
 `evidence`, or, recorded before bases existed, its note begins `Surfex.Evidence.note/0`)
 is borne out by this run. A claim the run contradicts fails the
-pipeline. CI never appends to the log and never saves evidence: the log's claims are made
-where the work is done, and CI only checks them.
+pipeline. A project whose backlog of unvalidated relations is done adds `--validated`, so
+no relation is current without validation. CI never appends to the log and never saves
+evidence: the log's claims are made where the work is done, and CI only checks them.
 
 ```test evidence-checked
 a run where the test passes against the code as confirmed bears the claims out; a test
