@@ -526,6 +526,43 @@ defmodule Surfex.WalkthroughTest do
     GenServer.stop(pid)
   end
 
+  # #73: the tests reflect the spec and the code passes them, but the result is wrong.
+  @tag verifies: "mark-recorded"
+  test "mark → reported → --no-marks fails → withdraw; a spec change resolves a mark",
+       %{root: root} do
+    note = "totals ignore discounts in use"
+    task(root, Mix.Tasks.Surfex.Mark, [@section, "--needs-update", "--note", note])
+    assert Enum.any?(drain(), &(&1 =~ "recorded mark needs_update  spec #{@section}@"))
+    commit(root, "mark")
+
+    # Reported, and not failing unless asked.
+    task(root, Mix.Tasks.Surfex.Status, [])
+    assert drain() |> Enum.join("\n") =~ "Marked (the spec needs an update):\n  spec #{@section}"
+    assert_raise Mix.Error, fn -> task(root, Mix.Tasks.Surfex.Status, ["--no-marks"]) end
+    drain()
+
+    task(root, Mix.Tasks.Surfex.History, [@section])
+    assert Enum.any?(drain(), &(&1 =~ "mark needs_update  spec #{@section}@" and &1 =~ note))
+
+    # Withdrawn by name: nothing open.
+    task(root, Mix.Tasks.Surfex.Mark, [@section, "--withdraw", "--note", "it was a test cart"])
+    drain()
+    task(root, Mix.Tasks.Surfex.Status, ["--no-marks"])
+    refute drain() |> Enum.join("\n") =~ "Marked"
+
+    # Marked again, then the spec changes: the mark is resolved.
+    task(root, Mix.Tasks.Surfex.Mark, [@section, "--needs-update", "--note", note])
+    File.write!(Path.join(root, "spec.md"), "# Totals\n\nA cart's total, after discounts.\n")
+    drain()
+    task(root, Mix.Tasks.Surfex.Status, ["--no-marks"])
+    refute drain() |> Enum.join("\n") =~ "Marked"
+
+    # One of --needs-update or --withdraw, and a note.
+    for args <- [[@section, "--note", "x"], [@section, "--needs-update"]] do
+      assert_raise Mix.Error, fn -> task(root, Mix.Tasks.Surfex.Mark, args) end
+    end
+  end
+
   @tag verifies: "recording-by-name"
   test "move carries a renamed section's relation, retire puts one to rest", %{root: root} do
     task(root, Mix.Tasks.Surfex.Relate, [@section, @function, "--type", "depends_on"])

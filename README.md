@@ -131,6 +131,9 @@ the test against the spec unit, fixed it where it fell short, and it passes.
   Naming a pair validates nothing: an `implements` relation is proposed until the process
   validates it.
 - **Put a relation to rest:** `mix surfex.retire FROM TO --type T`.
+- **Say the spec is wrong:** when the tests pass but the result isn't right, `mix
+  surfex.mark SPEC_UNIT --needs-update --note N` records it against the unit's version.
+  Status reports it until the spec changes; `--no-marks` fails on it.
 - **Rename a section:** give headings anchors (`## Totals {#totals}`) and they keep their
   id. Otherwise `mix surfex.suggest` spots the rename, or `mix surfex.move OLD NEW` carries
   the relations across.

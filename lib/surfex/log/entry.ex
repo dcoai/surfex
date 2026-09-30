@@ -26,9 +26,11 @@ defmodule Surfex.Log.Entry do
   @enforce_keys [:id, :at, :parents, :op, :type, :ends]
   defstruct [:id, :at, :commit, :op, :type, :by, :note, :basis, parents: [], ends: []]
 
-  @ops [:relate, :retire]
+  @ops [:relate, :retire, :mark]
   @bases [:evidence, :review, :judgement, :proposed]
   @types [:implements, :refines, :depends_on, :tests, :verifies, :excuses]
+  # A mark is a statement about one spec unit, not a relation (§12.1).
+  @mark_types [:needs_update]
   @kinds [:spec, :code, :test, :config, :class]
   # "A depends on B" is not "B depends on A": these keep their ends in the order given.
   @directed [:depends_on, :refines, :tests, :verifies]
@@ -39,7 +41,7 @@ defmodule Surfex.Log.Entry do
           at: String.t(),
           commit: String.t() | nil,
           parents: [String.t()],
-          op: :relate | :retire,
+          op: :relate | :retire | :mark,
           type: atom,
           ends: [end_],
           by: String.t() | nil,
@@ -54,6 +56,14 @@ defmodule Surfex.Log.Entry do
   @doc "The relation types."
   @spec types() :: [atom]
   def types, do: @types
+
+  @doc "The mark types: statements about one spec unit, not relations."
+  @spec mark_types() :: [atom]
+  def mark_types, do: @mark_types
+
+  @doc "Whether an entry is a mark's (the mark, or the retire that withdraws it)."
+  @spec mark?(t) :: boolean
+  def mark?(%__MODULE__{type: type}), do: type in @mark_types
 
   @doc "The directed types: their ends are from → to, in the order given."
   @spec directed() :: [atom]
@@ -107,9 +117,14 @@ defmodule Surfex.Log.Entry do
     end
   end
 
-  @doc "The relation this entry is about: its type and its two ends' kinds and ids."
-  @spec relation(t) :: {atom, {atom, String.t()}, {atom, String.t()}}
+  @doc """
+  The relation this entry is about: its type and its two ends' kinds and ids. A mark's is
+  its type and its one end.
+  """
+  @spec relation(t) ::
+          {atom, {atom, String.t()}, {atom, String.t()}} | {atom, {atom, String.t()}}
   def relation(%__MODULE__{type: type, ends: [a, b]}), do: {type, {a.kind, a.id}, {b.kind, b.id}}
+  def relation(%__MODULE__{type: type, ends: [a]}), do: {type, {a.kind, a.id}}
 
   @doc """
   The relation of `type` between two ends (`%{kind, id}` or more), oriented as an entry's
@@ -135,7 +150,7 @@ defmodule Surfex.Log.Entry do
     case json(line) do
       %{"id" => id} = map when is_binary(id) ->
         with {:ok, op} <- atom(map["op"], @ops, "op"),
-             {:ok, type} <- atom(map["type"], @types, "type"),
+             {:ok, type} <- atom(map["type"], @types ++ @mark_types, "type"),
              {:ok, ends} <- decode_ends(map["ends"]),
              {:ok, basis} <- basis(map["basis"]),
              {:ok, entry} <-
@@ -270,10 +285,17 @@ defmodule Surfex.Log.Entry do
       e.op not in @ops ->
         bad(:op, e.op)
 
-      e.type not in @types ->
+      e.type not in (@types ++ @mark_types) ->
         bad(:type, e.type)
 
-      length(e.ends) != 2 or Enum.any?(e.ends, &(&1.kind not in @kinds)) ->
+      # A mark is made by a mark op and withdrawn by a retire; relations never use `mark`.
+      (e.op == :mark and e.type not in @mark_types) or (e.op == :relate and e.type in @mark_types) ->
+        bad(:type, e.type)
+
+      e.type in @mark_types and not match?([%{kind: :spec, hash: h}] when is_binary(h), e.ends) ->
+        bad(:ends, e.ends)
+
+      e.type in @types and (length(e.ends) != 2 or Enum.any?(e.ends, &(&1.kind not in @kinds))) ->
         bad(:ends, e.ends)
 
       # Planning a relation between two things neither of which exists records nothing.

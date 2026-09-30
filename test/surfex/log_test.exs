@@ -64,7 +64,7 @@ defmodule Surfex.LogTest do
     end
 
     test "the vocabulary is fixed: ops, types, kinds, and which types are directed" do
-      assert Entry.ops() == [:relate, :retire]
+      assert Entry.ops() == [:relate, :retire, :mark]
       assert Entry.types() == [:implements, :refines, :depends_on, :tests, :verifies, :excuses]
       assert Entry.kinds() == [:spec, :code, :test, :config, :class]
       assert Entry.directed() == [:depends_on, :refines, :tests, :verifies]
@@ -112,6 +112,50 @@ defmodule Surfex.LogTest do
                )
 
       assert msg =~ ":ends"
+    end
+
+    # #73: a mark says the spec unit itself needs to change. It has one end.
+    @tag verifies: "mark-entry"
+    test "a mark is one spec end, op mark, type needs_update; relations keep their ids" do
+      unit = %{kind: :spec, id: "spec.md#S1", hash: "s1"}
+      base = [at: "2026-09-28T10:00:01Z", op: :mark, type: :needs_update, note: "too slow"]
+      mark = Entry.new!(base ++ [ends: [unit]])
+
+      assert Entry.mark?(mark)
+      refute Entry.mark?(entry(1))
+      assert Entry.mark_types() == [:needs_update]
+      assert :mark in Entry.ops()
+      refute :needs_update in Entry.types()
+      assert Entry.relation(mark) == {:needs_update, {:spec, "spec.md#S1"}}
+      assert Entry.decode!(Entry.encode(mark)) == mark
+
+      # One end, and it is a spec unit; a relation's type can't be a mark, nor the reverse.
+      code = %{kind: :code, id: "M.f/1", hash: "c1"}
+      assert_raise ArgumentError, ~r/:ends/, fn -> Entry.new!(base ++ [ends: [unit, code]]) end
+      assert_raise ArgumentError, ~r/:ends/, fn -> Entry.new!(base ++ [ends: [code]]) end
+
+      assert_raise ArgumentError, ~r/:type/, fn ->
+        Entry.new!(Keyword.put(base, :type, :implements) ++ [ends: [unit]])
+      end
+
+      assert_raise ArgumentError, ~r/:type/, fn ->
+        Entry.new!(at: base[:at], op: :relate, type: :needs_update, ends: [unit, code])
+      end
+
+      # Withdrawing is a retire of the mark: same type and end, the mark as parent.
+      withdrawn =
+        Entry.new!(
+          at: "2026-09-28T11:00:00Z",
+          op: :retire,
+          type: :needs_update,
+          ends: [unit],
+          parents: [mark.id]
+        )
+
+      assert Entry.mark?(withdrawn)
+
+      # Entries from before marks existed are unchanged: this id was computed before.
+      assert entry(1).id == "3b1ab3f7ab2d842901c79e8a11f9d92d0bbd9be370123640ed59a1587adcf6b8"
     end
 
     @tag verifies: "log-entries"

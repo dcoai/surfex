@@ -155,6 +155,75 @@ defmodule Surfex.Record do
   end
 
   @doc """
+  Records a mark of `type` (`:needs_update`, §12.1) on one spec unit, at its current
+  version: the spec itself needs to change, because the tests reflect it and the code
+  passes them but the result is wrong or clearly sub-optimal. `meta[:note]` is required: it
+  says what is wrong in the result.
+  """
+  @spec mark([Scan.t()], [Entry.t()], String.t(), atom, meta) ::
+          {:ok, [Entry.t()]} | {:error, String.t()}
+  def mark(scans, _entries, unit_id, type, meta) do
+    with :ok <- note!(meta, "say what is wrong in the result"),
+         {:ok, unit} <- spec_unit(scans, unit_id),
+         {:ok, entry} <- entry(:mark, type, [end_(unit)], [], meta),
+         do: {:ok, [entry]}
+  end
+
+  @doc """
+  Withdraws the open mark of `type` on a spec unit: a retire naming it as its parent, with
+  `meta[:note]` (required) saying why it proved unfounded. With several open marks,
+  `meta[:pick]`, a prefix of one's id, names it.
+  """
+  @spec withdraw([Scan.t()], [Entry.t()], String.t(), atom, meta) ::
+          {:ok, [Entry.t()]} | {:error, String.t()}
+  def withdraw(scans, entries, unit_id, type, meta) do
+    with :ok <- note!(meta, "say why the mark proved unfounded"),
+         {:ok, unit} <- spec_unit(scans, unit_id),
+         {:ok, mark} <- open_mark(scans, entries, unit.id, type, meta[:pick]),
+         {:ok, entry} <- entry(:retire, type, mark.ends, [mark.id], meta),
+         do: {:ok, [entry]}
+  end
+
+  defp note!(meta, what) do
+    if is_binary(meta[:note]) and String.trim(meta[:note]) != "",
+      do: :ok,
+      else: {:error, "a note is required: #{what}"}
+  end
+
+  defp spec_unit(scans, id) do
+    case find(scans, id) do
+      {:ok, %Scan{kind: :spec} = unit} -> {:ok, unit}
+      {:ok, %Scan{id: id}} -> {:error, "#{id} is not a spec unit: only a spec unit is marked"}
+      error -> error
+    end
+  end
+
+  defp open_mark(scans, entries, unit, type, pick) do
+    open =
+      for %{id: id, unit: ^unit, type: ^type} <- Status.derive(scans, entries).marks,
+          mark = Enum.find(entries, &(&1.id == id)),
+          do: mark
+
+    case {open, pick} do
+      {[], _} ->
+        {:error, "no open #{type} mark on #{unit}"}
+
+      {[one], nil} ->
+        {:ok, one}
+
+      {many, nil} ->
+        ids = Enum.map_join(many, ", ", &String.slice(&1.id, 0, 12))
+        {:error, "#{length(many)} open #{type} marks on #{unit} (#{ids}): name one with pick"}
+
+      {many, pick} ->
+        case Enum.filter(many, &String.starts_with?(&1.id, pick)) do
+          [one] -> {:ok, one}
+          _ -> {:error, "no single open #{type} mark on #{unit} starts with #{pick}"}
+        end
+    end
+  end
+
+  @doc """
   Retires the relation of `type` between `from` and `to`: an entry naming every tip as a
   parent, with the ends as the tip recorded them. An end need not still be scanned, since
   retiring is how an orphaned relation is put to rest.
@@ -227,6 +296,8 @@ defmodule Surfex.Record do
   # Relations with an end `{kind, old_id}`, grouped with their tips, excluding retired ones.
   defp live_groups(entries, kind, old_id) do
     entries
+    # A mark is not a relation: a move carries relations, never marks (§14).
+    |> Enum.reject(&Entry.mark?/1)
     |> Enum.filter(fn e -> Enum.any?(e.ends, &(&1.kind == kind and &1.id == old_id)) end)
     |> Enum.group_by(&Entry.relation/1)
     |> Enum.map(fn {relation, _} -> {relation, Status.tips(entries, relation)} end)
