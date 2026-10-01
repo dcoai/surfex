@@ -32,7 +32,7 @@ defmodule Surfex.MixProject do
       package: [
         licenses: ["MIT"],
         links: %{"GitHub" => @source_url},
-        files: ~w(lib guides mix.exs README.md CHANGELOG.md spec.md LICENSE)
+        files: ~w(lib priv guides mix.exs README.md CHANGELOG.md spec.md LICENSE)
       ],
       source_url: @source_url,
       docs: [

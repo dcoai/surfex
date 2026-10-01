@@ -1558,3 +1558,25 @@ the score is complete over all per kind and overall, to one decimal, 100 with no
 count; it reads as text, JSON and a golden with no hashes or times; below completeness:
 [min: N] the status check fails
 ```
+
+## 21. Discovering the tool {#info}
+
+Surfex's main user is an agent working out the state of a spec, its tests and its code.
+The agent shouldn't have to piece the tool together from the README, the guides and each
+task's moduledoc. `Mix.Tasks.Surfex.Info` is `mix surfex.info [TOPIC]`, and it tells the
+agent how the tool works from the installed version itself:
+
+- **With no topic, a directory** (`Surfex.Info.directory/0`) of fewer than 100 lines: what
+  Surfex is in a few lines, every topic with a one-line summary, and every `mix surfex.*`
+  command, grouped by job, one line each.
+- **With a topic, its page** (`Surfex.Info.page/1`): a focused, dense page with exact
+  commands, written for an agent. An unknown topic is refused, and the refusal names the
+  topics.
+- **The pages ship with the code.** They are Markdown files under `priv/info/`, built into
+  `Surfex.Info` at compile time, so they always match the installed version.
+  `Surfex.Info.topics/0` lists each topic with its summary.
+
+```test info-directory
+the directory is under 100 lines, names every topic and every mix surfex.* command; each
+topic prints its page; an unknown topic is refused, naming the topics
+```
