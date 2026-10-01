@@ -598,6 +598,63 @@ defmodule Surfex.WalkthroughTest do
     assert File.read!(out) == "Spec needs an update: #{@section}"
   end
 
+  # #88: an established suite adopted once, by trust, then moving to evidence.
+  @tag verifies: ["baseline-one-shot", "baseline-shrinks"]
+  test "adoption: :trust → mix surfex.baseline → confirm --evidence, counted; --no-baseline fails",
+       %{root: root} do
+    File.write!(Path.join(root, "spec.md"), "# Totals {#totals}\n\nA cart's total.\n")
+    File.mkdir_p!(Path.join(root, "test"))
+
+    File.write!(Path.join(root, "test/cart_test.exs"), """
+    defmodule MyApp.CartTest do
+      use ExUnit.Case
+
+      @tag verifies: "totals"
+      test "an empty cart totals nothing" do
+        assert MyApp.Cart.total() == 0
+      end
+    end
+    """)
+
+    config = ~s([sources: ["spec.md"], tests: ["test/*_test.exs"]])
+    File.write!(Path.join(root, ".surfex.exs"), config)
+    task(root, Mix.Tasks.Surfex.Relate, ["spec.md#totals", @function, "--type", "implements"])
+    commit(root, "adopting")
+    drain()
+
+    # The default is :reevaluate: nothing is trusted.
+    baseline = ["--note", "the suite was written test-first and reviewed"]
+    error = assert_raise Mix.Error, fn -> task(root, Mix.Tasks.Surfex.Baseline, baseline) end
+    assert error.message =~ "adoption: is :reevaluate"
+
+    File.write!(
+      Path.join(root, ".surfex.exs"),
+      ~s([sources: ["spec.md"], tests: ["test/*_test.exs"], adoption: :trust])
+    )
+
+    run_test(root, nil, 5)
+    task(root, Mix.Tasks.Surfex.Baseline, baseline)
+
+    assert Enum.any?(
+             drain(),
+             &(&1 =~
+                 "recorded observe baseline  test MyApp.CartTest: an empty cart totals nothing@")
+           )
+
+    # One-shot.
+    error = assert_raise Mix.Error, fn -> task(root, Mix.Tasks.Surfex.Baseline, baseline) end
+    assert error.message =~ "already taken"
+
+    # The baselined test carries the code relation, counted as trusted.
+    task(root, Mix.Tasks.Surfex.Suggest, ["--accept"])
+    task(root, Mix.Tasks.Surfex.Confirm, ["--evidence"])
+    drain()
+    task(root, Mix.Tasks.Surfex.Status, ["--validated"])
+    assert drain() |> Enum.join("\n") =~ "baseline: 2 relations (adoption: :trust)"
+
+    assert_raise Mix.Error, fn -> task(root, Mix.Tasks.Surfex.Status, ["--no-baseline"]) end
+  end
+
   @tag verifies: "recording-by-name"
   test "move carries a renamed section's relation, retire puts one to rest", %{root: root} do
     task(root, Mix.Tasks.Surfex.Relate, [@section, @function, "--type", "depends_on"])

@@ -111,7 +111,14 @@ defmodule Surfex.Status do
             }
           ],
           discriminated: MapSet.t({String.t(), String.t()}),
-          policy: %{triangle: :report | :fail, validated: boolean, marks: :allow | :fail},
+          baselined: MapSet.t({String.t(), String.t()}),
+          adoption: term,
+          policy: %{
+            triangle: :report | :fail,
+            validated: boolean,
+            marks: :allow | :fail,
+            baseline: :allow | :fail
+          },
           unimplemented: [Scan.t()],
           planned: :allow | :fail,
           scans: %{{atom, String.t()} => Scan.t()}
@@ -126,6 +133,16 @@ defmodule Surfex.Status do
     unique!(scans)
     planned = Keyword.get(opts, :planned, :allow)
     validated = Keyword.get(opts, :validated, false)
+    adoption = Keyword.get(opts, :adoption, %{setting: :reevaluate, trusted: MapSet.new()})
+    baseline_policy = Keyword.get(opts, :baseline, :allow)
+
+    unless baseline_policy in [:allow, :fail],
+      do:
+        raise(
+          ArgumentError,
+          "baseline: must be :allow or :fail, got #{inspect(baseline_policy)}"
+        )
+
     triangle = Keyword.get(opts, :triangle, :report)
 
     unless planned in [:allow, :fail],
@@ -143,6 +160,17 @@ defmodule Surfex.Status do
 
     # Marks and observations aren't relations (§12.1): the relations are judged without them.
     {other_entries, entries} = Enum.split_with(entries, &(not Entry.relation?(&1)))
+
+    # The baselined test versions still in force (§18.1): unchanged, and still trusted.
+    baselined =
+      MapSet.new(
+        for %Entry{op: :observe, type: :baseline, ends: [test]} <- other_entries,
+            %Scan{hash: hash, location: %{file: file}} <- [Map.get(by_id, {:test, test.id})],
+            hash == test.hash,
+            Surfex.Status.Config.trusted?(adoption, file),
+            do: {test.id, test.hash}
+      )
+
     mark_entries = Enum.filter(other_entries, &Entry.mark?/1)
 
     relations =
@@ -169,14 +197,21 @@ defmodule Surfex.Status do
       stale: stale(scans, relations, Keyword.get(opts, :coverage)),
       unproven: unproven(scans, relations, Keyword.get(opts, :evidence)),
       triangle: triangle(scans, relations),
-      unvalidated: unvalidated(relations),
+      unvalidated: unvalidated(relations, baselined, scans),
+      baselined: baselined,
+      adoption: adoption.setting,
       marks: marks(mark_entries, by_id),
       discriminated:
         MapSet.new(
           for %Entry{op: :observe, type: :red_green, ends: [test]} <- other_entries,
               do: {test.id, test.hash}
         ),
-      policy: %{triangle: triangle, validated: validated, marks: marks_policy},
+      policy: %{
+        triangle: triangle,
+        validated: validated,
+        marks: marks_policy,
+        baseline: baseline_policy
+      },
       unimplemented: unimplemented(scans, relations),
       planned: planned,
       scans: by_id
@@ -199,6 +234,7 @@ defmodule Surfex.Status do
       status.unproven != [] or
       (status.policy.triangle == :fail and status.triangle != []) or
       (status.policy.marks == :fail and status.marks != []) or
+      (status.policy.baseline == :fail and baseline_count(status) > 0) or
       Enum.any?(status.relations, &(&1.state in failing))
   end
 
@@ -327,12 +363,60 @@ defmodule Surfex.Status do
 
   # A current implements or verifies relation whose tip has no validating basis (§18): one
   # recorded before validation existed, or by hand. Reported; failing under `validated:`.
-  defp unvalidated(relations) do
-    for %{type: type, state: :current, tips: [tip], relation: relation} <- relations,
+  # Current relations nothing validates now (§18): no validating basis, or a `baseline`
+  # that no longer holds (§18.1). A baselined verifies holds while its test's version is
+  # baselined; a baselined implements, while a baselined test verifies the unit (or a unit
+  # inside it) and exercises the code.
+  defp unvalidated(relations, baselined, scans) do
+    within = for %Scan{kind: :spec, within: w} = s <- scans, w != nil, into: %{}, do: {s.id, w}
+    current = for %{state: :current, tips: [tip]} = r <- relations, do: {r, tip}
+    pairs = fn type -> for {%{type: ^type, relation: {_, a, b}}, _} <- current, do: {a, b} end
+    {verifies, tests} = {pairs.(:verifies), pairs.(:tests)}
+
+    trusted_test? = fn t ->
+      Enum.any?(baselined, &match?({^t, _}, &1))
+    end
+
+    holds? = fn
+      %{relation: {:verifies, {:test, t}, _}}, tip ->
+        MapSet.member?(baselined, {t, Enum.find(tip.ends, &(&1.kind == :test)).hash})
+
+      %{relation: {:implements, {:code, c}, {:spec, s}}}, _tip ->
+        Enum.any?(verifies, fn {{:test, t}, {:spec, unit}} ->
+          trusted_test?.(t) and inside?(unit, s, within) and {{:test, t}, {:code, c}} in tests
+        end)
+    end
+
+    validating? = fn r, tip ->
+      case tip.basis do
+        basis when basis in [:evidence, :review, :judgement] -> true
+        :baseline -> holds?.(r, tip)
+        _none_or_proposed -> false
+      end
+    end
+
+    for {%{type: type, relation: relation} = r, tip} <- current,
         type in [:implements, :verifies],
-        tip.basis not in [:evidence, :review, :judgement],
+        not validating?.(r, tip),
         do: %{relation: relation}
   end
+
+  @doc """
+  Whether a relation is validated now (§18): current, on a validating basis, and not
+  unvalidated (a `baseline` that still holds, §18.1).
+  """
+  @spec validated?(t, map) :: boolean
+  def validated?(status, %{state: :current, tips: [tip], relation: relation}),
+    do:
+      tip.basis in [:evidence, :review, :judgement, :baseline] and
+        not Enum.any?(status.unvalidated, &(&1.relation == relation))
+
+  def validated?(_status, _relation), do: false
+
+  @doc "How many current relations rest on the baseline (§18.1)."
+  @spec baseline_count(t) :: non_neg_integer
+  def baseline_count(status),
+    do: Enum.count(status.relations, &match?(%{state: :current, tips: [%{basis: :baseline}]}, &1))
 
   # A relation is impacted when an end of it depends on something whose dependency
   # relation is not current.

@@ -104,10 +104,18 @@ defmodule Surfex.Status.Report do
         n -> "  unvalidated: #{n}\n"
       end
 
+    # How much rests on trust rather than evidence or review (§18.1).
+    baseline =
+      case Status.baseline_count(status) do
+        0 -> []
+        n -> "  baseline: #{n} relations (adoption: #{inspect(status.adoption)})\n"
+      end
+
     IO.iodata_to_binary([
       "relation status: #{verdict}\n",
       Enum.map(counts, &[&1, "\n"]),
       unvalidated,
+      baseline,
       units,
       lists
     ])
@@ -161,6 +169,10 @@ defmodule Surfex.Status.Report do
           }
         end),
       "undeclared" => Enum.map(status.undeclared, &%{"test" => &1.test, "spec" => &1.spec}),
+      "baseline" => %{
+        "relations" => Status.baseline_count(status),
+        "adoption" => inspect(status.adoption)
+      },
       "marks" =>
         Enum.map(status.marks, fn m ->
           %{
@@ -253,6 +265,7 @@ defmodule Surfex.Status.Report do
           {"stale", length(status.stale)},
           {"undeclared", length(status.undeclared)},
           {"marks", length(status.marks)},
+          {"baseline", Status.baseline_count(status)},
           {"broken citations", length(status.citations)},
           {"triangle gaps", length(status.triangle)}
         ]),

@@ -718,11 +718,11 @@ only state surfex keeps. Scanners never read or write it (§11).
 | `commit` | HEAD when it was recorded: context only, since squash merges can make it unreachable |
 | `parents` | the entry ids it follows for the same relation; two means it resolves a fork |
 | `op` | `relate`, `retire`, `mark` or `observe` (`Surfex.Log.Entry.ops/0`) |
-| `type` | a relation's: `implements`, `refines`, `depends_on`, `tests`, `verifies` (a test verifies a spec unit) or `excuses` (`Surfex.Log.Entry.types/0`); or a mark's: `needs_update` (`Surfex.Log.Entry.mark_types/0`); or an observation's: `red_green` (`Surfex.Log.Entry.observation_types/0`) |
+| `type` | a relation's: `implements`, `refines`, `depends_on`, `tests`, `verifies` (a test verifies a spec unit) or `excuses` (`Surfex.Log.Entry.types/0`); or a mark's: `needs_update` (`Surfex.Log.Entry.mark_types/0`); or an observation's: `red_green` or `baseline` (`Surfex.Log.Entry.observation_types/0`) |
 | `ends` | a relation's two `{kind, id, hash}`, of the kinds `Surfex.Log.Entry.kinds/0` lists. A `null` hash is a **planned** end: an id that didn't exist when the relation was recorded (§14). At most one end is planned. A mark's one end: the spec unit, at its hash. An observation's one end: the test, at its version |
 | `by` | who recorded it |
 | `note` | why, optionally |
-| `basis` | how the entry validates the relation (§18): `evidence`, `review`, `judgement` or `proposed` (`Surfex.Log.Entry.bases/0`); absent when it validates nothing, which keeps every older entry's canonical line and id |
+| `basis` | how the entry validates the relation (§18): `evidence`, `review`, `judgement`, `baseline` (§18.1) or `proposed` (`Surfex.Log.Entry.bases/0`); absent when it validates nothing, which keeps every older entry's canonical line and id |
 
 - **An observation** is a fact the log keeps about one test version, not a relation:
   `op: observe`, type `red_green`, one `test` end at its version, basis `evidence`. It
@@ -953,7 +953,7 @@ suggest --accept retires it
 
 `Surfex.Status.Config` reads `.surfex.exs`. It holds the profile keys (§8) and the
 log's own: `scanner`, `scanner_opts`, `namespace`, `goldens` (§10.3), `require`, `tests`,
-`triangle`, `require_red` (§17), `process` (§19) and `completeness` (§20).
+`triangle`, `require_red` (§17), `adoption` (§18.1), `process` (§19) and `completeness` (§20).
 - `Surfex.Status.Config.read!/1` reads and validates it. It raises on an unknown key, and
   on a key of the removed trace, saying so (§9). Every task reads its config through
   it, so a misspelt key is never silently ignored.
@@ -1030,6 +1030,8 @@ the code is scanned once, and citations are read under the config's profile
   lists them
 - `--no-marks` fails on any open or orphaned mark as well (`marks: :fail`), for a release
   that must not ship with a known spec problem
+- `--no-baseline` fails on any relation resting on the baseline (`baseline: :fail`,
+  §18.1), and the report counts them with the adoption mode
 - with `completeness: [min: N]` in `.surfex.exs`, it fails when the overall completeness
   score (§20) is below `N`, printing the score
 - it fails when the status is failing, or the log doesn't verify
@@ -1391,6 +1393,67 @@ confirm takes one relation and a note, refuses implements, and records a judgeme
 validate needs the verifies relation and green evidence, and records a review; against a
 section it needs the test's current relation to a hint inside it, and records the section's
 implements alone
+```
+
+### 18.1 Adopting an existing suite {#adoption}
+
+The process (§18) suits new work. A project with an established suite has another
+problem: its passing tests can't honestly go red, so every relation would need a review
+up front, and again after every refactor until its test next discriminates. A project
+chooses how it adopts, with `adoption:` in `.surfex.exs`, read against the test files under the
+project root by `Surfex.Status.Config.adoption!/2` (and asked of one file by
+`Surfex.Status.Config.trusted?/2`):
+
+- `:reevaluate`, the default: nothing is taken on trust. Every relation is validated by
+  evidence, a review or a judgement, as §18 describes.
+- `:trust`: the existing tests may be adopted once, by a **baseline**.
+- `[trust: globs, reevaluate: globs]`: per area, for a codebase with both a well-kept
+  core and tests nobody has read in a while. The globs lie within `tests:` and don't
+  overlap; a test in neither is re-evaluated.
+
+`Surfex.Record.baseline/4` takes the baseline; `Mix.Tasks.Surfex.Baseline` is `mix surfex.baseline
+--note N`:
+
+- **Once.** It refuses when the log already holds a baseline, under `:reevaluate`,
+  without `tests:`, and when a trusted test's current version hasn't run green.
+- **What it records:** a `baseline` observation (§12.1) for each trusted test version,
+  basis `baseline`, with the adoption setting and the note; and, for each trusted test's
+  `verifies:` declarations at that commit, a `verifies` relation with basis `baseline`.
+- **What it means:** a baselined test version counts as if it had discriminated. A green
+  run then re-confirms its `tests` and `implements` relations after a code change, with
+  basis `baseline`, so they stay counted as trusted.
+- **It only shrinks.**
+  - A changed test version isn't covered by its record.
+  - A test's first real red→green records a `red_green` observation (§17), and its
+    relations move to `evidence`.
+  - Narrowing `adoption:` (`:trust` to `:reevaluate`, or a smaller trusted glob) stops the
+    records it no longer covers from counting. Their relations are reported unvalidated:
+    the backlog to review.
+  - Widening trusts nothing new: the baseline is one-shot, and only the test versions it
+    recorded are trusted.
+- **It is visible.** A `baseline` relation is validated while its test's current version
+  is baselined and trusted; for an `implements`, while some such test verifies the unit
+  and exercises the code (`Surfex.Status.validated?/2` answers it for any relation).
+  `--validated` accepts it. Status, its JSON and `RELATIONS.md`
+  count `baseline` relations (`Surfex.Status.baseline_count/1`) and name the adoption mode,
+  and `mix surfex.status --no-baseline` (`baseline: :fail`) fails on them, for a project
+  finishing that backlog.
+
+```test adoption-modes
+adoption: is :reevaluate by default, :trust, or trusted and re-evaluated globs that lie
+within tests: and don't overlap; anything else is refused
+```
+
+```test baseline-one-shot
+the baseline refuses under :reevaluate, a second time, without tests:, or before the
+trusted tests run green; it records each trusted test version and its declared verifies,
+basis baseline
+```
+
+```test baseline-shrinks
+a baselined test re-confirms a refactor as baseline; its first red→green moves it to
+evidence; a changed test version, or narrowed trust, leaves its relations unvalidated;
+baseline relations are counted, and fail under baseline: :fail
 ```
 
 ## 19. Handing off found work {#hand-off}
