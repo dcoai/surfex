@@ -12,6 +12,12 @@ confirmed by hand.
 
 ### Added
 
+- **`mix surfex.info [TOPIC]`** (§21): Surfex explains itself to an agent from the
+  installed version. With no topic, a directory of under 100 lines: what Surfex is, a
+  topic per line, and every command grouped by job. With a topic (model, process, agent,
+  status, recording, validation, marks, adoption, completeness, drafts, goldens, config),
+  a dense page with exact commands. The pages ship in `priv/info/`; a test keeps every
+  command listed.
 - **Adopting an existing suite** (§18.1): `adoption:` in `.surfex.exs` is `:reevaluate` (the
   default: every test earns its relations by discriminating), `:trust`, or `[trust: globs,
   reevaluate: globs]` by area. Under trust, `mix surfex.baseline --note N` takes a one-shot
