@@ -39,7 +39,13 @@ defmodule Surfex.MixProject do
         main: "readme",
         source_url: @source_url,
         source_ref: "v#{@version}",
-        extras: ["README.md", "guides/writing-specs.md", "spec.md", "CHANGELOG.md"]
+        extras: [
+          "README.md",
+          "guides/writing-specs.md",
+          "guides/adopting-an-existing-suite.md",
+          "spec.md",
+          "CHANGELOG.md"
+        ]
       ]
     ]
   end

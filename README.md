@@ -121,6 +121,10 @@ the test against the spec unit, fixed it where it fell short, and it passes.
 
 ## Beyond the example
 
+- **Adopt an established suite:** `adoption: :trust` (or per area) and a one-shot `mix
+  surfex.baseline` take long-kept tests on trust, so a project isn't asked to re-earn
+  every relation before Surfex is useful. Each moves to evidence the first time its test
+  goes red then green. See [Adopting an existing suite](guides/adopting-an-existing-suite.md).
 - **Commit the state for review:** `goldens: [:status]` in `.surfex.exs` makes
   `mix surfex.goldens` gate `RELATIONS.md`, a readable record of every relation and its
   state.
