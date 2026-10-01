@@ -21,7 +21,8 @@ confirmed by hand.
   version isn't baselined, narrowing `adoption:` leaves its relations unvalidated, and a
   test's first red→green moves them to `evidence`. Every report counts baseline relations
   with the mode, `--no-baseline` (`baseline: :fail`) fails on them, and completeness counts
-  a baseline that holds as validated.
+  a baseline that holds as validated. A new guide, *Adopting an existing suite*, says
+  when to trust, what the baseline is and isn't, and what each change costs afterwards.
 
 - **Needs-update marks** (§12.1, §13.1, §14): `mix surfex.mark SPEC_UNIT --needs-update
   --note N` records that a spec unit itself needs to change, because the tests reflect it
