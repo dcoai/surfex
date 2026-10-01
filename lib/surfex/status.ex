@@ -110,6 +110,7 @@ defmodule Surfex.Status do
               location: map | nil
             }
           ],
+          discriminated: MapSet.t({String.t(), String.t()}),
           policy: %{triangle: :report | :fail, validated: boolean, marks: :allow | :fail},
           unimplemented: [Scan.t()],
           planned: :allow | :fail,
@@ -140,8 +141,9 @@ defmodule Surfex.Status do
 
     by_id = Map.new(scans, &{{&1.kind, &1.id}, &1})
 
-    # A mark is not a relation (§12.1): the relations are judged without them.
-    {mark_entries, entries} = Enum.split_with(entries, &Entry.mark?/1)
+    # Marks and observations aren't relations (§12.1): the relations are judged without them.
+    {other_entries, entries} = Enum.split_with(entries, &(not Entry.relation?(&1)))
+    mark_entries = Enum.filter(other_entries, &Entry.mark?/1)
 
     relations =
       entries
@@ -169,6 +171,11 @@ defmodule Surfex.Status do
       triangle: triangle(scans, relations),
       unvalidated: unvalidated(relations),
       marks: marks(mark_entries, by_id),
+      discriminated:
+        MapSet.new(
+          for %Entry{op: :observe, type: :red_green, ends: [test]} <- other_entries,
+              do: {test.id, test.hash}
+        ),
       policy: %{triangle: triangle, validated: validated, marks: marks_policy},
       unimplemented: unimplemented(scans, relations),
       planned: planned,

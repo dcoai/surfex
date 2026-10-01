@@ -717,13 +717,20 @@ only state surfex keeps. Scanners never read or write it (§11).
 | `at` | when it was recorded, UTC ISO 8601: orders the history |
 | `commit` | HEAD when it was recorded: context only, since squash merges can make it unreachable |
 | `parents` | the entry ids it follows for the same relation; two means it resolves a fork |
-| `op` | `relate`, `retire` or `mark` (`Surfex.Log.Entry.ops/0`) |
-| `type` | a relation's: `implements`, `refines`, `depends_on`, `tests`, `verifies` (a test verifies a spec unit) or `excuses` (`Surfex.Log.Entry.types/0`); or a mark's: `needs_update` (`Surfex.Log.Entry.mark_types/0`) |
-| `ends` | a relation's two `{kind, id, hash}`, of the kinds `Surfex.Log.Entry.kinds/0` lists. A `null` hash is a **planned** end: an id that didn't exist when the relation was recorded (§14). At most one end is planned. A mark's one end: the spec unit, at its hash |
+| `op` | `relate`, `retire`, `mark` or `observe` (`Surfex.Log.Entry.ops/0`) |
+| `type` | a relation's: `implements`, `refines`, `depends_on`, `tests`, `verifies` (a test verifies a spec unit) or `excuses` (`Surfex.Log.Entry.types/0`); or a mark's: `needs_update` (`Surfex.Log.Entry.mark_types/0`); or an observation's: `red_green` (`Surfex.Log.Entry.observation_types/0`) |
+| `ends` | a relation's two `{kind, id, hash}`, of the kinds `Surfex.Log.Entry.kinds/0` lists. A `null` hash is a **planned** end: an id that didn't exist when the relation was recorded (§14). At most one end is planned. A mark's one end: the spec unit, at its hash. An observation's one end: the test, at its version |
 | `by` | who recorded it |
 | `note` | why, optionally |
 | `basis` | how the entry validates the relation (§18): `evidence`, `review`, `judgement` or `proposed` (`Surfex.Log.Entry.bases/0`); absent when it validates nothing, which keeps every older entry's canonical line and id |
 
+- **An observation** is a fact the log keeps about one test version, not a relation:
+  `op: observe`, type `red_green`, one `test` end at its version, basis `evidence`. It
+  records that the version **discriminated** (§17): it failed against one version of its
+  code and later passed against another, with the two runs in its note. It is never
+  withdrawn: a changed test is a new version, which the observation doesn't speak for.
+  `Surfex.Log.Entry.relation?/1` tells a relation's entries from a mark's or an
+  observation's.
 - **A mark** is a statement about one spec unit, not a relation: `op: mark`, type
   `needs_update`, one `spec` end at the unit's version, and a note (required) saying what is
   wrong in the result. A `retire` of the same type and end, naming the mark as its parent,
@@ -1229,6 +1236,14 @@ runs aren't needed afterwards.
   `Surfex.Evidence.discriminating?/3`, with `Surfex.Evidence.red_then_green/3` giving the
   two runs that show it. A test changed in any way (body, helpers, setups, cases) is a new
   version, which must fail and pass again.
+- **Discrimination is kept in the log.** The evidence file is scratch: `mix clean`, a
+  fresh checkout, another machine or another worktree loses it. So `mix surfex.confirm
+  --evidence` records each test version that has discriminated as a `red_green`
+  observation (§12.1), once. From then on that version counts as discriminated wherever
+  the log is, and a green run against the current code is all a re-confirmation needs
+  (`tests`, `implements`, and `require_red`). The guards stay: the red and green runs
+  were against different code, and the observation is for one test version only.
+  `Surfex.Status.derive/4` lists the discriminated test versions (`discriminated`).
 - `Surfex.Evidence.latest/3` is a test version's most recent record.
 
 `Surfex.ExUnitFormatter` records it. A project adds it beside the usual formatter
@@ -1287,6 +1302,12 @@ evidence: the log's claims are made where the work is done, and CI only checks t
 a run where the test passes against the code as confirmed bears the claims out; a test
 that didn't run, failed, or ran against other code disproves them and fails the check;
 without evidence nothing is checked, and relations confirmed by hand never are
+```
+
+```test red-green-recorded
+a test version's red then green is recorded in the log once; with it, a green run
+re-confirms after the evidence file is lost; a changed test version, or red and green
+against the same code, records nothing
 ```
 
 ```test evidence-recorded

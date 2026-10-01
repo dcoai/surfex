@@ -26,11 +26,13 @@ defmodule Surfex.Log.Entry do
   @enforce_keys [:id, :at, :parents, :op, :type, :ends]
   defstruct [:id, :at, :commit, :op, :type, :by, :note, :basis, parents: [], ends: []]
 
-  @ops [:relate, :retire, :mark]
+  @ops [:relate, :retire, :mark, :observe]
   @bases [:evidence, :review, :judgement, :proposed]
   @types [:implements, :refines, :depends_on, :tests, :verifies, :excuses]
   # A mark is a statement about one spec unit, not a relation (§12.1).
   @mark_types [:needs_update]
+  # An observation is a fact about one test version (§12.1, §17), not a relation.
+  @observation_types [:red_green]
   @kinds [:spec, :code, :test, :config, :class]
   # "A depends on B" is not "B depends on A": these keep their ends in the order given.
   @directed [:depends_on, :refines, :tests, :verifies]
@@ -41,7 +43,7 @@ defmodule Surfex.Log.Entry do
           at: String.t(),
           commit: String.t() | nil,
           parents: [String.t()],
-          op: :relate | :retire | :mark,
+          op: :relate | :retire | :mark | :observe,
           type: atom,
           ends: [end_],
           by: String.t() | nil,
@@ -60,6 +62,14 @@ defmodule Surfex.Log.Entry do
   @doc "The mark types: statements about one spec unit, not relations."
   @spec mark_types() :: [atom]
   def mark_types, do: @mark_types
+
+  @doc "The observation types: facts about one test version, not relations."
+  @spec observation_types() :: [atom]
+  def observation_types, do: @observation_types
+
+  @doc "Whether an entry is a relation's, not a mark's or an observation's."
+  @spec relation?(t) :: boolean
+  def relation?(%__MODULE__{type: type}), do: type in @types
 
   @doc "Whether an entry is a mark's (the mark, or the retire that withdraws it)."
   @spec mark?(t) :: boolean
@@ -150,7 +160,7 @@ defmodule Surfex.Log.Entry do
     case json(line) do
       %{"id" => id} = map when is_binary(id) ->
         with {:ok, op} <- atom(map["op"], @ops, "op"),
-             {:ok, type} <- atom(map["type"], @types ++ @mark_types, "type"),
+             {:ok, type} <- atom(map["type"], @types ++ @mark_types ++ @observation_types, "type"),
              {:ok, ends} <- decode_ends(map["ends"]),
              {:ok, basis} <- basis(map["basis"]),
              {:ok, entry} <-
@@ -285,12 +295,20 @@ defmodule Surfex.Log.Entry do
       e.op not in @ops ->
         bad(:op, e.op)
 
-      e.type not in (@types ++ @mark_types) ->
+      e.type not in (@types ++ @mark_types ++ @observation_types) ->
         bad(:type, e.type)
 
       # A mark is made by a mark op and withdrawn by a retire; relations never use `mark`.
       (e.op == :mark and e.type not in @mark_types) or (e.op == :relate and e.type in @mark_types) ->
         bad(:type, e.type)
+
+      # An observation is made only by an observe op, and an observe op makes only one.
+      e.op == :observe != e.type in @observation_types ->
+        bad(:type, e.type)
+
+      e.type in @observation_types and
+          not match?([%{kind: :test, hash: h}] when is_binary(h), e.ends) ->
+        bad(:ends, e.ends)
 
       e.type in @mark_types and not match?([%{kind: :spec, hash: h}] when is_binary(h), e.ends) ->
         bad(:ends, e.ends)

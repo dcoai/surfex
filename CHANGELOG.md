@@ -29,6 +29,11 @@ confirmed by hand.
   overall, and lists each incomplete item with what it lacks. `completeness: [min: N]`
   makes `mix surfex.status` fail below a floor, and `:completeness` in `goldens:` commits
   the report. Surfex scores 100% and holds itself there.
+- **Discrimination is kept in the log** (§12.1, §17): `mix surfex.confirm --evidence`
+  records each test version that went red then green as a `red_green` observation. From then
+  on, after `mix clean`, on a fresh checkout or in another worktree, a green run against the
+  current code re-confirms that test's relations. Observations are one-ended entries
+  (`op: observe`), never relations.
 
 ### Changed
 

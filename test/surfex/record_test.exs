@@ -417,7 +417,8 @@ defmodule Surfex.RecordTest do
 
     defp confirmed_types(scans, entries, evidence) do
       {:ok, recorded} = Record.confirm_by_evidence(scans, entries, evidence, @meta)
-      recorded |> Enum.map(& &1.type) |> Enum.sort()
+      # The relations confirmed; the red_green observations are the log's own record (§17).
+      for(e <- recorded, Entry.relation?(e), do: e.type) |> Enum.sort()
     end
 
     test "code changed: a test that went red then green confirms tests, and implements follows" do
@@ -426,7 +427,7 @@ defmodule Surfex.RecordTest do
       {:ok, recorded} =
         Record.confirm_by_evidence(world("s1", "c2"), confirmed(), evidence, @meta)
 
-      assert Enum.map(recorded, & &1.type) == [:tests, :implements]
+      assert Enum.map(recorded, & &1.type) == [:red_green, :tests, :implements]
       assert Enum.all?(recorded, &(&1.note =~ "confirmed by evidence: T: rejects@t1 failed at"))
       assert List.last(recorded).note =~ "T: rejects verifies #{@spec_id}"
       assert state(world("s1", "c2"), confirmed() ++ recorded) |> Enum.all?(&(&1 == :current))
@@ -538,6 +539,101 @@ defmodule Surfex.RecordTest do
       policy = [require_red: true, evidence: [ev(:failed, "c1", 1), ev(:passed, "c2", 2)]]
       assert {:ok, [%{basis: :judgement}]} = confirm.(policy)
       assert {:ok, [_]} = confirm.([])
+    end
+  end
+
+  # #93: the evidence file is scratch; the fact a test version discriminated is kept.
+  describe "discrimination in the log" do
+    @describetag verifies: "red-green-recorded"
+
+    defp observations(entries), do: for(%Entry{op: :observe} = e <- entries, do: e)
+
+    test "a test version's red then green is recorded once, with its runs" do
+      evidence = [ev(:failed, "c1", 1), ev(:passed, "c2", 2)]
+
+      {:ok, recorded} =
+        Record.confirm_by_evidence(world("s1", "c2"), confirmed(), evidence, @meta)
+
+      assert [%Entry{type: :red_green, basis: :evidence, parents: []} = seen] =
+               observations(recorded)
+
+      assert seen.ends == [%{kind: :test, id: @t, hash: "t1"}]
+      assert seen.note =~ "failed at 2026-09-28T11:00:00Z"
+      assert seen.note =~ "passed at 2026-09-28T12:00:00Z"
+
+      # Recorded once: a second run with it in the log records no other.
+      {:ok, again} =
+        Record.confirm_by_evidence(world("s1", "c2"), confirmed() ++ recorded, evidence, @meta)
+
+      assert observations(again) == []
+      assert %{discriminated: discriminated} = Status.derive(world("s1", "c2"), recorded)
+      assert MapSet.member?(discriminated, {@t, "t1"})
+    end
+
+    test "after the evidence file is lost, the log record and a green run re-confirm" do
+      evidence = [ev(:failed, "c1", 1), ev(:passed, "c2", 2)]
+
+      {:ok, recorded} =
+        Record.confirm_by_evidence(world("s1", "c2"), confirmed(), evidence, @meta)
+
+      log = confirmed() ++ recorded
+
+      # A refactor (c3) on a fresh checkout: only this run's green is in the evidence.
+      fresh = [ev(:passed, "c3", 3)]
+      {:ok, refactored} = Record.confirm_by_evidence(world("s1", "c3"), log, fresh, @meta)
+
+      assert refactored |> Enum.map(& &1.type) |> Enum.sort() == [:implements, :tests]
+      assert Enum.all?(refactored, &(&1.basis == :evidence and &1.note =~ "discriminated"))
+
+      # Without the record, the same run confirms nothing.
+      without = Enum.reject(log, &(&1.op == :observe))
+      assert {:ok, []} = Record.confirm_by_evidence(world("s1", "c3"), without, fresh, @meta)
+    end
+
+    test "a changed test version, or red and green against the same code, records nothing" do
+      same_code = [ev(:failed, "c1", 1), ev(:passed, "c1", 2)]
+      {:ok, recorded} = Record.confirm_by_evidence(world(), confirmed(), same_code, @meta)
+      assert observations(recorded) == []
+
+      evidence = [ev(:failed, "c1", 1), ev(:passed, "c2", 2)]
+
+      {:ok, recorded} =
+        Record.confirm_by_evidence(world("s1", "c2"), confirmed(), evidence, @meta)
+
+      # The test changed (t2): t1's record doesn't speak for it.
+      fresh = [ev(:passed, "c3", 3, "t2")]
+
+      assert {:ok, []} =
+               Record.confirm_by_evidence(
+                 world("s1", "c3", "t2"),
+                 confirmed() ++ recorded,
+                 fresh,
+                 @meta
+               )
+    end
+
+    test "require_red accepts a test version the log says discriminated" do
+      evidence = [ev(:failed, "c1", 1), ev(:passed, "c2", 2)]
+
+      {:ok, recorded} =
+        Record.confirm_by_evidence(world("s1", "c2"), confirmed(), evidence, @meta)
+
+      log = confirmed() ++ observations(recorded)
+      note = Keyword.put(@meta, :note, "still exercises add/2")
+
+      confirm =
+        &Record.confirm(
+          world("s1", "c3"),
+          log,
+          "test:" <> @t,
+          "code:" <> @code_id,
+          :tests,
+          note,
+          &1
+        )
+
+      # A fresh checkout: no red in the evidence, but the log has the record.
+      assert {:ok, [_]} = confirm.(require_red: true, evidence: [ev(:passed, "c3", 3)])
     end
   end
 
