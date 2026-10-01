@@ -55,6 +55,8 @@ confirmed by hand.
 
 ### Changed
 
+- **The README opens with what Surfex does** and the situations it handles, without
+  commands; the how-to list gave way to `mix surfex.info`.
 - **A relation is validated by the process, never asserted** (§18).
   - Code relations (`implements`) become current only on evidence (a verifying test that
     went red and then green) or a review (`mix surfex.validate`).

@@ -1,17 +1,39 @@
 # Surfex
 
-Surfex keeps a specification, its tests and LLM-generated code in sync, by making the work
-of keeping them in sync the only way to pass.
+Surfex keeps a specification, its tests and its code in step, and makes doing that work
+the only way to pass.
 
-It hashes every section of your spec, every test and every public function, reading source
-without compiling it, and keeps a log of which versions of them were **shown** to belong
-together. Code is never taken on anyone's word. It counts as implementing a section when a
-test that verifies the section failed against the old code and passes against the new, or
-when a reviewed test passes against it. When anything changes, its relations **dangle**
-until that's shown again. A fresh clone knows exactly what has and hasn't been validated,
-CI fails on anything that hasn't, and an agent gets the precise work list. The log never
-loses anything, so it is also the history of how the spec, the tests and the code came to
-relate.
+It reads every section of the spec, every test and every public function, and keeps a
+log of which versions of them were **shown** to belong together. Code is never taken on
+anyone's word, a person's or an LLM's: it counts as implementing the spec when a test
+for that part of the spec failed and then passed against it, or a reviewed test passes
+against it. When the spec, a test or the code changes, what it touched needs showing
+again, and Surfex says exactly what and why. A fresh clone knows what has and hasn't been
+validated, CI fails on anything that hasn't, and an agent gets a precise work list.
+
+## What it handles
+
+- **Keeping spec, tests and code in step** as any of them changes: a refactor, a new test,
+  a reworded or changed requirement, a renamed section or function.
+- **Validating rather than asserting:** each relation records how it was shown, by test
+  evidence, a review or a judgement, and a claim nobody has shown never passes.
+- **Test-first work by agents:** the spec unit, then a failing test, then the code, with
+  each step recorded as it happens.
+- **Adopting an established project:** a long-kept suite can be taken on trust once,
+  then earns evidence over time, or every test can be re-evaluated from scratch.
+- **A spec that's wrong in use:** when the tests and code agree with the spec but the
+  result is wrong, the spec itself is marked for change.
+- **Coverage you can hold a line on:** how much of the spec, tests and code is covered by
+  validated relations, and what each missing item lacks.
+- **Found work handed on:** problems Surfex finds become change drafts for the project's
+  own process, and can be filed in its tracker.
+- **Reviewable, mergeable history:** a committed, append-only log that merges across
+  branches, flags parallel disagreements, and answers how anything came to relate.
+- **Committed reports:** the relation status and the coverage report kept as files that CI
+  checks for drift.
+
+How to do each: `mix surfex.info` lists the topics and commands, and the guides cover
+writing specs and adopting an existing suite.
 
 ## Installation
 
@@ -121,37 +143,10 @@ the test against the spec unit, fixed it where it fell short, and it passes.
 
 ## Beyond the example
 
-- **Adopt an established suite:** `adoption: :trust` (or per area) and a one-shot `mix
-  surfex.baseline` take long-kept tests on trust, so a project isn't asked to re-earn
-  every relation before Surfex is useful. Each moves to evidence the first time its test
-  goes red then green. See [Adopting an existing suite](guides/adopting-an-existing-suite.md).
-- **Commit the state for review:** `goldens: [:status]` in `.surfex.exs` makes
-  `mix surfex.goldens` gate `RELATIONS.md`, a readable record of every relation and its
-  state.
-- **Feed an agent:** `mix surfex.status --format json` lists every relation needing
-  attention, with the recorded and current hashes of each end and where each end is.
-- **Relate by hand:** `mix surfex.relate FROM TO --type T` for anything the spec doesn't
-  name. Types are `implements`, `refines`, `depends_on`, `tests`, `verifies` and `excuses`.
-  Naming a pair validates nothing: an `implements` relation is proposed until the process
-  validates it.
-- **Put a relation to rest:** `mix surfex.retire FROM TO --type T`.
-- **Say the spec is wrong:** when the tests pass but the result isn't right, `mix
-  surfex.mark SPEC_UNIT --needs-update --note N` records it against the unit's version.
-  Status reports it until the spec changes; `--no-marks` fails on it.
-- **See what's missing:** `mix surfex.completeness` scores the spec, tests and code
-  covered by validated relations and lists what each item lacks; `completeness: [min: N]`
-  keeps a floor.
-- **Hand work to your process:** `mix surfex.draft` writes up every mark, unmet id and
-  triangle gap as a change draft; with `process:` in `.surfex.exs`, `--file` opens each
-  in your tracker.
-- **Rename a section:** give headings anchors (`## Totals {#totals}`) and they keep their
-  id. Otherwise `mix surfex.suggest` spots the rename, or `mix surfex.move OLD NEW` carries
-  the relations across.
-- **Work in parallel:** the log is merged by git's union merge (set up by `--init`). If
-  two branches confirm the same relation without seeing each other, it shows as
-  **conflicted**, and `mix surfex.resolve … --pick` settles it.
-- **Ask how it got here:** `mix surfex.history MyApp.Cart.total/1` lists every relation
-  it has had, from the log alone.
+`mix surfex.info` is the map of everything else, from the installed version: the model,
+the process and what each change needs, reading the status, recording and validating
+relations, marks, adoption, completeness, change drafts, goldens and every `.surfex.exs`
+key. Each topic is one command away (`mix surfex.info process`).
 
 ## Upgrading from the v0.2 trace
 
@@ -167,7 +162,8 @@ in `goldens:` with `:status`, then run `mix surfex.log --init` and
 
 [`guides/writing-specs.md`](guides/writing-specs.md) is how to write a spec Surfex relates
 well: section sizing, stable headings, naming the code, checkable claims, and test-first
-work.
+work. [`guides/adopting-an-existing-suite.md`](guides/adopting-an-existing-suite.md) is
+when to trust an established suite and what that costs.
 
 [`spec.md`](spec.md) is the full specification: the scan records, the relation log, every
 state and command, and every `.surfex.exs` key. Surfex holds it to its own code with its
