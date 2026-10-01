@@ -64,7 +64,7 @@ defmodule Surfex.LogTest do
     end
 
     test "the vocabulary is fixed: ops, types, kinds, and which types are directed" do
-      assert Entry.ops() == [:relate, :retire, :mark]
+      assert Entry.ops() == [:relate, :retire, :mark, :observe]
       assert Entry.types() == [:implements, :refines, :depends_on, :tests, :verifies, :excuses]
       assert Entry.kinds() == [:spec, :code, :test, :config, :class]
       assert Entry.directed() == [:depends_on, :refines, :tests, :verifies]
@@ -112,6 +112,39 @@ defmodule Surfex.LogTest do
                )
 
       assert msg =~ ":ends"
+    end
+
+    # #93: a test version's discrimination is a fact the log keeps, on one test end.
+    test "an observation is one test end at its version, op observe, type red_green" do
+      test_end = %{kind: :test, id: "T: a", hash: "t1"}
+
+      base = [
+        at: "2026-09-28T10:00:01Z",
+        op: :observe,
+        type: :red_green,
+        basis: :evidence,
+        note: "failed at …, passed at …"
+      ]
+
+      seen = Entry.new!(base ++ [ends: [test_end]])
+      assert Entry.observation_types() == [:red_green]
+      assert :observe in Entry.ops()
+      refute Entry.relation?(seen)
+      assert Entry.relation?(entry(1))
+      refute Entry.mark?(seen)
+      assert Entry.decode!(Entry.encode(seen)) == seen
+
+      # One test end at a version; nothing else is an observation.
+      spec = %{kind: :spec, id: "spec.md#S1", hash: "s1"}
+      assert_raise ArgumentError, ~r/:ends/, fn -> Entry.new!(base ++ [ends: [spec]]) end
+
+      assert_raise ArgumentError, ~r/:ends/, fn ->
+        Entry.new!(base ++ [ends: [%{test_end | hash: nil}]])
+      end
+
+      assert_raise ArgumentError, ~r/:type/, fn ->
+        Entry.new!(Keyword.put(base, :op, :relate) ++ [ends: [test_end, spec]])
+      end
     end
 
     # #73: a mark says the spec unit itself needs to change. It has one end.

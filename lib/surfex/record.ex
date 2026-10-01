@@ -296,8 +296,8 @@ defmodule Surfex.Record do
   # Relations with an end `{kind, old_id}`, grouped with their tips, excluding retired ones.
   defp live_groups(entries, kind, old_id) do
     entries
-    # A mark is not a relation: a move carries relations, never marks (§14).
-    |> Enum.reject(&Entry.mark?/1)
+    # Marks and observations aren't relations: a move carries relations only (§14).
+    |> Enum.filter(&Entry.relation?/1)
     |> Enum.filter(fn e -> Enum.any?(e.ends, &(&1.kind == kind and &1.id == old_id)) end)
     |> Enum.group_by(&Entry.relation/1)
     |> Enum.map(fn {relation, _} -> {relation, Status.tips(entries, relation)} end)
@@ -312,14 +312,20 @@ defmodule Surfex.Record do
 
   @doc """
   The confirmations test evidence (`Surfex.Evidence`) justifies, for every relation that
-  dangles. **People or agents judge meaning, and evidence judges behaviour**:
+  dangles or is proposed, basis `:evidence` (§17, §18). **People or agents judge meaning,
+  and evidence judges behaviour**:
 
-    * `verifies` (test → spec) is never confirmed by evidence. Whether a test still
-      expresses a requirement is a judgement: `confirm/4`.
+    * First, each test version that has discriminated in the evidence and has no record
+      in the log yet gets one: a `red_green` observation (§12.1), so the fact outlives the
+      evidence file.
+    * A `verifies` relation (test → spec) is recorded on its failing run: the test's
+      current version has failed. When only the spec changed, a failing run says nothing
+      about the rewording: that is a judgement, `confirm/6`.
     * A dangling `tests` relation (test → code) is confirmed when the test's current
       version has discriminated (it failed against one version of its code and passed
-      against another, `Surfex.Evidence.discriminating?/3`) and its latest run passed
-      against the code's current version.
+      against another, `Surfex.Evidence.discriminating?/3`, or the log holds its
+      `red_green` observation) and its latest run passed against the code's current
+      version.
     * A dangling `implements` relation (spec ↔ code) is then confirmed when a test with a
       current `verifies` relation to the spec unit, or to a block or hint inside it, has a
       current `tests` relation to the code, a version that discriminated, and a latest run
@@ -336,7 +342,8 @@ defmodule Surfex.Record do
     meta = with_basis(meta, :evidence)
     status = Status.derive(scans, entries)
 
-    with {:ok, verifies} <-
+    with {:ok, observed} <- observations(status, evidence, meta),
+         {:ok, verifies} <-
            by_evidence(status, :verifies, &verifies_evidence(&1, status, evidence), meta),
          status = Status.derive(scans, entries ++ verifies),
          {:ok, tests} <- by_evidence(status, :tests, &tests_evidence(&1, status, evidence), meta) do
@@ -345,8 +352,35 @@ defmodule Surfex.Record do
       implemented =
         by_evidence(status, :implements, &implements_evidence(&1, status, evidence), meta)
 
-      with {:ok, implements} <- implemented, do: {:ok, verifies ++ tests ++ implements}
+      with {:ok, implements} <- implemented,
+           do: {:ok, observed ++ verifies ++ tests ++ implements}
     end
+  end
+
+  # A red_green observation for each scanned test version that discriminated in the
+  # evidence and that the log doesn't record yet (§17).
+  defp observations(status, evidence, meta) do
+    Enum.reduce_while(Enum.sort(Map.keys(status.scans)), {:ok, []}, fn
+      {:test, _} = key, {:ok, acc} ->
+        test = Map.fetch!(status.scans, key)
+
+        with false <- MapSet.member?(status.discriminated, {test.id, test.hash}),
+             {red, green} <- Surfex.Evidence.red_then_green(evidence, test.id, test.hash) do
+          note =
+            "#{Surfex.Evidence.note()}: #{test.id}@#{test.hash} failed at #{red.at} " <>
+              "(#{versions_text(red)}) and passed at #{green.at} (#{versions_text(green)})"
+
+          case entry(:observe, :red_green, [end_(test)], [], Keyword.put(meta, :note, note)) do
+            {:ok, e} -> {:cont, {:ok, acc ++ [e]}}
+            error -> {:halt, error}
+          end
+        else
+          _ -> {:cont, {:ok, acc}}
+        end
+
+      _key, acc ->
+        {:cont, acc}
+    end)
   end
 
   # A verifies relation on its failing run: the test's current version has failed, so it
@@ -397,7 +431,7 @@ defmodule Surfex.Record do
   defp tests_evidence(%{relation: {:tests, {:test, t}, {:code, c}}}, status, evidence) do
     test = Map.fetch!(status.scans, {:test, t})
     code = Map.fetch!(status.scans, {:code, c})
-    green_against(evidence, test, code, definitions(status))
+    green_against(evidence, status.discriminated, test, code, definitions(status))
   end
 
   # code id => its definition (`Surfex.Scan.definition/1`): one function's default arities
@@ -411,17 +445,28 @@ defmodule Surfex.Record do
     end
   end
 
-  defp green_against(evidence, test, code, definition) do
-    with {red, green} <- Surfex.Evidence.red_then_green(evidence, test.id, test.hash),
-         %{result: :passed, code: versions} = latest <-
+  # The test's latest run passed against the code's current version, and its version has
+  # discriminated: in the evidence, or by the log's record when the evidence is gone.
+  defp green_against(evidence, discriminated, test, code, definition) do
+    with %{result: :passed, code: versions} = latest <-
            Surfex.Evidence.latest(evidence, test.id, test.hash),
          true <-
            Enum.any?(versions, fn {id, h} ->
              h == code.hash and definition.(id) == Scan.definition(code)
            end) do
-      "#{Surfex.Evidence.note()}: #{test.id}@#{test.hash} failed at #{red.at} (#{versions_text(red)}) " <>
-        "and passes at #{latest.at} against #{code.id}@#{code.hash}" <>
-        if(green != latest, do: " (first green #{green.at})", else: "")
+      passes = "passes at #{latest.at} against #{code.id}@#{code.hash}"
+
+      case Surfex.Evidence.red_then_green(evidence, test.id, test.hash) do
+        {red, green} ->
+          "#{Surfex.Evidence.note()}: #{test.id}@#{test.hash} failed at #{red.at} (#{versions_text(red)}) " <>
+            "and #{passes}" <> if(green != latest, do: " (first green #{green.at})", else: "")
+
+        nil ->
+          if MapSet.member?(discriminated, {test.id, test.hash}),
+            do:
+              "#{Surfex.Evidence.note()}: #{test.id}@#{test.hash} discriminated (recorded in the log) " <>
+                "and #{passes}"
+      end
     else
       _ -> nil
     end
@@ -467,7 +512,13 @@ defmodule Surfex.Record do
 
     Enum.find_value(verifying, fn t ->
       if MapSet.member?(exercising, t) do
-        case green_against(evidence, Map.fetch!(status.scans, {:test, t}), code, definition) do
+        case green_against(
+               evidence,
+               status.discriminated,
+               Map.fetch!(status.scans, {:test, t}),
+               code,
+               definition
+             ) do
           nil -> nil
           note -> "#{note}; #{t} verifies #{s}"
         end
@@ -651,6 +702,7 @@ defmodule Surfex.Record do
         for %{type: :tests, relation: {_, {:test, t}, _}} <- dangling,
             test = Map.fetch!(status.scans, {:test, t}),
             not Surfex.Evidence.discriminating?(evidence, test.id, test.hash),
+            not MapSet.member?(status.discriminated, {test.id, test.hash}),
             uniq: true,
             do: t
 
