@@ -30,6 +30,7 @@ defmodule Surfex.Status.Config do
     :tests,
     :triangle,
     :require_red,
+    :adoption,
     :process,
     :completeness
   ]
@@ -160,7 +161,8 @@ defmodule Surfex.Status.Config do
   def status(config, root, namespace, extra) do
     entries = if File.dir?(Surfex.Log.dir(root)), do: Surfex.Log.load(root), else: []
     {scans, options} = load(config, root, namespace)
-    Surfex.Status.derive(scans, entries, require!(config), extra ++ options)
+    adoption = [adoption: adoption!(config, root)]
+    Surfex.Status.derive(scans, entries, require!(config), extra ++ adoption ++ options)
   end
 
   @doc """
@@ -181,6 +183,72 @@ defmodule Surfex.Status.Config do
               "completeness: must be [min: N] with N from 0 to 100, got #{inspect(other)}"
     end
   end
+
+  @doc """
+  The `adoption:` setting (§18.1), validated against the test files under `root`:
+  `:reevaluate` (the default), `:trust`, or `[trust: globs, reevaluate: globs]`, whose globs
+  lie within `tests:` and don't overlap. Gives the setting and the trusted test files
+  (`:all` under `:trust`).
+  """
+  @spec adoption!(keyword, String.t()) :: %{setting: term, trusted: :all | MapSet.t(String.t())}
+  def adoption!(config, root) do
+    case Keyword.get(config, :adoption, :reevaluate) do
+      :reevaluate ->
+        %{setting: :reevaluate, trusted: MapSet.new()}
+
+      :trust ->
+        %{setting: :trust, trusted: :all}
+
+      setting ->
+        unless Keyword.keyword?(setting) and setting != [] and
+                 Enum.all?(setting, fn {k, v} ->
+                   k in [:trust, :reevaluate] and is_list(v) and Enum.all?(v, &is_binary/1)
+                 end),
+               do: bad_adoption(setting)
+
+        files = &files(root, Keyword.get(setting, &1, []))
+        {trusted, reevaluated} = {files.(:trust), files.(:reevaluate)}
+        tests = files(root, Keyword.get(config, :tests, []))
+
+        case MapSet.difference(MapSet.union(trusted, reevaluated), tests) |> Enum.sort() do
+          [] ->
+            :ok
+
+          outside ->
+            raise ArgumentError, "adoption: globs match files outside tests: #{inspect(outside)}"
+        end
+
+        case MapSet.intersection(trusted, reevaluated) |> Enum.sort() do
+          [] ->
+            :ok
+
+          both ->
+            raise ArgumentError,
+                  "adoption: trust and reevaluate globs overlap on #{inspect(both)}"
+        end
+
+        %{setting: setting, trusted: trusted}
+    end
+  end
+
+  defp bad_adoption(value),
+    do:
+      raise(
+        ArgumentError,
+        "adoption: must be :reevaluate, :trust or [trust: globs, reevaluate: globs], got #{inspect(value)}"
+      )
+
+  defp files(root, globs) do
+    for glob <- globs,
+        file <- Path.wildcard(Path.join(root, glob)),
+        into: MapSet.new(),
+        do: Path.relative_to(file, root)
+  end
+
+  @doc "Whether a test file is trusted under an adoption setting (`adoption!/2`)."
+  @spec trusted?(%{trusted: :all | MapSet.t(String.t())}, String.t()) :: boolean
+  def trusted?(%{trusted: :all}, _file), do: true
+  def trusted?(%{trusted: trusted}, file), do: MapSet.member?(trusted, file)
 
   @doc "The `require:` policy, validated. Raises `ArgumentError` naming what is wrong."
   @spec require!(keyword) :: keyword

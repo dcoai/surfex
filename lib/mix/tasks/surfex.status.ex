@@ -38,7 +38,8 @@ defmodule Mix.Tasks.Surfex.Status do
           planned: :boolean,
           evidence: :boolean,
           validated: :boolean,
-          marks: :boolean
+          marks: :boolean,
+          baseline: :boolean
         ]
       )
 
@@ -56,13 +57,14 @@ defmodule Mix.Tasks.Surfex.Status do
     namespace = Mix.Project.config()[:app] |> to_string() |> Macro.camelize()
     planned = if opts[:planned] == false, do: :fail, else: :allow
     marks = if opts[:marks] == false, do: :fail, else: :allow
+    baseline = if opts[:baseline] == false, do: :fail, else: :allow
 
     status =
       Config.status(
         config,
         root,
         namespace,
-        [planned: planned, marks: marks, validated: opts[:validated] == true] ++
+        [planned: planned, marks: marks, baseline: baseline, validated: opts[:validated] == true] ++
           evidence(opts, root)
       )
 

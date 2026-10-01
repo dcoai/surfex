@@ -184,6 +184,99 @@ defmodule Surfex.Record do
          do: {:ok, [entry]}
   end
 
+  @doc """
+  Takes the one-shot baseline (§18.1) under `meta[:adoption]` (`Surfex.Status.Config.adoption!/2`):
+  a `baseline` observation for each trusted test version, and a `verifies` relation with
+  basis `:baseline` for each of its declarations, so the existing suite counts as if it had
+  discriminated. `meta[:note]` is required: it says why the suite is trusted.
+
+  It refuses under `:reevaluate`, when the log already holds a baseline, when no tests are
+  scanned, and when a trusted test's current version hasn't run green in `evidence`.
+  """
+  @spec baseline([Scan.t()], [Entry.t()], [Surfex.Evidence.t()], meta) ::
+          {:ok, [Entry.t()]} | {:error, String.t()}
+  def baseline(scans, entries, evidence, meta) do
+    adoption = Keyword.fetch!(meta, :adoption)
+    tests = for %Scan{kind: :test} = t <- scans, do: t
+    trusted = Enum.filter(tests, &Surfex.Status.Config.trusted?(adoption, &1.location.file))
+
+    not_green =
+      for t <- trusted,
+          not match?(%{result: :passed}, Surfex.Evidence.latest(evidence, t.id, t.hash)),
+          do: t.id
+
+    taken = Enum.find(entries, &match?(%Entry{op: :observe, type: :baseline}, &1))
+
+    with :ok <- note!(meta, "say why the existing suite is trusted"),
+         :ok <-
+           if(adoption.setting == :reevaluate,
+             do:
+               {:error,
+                "adoption: is :reevaluate, so nothing is trusted: set adoption: :trust " <>
+                  "(or trusted globs) in .surfex.exs to take a baseline"},
+             else: :ok
+           ),
+         :ok <-
+           if(taken,
+             do:
+               {:error,
+                "a baseline was already taken (entry #{String.slice(taken.id, 0, 12)}): it is one-shot"},
+             else: :ok
+           ),
+         :ok <-
+           if(tests == [],
+             do: {:error, "no tests are scanned: set tests: in .surfex.exs"},
+             else: :ok
+           ),
+         :ok <- if(not_green == [], do: :ok, else: {:error, not_green_message(not_green)}) do
+      note = "baseline under adoption: #{inspect(adoption.setting)}: #{meta[:note]}"
+
+      meta =
+        meta |> Keyword.delete(:adoption) |> Keyword.put(:note, note) |> with_basis(:baseline)
+
+      status = Status.derive(scans, entries)
+
+      trusted
+      |> Enum.flat_map(fn test ->
+        observation = entry(:observe, :baseline, [end_(test)], [], meta)
+
+        verifies =
+          for {:verifies, ref} <- test.declares,
+              {:ok, unit} <- [Scan.resolve(scans, ref)],
+              relation = Entry.relation(:verifies, end_(test), end_(unit)),
+              do:
+                entry(
+                  :relate,
+                  :verifies,
+                  [end_(test), end_(unit)],
+                  tip_ids(status, relation),
+                  meta
+                )
+
+        [observation | verifies]
+      end)
+      |> Enum.reduce_while({:ok, []}, fn
+        {:ok, e}, {:ok, acc} -> {:cont, {:ok, acc ++ [e]}}
+        error, _acc -> {:halt, error}
+      end)
+    end
+  end
+
+  defp not_green_message([one]),
+    do: "1 trusted test hasn't run green at its current version: run the tests first (#{one})"
+
+  defp not_green_message(many),
+    do:
+      "#{length(many)} trusted tests haven't run green at their current versions: " <>
+        "run the tests first (#{Enum.join(Enum.take(many, 5), ", ")}…)"
+
+  defp tip_ids(status, relation) do
+    case Enum.find(status.relations, &(&1.relation == relation)) do
+      nil -> []
+      r -> Enum.map(r.tips, & &1.id)
+    end
+  end
+
   defp note!(meta, what) do
     if is_binary(meta[:note]) and String.trim(meta[:note]) != "",
       do: :ok,
@@ -339,15 +432,17 @@ defmodule Surfex.Record do
   @spec confirm_by_evidence([Scan.t()], [Entry.t()], [Surfex.Evidence.t()], meta) ::
           {:ok, [Entry.t()]} | {:error, String.t()}
   def confirm_by_evidence(scans, entries, evidence, meta) do
-    meta = with_basis(meta, :evidence)
-    status = Status.derive(scans, entries)
+    # Under the project's adoption: setting (§18.1), a baselined test counts as discriminated.
+    derive = &Status.derive(scans, &1, [], Keyword.take(meta, [:adoption]))
+    meta = meta |> Keyword.delete(:adoption) |> with_basis(:evidence)
+    status = derive.(entries)
 
     with {:ok, observed} <- observations(status, evidence, meta),
          {:ok, verifies} <-
            by_evidence(status, :verifies, &verifies_evidence(&1, status, evidence), meta),
-         status = Status.derive(scans, entries ++ verifies),
+         status = derive.(entries ++ verifies),
          {:ok, tests} <- by_evidence(status, :tests, &tests_evidence(&1, status, evidence), meta) do
-      status = Status.derive(scans, entries ++ verifies ++ tests)
+      status = derive.(entries ++ verifies ++ tests)
 
       implemented =
         by_evidence(status, :implements, &implements_evidence(&1, status, evidence), meta)
@@ -412,7 +507,14 @@ defmodule Surfex.Record do
           nil ->
             {:cont, {:ok, acc}}
 
-          note ->
+          justified ->
+            # A note, or a note with its own basis (a baselined test's, §18.1).
+            {note, meta} =
+              case justified do
+                {note, basis} -> {note, with_basis(meta, basis)}
+                note -> {note, meta}
+              end
+
             ends = Enum.map(tip.ends, &end_(Map.fetch!(status.scans, {&1.kind, &1.id})))
 
             case entry(:relate, type, ends, [tip.id], Keyword.put(meta, :note, note)) do
@@ -431,7 +533,7 @@ defmodule Surfex.Record do
   defp tests_evidence(%{relation: {:tests, {:test, t}, {:code, c}}}, status, evidence) do
     test = Map.fetch!(status.scans, {:test, t})
     code = Map.fetch!(status.scans, {:code, c})
-    green_against(evidence, status.discriminated, test, code, definitions(status))
+    green_against(evidence, status, test, code, definitions(status))
   end
 
   # code id => its definition (`Surfex.Scan.definition/1`): one function's default arities
@@ -447,7 +549,7 @@ defmodule Surfex.Record do
 
   # The test's latest run passed against the code's current version, and its version has
   # discriminated: in the evidence, or by the log's record when the evidence is gone.
-  defp green_against(evidence, discriminated, test, code, definition) do
+  defp green_against(evidence, status, test, code, definition) do
     with %{result: :passed, code: versions} = latest <-
            Surfex.Evidence.latest(evidence, test.id, test.hash),
          true <-
@@ -462,10 +564,18 @@ defmodule Surfex.Record do
             "and #{passes}" <> if(green != latest, do: " (first green #{green.at})", else: "")
 
         nil ->
-          if MapSet.member?(discriminated, {test.id, test.hash}),
-            do:
+          cond do
+            MapSet.member?(status.discriminated, {test.id, test.hash}) ->
               "#{Surfex.Evidence.note()}: #{test.id}@#{test.hash} discriminated (recorded in the log) " <>
                 "and #{passes}"
+
+            MapSet.member?(status.baselined, {test.id, test.hash}) ->
+              {"#{Surfex.Evidence.note()}: #{test.id}@#{test.hash} is baselined " <>
+                 "(adoption: #{inspect(status.adoption)}) and #{passes}", :baseline}
+
+            true ->
+              nil
+          end
       end
     else
       _ -> nil
@@ -490,8 +600,8 @@ defmodule Surfex.Record do
     # Only a validated test relation carries the code relation: an unvalidated one is a
     # claim, and code derived from a claim would be a guess again (§18).
     live = fn type ->
-      for %{type: ^type, state: :current, tips: [tip], relation: {_, a, b}} <- status.relations,
-          type != :verifies or validated?(tip),
+      for %{type: ^type, state: :current, relation: {_, a, b}} = r <- status.relations,
+          type != :verifies or Status.validated?(status, r),
           do: {a, b}
     end
 
@@ -514,19 +624,18 @@ defmodule Surfex.Record do
       if MapSet.member?(exercising, t) do
         case green_against(
                evidence,
-               status.discriminated,
+               status,
                Map.fetch!(status.scans, {:test, t}),
                code,
                definition
              ) do
           nil -> nil
+          {note, basis} -> {"#{note}; #{t} verifies #{s}", basis}
           note -> "#{note}; #{t} verifies #{s}"
         end
       end
     end)
   end
-
-  defp validated?(%Entry{basis: basis}), do: basis in [:evidence, :review, :judgement]
 
   @doc """
   Records a **review** (§18): `test` was examined against `unit` and judged to validate
@@ -578,7 +687,7 @@ defmodule Surfex.Record do
         for %{type: :implements, state: state, relation: {_, {:code, c}, {:spec, ^spec_id}}} = r <-
               status.relations,
             state not in [:retired, :orphaned, :planned, :conflicted],
-            not (state == :current and validated?(hd(r.tips))),
+            not Status.validated?(status, r),
             code = Map.fetch!(status.scans, {:code, c}),
             exercised.(code),
             do: r
@@ -610,7 +719,7 @@ defmodule Surfex.Record do
           inner == [] ->
             {:error, missing}
 
-          Enum.any?(inner, &(&1.state == :current and validated?(hd(&1.tips)))) ->
+          Enum.any?(inner, &Status.validated?(status, &1)) ->
             {:ok, []}
 
           true ->

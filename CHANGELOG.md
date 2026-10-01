@@ -12,6 +12,17 @@ confirmed by hand.
 
 ### Added
 
+- **Adopting an existing suite** (§18.1): `adoption:` in `.surfex.exs` is `:reevaluate` (the
+  default: every test earns its relations by discriminating), `:trust`, or `[trust: globs,
+  reevaluate: globs]` by area. Under trust, `mix surfex.baseline --note N` takes a one-shot
+  baseline: a `baseline` observation per trusted test version that has run green, and its
+  declared `verifies` with the new basis `baseline`. A baselined test carries `implements`
+  through `confirm --evidence` as `baseline` too. Trust only shrinks: a changed test
+  version isn't baselined, narrowing `adoption:` leaves its relations unvalidated, and a
+  test's first red→green moves them to `evidence`. Every report counts baseline relations
+  with the mode, `--no-baseline` (`baseline: :fail`) fails on them, and completeness counts
+  a baseline that holds as validated.
+
 - **Needs-update marks** (§12.1, §13.1, §14): `mix surfex.mark SPEC_UNIT --needs-update
   --note N` records that a spec unit itself needs to change, because the tests reflect it
   and the code passes them but the result is wrong. A mark is open while the unit is at

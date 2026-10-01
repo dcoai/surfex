@@ -17,7 +17,6 @@ defmodule Surfex.Completeness do
   alias Surfex.Scan.Markdown
 
   @kinds [spec: "spec units", test: "tests", code: "code"]
-  @validating [:evidence, :review, :judgement]
 
   @type score :: %{complete: non_neg_integer, total: non_neg_integer, percent: float}
   @type item :: %{
@@ -72,11 +71,11 @@ defmodule Surfex.Completeness do
     if touching == [], do: [:no_relation], else: lacks(kind, scan, touching, live, within, status)
   end
 
-  defp lacks(:spec, scan, touching, live, within, _status) do
+  defp lacks(:spec, scan, touching, live, within, status) do
     verified =
       Enum.any?(live, fn
         %{relation: {:verifies, {:test, _}, {:spec, unit}}} = r ->
-          validated?(r) and inside?(unit, scan.id, within)
+          validated?(status, r) and inside?(unit, scan.id, within)
 
         _ ->
           false
@@ -85,11 +84,13 @@ defmodule Surfex.Completeness do
     implements = for %{relation: {:implements, _, _}} = r <- touching, do: r
 
     if(verified, do: [], else: [:no_test]) ++
-      if Enum.all?(implements, &validated?/1), do: [], else: [:unvalidated]
+      if Enum.all?(implements, &validated?(status, &1)), do: [], else: [:unvalidated]
   end
 
-  defp lacks(:test, _scan, touching, live, within, _status) do
-    verifies = for %{relation: {:verifies, {:test, _}, _}} = r <- touching, validated?(r), do: r
+  defp lacks(:test, _scan, touching, live, within, status) do
+    verifies =
+      for %{relation: {:verifies, {:test, _}, _}} = r <- touching, validated?(status, r), do: r
+
     exercises = Enum.any?(touching, &match?(%{relation: {:tests, _, _}, state: :current}, &1))
 
     code_less =
@@ -117,15 +118,15 @@ defmodule Surfex.Completeness do
         untested =
           Enum.any?(status.triangle, &(&1.gap == :code_untested and &1.code == scan.id))
 
-        if(Enum.all?(implements, &validated?/1), do: [], else: [:unvalidated]) ++
+        if(Enum.all?(implements, &validated?(status, &1)), do: [], else: [:unvalidated]) ++
           if untested, do: [:untested], else: []
     end
   end
 
   defp ends(%{relation: {_type, a, b}}), do: [a, b]
 
-  defp validated?(%{state: :current, tips: [tip]}), do: tip.basis in @validating
-  defp validated?(_relation), do: false
+  # Validated now, as status judges it: a baseline that still holds counts (§18.1).
+  defp validated?(status, relation), do: Surfex.Status.validated?(status, relation)
 
   # A unit's code is its own implements, or its enclosing unit's: a hint's code is its
   # section's.

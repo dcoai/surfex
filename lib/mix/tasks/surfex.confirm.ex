@@ -40,6 +40,10 @@ defmodule Mix.Tasks.Surfex.Confirm do
         Mix.raise("--evidence confirms what the evidence justifies: name no relation with it")
 
       opts[:evidence] == true ->
+        # A baselined test counts as discriminated under the project's adoption: (§18.1).
+        config = Config.read!(Path.join(root, opts[:config] || ".surfex.exs"))
+        meta = Keyword.put(meta, :adoption, Config.adoption!(config, root))
+
         case Surfex.Record.confirm_by_evidence(scans, entries, evidence, meta) do
           {:ok, []} -> Mix.shell().info("nothing to confirm by evidence")
           result -> R.record(root, result)

@@ -27,12 +27,12 @@ defmodule Surfex.Log.Entry do
   defstruct [:id, :at, :commit, :op, :type, :by, :note, :basis, parents: [], ends: []]
 
   @ops [:relate, :retire, :mark, :observe]
-  @bases [:evidence, :review, :judgement, :proposed]
+  @bases [:evidence, :review, :judgement, :baseline, :proposed]
   @types [:implements, :refines, :depends_on, :tests, :verifies, :excuses]
   # A mark is a statement about one spec unit, not a relation (§12.1).
   @mark_types [:needs_update]
   # An observation is a fact about one test version (§12.1, §17), not a relation.
-  @observation_types [:red_green]
+  @observation_types [:red_green, :baseline]
   @kinds [:spec, :code, :test, :config, :class]
   # "A depends on B" is not "B depends on A": these keep their ends in the order given.
   @directed [:depends_on, :refines, :tests, :verifies]
@@ -48,7 +48,7 @@ defmodule Surfex.Log.Entry do
           ends: [end_],
           by: String.t() | nil,
           note: String.t() | nil,
-          basis: :evidence | :review | :judgement | :proposed | nil
+          basis: :evidence | :review | :judgement | :baseline | :proposed | nil
         }
 
   @doc "The operations an entry may record."

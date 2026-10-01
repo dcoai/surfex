@@ -76,8 +76,8 @@ defmodule Surfex.LogTest do
       assert Entry.json(~s({"hash":null})) == %{"hash" => nil}
     end
 
-    test "a basis is one of four, written only when set, so an entry without one keeps its id" do
-      assert Entry.bases() == [:evidence, :review, :judgement, :proposed]
+    test "a basis is one of a fixed set, written only when set, so an entry without one keeps its id" do
+      assert Entry.bases() == [:evidence, :review, :judgement, :baseline, :proposed]
 
       plain = entry(1)
       refute Entry.encode(plain) =~ "basis"
@@ -127,7 +127,7 @@ defmodule Surfex.LogTest do
       ]
 
       seen = Entry.new!(base ++ [ends: [test_end]])
-      assert Entry.observation_types() == [:red_green]
+      assert Entry.observation_types() == [:red_green, :baseline]
       assert :observe in Entry.ops()
       refute Entry.relation?(seen)
       assert Entry.relation?(entry(1))
