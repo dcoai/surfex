@@ -1759,11 +1759,13 @@ agent how the tool works from the installed version itself:
 - **With a topic, its page** (`Surfex.Info.page/1`): a focused, dense page with exact
   commands, written for an agent. An unknown topic is refused, and the refusal names the
   topics.
-- **The pages are the package's usage rules.** The directory is `usage-rules.md` and each
-  topic `usage-rules/TOPIC.md`: the layout the `usage_rules` tool gathers into a
-  project's `AGENTS.md` (`surfex`, `surfex:TOPIC`), and the "Using surfex" section of the
-  docs. The directory carries the core rules for an agent as well as the map. They are
-  shipped in the package and built into
+- **The pages live with the code; the usage rules point to them.** The directory is
+  `priv/info/index.md` and each topic `priv/info/TOPIC.md`, except the agent topic, which
+  is the package's `usage-rules.md`: the one short page the `usage_rules` tool copies into
+  a project's `AGENTS.md`. It holds what surfex is and the rules for an agent, and points
+  to `mix surfex.info` for the rest, so a project's agent context stays small and the
+  detail always matches the installed version. All of them are the docs' "Using surfex"
+  section. They are shipped in the package and built into
   `Surfex.Info` at compile time, so they always match the installed version.
   `Surfex.Info.topics/0` lists each topic with its summary.
 - **The docs show the tool.** Surfex is used as `mix surfex.<cmd>`, so its published docs
@@ -1778,7 +1780,8 @@ topic prints its page; an unknown topic is refused, naming the topics
 ```
 
 ```test usage-rules-shipped
-the directory is usage-rules.md, with the core rules, and every topic is a page under
-usage-rules/, listed as an item; the package ships them and the docs carry them; hexdocs
-show the mix tasks and the formatter, scanner and item modules, and no other module
+usage-rules.md is the short agent page and points to mix surfex.info; the directory and
+every other topic are pages under priv/info, listed as items; the package ships them and
+the docs carry them; hexdocs show the mix tasks and the formatter, scanner and item
+modules, and no other module
 ```

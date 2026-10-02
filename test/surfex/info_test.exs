@@ -23,41 +23,53 @@ defmodule Surfex.InfoTest do
     end
   end
 
-  # #117: one source, three readers: mix surfex.info, usage_rules, and hexdocs.
+  # #117, #126: the pages live with the code; the package's usage rules are one short page
+  # (the agent topic) that points to them, so a project's AGENTS.md stays small and current.
   @tag verifies: "usage-rules-shipped"
-  test "the pages are the package's usage rules, shipped and in the docs; hexdocs show the tool" do
+  test "usage-rules.md is the short agent page pointing to mix surfex.info; the rest stay in priv/info" do
     root = Path.expand("../..", __DIR__)
-    assert Info.directory() == File.read!(Path.join(root, "usage-rules.md"))
+    rules = File.read!(Path.join(root, "usage-rules.md"))
 
-    # The core rules travel with the directory: usage_rules inlines the main file.
-    assert Info.directory() =~ "\n## Rules\n"
+    assert {:ok, rules} == Info.page("agent")
+    assert rules =~ "mix surfex.info"
+
+    assert length(String.split(rules, "\n", trim: true)) < 40,
+           "usage-rules.md is meant to be short"
+
+    refute File.exists?(Path.join(root, "usage-rules")), "no sub-rules for usage_rules to copy"
+
+    assert Info.directory() == File.read!(Path.join(root, "priv/info/index.md"))
 
     topics = for {topic, _} <- Info.topics(), do: topic
 
     files =
-      for f <- Path.wildcard(Path.join(root, "usage-rules/*.md")), do: Path.basename(f, ".md")
+      for f <- Path.wildcard(Path.join(root, "priv/info/*.md")),
+          name = Path.basename(f, ".md"),
+          name != "index",
+          do: name
 
-    assert Enum.sort(topics) == Enum.sort(files),
+    assert Enum.sort(topics) == Enum.sort(["agent" | files]),
            "every page is a listed topic, and every topic a page"
 
-    for topic <- topics do
-      assert {:ok, File.read!(Path.join(root, "usage-rules/#{topic}.md"))} == Info.page(topic)
-      assert Info.directory() =~ "- `mix surfex.info #{topic}`", "#{topic} isn't a list item"
+    for topic <- topics -- ["agent"] do
+      assert {:ok, File.read!(Path.join(root, "priv/info/#{topic}.md"))} == Info.page(topic)
     end
+
+    for topic <- topics, do: assert(Info.directory() =~ "- `mix surfex.info #{topic}`")
 
     config = Mix.Project.config()
     assert "usage-rules.md" in config[:package][:files]
-    assert "usage-rules" in config[:package][:files]
+    assert "priv" in config[:package][:files]
+    refute "usage-rules" in config[:package][:files]
 
     extras =
       config[:docs][:extras]
-      |> Enum.map(&if is_tuple(&1), do: elem(&1, 0), else: &1)
+      |> Enum.map(&if(is_tuple(&1), do: elem(&1, 0), else: &1))
       |> Enum.map(&to_string/1)
 
     assert "usage-rules.md" in extras
-
-    for topic <- topics,
-        do: assert("usage-rules/#{topic}.md" in extras, "#{topic} isn't in the docs")
+    assert "priv/info/index.md" in extras
+    for topic <- topics -- ["agent"], do: assert("priv/info/#{topic}.md" in extras)
 
     # hexdocs present the mix tasks and the three modules users write code against.
     shown = &Regex.match?(config[:docs][:filter_modules], "Elixir." <> &1)
