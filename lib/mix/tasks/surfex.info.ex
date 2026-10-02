@@ -7,9 +7,9 @@ defmodule Mix.Tasks.Surfex.Info do
       mix surfex.info            # the directory: what Surfex is, the topics, every command
       mix surfex.info process    # one topic's page
 
-  An unknown topic fails, naming the topics. The pages are the package's usage rules
-  (`usage-rules.md`, `usage-rules/`), so the same text reaches a project's `AGENTS.md`
-  through `mix usage_rules.sync`, and the docs.
+  An unknown topic fails, naming the topics. The agent topic is the package's
+  `usage-rules.md`, the short page `mix usage_rules.sync` copies into a project's
+  `AGENTS.md`, which points back here for the rest.
   """
 
   use Mix.Task

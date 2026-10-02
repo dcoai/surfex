@@ -1,7 +1,7 @@
 defmodule Surfex.MixProject do
   use Mix.Project
 
-  @version "0.5.16"
+  @version "0.5.24"
   @source_url "https://github.com/dcoai/surfex"
 
   @moduledoc """
@@ -23,9 +23,9 @@ defmodule Surfex.MixProject do
       # Fixture data and sources, not tests.
       test_ignore_filters: [&String.starts_with?(&1, "test/fixtures/")],
       start_permanent: Mix.env() == :prod,
-      # A true leaf at runtime. A runtime or test dependency is inherited by every project
-      # that scans its own source, so the bar for one is: it cannot be done with the stdlib.
-      # ex_doc builds the docs and is dev-only, so no consumer ever fetches it.
+      # A true leaf at runtime. A runtime dependency is inherited by every project that scans
+      # its own source, so the bar for one is: it cannot be done with the stdlib. Dev and
+      # test dependencies aren't inherited: ex_doc builds the docs, and no consumer fetches it.
       deps: [{:ex_doc, "~> 0.40", only: :dev, runtime: false}],
       name: "Surfex",
       description:
@@ -33,19 +33,22 @@ defmodule Surfex.MixProject do
       package: [
         licenses: ["MIT"],
         links: %{"GitHub" => @source_url},
-        files:
-          ~w(lib usage-rules.md usage-rules guides mix.exs README.md CHANGELOG.md spec.md LICENSE)
+        files: ~w(lib priv usage-rules.md guides mix.exs README.md CHANGELOG.md spec.md LICENSE)
       ],
       source_url: @source_url,
       docs: [
         main: "readme",
         source_url: @source_url,
         source_ref: "v#{@version}",
-        # Surfex is a mix tool: its docs lead with how to use it. The usage pages are the
-        # ones `mix surfex.info` prints and usage_rules ships (usage-rules.md, usage-rules/).
+        # Surfex is a mix tool: its docs lead with how to use it, in the pages `mix
+        # surfex.info` prints (priv/info/), and the agent page usage_rules ships.
         extras:
-          ["README.md", {"usage-rules.md", title: "Using surfex"}] ++
-            Path.wildcard("usage-rules/*.md") ++
+          [
+            "README.md",
+            {"priv/info/index.md", title: "Using surfex", filename: "using-surfex"},
+            "usage-rules.md"
+          ] ++
+            (Path.wildcard("priv/info/*.md") -- ["priv/info/index.md"]) ++
             [
               "guides/writing-specs.md",
               "guides/adopting-an-existing-suite.md",
@@ -53,7 +56,7 @@ defmodule Surfex.MixProject do
               "CHANGELOG.md"
             ],
         groups_for_extras: [
-          "Using surfex": ["usage-rules.md" | Path.wildcard("usage-rules/*.md")],
+          "Using surfex": ["usage-rules.md" | Path.wildcard("priv/info/*.md")],
           Guides: ~w(guides/writing-specs.md guides/adopting-an-existing-suite.md),
           Reference: ~w(spec.md CHANGELOG.md)
         ],
