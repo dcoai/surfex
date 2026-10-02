@@ -24,6 +24,13 @@ release it merely follows.
 - **Surfex is described as keeping a spec, its tests and its code aligned**, and the README
   opens with the problems it catches when building with an LLM.
 
+### Fixed
+
+- **A moved baseline relation stayed out of CI's check** (§17). `--evidence` found its
+  claims partly by the note "confirmed by evidence", which a move replaces, so a baseline
+  relation carried by a move (a split test file, a renamed section) was no longer checked.
+  Claims are now found by basis, `evidence` or `baseline`.
+
 ## [0.5.0] — 2026-10-02
 
 Validated, not asserted. Every `implements` relation is now shown by the process: a test
