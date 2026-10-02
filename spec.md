@@ -1739,11 +1739,26 @@ agent how the tool works from the installed version itself:
 - **With a topic, its page** (`Surfex.Info.page/1`): a focused, dense page with exact
   commands, written for an agent. An unknown topic is refused, and the refusal names the
   topics.
-- **The pages ship with the code.** They are Markdown files under `priv/info/`, built into
+- **The pages are the package's usage rules.** The directory is `usage-rules.md` and each
+  topic `usage-rules/TOPIC.md`: the layout the `usage_rules` tool gathers into a
+  project's `AGENTS.md` (`surfex`, `surfex:TOPIC`), and the "Using surfex" section of the
+  docs. The directory carries the core rules for an agent as well as the map. They are
+  shipped in the package and built into
   `Surfex.Info` at compile time, so they always match the installed version.
   `Surfex.Info.topics/0` lists each topic with its summary.
+- **The docs show the tool.** Surfex is used as `mix surfex.<cmd>`, so its published docs
+  lead with the README and the usage pages, then the mix tasks, and the three modules a
+  project writes code against: the evidence formatter (§17, in `test_helper.exs`), and the
+  scanner behaviour with its item (§5, for a project scanner). Every other module keeps its
+  documentation in the code, for `h` in iex, without being presented as the package's.
 
 ```test info-directory
 the directory is under 100 lines, names every topic and every mix surfex.* command; each
 topic prints its page; an unknown topic is refused, naming the topics
+```
+
+```test usage-rules-shipped
+the directory is usage-rules.md, with the core rules, and every topic is a page under
+usage-rules/, listed as an item; the package ships them and the docs carry them; hexdocs
+show the mix tasks and the formatter, scanner and item modules, and no other module
 ```

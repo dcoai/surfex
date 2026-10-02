@@ -33,20 +33,36 @@ defmodule Surfex.MixProject do
       package: [
         licenses: ["MIT"],
         links: %{"GitHub" => @source_url},
-        files: ~w(lib priv guides mix.exs README.md CHANGELOG.md spec.md LICENSE)
+        files:
+          ~w(lib usage-rules.md usage-rules guides mix.exs README.md CHANGELOG.md spec.md LICENSE)
       ],
       source_url: @source_url,
       docs: [
         main: "readme",
         source_url: @source_url,
         source_ref: "v#{@version}",
-        extras: [
-          "README.md",
-          "guides/writing-specs.md",
-          "guides/adopting-an-existing-suite.md",
-          "spec.md",
-          "CHANGELOG.md"
+        # Surfex is a mix tool: its docs lead with how to use it. The usage pages are the
+        # ones `mix surfex.info` prints and usage_rules ships (usage-rules.md, usage-rules/).
+        extras:
+          ["README.md", {"usage-rules.md", title: "Using surfex"}] ++
+            Path.wildcard("usage-rules/*.md") ++
+            [
+              "guides/writing-specs.md",
+              "guides/adopting-an-existing-suite.md",
+              "spec.md",
+              "CHANGELOG.md"
+            ],
+        groups_for_extras: [
+          "Using surfex": ["usage-rules.md" | Path.wildcard("usage-rules/*.md")],
+          Guides: ~w(guides/writing-specs.md guides/adopting-an-existing-suite.md),
+          Reference: ~w(spec.md CHANGELOG.md)
         ],
+        # The mix tasks, and the three modules a project writes code against. Every other
+        # module keeps its docs in the code (`h` in iex) without being the package's docs.
+        filter_modules:
+          ~r/^Elixir\.(Mix\.Tasks\.Surfex(\.|$)|Surfex\.(ExUnitFormatter|Scanner|Item)$)/,
+        # Names of modules not on hexdocs render as code, not as links that go nowhere.
+        skip_code_autolink_to: &skip_autolink?/1,
         # The changelog names functions earlier versions removed: history, not dead links.
         skip_undefined_reference_warnings_on: ["CHANGELOG.md"]
       ]
@@ -54,4 +70,12 @@ defmodule Surfex.MixProject do
   end
 
   def application, do: [extra_applications: [:logger]]
+
+  @shown ~w(Surfex.ExUnitFormatter Surfex.Scanner Surfex.Item)
+
+  # A reference's module is its capitalised segments: `Surfex.Item.key/1` is `Surfex.Item`.
+  defp skip_autolink?(ref) do
+    module = ref |> String.split(".") |> Enum.take_while(&(&1 =~ ~r/^[A-Z]/)) |> Enum.join(".")
+    String.starts_with?(module, "Surfex") and module not in @shown
+  end
 end

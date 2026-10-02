@@ -20,7 +20,7 @@ defmodule Surfex.PublishedContentTest do
   # the relation log, which is append-only and still names a test from before the rename.
   @adopters [Enum.join(["met", "resis"]), Enum.join(["dep", "dep"])]
 
-  @published ~w(lib/**/* guides/**/* test/**/* spec.md README.md CHANGELOG.md RELEASING.md mix.exs .surfex.exs RELATIONS.md)
+  @published ~w(lib/**/* guides/**/* usage-rules/**/* usage-rules.md test/**/* spec.md README.md CHANGELOG.md RELEASING.md mix.exs .surfex.exs RELATIONS.md)
 
   @tag verifies: "policies"
   test "no published file carries another project's material" do
@@ -44,7 +44,7 @@ defmodule Surfex.PublishedContentTest do
 
   # #83: a scripted edit once wrote its own source into spec.md. Prose never holds a pipe
   # into a call, a sigil heredoc or a heredoc's close; the guides show Elixir only in fences.
-  @markdown ~w(spec.md README.md CHANGELOG.md RELEASING.md guides/**/*.md)
+  @markdown ~w(spec.md README.md CHANGELOG.md RELEASING.md guides/**/*.md usage-rules.md usage-rules/*.md)
   @residue [~r/^\s*\|> /, ~r/~S("""|''')/, ~r/"""\)/]
 
   @tag verifies: "policies"

@@ -1,4 +1,4 @@
-# Adopting an existing suite
+# Adoption: trust or re-evaluate
 
 An established suite already passes, so its tests can't honestly go red, and without help
 every relation would need a review first. `adoption:` in `.surfex.exs` decides:

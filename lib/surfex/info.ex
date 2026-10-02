@@ -3,18 +3,20 @@ defmodule Surfex.Info do
   How Surfex works, told by the installed version itself (§21): a directory of under 100
   lines and a page per topic, for an agent meeting Surfex in a project.
 
-  The pages are Markdown under `priv/info/`, built in at compile time. The directory
-  (`index.md`) lists each topic as a `mix surfex.info TOPIC  summary` line, and that line
-  is the topic's one definition.
+  The pages are the package's usage rules, built in at compile time: the directory is
+  `usage-rules.md` and each topic is `usage-rules/TOPIC.md` (the layout `usage_rules`
+  gathers into a project's `AGENTS.md`, and hexdocs show). The directory lists each topic
+  as a ``- `mix surfex.info TOPIC`: summary`` item, and that item is the topic's one
+  definition.
   """
 
-  @dir Path.expand("../../priv/info", __DIR__)
-  @index Path.join(@dir, "index.md")
+  @dir Path.expand("../../usage-rules", __DIR__)
+  @index Path.expand("../../usage-rules.md", __DIR__)
   @external_resource @index
   @directory File.read!(@index)
 
   @topics for [_, topic, summary] <-
-                Regex.scan(~r/^mix surfex\.info ([a-z]+) +(.+)$/m, @directory),
+                Regex.scan(~r/^- `mix surfex\.info ([a-z]+)`: (.+)$/m, @directory),
               do: {topic, summary}
 
   @pages Map.new(@topics, fn {topic, _} ->
