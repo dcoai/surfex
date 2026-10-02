@@ -230,7 +230,8 @@ defmodule Surfex.Record do
              do: {:error, "no tests are scanned: set tests: in .surfex.exs"},
              else: :ok
            ),
-         :ok <- if(not_green == [], do: :ok, else: {:error, not_green_message(not_green)}) do
+         :ok <- if(not_green == [], do: :ok, else: {:error, not_green_message(not_green)}),
+         :ok <- tags!(scans, trusted, meta) do
       note = "baseline under adoption: #{inspect(adoption.setting)}: #{meta[:note]}"
 
       meta =
@@ -261,6 +262,61 @@ defmodule Surfex.Record do
         {:ok, e}, {:ok, acc} -> {:cont, {:ok, acc ++ [e]}}
         error, _acc -> {:halt, error}
       end)
+    end
+  end
+
+  # The baseline adopts the verifies: tags already written, once: adopting none would spend
+  # it on test versions alone, so that takes saying so (§18.1).
+  defp tags!(scans, trusted, meta) do
+    tagged = Enum.any?(trusted, &(declared_units(scans, &1) != []))
+
+    if tagged or meta[:no_tags] == true,
+      do: :ok,
+      else:
+        {:error,
+         "the trusted tests declare no verifies: tags, so the baseline would adopt none, and it " <>
+           "is one-shot. Tag the tests that verify each spec unit first (mix surfex.info " <>
+           "adoption), or pass --no-tags to baseline the test versions alone and tag later, " <>
+           "each tag then validated on its own"}
+  end
+
+  defp declared_units(scans, test),
+    do:
+      for({:verifies, ref} <- test.declares, {:ok, unit} <- [Scan.resolve(scans, ref)], do: unit)
+
+  @doc """
+  What a baseline (`baseline/4`) adopted, from the entries it recorded: the trusted test
+  versions, the `verifies` relations, and the spec units no adopted `verifies` reaches
+  (directly, or through a unit inside them).
+  """
+  @spec baseline_summary([Scan.t()], [Entry.t()]) :: %{
+          trusted: non_neg_integer,
+          verifies: non_neg_integer,
+          units_without: non_neg_integer
+        }
+  def baseline_summary(scans, recorded) do
+    within = for %Scan{kind: :spec, within: w} = s <- scans, w != nil, into: %{}, do: {s.id, w}
+
+    verified =
+      for %Entry{op: :relate, type: :verifies, ends: ends} <- recorded,
+          %{kind: :spec, id: id} <- ends,
+          unit <- outward(id, within),
+          into: MapSet.new(),
+          do: unit
+
+    %{
+      trusted: Enum.count(recorded, &match?(%Entry{op: :observe, type: :baseline}, &1)),
+      verifies: Enum.count(recorded, &match?(%Entry{op: :relate, type: :verifies}, &1)),
+      units_without:
+        Enum.count(scans, &(&1.kind == :spec and not MapSet.member?(verified, &1.id)))
+    }
+  end
+
+  # A unit and every unit it sits inside.
+  defp outward(id, within) do
+    case Map.get(within, id) do
+      nil -> [id]
+      parent -> [id | outward(parent, within)]
     end
   end
 

@@ -1,6 +1,6 @@
 # Surfex specification {#surfex}
 
-Surfex keeps a specification, its tests and its code in step. It reads source without
+Surfex keeps a specification, its tests and its code aligned. It reads source without
 compiling it, versions every spec section, test and public definition, and keeps an
 append-only log of which versions someone confirmed belong together (§11–§15). When
 either side changes, the relation dangles until it is confirmed again. It also renders
@@ -20,7 +20,7 @@ Surfex is a build-time tool. A project takes it as a dev/test dependency
 
 It serves two uses:
 
-1. **Keeping a spec, its tests and its code in step** (§11–§15). The spec, the tests and
+1. **Keeping a spec, its tests and its code aligned** (§11–§15). The spec, the tests and
    the code are scanned into versioned records. A log records which versions were
    confirmed to belong together, and `mix surfex.status` checks it: nothing changed
    since it was confirmed, every item described or deliberately excused, and every name
@@ -1423,12 +1423,19 @@ carries implements
 **CI validates; it records nothing.** A CI job runs the tests with the formatter, from an
 empty evidence file (a cached `_build` would otherwise carry evidence from other runs),
 then `mix surfex.status --verify --evidence`. That checks that every relation holds and
-that every confirmation by evidence (`Surfex.Evidence.claimed?/1`: its basis is
-`evidence`, or, recorded before bases existed, its note begins `Surfex.Evidence.note/0`)
-is borne out by this run. A claim the run contradicts fails the
+that every claim a run can bear out (`Surfex.Evidence.claimed?/1`: its basis is
+`evidence` or `baseline` (§18.1), or, recorded before bases existed, its note begins
+`Surfex.Evidence.note/0`) is borne out by this run. The basis decides, not the note: a
+move keeps a relation's basis and replaces its note, and the relation stays checked. A claim the run contradicts fails the
 pipeline. A project whose backlog of unvalidated relations is done adds `--validated`, so
 no relation is current without validation. CI never appends to the log and never saves
 evidence: the log's claims are made where the work is done, and CI only checks them.
+
+```test evidence-claims-by-basis
+a relation is checked against a run by its basis, evidence or baseline, so a moved one
+stays checked whatever its note; a note marks only an entry written before bases; a
+review or judgement is never checked against a run
+```
 
 ```test evidence-checked
 a run where the test passes against the code as confirmed bears the claims out; a test
@@ -1581,6 +1588,13 @@ project root by `Surfex.Status.Config.adoption!/2` (and asked of one file by
 
 - **Once.** It refuses when the log already holds a baseline, under `:reevaluate`,
   without `tests:`, and when a trusted test's current version hasn't run green.
+- **It adopts the tags already written.** The baseline doesn't create `verifies:` tags,
+  and a tag added afterwards is an ordinary claim, validated on its own (§18). So tagging
+  comes first. With no tags on the trusted tests it refuses, since a one-shot step would
+  spend itself on test versions alone, unless `--no-tags` (`meta[:no_tags]`) says that is
+  intended. `Surfex.Record.baseline_summary/2` reports what it adopted, and the task
+  prints it: the trusted test versions, the `verifies` relations, and the spec units no
+  adopted `verifies` reaches.
 - **What it records:** a `baseline` observation (§12.1) for each trusted test version,
   basis `baseline`, with the adoption setting and the note; and, for each trusted test's
   `verifies:` declarations at that commit, a `verifies` relation with basis `baseline`.
@@ -1615,6 +1629,12 @@ within tests: and don't overlap; anything else is refused
 the baseline refuses under :reevaluate, a second time, without tests:, or before the
 trusted tests run green; it records each trusted test version and its declared verifies,
 basis baseline
+```
+
+```test baseline-adopts-tags
+the baseline adopts the verifies: tags already written: with none it refuses, unless
+--no-tags says that is intended, and it reports the trusted test versions, the verifies it
+adopted and the spec units left without one
 ```
 
 ```test baseline-shrinks
@@ -1739,11 +1759,26 @@ agent how the tool works from the installed version itself:
 - **With a topic, its page** (`Surfex.Info.page/1`): a focused, dense page with exact
   commands, written for an agent. An unknown topic is refused, and the refusal names the
   topics.
-- **The pages ship with the code.** They are Markdown files under `priv/info/`, built into
+- **The pages are the package's usage rules.** The directory is `usage-rules.md` and each
+  topic `usage-rules/TOPIC.md`: the layout the `usage_rules` tool gathers into a
+  project's `AGENTS.md` (`surfex`, `surfex:TOPIC`), and the "Using surfex" section of the
+  docs. The directory carries the core rules for an agent as well as the map. They are
+  shipped in the package and built into
   `Surfex.Info` at compile time, so they always match the installed version.
   `Surfex.Info.topics/0` lists each topic with its summary.
+- **The docs show the tool.** Surfex is used as `mix surfex.<cmd>`, so its published docs
+  lead with the README and the usage pages, then the mix tasks, and the three modules a
+  project writes code against: the evidence formatter (§17, in `test_helper.exs`), and the
+  scanner behaviour with its item (§5, for a project scanner). Every other module keeps its
+  documentation in the code, for `h` in iex, without being presented as the package's.
 
 ```test info-directory
 the directory is under 100 lines, names every topic and every mix surfex.* command; each
 topic prints its page; an unknown topic is refused, naming the topics
+```
+
+```test usage-rules-shipped
+the directory is usage-rules.md, with the core rules, and every topic is a page under
+usage-rules/, listed as an item; the package ships them and the docs carry them; hexdocs
+show the mix tasks and the formatter, scanner and item modules, and no other module
 ```

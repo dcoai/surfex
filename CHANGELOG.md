@@ -4,6 +4,40 @@ All notable changes to Surfex are recorded here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.16] — 2026-10-02
+
+The first release on Hex. Its docs are a guide to using surfex as a mix tool, and its
+usage pages ship as `usage-rules.md` for `usage_rules`, so the same text reaches the
+terminal (`mix surfex.info`), hexdocs and a project's `AGENTS.md`. It also keeps a moved
+baseline relation in CI's check, and makes the baseline adopt tags deliberately.
+
+### Added
+
+- **Docs on hexdocs, as a usage guide** (§21). They lead with the README and the usage
+  pages, then the `mix surfex.*` tasks and the three modules a project writes code
+  against (the evidence formatter, the scanner behaviour and its item). Every other
+  module keeps its documentation in the code.
+- **Usage rules for agents** (§21). The `mix surfex.info` pages ship as `usage-rules.md`
+  and `usage-rules/`, so `mix usage_rules.sync` gathers them into a project's
+  `AGENTS.md`. The main file carries the core rules for an agent as well as the map.
+- **The baseline adopts the tags already written, and says so** (§18.1). `mix surfex.baseline`
+  refuses when the trusted tests declare no `verifies:` tags, since a one-shot step would
+  spend itself on test versions alone, unless `--no-tags` says that is intended. It ends
+  by reporting the trusted test versions, the `verifies` adopted and the spec units left
+  without one, and the adoption guide now tags first.
+
+### Changed
+
+- **Surfex is described as keeping a spec, its tests and its code aligned**, and the README
+  opens with the problems it catches when building with an LLM.
+
+### Fixed
+
+- **A moved baseline relation stayed out of CI's check** (§17). `--evidence` found its
+  claims partly by the note "confirmed by evidence", which a move replaces, so a baseline
+  relation carried by a move (a split test file, a renamed section) was no longer checked.
+  Claims are now found by basis, `evidence` or `baseline`.
+
 ## [0.5.0] — 2026-10-02
 
 Validated, not asserted. Every `implements` relation is now shown by the process: a test

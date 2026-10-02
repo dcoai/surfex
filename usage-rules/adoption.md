@@ -1,4 +1,4 @@
-# Adopting an existing suite
+# Adoption: trust or re-evaluate
 
 An established suite already passes, so its tests can't honestly go red, and without help
 every relation would need a review first. `adoption:` in `.surfex.exs` decides:
@@ -7,13 +7,18 @@ every relation would need a review first. `adoption:` in `.surfex.exs` decides:
 - `:trust`: the existing tests may be adopted once, by a baseline.
 - `[trust: globs, reevaluate: globs]`: by area; globs within `tests:`, not overlapping.
 
-Take the baseline once, after a green run:
+Tag first, then take the baseline once, after a green run:
 
 ```
+# 1. Write @tag verifies: on the tests that verify each spec unit.
 mix test
 mix surfex.baseline --note "why this suite is trusted"
 mix surfex.confirm --evidence
 ```
+
+The baseline adopts the tags already written; a tag added later is an ordinary claim,
+validated on its own. With no tags it refuses, unless `--no-tags`. It reports the trusted
+test versions, the `verifies` adopted and the spec units left without one.
 
 It records each trusted test version as if it had discriminated, plus its `verifies:`
 tags, with basis `baseline`; `confirm --evidence` then carries `implements` through those

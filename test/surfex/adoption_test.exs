@@ -126,6 +126,35 @@ defmodule Surfex.AdoptionTest do
   describe "the baseline" do
     @describetag verifies: "baseline-one-shot"
 
+    # #123: the baseline adopts the tags already written; it is one-shot, so adopting
+    # none by mistake is refused, and it says what it adopted.
+    @tag verifies: "baseline-adopts-tags"
+    test "it refuses to adopt no tags unless no_tags says so, and reports what it adopted", %{
+      tmp_dir: root
+    } do
+      meta = Keyword.put(@meta, :adoption, adoption(root, :trust))
+      untagged = Enum.map(scans(), &if(&1.kind == :test, do: %{&1 | declares: []}, else: &1))
+
+      assert {:error, "the trusted tests declare no verifies: tags" <> rest} =
+               Record.baseline(untagged, [], green(), meta)
+
+      assert rest =~ "--no-tags"
+
+      {:ok, observed} = Record.baseline(untagged, [], green(), Keyword.put(meta, :no_tags, true))
+      assert Enum.all?(observed, &(&1.op == :observe))
+
+      assert Record.baseline_summary(untagged, observed) ==
+               %{trusted: 2, verifies: 0, units_without: 1}
+
+      {:ok, recorded} = Record.baseline(scans(), [], green(), meta)
+
+      assert Record.baseline_summary(scans(), recorded) == %{
+               trusted: 2,
+               verifies: 2,
+               units_without: 0
+             }
+    end
+
     test "records each trusted test version and its declared verifies, basis baseline", %{
       tmp_dir: root
     } do
@@ -231,6 +260,52 @@ defmodule Surfex.AdoptionTest do
       refute Status.validated?(narrowed, implements)
       assert Enum.any?(narrowed.unvalidated, &match?(%{relation: {:implements, _, _}}, &1))
       assert Enum.any?(narrowed.unvalidated, &match?(%{relation: {:verifies, _, _}}, &1))
+    end
+
+    # #123: a move keeps the basis but not the note; the check must follow the basis.
+    @tag verifies: "evidence-claims-by-basis"
+    test "a moved baseline relation stays in the --evidence check", %{tmp_dir: root} do
+      {log, trust} = trusted(root)
+
+      # A refactor re-confirms the tests relations through the baselined test (basis baseline).
+      {:ok, refactored} =
+        Record.confirm_by_evidence(scans("c2"), log, green("c2", 2), trusting(trust))
+
+      assert Enum.any?(refactored, &(&1.type == :tests and &1.basis == :baseline))
+      log = log ++ refactored
+
+      renamed = "T: core renamed"
+      moved_scans = Enum.map(scans("c2"), &if(&1.id == @core, do: %{&1 | id: renamed}, else: &1))
+      {:ok, moved} = Record.move(moved_scans, log, "test:" <> @core, "test:" <> renamed, @meta)
+      log = log ++ moved
+
+      unproven = fn scans, evidence ->
+        Status.derive(scans, log, [], adoption: trust, evidence: evidence).unproven
+        |> Enum.map(& &1.relation)
+      end
+
+      # No run checked it: the moved baseline tests relation is reported, not dropped.
+      assert {:tests, {:test, renamed}, {:code, @code}} in unproven.(moved_scans, [])
+
+      green = [run(renamed, "t1", :passed, "c2", 3), run(@legacy, "l1", :passed, "c2", 3)]
+      assert unproven.(moved_scans, green) == []
+
+      # The same for a baseline implements whose spec section is moved.
+      unit = "spec.md#totals-renamed"
+
+      spec_scans =
+        Enum.map(moved_scans, &if(&1.id == @unit, do: %{&1 | id: unit, role: :section}, else: &1))
+
+      {:ok, moved_unit} = Record.move(spec_scans, log, @unit, unit, @meta)
+
+      assert {:implements, {:code, @code}, {:spec, unit}} in (Status.derive(
+                                                                spec_scans,
+                                                                log ++ moved_unit,
+                                                                [],
+                                                                adoption: trust,
+                                                                evidence: []
+                                                              ).unproven
+                                                              |> Enum.map(& &1.relation))
     end
 
     test "baseline relations are counted with the mode, and fail under baseline: :fail", %{

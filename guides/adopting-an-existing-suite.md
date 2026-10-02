@@ -28,13 +28,22 @@ test later is always possible. Trusting more later is not.
 
 ## The baseline
 
-Under trust, adoption is one step after a green run:
+Under trust, adoption is: tag, run green, take the baseline.
 
 ```
+# 1. Write @tag verifies: on the tests that verify each spec unit: the review work.
 mix test
 mix surfex.baseline --note "test-first since 2023, reviewed in every MR"
 mix surfex.confirm --evidence
 ```
+
+**Tag first.** The baseline adopts the `verifies:` tags already written; it doesn't create
+them, and it is one-shot. A tag added afterwards is an ordinary claim, proposed until its
+test fails and passes or someone reviews it, one at a time. So the tags decide what the
+baseline is worth. With none, `mix surfex.baseline` refuses, unless `--no-tags` says
+you mean to baseline test versions alone and tag later at that per-tag cost. It ends by
+reporting what it adopted: the trusted test versions, the `verifies` relations, and the
+spec units left without one.
 
 **What it is.** A record, per trusted test version, that the version counts as if it had
 discriminated, plus that test's `verifies:` tags as relations with basis `baseline`.

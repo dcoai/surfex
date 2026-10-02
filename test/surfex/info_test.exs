@@ -23,6 +23,53 @@ defmodule Surfex.InfoTest do
     end
   end
 
+  # #117: one source, three readers: mix surfex.info, usage_rules, and hexdocs.
+  @tag verifies: "usage-rules-shipped"
+  test "the pages are the package's usage rules, shipped and in the docs; hexdocs show the tool" do
+    root = Path.expand("../..", __DIR__)
+    assert Info.directory() == File.read!(Path.join(root, "usage-rules.md"))
+
+    # The core rules travel with the directory: usage_rules inlines the main file.
+    assert Info.directory() =~ "\n## Rules\n"
+
+    topics = for {topic, _} <- Info.topics(), do: topic
+
+    files =
+      for f <- Path.wildcard(Path.join(root, "usage-rules/*.md")), do: Path.basename(f, ".md")
+
+    assert Enum.sort(topics) == Enum.sort(files),
+           "every page is a listed topic, and every topic a page"
+
+    for topic <- topics do
+      assert {:ok, File.read!(Path.join(root, "usage-rules/#{topic}.md"))} == Info.page(topic)
+      assert Info.directory() =~ "- `mix surfex.info #{topic}`", "#{topic} isn't a list item"
+    end
+
+    config = Mix.Project.config()
+    assert "usage-rules.md" in config[:package][:files]
+    assert "usage-rules" in config[:package][:files]
+
+    extras =
+      config[:docs][:extras]
+      |> Enum.map(&if is_tuple(&1), do: elem(&1, 0), else: &1)
+      |> Enum.map(&to_string/1)
+
+    assert "usage-rules.md" in extras
+
+    for topic <- topics,
+        do: assert("usage-rules/#{topic}.md" in extras, "#{topic} isn't in the docs")
+
+    # hexdocs present the mix tasks and the three modules users write code against.
+    shown = &Regex.match?(config[:docs][:filter_modules], "Elixir." <> &1)
+
+    for name <-
+          ~w(Mix.Tasks.Surfex.Status Mix.Tasks.Surfex.Info Surfex.ExUnitFormatter Surfex.Scanner Surfex.Item),
+        do: assert(shown.(name), "#{name} isn't on hexdocs")
+
+    for name <- ~w(Surfex.Record Surfex.Status Surfex.Log.Entry),
+        do: refute(shown.(name), "#{name} is on hexdocs")
+  end
+
   test "each topic prints its page; an unknown topic is refused, naming the topics" do
     for {topic, _summary} <- Info.topics() do
       assert {:ok, page} = Info.page(topic)

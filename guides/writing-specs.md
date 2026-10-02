@@ -360,7 +360,7 @@ know about. A class is for code whose only story is "it wires things together".
 
 ## 9. Working with an LLM
 
-Surfex exists so an agent keeps the spec, the tests and the code in step **by doing the
+Surfex exists so an agent keeps the spec, the tests and the code aligned **by doing the
 work**, not by finding the quickest way to a green status. The tool makes the work the
 only way through. An agent working in it should:
 
