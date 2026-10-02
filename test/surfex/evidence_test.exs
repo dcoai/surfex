@@ -188,6 +188,9 @@ defmodule Surfex.EvidenceTest do
     assert Evidence.latest(evidence, "T: a", "other") == nil
 
     assert Evidence.claimed?(%{basis: :evidence, note: "red then green"})
+    # #123: claimed by basis; a move's note can't take a baseline relation out of the check.
+    assert Evidence.claimed?(%{basis: :baseline, note: "moved from A to B"})
+    refute Evidence.claimed?(%{basis: :review, note: Evidence.note() <> ": by hand"})
     assert Evidence.claimed?(%{basis: nil, note: Evidence.note() <> ": T: a@t1 failed at …"})
     refute Evidence.claimed?(%{basis: :review, note: "reviewed"})
     refute Evidence.claimed?(%{note: "reviewed by hand"})

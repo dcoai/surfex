@@ -1423,12 +1423,19 @@ carries implements
 **CI validates; it records nothing.** A CI job runs the tests with the formatter, from an
 empty evidence file (a cached `_build` would otherwise carry evidence from other runs),
 then `mix surfex.status --verify --evidence`. That checks that every relation holds and
-that every confirmation by evidence (`Surfex.Evidence.claimed?/1`: its basis is
-`evidence`, or, recorded before bases existed, its note begins `Surfex.Evidence.note/0`)
-is borne out by this run. A claim the run contradicts fails the
+that every claim a run can bear out (`Surfex.Evidence.claimed?/1`: its basis is
+`evidence` or `baseline` (§18.1), or, recorded before bases existed, its note begins
+`Surfex.Evidence.note/0`) is borne out by this run. The basis decides, not the note: a
+move keeps a relation's basis and replaces its note, and the relation stays checked. A claim the run contradicts fails the
 pipeline. A project whose backlog of unvalidated relations is done adds `--validated`, so
 no relation is current without validation. CI never appends to the log and never saves
 evidence: the log's claims are made where the work is done, and CI only checks them.
+
+```test evidence-claims-by-basis
+a relation is checked against a run by its basis, evidence or baseline, so a moved one
+stays checked whatever its note; a note marks only an entry written before bases; a
+review or judgement is never checked against a run
+```
 
 ```test evidence-checked
 a run where the test passes against the code as confirmed bears the claims out; a test

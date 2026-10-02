@@ -28,11 +28,19 @@ defmodule Surfex.Evidence do
   @note "confirmed by evidence"
 
   @doc """
-  Whether a log entry is a confirmation by evidence (`Surfex.Record.confirm_by_evidence/4`):
-  its note begins `confirmed by evidence`. That is the claim CI checks against its own run.
+  Whether a log entry is a claim a test run bears out, the claim CI checks against its own
+  run (§17). That is decided by its basis: `:evidence` (red then green) or `:baseline` (a
+  trusted test version, §18.1), whatever its note says, so a move, which keeps the basis and
+  replaces the note, keeps it checked. Only an entry written before bases existed is
+  recognised by its note, which begins `confirmed by evidence`.
   """
   @spec claimed?(Surfex.Log.Entry.t()) :: boolean
-  def claimed?(%{basis: :evidence}), do: true
+  def claimed?(%{basis: basis}) when basis in [:evidence, :baseline], do: true
+
+  def claimed?(%{basis: nil, note: note}),
+    do: is_binary(note) and String.starts_with?(note, @note)
+
+  def claimed?(%{basis: _validated_otherwise}), do: false
   def claimed?(%{note: note}), do: is_binary(note) and String.starts_with?(note, @note)
 
   @doc "How a confirmation by evidence's note begins."
