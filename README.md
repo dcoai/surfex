@@ -42,7 +42,7 @@ Surfex is a build-time tool with no dependencies of its own:
 ```elixir
 def deps do
   [
-    {:surfex, github: "dcoai/surfex", tag: "v0.4.0", only: [:dev, :test], runtime: false}
+    {:surfex, github: "dcoai/surfex", tag: "v0.5.0", only: [:dev, :test], runtime: false}
   ]
 end
 ```
