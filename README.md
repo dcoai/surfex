@@ -1,10 +1,15 @@
 # Surfex
 
-> **Note:** this is still somewhat experimental, but has been helpful for the author in
-> keeping spec->test->code aligned when using LLMs for development of significant projects.
+> **Note:** this is still experimental, but has been helpful for the author in keeping
+> spec → test → code aligned when using LLMs for development of significant projects.
 
-Surfex keeps a specification, its tests and its code aligned, and makes doing that work
-the only way to pass.
+If you build with an LLM, you may have seen it:
+- work from a detailed spec, claim it's complete, and still miss items;
+- follow a spec change in some places and miss the code elsewhere that depended on it;
+- write tests that pass but don't test what the spec requires.
+
+Surfex turns each of these into a failing check. It keeps a specification, its tests and
+its code aligned, and makes doing that work the only way to pass CI.
 
 It reads every section of the spec, every test and every public function, and keeps a
 log of which versions of them were **shown** to belong together. Code is never taken on

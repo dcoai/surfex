@@ -9,6 +9,21 @@ All notable changes to Surfex are recorded here, following
 `mix.exs` reads `0.5.1-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
 release it merely follows.
 
+### Added
+
+- **Docs on hexdocs, as a usage guide** (§21). They lead with the README and the usage
+  pages, then the `mix surfex.*` tasks and the three modules a project writes code
+  against (the evidence formatter, the scanner behaviour and its item). Every other
+  module keeps its documentation in the code.
+- **Usage rules for agents** (§21). The `mix surfex.info` pages ship as `usage-rules.md`
+  and `usage-rules/`, so `mix usage_rules.sync` gathers them into a project's
+  `AGENTS.md`. The main file carries the core rules for an agent as well as the map.
+
+### Changed
+
+- **Surfex is described as keeping a spec, its tests and its code aligned**, and the README
+  opens with the problems it catches when building with an LLM.
+
 ## [0.5.0] — 2026-10-02
 
 Validated, not asserted. Every `implements` relation is now shown by the process: a test
