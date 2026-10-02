@@ -1,7 +1,7 @@
 defmodule Surfex.MixProject do
   use Mix.Project
 
-  @version "0.5.0"
+  @version "0.5.1-dev"
   @source_url "https://github.com/dcoai/surfex"
 
   @moduledoc """
