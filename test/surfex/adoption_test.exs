@@ -126,6 +126,35 @@ defmodule Surfex.AdoptionTest do
   describe "the baseline" do
     @describetag verifies: "baseline-one-shot"
 
+    # #123: the baseline adopts the tags already written; it is one-shot, so adopting
+    # none by mistake is refused, and it says what it adopted.
+    @tag verifies: "baseline-adopts-tags"
+    test "it refuses to adopt no tags unless no_tags says so, and reports what it adopted", %{
+      tmp_dir: root
+    } do
+      meta = Keyword.put(@meta, :adoption, adoption(root, :trust))
+      untagged = Enum.map(scans(), &if(&1.kind == :test, do: %{&1 | declares: []}, else: &1))
+
+      assert {:error, "the trusted tests declare no verifies: tags" <> rest} =
+               Record.baseline(untagged, [], green(), meta)
+
+      assert rest =~ "--no-tags"
+
+      {:ok, observed} = Record.baseline(untagged, [], green(), Keyword.put(meta, :no_tags, true))
+      assert Enum.all?(observed, &(&1.op == :observe))
+
+      assert Record.baseline_summary(untagged, observed) ==
+               %{trusted: 2, verifies: 0, units_without: 1}
+
+      {:ok, recorded} = Record.baseline(scans(), [], green(), meta)
+
+      assert Record.baseline_summary(scans(), recorded) == %{
+               trusted: 2,
+               verifies: 2,
+               units_without: 0
+             }
+    end
+
     test "records each trusted test version and its declared verifies, basis baseline", %{
       tmp_dir: root
     } do

@@ -18,6 +18,11 @@ release it merely follows.
 - **Usage rules for agents** (§21). The `mix surfex.info` pages ship as `usage-rules.md`
   and `usage-rules/`, so `mix usage_rules.sync` gathers them into a project's
   `AGENTS.md`. The main file carries the core rules for an agent as well as the map.
+- **The baseline adopts the tags already written, and says so** (§18.1). `mix surfex.baseline`
+  refuses when the trusted tests declare no `verifies:` tags, since a one-shot step would
+  spend itself on test versions alone, unless `--no-tags` says that is intended. It ends
+  by reporting the trusted test versions, the `verifies` adopted and the spec units left
+  without one, and the adoption guide now tags first.
 
 ### Changed
 

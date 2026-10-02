@@ -23,11 +23,28 @@ defmodule Mix.Tasks.Surfex.Baseline do
 
   @impl Mix.Task
   def run(args) do
-    {opts, _ids} = R.parse(args)
+    {opts, _ids} = R.parse(args, no_tags: :boolean)
     {root, scans, entries, meta} = R.context(opts)
     config = Config.read!(Path.join(root, opts[:config] || ".surfex.exs"))
-    meta = Keyword.put(meta, :adoption, Config.adoption!(config, root))
+
+    meta =
+      meta
+      |> Keyword.put(:adoption, Config.adoption!(config, root))
+      |> Keyword.put(:no_tags, opts[:no_tags] == true)
+
     evidence = Evidence.load(Evidence.path(root))
-    R.record(root, Surfex.Record.baseline(scans, entries, evidence, meta))
+    result = Surfex.Record.baseline(scans, entries, evidence, meta)
+    R.record(root, result)
+
+    {:ok, recorded} = result
+    s = Surfex.Record.baseline_summary(scans, recorded)
+
+    Mix.shell().info(
+      "baseline: #{s.trusted} trusted test version#{plural(s.trusted)}, #{s.verifies} verifies " <>
+        "adopted, #{s.units_without} spec unit#{plural(s.units_without)} without one"
+    )
   end
+
+  defp plural(1), do: ""
+  defp plural(_), do: "s"
 end
