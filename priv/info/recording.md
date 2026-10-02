@@ -11,7 +11,9 @@ Create the log once with `mix surfex.log --init` (it also sets git's union merge
   `--planned` records an end that doesn't exist yet (the code you're about to write).
 - `mix surfex.retire FROM TO --type T --note N`: the relation no longer holds.
 - `mix surfex.move OLD NEW --note N`: an id was renamed; carries every relation, keeping
-  each basis. Anchored headings (`## Totals {#totals}`) keep their id across renames.
+  each basis. Anchored headings (`## Totals {#totals}`) keep their id across renames. A
+  test moved to a renamed module, describe or file brings its red→green and baseline
+  records when its version is unchanged; the task lists any it leaves behind.
 - `mix surfex.resolve FROM TO --type T --pick TIP`: two branches recorded the same relation
   without seeing each other; pick the tip (by id prefix) to keep.
 - `mix surfex.history ID`: every relation an id has had.
