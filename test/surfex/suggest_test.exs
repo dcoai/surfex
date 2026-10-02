@@ -231,6 +231,78 @@ defmodule Surfex.SuggestTest do
       assert summary(s).moves == []
     end
 
+    # #99: a test file split into sub-modules renames every test in it; each is the same
+    # version under a new id, and the move carries its relations and records.
+    @tag verifies: "suggest-test-moves"
+    test "a test file split into modules is suggested as one move per test, keeping its records",
+         %{tmp_dir: root} do
+      body = fn n -> "test \"t#{n}\", do: assert(Wren.send(:a, :b, #{n}))" end
+
+      before = "defmodule WrenTest do\n  use ExUnit.Case\n  #{body.(1)}\n  #{body.(2)}\nend\n"
+
+      split =
+        "defmodule WrenOneTest do\n  use ExUnit.Case\n  #{body.(1)}\nend\n" <>
+          "defmodule WrenTwoTest do\n  use ExUnit.Case\n  #{body.(2)}\nend\n"
+
+      {_s, scans} = suggest(root, @spec_md, [])
+      profile = Config.profile!([sources: ["spec.md"]], "Wren")
+      old = scans ++ Scan.ExUnit.tests(before, "test/wren_test.exs")
+
+      {:ok, entries} =
+        Suggest.accept_all(Suggest.all(profile, @wren, old, [], root), old, [], @meta)
+
+      [t1] = for %Scan{kind: :test, id: "WrenTest: t1"} = t <- old, do: t
+
+      observed =
+        Entry.new!(
+          at: "2026-09-28T10:30:00Z",
+          op: :observe,
+          type: :red_green,
+          basis: :evidence,
+          ends: [%{kind: :test, id: t1.id, hash: t1.hash}]
+        )
+
+      entries = entries ++ [observed]
+      new = scans ++ Scan.ExUnit.tests(split, "test/wren_test.exs")
+      s = Suggest.all(profile, @wren, new, entries, root)
+
+      assert Enum.sort(Enum.map(s.moves, &{&1.from, &1.to.id})) == [
+               {"WrenTest: t1", "WrenOneTest: t1"},
+               {"WrenTest: t2", "WrenTwoTest: t2"}
+             ]
+
+      # The moved tests' relations come by the move, so they aren't suggested afresh.
+      assert s.tests == []
+
+      {:ok, recorded} = Suggest.accept_all(s, new, entries, @meta)
+      status = Status.derive(new, entries ++ recorded)
+      assert MapSet.member?(status.discriminated, {"WrenOneTest: t1", t1.hash})
+      refute Enum.any?(status.relations, &(&1.state == :orphaned))
+    end
+
+    @tag verifies: "suggest-test-moves"
+    test "a test version found under two new ids is ambiguous: reported, not suggested",
+         %{tmp_dir: root} do
+      body = "test \"t\", do: assert(Wren.send(:a, :b, 1))"
+      before = "defmodule WrenTest do\n  use ExUnit.Case\n  #{body}\nend\n"
+
+      twice =
+        "defmodule WrenOneTest do\n  use ExUnit.Case\n  #{body}\nend\n" <>
+          "defmodule WrenTwoTest do\n  use ExUnit.Case\n  #{body}\nend\n"
+
+      {_s, scans} = suggest(root, @spec_md, [])
+      profile = Config.profile!([sources: ["spec.md"]], "Wren")
+      old = scans ++ Scan.ExUnit.tests(before, "test/wren_test.exs")
+
+      {:ok, entries} =
+        Suggest.accept_all(Suggest.all(profile, @wren, old, [], root), old, [], @meta)
+
+      new = scans ++ Scan.ExUnit.tests(twice, "test/wren_test.exs")
+      s = Suggest.all(profile, @wren, new, entries, root)
+      assert s.moves == []
+      assert [%{from: ["WrenTest: t"], to: ["WrenOneTest: t", "WrenTwoTest: t"]}] = s.ambiguous
+    end
+
     test "blocks and hints refine what they sit in", %{tmp_dir: root} do
       text = """
       # Limits {#limits}

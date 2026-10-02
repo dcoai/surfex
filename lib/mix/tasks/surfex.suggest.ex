@@ -4,9 +4,11 @@ defmodule Mix.Tasks.Surfex.Suggest do
   @moduledoc """
   Lists what the spec already implies (`Surfex.Suggest.all/5`):
 
-    * **moves** — a related spec id that is gone, and a new id at the same version: a
-      renamed heading, or an anchor added. Accepting moves each relation onto the new id
-      (`mix surfex.move`).
+    * **moves** — a spec or test id the log knows that is gone, and a new id at the same
+      version: a renamed heading or an added anchor; a test whose module, `describe` or
+      file was renamed, as when a test file is split. Accepting moves each relation, and a
+      test's red→green and baseline records, onto the new id (`mix surfex.move`). A
+      version found under several ids is listed as ambiguous and never moved.
     * **refines** — each marked block and test hint refines the section or block it sits
       in.
     * **implements** — each spec unit paired with each code item it names.
@@ -50,6 +52,14 @@ defmodule Mix.Tasks.Surfex.Suggest do
     suggestions = Suggest.all(profile, Config.items(config, root), scans, entries, root)
 
     for m <- suggestions.moves, do: Mix.shell().info("move        #{m.from} → #{m.to.id}")
+
+    for a <- suggestions.ambiguous,
+        do:
+          Mix.shell().info(
+            "ambiguous   #{Enum.join(a.from, ", ")} → #{Enum.join(a.to, ", ")}: one version, " <>
+              "several ids; move by hand (mix surfex.move)"
+          )
+
     for r <- suggestions.refines, do: Mix.shell().info("refines     #{r.from.id} → #{r.to.id}")
 
     for v <- suggestions.verifies, do: Mix.shell().info("verifies    #{v.from.id} → #{v.to.id}")

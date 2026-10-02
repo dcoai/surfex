@@ -1206,10 +1206,15 @@ exist. **It never confirms a dangling judgement**: a dangling `implements`, `ver
 
 `Surfex.Suggest.all/5` gives every suggestion at once, computed together so that none
 repeats another:
-- **moves**: a spec id the log relates that is no longer scanned, and a spec id in no
-  relation at the **same version**, such as a renamed heading or an added anchor.
-  Only one-to-one matches are suggested. Two candidates at one version are ambiguous
-  and left alone. A section renamed and reworded at once is not recognised: its old
+- **moves**: a spec or test id the log knows that is no longer scanned, and an id of the
+  same kind with no records of its own at the **same version**: a renamed heading or an
+  added anchor; a test whose module, `describe` or file was renamed, as when a test file
+  is split into sub-modules. A test is known by its relations, or by its records alone
+  (§14). Accepting carries the relations and a test's records (`Surfex.Record.move/5`).
+  Only one-to-one matches are suggested. A version found under several gone or new ids is
+  **ambiguous**: reported, never suggested, since which is which is a judgement (`mix
+  surfex.move` does it by hand). A section renamed and reworded at once is not
+  recognised, and neither is a renamed test, whose name is part of its version: their old
   relations stay orphaned for review.
 - **refines**: each marked block and test hint `refines` the unit it sits in
   (`within`, §11), unless that relation exists in any state.
@@ -1247,6 +1252,12 @@ evidence.
 ```test suggest-never-confirms
 a pair already related, in any state, is never suggested again,
 so accepting suggestions never confirms a dangling relation
+```
+
+```test suggest-test-moves
+a test id gone from the scan whose version one new test id has, with no records of its
+own, is suggested as a move, and accepting carries its relations and records; a version
+under several new ids is reported as ambiguous and not suggested
 ```
 
 ```test suggest-moves

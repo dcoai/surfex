@@ -73,10 +73,12 @@ defmodule Surfex.Suggest do
   end
 
   @type move :: %{from: String.t(), to: Scan.t()}
+  @type ambiguous :: %{from: [String.t()], to: [String.t()]}
   @type refinement :: %{from: Scan.t(), to: Scan.t()}
   @type pair :: %{from: Scan.t(), to: Scan.t()}
   @type suggestions :: %{
           moves: [move],
+          ambiguous: [ambiguous],
           refines: [refinement],
           implements: [candidate],
           verifies: [pair],
@@ -89,9 +91,12 @@ defmodule Surfex.Suggest do
   @doc """
   Every suggestion at once, computed together so none repeats another:
 
-    * **moves** — a spec id the log relates that is no longer scanned, and a new id in no
-      relation at the **same version**: a renamed heading, or an anchor added. Only a
-      one-to-one match is suggested; two candidates with one version are left alone.
+    * **moves** — a spec or test id the log knows that is no longer scanned, and a new id
+      of the same kind with no records of its own at the **same version**: a renamed
+      heading or an added anchor; a test whose module, `describe` or file was renamed (a
+      split test file). Only a one-to-one match is suggested.
+    * **ambiguous** — versions found under more than one gone id or new id: reported, not
+      suggested, since which is which is a judgement.
     * **refines** — each marked block and test hint `refines` the section or block it sits
       in (`within`), unless that relation exists in any state.
     * **implements** — `candidates/5`.
@@ -118,11 +123,13 @@ defmodule Surfex.Suggest do
 
   @spec all(Profile.t(), [Surfex.Item.t()], [Scan.t()], [Entry.t()], String.t()) :: suggestions
   def all(profile, items, scans, entries, root) do
-    moves = moves(scans, entries)
+    {moves, ambiguous} = moves(scans, entries)
 
     {:ok, moved} =
       Enum.reduce(moves, {:ok, entries}, fn m, {:ok, acc} ->
-        {:ok, recorded} = Record.move(scans, acc, m.from, "spec:" <> m.to.id, at: @epoch)
+        {:ok, recorded} =
+          Record.move(scans, acc, prefixed(m.to.kind, m.from), prefixed(m.to), at: @epoch)
+
         {:ok, acc ++ recorded}
       end)
 
@@ -130,6 +137,7 @@ defmodule Surfex.Suggest do
 
     %{
       moves: moves,
+      ambiguous: ambiguous,
       refines: refinements(scans, moved),
       implements: implements,
       excuses: excusals(profile, items, scans, moved, implements),
@@ -154,7 +162,7 @@ defmodule Surfex.Suggest do
   def accept_all(suggestions, scans, entries, meta, opts \\ []) do
     steps =
       Enum.map(suggestions.moves, fn m ->
-        &Record.move(scans, &1, m.from, "spec:" <> m.to.id, meta)
+        &Record.move(scans, &1, prefixed(m.to.kind, m.from), prefixed(m.to), meta)
       end) ++
         Enum.map(suggestions.refines, fn r ->
           &Record.relate(scans, &1, "spec:" <> r.from.id, "spec:" <> r.to.id, :refines, meta)
@@ -209,30 +217,64 @@ defmodule Surfex.Suggest do
     end
   end
 
+  defp prefixed(kind, id), do: "#{kind}:#{id}"
+  defp prefixed(%Scan{kind: kind, id: id}), do: prefixed(kind, id)
+
+  # Moves of spec units and tests, and the matches too ambiguous to suggest.
   defp moves(scans, entries) do
     status = Surfex.Status.derive(scans, entries)
+    scanned = MapSet.new(scans, &{&1.kind, &1.id})
 
-    gone =
+    # Ends of orphaned relations, and a test's observations: a test may have records and
+    # no relation (§14).
+    orphaned =
       for %{state: :orphaned, tips: [tip], changed: changed} <- status.relations,
           end_ <- tip.ends,
-          end_.kind == :spec,
-          {:spec, end_.id} in changed,
-          reduce: %{},
-          do: (acc ->
-                 Map.update(acc, end_.id, MapSet.new([end_.hash]), &MapSet.put(&1, end_.hash)))
+          end_.kind in [:spec, :test],
+          {end_.kind, end_.id} in changed,
+          do: {end_.kind, end_.id, end_.hash}
 
-    fresh = for %Scan{kind: :spec} = s <- status.new, do: s
+    observed =
+      for %Entry{op: :observe, ends: [%{kind: kind, id: id, hash: hash}]} <- entries,
+          not MapSet.member?(scanned, {kind, id}),
+          not Enum.any?(orphaned, &match?({^kind, ^id, _}, &1)),
+          do: {kind, id, hash}
 
-    gone_by_hash =
+    gone =
+      Enum.reduce(orphaned ++ observed, %{}, fn {kind, id, hash}, acc ->
+        Map.update(acc, {kind, id}, MapSet.new([hash]), &MapSet.put(&1, hash))
+      end)
+
+    recorded = MapSet.new(for e <- entries, end_ <- e.ends, do: {end_.kind, end_.id})
+
+    fresh =
+      for %Scan{kind: kind} = s <- status.new,
+          kind in [:spec, :test],
+          not MapSet.member?(recorded, {kind, s.id}),
+          do: s
+
+    gone_by_version =
       gone
-      |> Enum.filter(fn {_id, hashes} -> MapSet.size(hashes) == 1 end)
-      |> Enum.group_by(fn {_id, hashes} -> Enum.at(hashes, 0) end, &elem(&1, 0))
+      |> Enum.filter(fn {_key, hashes} -> MapSet.size(hashes) == 1 end)
+      |> Enum.group_by(fn {{kind, _id}, hashes} -> {kind, Enum.at(hashes, 0)} end, fn {{_k, id},
+                                                                                       _} ->
+        id
+      end)
 
-    fresh_by_hash = Enum.group_by(fresh, & &1.hash)
+    fresh_by_version = Enum.group_by(fresh, &{&1.kind, &1.hash})
 
-    for {hash, [old]} <- gone_by_hash,
-        [new] <- [Map.get(fresh_by_hash, hash, [])],
-        do: %{from: old, to: new}
+    matches =
+      for {version, olds} <- gone_by_version,
+          news = Map.get(fresh_by_version, version, []),
+          news != [],
+          do: {Enum.sort(olds), Enum.sort_by(news, & &1.id)}
+
+    {for({[old], [new]} <- matches, do: %{from: old, to: new}),
+     for(
+       {olds, news} <- matches,
+       length(olds) > 1 or length(news) > 1,
+       do: %{from: olds, to: Enum.map(news, & &1.id)}
+     )}
   end
 
   defp excusals(profile, items, scans, entries, implements) do
