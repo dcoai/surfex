@@ -63,3 +63,14 @@ goldens:
   script:
     # Every golden in .surfex.exs: RELATIONS.md, where a stale committed record fails.
     - mix surfex.goldens
+
+docs:
+  extends: .elixir
+  stage: check
+  variables:
+    MIX_ENV: dev
+  script:
+    # What hexdocs.pm will show. ex_doc is surfex's one dependency, dev-only; a reference to
+    # a function that doesn't exist fails here rather than on the published docs.
+    - mix deps.get
+    - mix docs --warnings-as-errors
