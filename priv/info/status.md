@@ -4,7 +4,8 @@
 each group needing attention. It exits non-zero when failing.
 
 Options: `--format json` (the work list), `--verify` (check the log's integrity),
-`--evidence` (check evidence confirmations against the last test run), `--validated` (also
+`--evidence` (check evidence confirmations against the last test run), `--merge PATH`
+(once per CI job's evidence file: checked together, so no claim goes unchecked), `--validated` (also
 fail on unvalidated relations), `--no-planned` (fail on planned), `--no-marks` (fail on
 marks), `--no-baseline` (fail on relations resting on an adoption baseline).
 

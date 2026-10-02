@@ -1082,6 +1082,8 @@ the code is scanned once, and citations are read under the config's profile
   that must not ship with a known spec problem
 - `--no-baseline` fails on any relation resting on the baseline (`baseline: :fail`,
   §18.1), and the report counts them with the adoption mode
+- `--merge PATH`, once per file, checks the confirmations by evidence against several CI
+  jobs' evidence files together, in place of `--evidence`'s one file (§17)
 - with `completeness: [min: N]` in `.surfex.exs`, it fails when the overall completeness
   score (§20) is below `N`, printing the score
 - it fails when the status is failing, or the log doesn't verify
@@ -1368,6 +1370,25 @@ doesn't fail the check. A test with no record at all still **didn't run**, and f
 job that silently stopped running a test can't hide behind an exclusion. For an
 `implements` carried by several tests, a disproof outranks a test that didn't run, which
 outranks an exclusion.
+
+**The jobs together check every claim.** Each job passing alone isn't enough: a claim
+could then be checked by none of them. A final job reads every job's evidence file (its
+CI artifact) with `mix surfex.status --evidence --merge PATH` (once per file;
+`Surfex.Status.derive/4` with `evidence: {:merged, [records, …]}`), and judges each claim
+against each file:
+- a disproof in any file (its test failed, or ran against other code) fails it, whatever
+  another file shows;
+- otherwise, a file that bears it out passes it;
+- otherwise no job's evidence ran it, and it fails (**no job**).
+
+A test absent from one job's file is normal in a split. Only the named files are read,
+and a named file that doesn't exist fails, rather than reading as an empty run. CI still
+records nothing: the evidence files are artifacts, not log entries.
+
+```test evidence-merged
+merged evidence passes a claim one job bears out, fails one any job disproves, and fails
+one no job ran; only the named files are read, and a missing one fails
+```
 
 ```test evidence-excluded
 an excluded or skipped test is recorded at its version as such, neither red nor green;

@@ -198,4 +198,24 @@ defmodule Surfex.StatusTaskTest do
              ]
     end
   end
+
+  # #98: --merge reads each job's evidence file in a final job.
+  @tag verifies: "evidence-merged"
+  test "--merge reads the named evidence files, and a missing one fails", %{root: root} do
+    files =
+      for name <- ~w(main slow) do
+        path = Path.join(root, "#{name}.jsonl")
+        Surfex.Evidence.append(path, [])
+        File.write!(path, "")
+        path
+      end
+
+    task(root, Enum.flat_map(files, &["--merge", &1]))
+    assert output() =~ "relation status: ok"
+
+    error =
+      assert_raise Mix.Error, fn -> task(root, ["--merge", Path.join(root, "gone.jsonl")]) end
+
+    assert error.message =~ "no evidence file at"
+  end
 end
