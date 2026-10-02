@@ -88,32 +88,32 @@ defmodule Surfex.Scanner.ElixirTest do
     # #69: a name ends where a name ends; a root glued to more letters is another word.
     @tag verifies: "name-boundary"
     test "a token ends at a name's end: a glued or hyphenated suffix is no name" do
-      d = Scanner.profile_defaults("Metresis")
+      d = Scanner.profile_defaults("MyApp")
 
       for text <- [
-            "the header Metresis-Profile: <key>",
-            "MetresisCollector.Forge.* builds it",
-            "MetresisWeb.DomainLive.Show renders",
-            "see Metresis.Units-old"
+            "the header MyApp-Profile: <key>",
+            "MyAppCollector.Forge.* builds it",
+            "MyAppWeb.DomainLive.Show renders",
+            "see MyApp.Units-old"
           ],
           do: assert(Regex.scan(d[:token], text, capture: :all_but_first) == [], text)
 
-      assert Regex.scan(d[:token], "call Metresis.Units.convert/3. Then", capture: :all_but_first) ==
-               [["Metresis.Units.convert/3"]]
+      assert Regex.scan(d[:token], "call MyApp.Units.convert/3. Then", capture: :all_but_first) ==
+               [["MyApp.Units.convert/3"]]
     end
 
     @tag verifies: "name-boundary"
     test "several roots: every top-level module the code has is a root" do
-      d = Scanner.profile_defaults(["Metresis", "MetresisWeb"])
-      assert Regex.match?(d[:shape], "MetresisWeb.DomainLive.Show")
-      assert Regex.match?(d[:shape], "Metresis.Units.convert/3")
-      refute Regex.match?(d[:shape], "MetresisCollector.Forge")
+      d = Scanner.profile_defaults(["MyApp", "MyAppWeb"])
+      assert Regex.match?(d[:shape], "MyAppWeb.DomainLive.Show")
+      assert Regex.match?(d[:shape], "MyApp.Units.convert/3")
+      refute Regex.match?(d[:shape], "MyAppCollector.Forge")
     end
 
-    # #69's reproduction, end to end: only the real citation is suggested, and a stale
+    # #69's case, end to end with generic names: only the real citation is suggested, and a stale
     # name under one of the project's roots is reported, not hidden behind the root module.
     @tag verifies: "name-boundary"
-    test "metresis's spans: no root-module suggestion, and the stale name is unresolved" do
+    test "a glued name, a header and a stale name under a second root: only the real citation is suggested, and the stale name is unresolved" do
       root = Path.join(System.tmp_dir!(), "surfex_roots_#{System.unique_integer([:positive])}")
       File.mkdir_p!(root)
       on_exit(fn -> File.rm_rf!(root) end)
@@ -121,46 +121,46 @@ defmodule Surfex.Scanner.ElixirTest do
       File.write!(Path.join(root, "spec.md"), """
       # Profiles
 
-      The header `Metresis-Profile: <key> sha256:<hex>` carries it.
+      The header `MyApp-Profile: <key> sha256:<hex>` carries it.
 
       # Forge
 
-      The collector's `MetresisCollector.Forge.*` builds it.
+      The collector's `MyAppCollector.Forge.*` builds it.
 
       # Show
 
-      `MetresisWeb.DomainLive.Show` renders a domain.
+      `MyAppWeb.DomainLive.Show` renders a domain.
 
       # Units
 
-      `Metresis.Units.convert/3` converts.
+      `MyApp.Units.convert/3` converts.
       """)
 
       items = [
-        %Surfex.Item{kind: :module, name: "Metresis", file: "lib/m.ex", hash: "1"},
-        %Surfex.Item{kind: :module, name: "MetresisWeb", file: "lib/w.ex", hash: "2"},
-        %Surfex.Item{kind: :module, name: "Metresis.Units", file: "lib/u.ex", hash: "3"},
+        %Surfex.Item{kind: :module, name: "MyApp", file: "lib/m.ex", hash: "1"},
+        %Surfex.Item{kind: :module, name: "MyAppWeb", file: "lib/w.ex", hash: "2"},
+        %Surfex.Item{kind: :module, name: "MyApp.Units", file: "lib/u.ex", hash: "3"},
         %Surfex.Item{
           kind: :function,
           name: "convert/3",
-          parent: "Metresis.Units",
+          parent: "MyApp.Units",
           file: "lib/u.ex",
           hash: "4"
         }
       ]
 
       config = [sources: ["spec.md"]]
-      profile = Surfex.Status.Config.profile!(config, "Metresis", items)
+      profile = Surfex.Status.Config.profile!(config, "MyApp", items)
       scans = Surfex.Scan.Markdown.records(root, ["spec.md"]) ++ Surfex.Scan.code(items)
 
       suggested =
         for c <- Surfex.Suggest.candidates(profile, items, scans, [], root),
             do: {c.spec.id, c.code.id}
 
-      assert suggested == [{"spec.md#Units", "Metresis.Units.convert/3"}]
+      assert suggested == [{"spec.md#Units", "MyApp.Units.convert/3"}]
 
-      assert [%{span: "MetresisWeb.DomainLive.Show", status: :unresolved}] =
-               Surfex.Status.Config.broken_citations(config, items, root, "Metresis")
+      assert [%{span: "MyAppWeb.DomainLive.Show", status: :unresolved}] =
+               Surfex.Status.Config.broken_citations(config, items, root, "MyApp")
     end
 
     test "citing a function without its arity cites every arity; a call's arguments drop" do
