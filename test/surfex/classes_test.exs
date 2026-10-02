@@ -53,13 +53,18 @@ defmodule Surfex.ClassesTest do
       for change <- [
             %{kinds: [:function, :macro]},
             %{name: ~r/^handle_call/},
-            %{parent_cited: true}
+            %{parent_cited: true},
+            %{parent: ~r/^MyAppWeb/}
           ] do
         rules = List.update_at(@config[:rules], 0, &Map.merge(&1, change))
         assert hash(Keyword.put(@config, :rules, rules), "plumbing") != base
       end
 
       assert hash(Keyword.put(@config, :rules, Enum.reverse(@config[:rules])), "plumbing") == base
+
+      # #71: a rule without parent: keeps the version it had before the key existed.
+      rules = List.update_at(@config[:rules], 0, &Map.put(&1, :parent, nil))
+      assert hash(Keyword.put(@config, :rules, rules), "plumbing") == base
       # Another class's rules are not this one's.
       rules = List.update_at(@config[:rules], 1, &Map.put(&1, :kinds, [:field, :const]))
       assert hash(Keyword.put(@config, :rules, rules), "plumbing") == base

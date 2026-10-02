@@ -337,7 +337,25 @@ other relation:
 
 Write rules by **class, never by item**. A new helper falls into its class and stays quiet,
 while a new entry point matches no rule and needs a section, which is the direction that
-matters. Prefer a section whenever the code has behaviour a reader of the spec should
+matters.
+
+Some code is plumbing **because of the module it lives in**, not its name: what `phx.new`
+generates in `MyAppWeb.CoreComponents` or `MyAppWeb.Layouts`. Name the family with
+`parent:` (a member's parent module) rather than listing the generator's function names,
+which would also catch a real `list/1` elsewhere. The modules themselves are excused by
+`name:`:
+
+```elixir
+classes: [{"phoenix scaffolding", "what phx.new generated"}],
+rules: [
+  %{class: "phoenix scaffolding", kinds: [:function, :macro],
+    parent: ~r/^MyAppWeb(\.(CoreComponents|Layouts|ErrorHTML|ErrorJSON))?$/},
+  %{class: "phoenix scaffolding", kinds: [:module],
+    name: ~r/^MyAppWeb\.(CoreComponents|Layouts|ErrorHTML|ErrorJSON)$/}
+]
+```
+
+Prefer a section whenever the code has behaviour a reader of the spec should
 know about. A class is for code whose only story is "it wires things together".
 
 ## 9. Working with an LLM

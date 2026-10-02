@@ -431,7 +431,7 @@ it, and `Surfex.Profile.keys/0` lists its keys:
 | `known_external` | `%{name => reason}` |
 | `documented_absences` | `%{{name, file} => reason}` |
 | `classes` | `[{class, reason}]` |
-| `rules` | `%{class, kinds, name, parent_cited}` excusal rules |
+| `rules` | `%{class, kinds, name, parent_cited, parent}` excusal rules; `parent` is a regex on a member's parent module (an item with no parent, such as a module, never matches it), so a module family's members are excused by family |
 | `never_excused` | kinds that are the spec's subject matter |
 
 It raises, naming the key, on an unknown key, a missing required key, a wrong type, a
@@ -444,6 +444,12 @@ project's namespace (§5.2).
 ```test exclude-both
 a file under exclude: contributes neither spec sections nor citations; excluding every
 file is an empty spec, which is an error
+```
+
+```test rule-parent
+a rule's parent: excuses the members of a module family and no other module's members of
+the same name; it never matches an item with no parent; it composes with the rule's other
+keys, must be a regex, and a rule without it keeps its class's version
 ```
 
 ```test profile-validated

@@ -10,7 +10,7 @@ A keyword list, evaluated as data. An unknown key is refused, naming it.
 - `scanner:`, `scanner_opts:`: a project scanner (`Surfex.Scanner`) instead of the Elixir one.
 - Citation profile: `exclude`, `shape`, `token`, `known_shape`, `normalise`, `subjects`,
   `table_columns`, `file_targets`, `known_external`, `documented_absences`.
-- `classes: [{name, reason}]`, `rules: [%{class:, kinds:, name:, parent_cited:}]`,
+- `classes: [{name, reason}]`, `rules: [%{class:, kinds:, name:, parent_cited:, parent:}]`,
   `never_excused:`: kinds of code the spec deliberately doesn't describe.
 
 **Policy**

@@ -10,7 +10,7 @@ defmodule Surfex.Scan.Classes do
 
     * **id** — the class's name
     * **hash** — over its reason and every rule naming it (kinds, name pattern,
-      `parent_cited`), in any order. Rewording the reason or changing a rule changes it,
+      `parent_cited`, and `parent` when set), in any order. Rewording the reason or changing a rule changes it,
       so every `excuses` relation of the class dangles until someone confirms each item
       still belongs.
     * **location** — `.surfex.exs`, with no lines: the config is evaluated data.
@@ -29,7 +29,9 @@ defmodule Surfex.Scan.Classes do
     |> Enum.map(fn {name, reason} ->
       mine =
         for %{class: ^name} = rule <- rules do
-          [Enum.sort(rule.kinds), rule.name && Regex.source(rule.name), rule.parent_cited]
+          # `parent:` only when set, so a class whose rules predate it keeps its version.
+          [Enum.sort(rule.kinds), rule.name && Regex.source(rule.name), rule.parent_cited] ++
+            if(rule.parent, do: [Regex.source(rule.parent)], else: [])
         end
 
       %Scan{

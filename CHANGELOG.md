@@ -12,6 +12,10 @@ confirmed by hand.
 
 ### Added
 
+- **Excusing a module family** (§8). A rule's `parent:` regex matches a member's parent
+  module, so scaffolding a generator emits (`MyAppWeb.CoreComponents`, `Layouts`, …) is
+  excused by family rather than by a list of function names that also catches real
+  entry points elsewhere. A class whose rules don't use it keeps its version.
 - **Moving a test brings its records** (§14). `mix surfex.move` carries a test's
   red→green and baseline records to its new id when its version is unchanged, as when a
   test file is split into sub-modules or a `describe` regrouped. A test that changed earns

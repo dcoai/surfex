@@ -29,11 +29,20 @@ defmodule Surfex.Coverage do
     end
   end
 
-  defp excuse(%{class: class, kinds: kinds, name: name, parent_cited: parent_cited}, item, cited) do
+  defp excuse(
+         %{class: class, kinds: kinds, name: name, parent_cited: parent_cited} = rule,
+         item,
+         cited
+       ) do
     if item.kind in kinds and name_matches?(name, item.name) and
-         parent_ok?(parent_cited, item.parent, cited),
+         parent_ok?(parent_cited, item.parent, cited) and
+         family?(Map.get(rule, :parent), item.parent),
        do: {:expected, class}
   end
+
+  # `parent:` names a module family: it matches a member's parent, never an item with none.
+  defp family?(nil, _parent), do: true
+  defp family?(re, parent), do: is_binary(parent) and Regex.match?(re, parent)
 
   defp name_matches?(nil, _name), do: true
   defp name_matches?(re, name), do: Regex.match?(re, name)
