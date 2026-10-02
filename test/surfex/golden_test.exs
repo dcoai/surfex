@@ -12,6 +12,7 @@ defmodule Surfex.GoldenTest do
   """
 
   use ExUnit.Case, async: true
+  @moduletag verifies: "golden-renders"
 
   alias Surfex.Golden
 
@@ -38,6 +39,8 @@ defmodule Surfex.GoldenTest do
   end
 
   describe "the header block" do
+    @describetag verifies: "golden-stats"
+
     test "is title, purpose, attribution — in that order, contiguous" do
       [title, purpose, attribution | _] = Golden.render(spec()) |> String.split("\n")
 
@@ -49,6 +52,13 @@ defmodule Surfex.GoldenTest do
       assert attribution =~ "do not edit; a drift FAILS the gate"
     end
 
+    @tag verifies: "golden-shape"
+    test "free prose follows the block" do
+      rendered = Golden.render(spec(%{prose: "What the classes mean."}))
+      [_title, _purpose, _attribution | rest] = String.split(rendered, "\n")
+      assert Enum.join(rest, "\n") =~ "What the classes mean."
+    end
+
     test "says ADVISORY when the gate is advisory, so the document states its own force" do
       rendered = Golden.render(spec(%{hardness: :advisory}))
 
@@ -58,6 +68,13 @@ defmodule Surfex.GoldenTest do
   end
 
   describe "determinism" do
+    @describetag verifies: "golden-order"
+
+    test "natural_key/1 orders numbers by value within text" do
+      assert Enum.sort_by(["item10", "item2", "item1"], &Surfex.Golden.natural_key/1) ==
+               ["item1", "item2", "item10"]
+    end
+
     # The property the drift gates rest on. Two scanners that agree on content but not on
     # order must produce identical bytes.
     test "row order does not change the bytes" do
@@ -78,12 +95,29 @@ defmodule Surfex.GoldenTest do
       assert Golden.render(shuffled) == Golden.render(forward)
     end
 
+    test "rows come out in natural-key order by default, or in the spec's :sort order" do
+      rows =
+        for id <- ["item10", "item2", "item1"],
+            do: %{"Item" => {:code, id}, "Evidence" => :absent, "Locus" => :absent}
+
+      order = fn rendered ->
+        Regex.scan(~r/`(item\d+)`/, rendered, capture: :all_but_first) |> List.flatten()
+      end
+
+      assert order.(Golden.render(spec(%{rows: rows}))) == ["item1", "item2", "item10"]
+
+      by_length_desc = fn %{"Item" => {:code, id}} -> -String.length(id) end
+      assert order.(Golden.render(spec(%{rows: rows, sort: by_length_desc}))) |> hd() == "item10"
+    end
+
     test "and rendering twice is rendering once" do
       assert Golden.render(spec()) == Golden.render(spec())
     end
   end
 
   describe "what may never appear" do
+    @describetag verifies: "golden-order"
+
     # A golden is a stable function of source. Anything that varies independently of source
     # makes it drift against itself, and a gate that cries wolf gets disabled.
     test "no date, time or duration reaches the output" do
@@ -105,6 +139,8 @@ defmodule Surfex.GoldenTest do
   end
 
   describe "cell notation" do
+    @describetag verifies: "golden-cells"
+
     test "each type renders to its documented form" do
       rendered =
         Golden.render(
@@ -129,6 +165,14 @@ defmodule Surfex.GoldenTest do
       assert rendered =~ "`lib/x.ex:7`"
       assert rendered =~ "`lib/y.ex`"
       assert rendered =~ "`a1b2c3d4`"
+
+      assert Golden.render(
+               spec(%{
+                 columns: ["Item", "Cell"],
+                 rows: [%{"Item" => {:code, "j"}, "Cell" => {:version, nil}}]
+               })
+             ) =~ "| `j` | — |"
+
       assert rendered =~ "verbatim ·"
       assert rendered =~ "plain"
     end
@@ -166,6 +210,8 @@ defmodule Surfex.GoldenTest do
   end
 
   describe "stats" do
+    @describetag verifies: "golden-stats"
+
     test "stat/2 keeps the counts as data and renders the same line" do
       stat = Golden.stat("2 items", [{"verified", 1}, {"nothing", 1}])
 
@@ -218,6 +264,26 @@ defmodule Surfex.GoldenTest do
       assert rendered =~ "## First"
       assert rendered =~ "## Second"
       assert String.split(rendered, "| Item |") |> length() == 3
+    end
+
+    @tag verifies: "golden-shape"
+    test "a group may have its own columns" do
+      rendered =
+        Golden.render(
+          spec(%{
+            rows: nil,
+            groups: [
+              %{heading: "Own", columns: ["Name"], rows: [%{"Name" => {:code, "n"}}]},
+              %{
+                heading: "Shared",
+                rows: [%{"Item" => {:code, "b"}, "Evidence" => :absent, "Locus" => :absent}]
+              }
+            ]
+          })
+        )
+
+      assert rendered =~ "## Own\n\n| Name |"
+      assert rendered =~ "| Item | Evidence | Locus |"
     end
   end
 end

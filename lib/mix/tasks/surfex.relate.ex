@@ -12,6 +12,10 @@ defmodule Mix.Tasks.Surfex.Relate do
   an id with `spec:` or `code:` when it is scanned as both. The entry supersedes the
   relation's current judgement, if it has one.
 
+  Naming a pair validates nothing (§18). An `implements` or `excuses` relation is recorded
+  as proposed. A `verifies` relation is recorded on the test's failing run when the last
+  `mix test` saw its current version fail, and as proposed otherwise.
+
   `--planned` relates a scanned id to one that doesn't exist yet (`Surfex.Record.plan/7`):
   the section is written and the code isn't, or the other way round.
 
@@ -36,7 +40,10 @@ defmodule Mix.Tasks.Surfex.Relate do
     result =
       if opts[:planned],
         do: Surfex.Record.plan(scans, entries, from, to, type, R.plausible(opts, scans), meta),
-        else: Surfex.Record.relate(scans, entries, from, to, type, meta)
+        else:
+          Surfex.Record.relate(scans, entries, from, to, type, meta,
+            evidence: Surfex.Evidence.load(Surfex.Evidence.path(root))
+          )
 
     R.record(root, result)
   end

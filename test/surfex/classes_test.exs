@@ -19,11 +19,27 @@ defmodule Surfex.ClassesTest do
     do: config |> Classes.records() |> Enum.find(&(&1.id == class)) |> Map.fetch!(:hash)
 
   describe "class records" do
-    test "one per class, located in .surfex.exs" do
+    @describetag verifies: "scan-records-pure"
+
+    @tag :tmp_dir
+    test "one per class, located in .surfex.exs; Config.scans/2 includes them", %{
+      tmp_dir: root
+    } do
       assert [
-               %Scan{kind: :class, id: "members", location: %{file: ".surfex.exs", lines: nil}},
-               %Scan{kind: :class, id: "plumbing"}
+               %Scan{
+                 kind: :class,
+                 id: "members",
+                 location: %{file: ".surfex.exs", lines: nil},
+                 role: nil
+               },
+               %Scan{kind: :class, id: "plumbing", role: nil}
              ] = Classes.records(@config)
+
+      File.write!(Path.join(root, "spec.md"), "# A\n\ntext\n")
+      config = [sources: ["spec.md"]]
+      classes = &for(%Scan{kind: :class, id: id} <- Config.scans(&1, root), do: id)
+      assert classes.(config ++ @config) == ["members", "plumbing"]
+      assert classes.(config) == []
     end
 
     test "the version covers the reason and the class's rules, not their order" do
@@ -37,13 +53,18 @@ defmodule Surfex.ClassesTest do
       for change <- [
             %{kinds: [:function, :macro]},
             %{name: ~r/^handle_call/},
-            %{parent_cited: true}
+            %{parent_cited: true},
+            %{parent: ~r/^MyAppWeb/}
           ] do
         rules = List.update_at(@config[:rules], 0, &Map.merge(&1, change))
         assert hash(Keyword.put(@config, :rules, rules), "plumbing") != base
       end
 
       assert hash(Keyword.put(@config, :rules, Enum.reverse(@config[:rules])), "plumbing") == base
+
+      # #71: a rule without parent: keeps the version it had before the key existed.
+      rules = List.update_at(@config[:rules], 0, &Map.put(&1, :parent, nil))
+      assert hash(Keyword.put(@config, :rules, rules), "plumbing") == base
       # Another class's rules are not this one's.
       rules = List.update_at(@config[:rules], 1, &Map.put(&1, :kinds, [:field, :const]))
       assert hash(Keyword.put(@config, :rules, rules), "plumbing") == base
@@ -61,6 +82,7 @@ defmodule Surfex.ClassesTest do
   end
 
   describe "excuse suggestions" do
+    @describetag verifies: "suggesting"
     @moduletag :tmp_dir
 
     @items [
@@ -104,6 +126,9 @@ defmodule Surfex.ClassesTest do
 
     defp excuses(s), do: s.excuses |> Enum.map(&{&1.from.id, &1.to.id}) |> Enum.sort()
 
+    defp excuses_of(entries),
+      do: for(%{type: :excuses, ends: [%{id: c}, %{id: i}]} <- entries, do: {c, i})
+
     test "the first matching rule excuses what nothing implements", %{tmp_dir: root} do
       {s, _} = suggest(root)
       assert excuses(s) == [{"members", "App.Msg.body"}, {"plumbing", "App.Server.handle_call/3"}]
@@ -120,6 +145,25 @@ defmodule Surfex.ClassesTest do
 
       {s, _} = suggest(root, @config, entries)
       assert excuses(s) == []
+
+      # An excuse is proposed until someone judges the item is what its class says (§18).
+      judge = fn {class, item}, acc ->
+        note = Keyword.put(@meta, :note, "#{item} is #{class}")
+
+        {:ok, e} =
+          Surfex.Record.confirm(
+            scans,
+            entries ++ acc,
+            "class:" <> class,
+            "code:" <> item,
+            :excuses,
+            note
+          )
+
+        acc ++ e
+      end
+
+      entries = entries ++ Enum.reduce(excuses_of(entries), [], judge)
 
       reworded =
         put_in(@config[:classes], [
@@ -151,6 +195,7 @@ defmodule Surfex.ClassesTest do
 
   # #51: an excuse must stay true to its class's rules.
   describe "stale excuses" do
+    @describetag verifies: "status-states"
     alias Surfex.Log.Entry
     alias Surfex.Status.Report
 

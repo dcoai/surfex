@@ -77,6 +77,18 @@ defmodule Surfex.Scan do
     end
   end
 
+  @doc """
+  What a code record is a version of: its file, lines and version. A function with
+  default arguments is one definition the scanner reports as several items (`f/1`, `f/2`),
+  and they share this key, so code compared by it is one code however many arities it has.
+  Any other record is its own definition.
+  """
+  @spec definition(t) :: term
+  def definition(%__MODULE__{kind: :code, location: %{file: f, lines: l}, hash: h}) when l != nil,
+    do: {:code, f, l, h}
+
+  def definition(%__MODULE__{kind: kind, id: id}), do: {kind, id}
+
   defp code_id(item, shared) do
     key = Item.key(item)
     if Map.has_key?(shared, key), do: "#{key} (#{item.kind})", else: key

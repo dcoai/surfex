@@ -12,6 +12,13 @@ defmodule Mix.Tasks.Surfex.Move do
   keeps the version recorded for `OLD`, so a move never confirms anything: if the text
   changed as it moved, the relation dangles until you confirm it. `mix surfex.suggest`
   proposes moves it can see (the same version under a new id).
+
+  A retired relation comes across as retired, with its reason, unless `NEW` already has
+  that relation: a rename is no reason to forget a decision.
+
+  Moving a test (a renamed module, `describe` or file) also carries its `red_green` and
+  `baseline` records, when its version is unchanged. Any it leaves behind are listed: the
+  test changed, so it earns them again.
   """
 
   use Mix.Task
@@ -23,6 +30,21 @@ defmodule Mix.Tasks.Surfex.Move do
     {opts, ids} = R.parse(args)
     {old, new} = R.two!(ids)
     {root, scans, entries, meta} = R.context(opts)
-    R.record(root, Surfex.Record.move(scans, entries, old, new, meta))
+    result = Surfex.Record.move(scans, entries, old, new, meta)
+    R.record(root, result)
+
+    # How much came across: live relations (a relate each), and retirements kept as such
+    # (the only retires a move records without a parent).
+    {:ok, recorded} = result
+    live = Enum.count(recorded, &(&1.op == :relate))
+    kept = Enum.count(recorded, &(&1.op == :retire and &1.parents == []))
+    Mix.shell().info("moved #{live} live and #{kept} retired relation(s) onto #{new}")
+
+    for left <- Surfex.Record.left_behind(scans, entries, old, new) do
+      Mix.shell().info(
+        "not carried: #{left.type} for version #{left.hash}, but #{new} is at #{left.now}: " <>
+          "the test changed, so it earns this again"
+      )
+    end
   end
 end

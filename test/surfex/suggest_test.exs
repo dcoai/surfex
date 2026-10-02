@@ -1,9 +1,11 @@
 defmodule Surfex.SuggestTest do
   use ExUnit.Case, async: true
+  @moduletag verifies: "suggest-proposes"
 
   alias Surfex.{Item, Scan, Status, Suggest}
   alias Surfex.Status.Config
   alias Surfex.Scan.Markdown
+  alias Surfex.Log.Entry
 
   @fixture Path.expand("../fixtures/reference", __DIR__)
   @root Path.join(@fixture, "sources")
@@ -64,14 +66,27 @@ defmodule Surfex.SuggestTest do
     {:ok, entries} = Suggest.accept(first, c.scans, [], @meta)
     assert length(entries) == length(first)
     assert Enum.all?(entries, &(&1.op == :relate and &1.type == :implements))
-    assert Enum.all?(Status.derive(c.scans, entries).relations, &(&1.state == :current))
+    # A citation is a claim, not a validation (§18): each is proposed.
+    assert Enum.all?(Status.derive(c.scans, entries).relations, &(&1.state == :proposed))
     assert candidates(c, entries) == []
   end
 
   @tag verifies: "suggest-never-confirms"
   test "a pair already related in any state is left alone, never re-confirmed", c do
     [one | _] = candidates(c)
-    {:ok, [related]} = Suggest.accept([one], c.scans, [], @meta)
+    {:ok, [accepted]} = Suggest.accept([one], c.scans, [], @meta)
+
+    # Validated, as a review leaves it (§18).
+    related =
+      Entry.new!(
+        at: accepted.at,
+        op: :relate,
+        type: accepted.type,
+        ends: accepted.ends,
+        basis: :review
+      )
+
+    assert [%{state: :current}] = Status.derive(c.scans, [related]).relations
 
     # The item changes: the relation dangles, and suggest must not "fix" it.
     moved =
@@ -83,7 +98,13 @@ defmodule Surfex.SuggestTest do
              Suggest.candidates(c.profile, c.items, moved, [related], @root)
            )
 
-    assert [%{state: :dangling}] = Status.derive(moved, [related]).relations
+    # Accepting everything suggested leaves it dangling: it is never re-confirmed.
+    s = Suggest.all(c.profile, c.items, moved, [related], @root)
+    {:ok, recorded} = Suggest.accept_all(s, moved, [related], @meta)
+    refute Enum.any?(recorded, &(Entry.relation(&1) == Entry.relation(related)))
+    after_accept = Status.derive(moved, [related | recorded]).relations
+    key = Entry.relation(related)
+    assert %{state: :dangling} = Enum.find(after_accept, &(&1.relation == key))
   end
 
   # #37: a citation inside a marked block is about the block's requirement.
@@ -178,7 +199,60 @@ defmodule Surfex.SuggestTest do
 
       {:ok, recorded} = Suggest.accept_all(s, scans, entries, @meta)
       status = Status.derive(scans, entries ++ recorded)
-      assert Enum.frequencies_by(status.relations, & &1.state) == %{current: 2, retired: 1}
+      # The move carries each relation as it was: here, proposed (§18).
+      assert Enum.frequencies_by(status.relations, & &1.state) == %{proposed: 2, retired: 1}
+    end
+
+    # #70: an anchor added to a section whose decisions are all retirements still moves,
+    # and suggest goes on honouring them under the new id.
+    @tag verifies: "move-carries-retirements"
+    test "a retired pair stays declined across an added anchor", %{tmp_dir: root} do
+      entries = adopted(root)
+      {_s, scans} = suggest(root, @spec_md, entries)
+      note = [note: "512 is the wire limit, documented in §2, not here"] ++ @meta
+
+      {:ok, retired} =
+        Surfex.Record.retire(
+          scans,
+          entries,
+          "spec.md#Limits",
+          "Wren.max_len/0",
+          :implements,
+          note
+        )
+
+      entries = entries ++ retired
+
+      {s, scans} =
+        suggest(root, String.replace(@spec_md, "# Limits", "# Limits {#limits}"), entries)
+
+      assert summary(s).moves == [{"spec.md#Limits", "spec.md#limits"}]
+      assert summary(s).implements == []
+
+      {:ok, recorded} = Suggest.accept_all(s, scans, entries, @meta)
+
+      {again, _} =
+        suggest(
+          root,
+          String.replace(@spec_md, "# Limits", "# Limits {#limits}"),
+          entries ++ recorded
+        )
+
+      assert summary(again) == %{moves: [], refines: [], implements: []}
+    end
+
+    @tag verifies: "decline-recorded"
+    test "a declined suggestion is never suggested again", %{tmp_dir: root} do
+      {s, scans} = suggest(root, @spec_md, [])
+      assert {"spec.md#Limits", "Wren.max_len/0"} in summary(s).implements
+
+      why = [note: "512 is the wire limit, documented in §2"] ++ @meta
+
+      {:ok, declined} =
+        Surfex.Record.retire(scans, [], "spec.md#Limits", "Wren.max_len/0", :implements, why)
+
+      {again, _} = suggest(root, @spec_md, declined)
+      refute {"spec.md#Limits", "Wren.max_len/0"} in summary(again).implements
     end
 
     test "a heading renamed and reworded at once is not a move", %{tmp_dir: root} do
@@ -207,6 +281,78 @@ defmodule Surfex.SuggestTest do
 
       {s, _scans} = suggest(root, text, entries)
       assert summary(s).moves == []
+    end
+
+    # #99: a test file split into sub-modules renames every test in it; each is the same
+    # version under a new id, and the move carries its relations and records.
+    @tag verifies: "suggest-test-moves"
+    test "a test file split into modules is suggested as one move per test, keeping its records",
+         %{tmp_dir: root} do
+      body = fn n -> "test \"t#{n}\", do: assert(Wren.send(:a, :b, #{n}))" end
+
+      before = "defmodule WrenTest do\n  use ExUnit.Case\n  #{body.(1)}\n  #{body.(2)}\nend\n"
+
+      split =
+        "defmodule WrenOneTest do\n  use ExUnit.Case\n  #{body.(1)}\nend\n" <>
+          "defmodule WrenTwoTest do\n  use ExUnit.Case\n  #{body.(2)}\nend\n"
+
+      {_s, scans} = suggest(root, @spec_md, [])
+      profile = Config.profile!([sources: ["spec.md"]], "Wren")
+      old = scans ++ Scan.ExUnit.tests(before, "test/wren_test.exs")
+
+      {:ok, entries} =
+        Suggest.accept_all(Suggest.all(profile, @wren, old, [], root), old, [], @meta)
+
+      [t1] = for %Scan{kind: :test, id: "WrenTest: t1"} = t <- old, do: t
+
+      observed =
+        Entry.new!(
+          at: "2026-09-28T10:30:00Z",
+          op: :observe,
+          type: :red_green,
+          basis: :evidence,
+          ends: [%{kind: :test, id: t1.id, hash: t1.hash}]
+        )
+
+      entries = entries ++ [observed]
+      new = scans ++ Scan.ExUnit.tests(split, "test/wren_test.exs")
+      s = Suggest.all(profile, @wren, new, entries, root)
+
+      assert Enum.sort(Enum.map(s.moves, &{&1.from, &1.to.id})) == [
+               {"WrenTest: t1", "WrenOneTest: t1"},
+               {"WrenTest: t2", "WrenTwoTest: t2"}
+             ]
+
+      # The moved tests' relations come by the move, so they aren't suggested afresh.
+      assert s.tests == []
+
+      {:ok, recorded} = Suggest.accept_all(s, new, entries, @meta)
+      status = Status.derive(new, entries ++ recorded)
+      assert MapSet.member?(status.discriminated, {"WrenOneTest: t1", t1.hash})
+      refute Enum.any?(status.relations, &(&1.state == :orphaned))
+    end
+
+    @tag verifies: "suggest-test-moves"
+    test "a test version found under two new ids is ambiguous: reported, not suggested",
+         %{tmp_dir: root} do
+      body = "test \"t\", do: assert(Wren.send(:a, :b, 1))"
+      before = "defmodule WrenTest do\n  use ExUnit.Case\n  #{body}\nend\n"
+
+      twice =
+        "defmodule WrenOneTest do\n  use ExUnit.Case\n  #{body}\nend\n" <>
+          "defmodule WrenTwoTest do\n  use ExUnit.Case\n  #{body}\nend\n"
+
+      {_s, scans} = suggest(root, @spec_md, [])
+      profile = Config.profile!([sources: ["spec.md"]], "Wren")
+      old = scans ++ Scan.ExUnit.tests(before, "test/wren_test.exs")
+
+      {:ok, entries} =
+        Suggest.accept_all(Suggest.all(profile, @wren, old, [], root), old, [], @meta)
+
+      new = scans ++ Scan.ExUnit.tests(twice, "test/wren_test.exs")
+      s = Suggest.all(profile, @wren, new, entries, root)
+      assert s.moves == []
+      assert [%{from: ["WrenTest: t"], to: ["WrenOneTest: t", "WrenTwoTest: t"]}] = s.ambiguous
     end
 
     test "blocks and hints refine what they sit in", %{tmp_dir: root} do
@@ -279,8 +425,90 @@ defmodule Surfex.SuggestTest do
       status = Status.derive(scans, entries)
       assert status.triangle == []
 
+      # The tag goes: suggest retires the verifies relation the test no longer declares.
+      dropped = Enum.map(scans, fn s -> if s.kind == :test, do: %{s | declares: []}, else: s end)
+      s2 = Suggest.all(profile, items, dropped, entries, root)
+      assert [%{test: "WrenTest: the limit", spec: "spec.md#limits"}] = s2.undeclared
+
+      {:ok, [retired]} =
+        Suggest.accept_all(%{s2 | tests: [], implements: []}, dropped, entries, @meta)
+
+      assert %{
+               op: :retire,
+               type: :verifies,
+               note: "the test no longer declares that it verifies this"
+             } = retired
+
+      assert Status.derive(dropped, entries ++ [retired]).undeclared == []
+
       assert Suggest.all(profile, items, scans, entries, root) |> Map.values() |> List.flatten() ==
                []
+    end
+
+    @tag verifies: "suggest-refresh"
+    test "a structural relation the source still states is refreshed; a judgement is not", %{
+      tmp_dir: root
+    } do
+      File.write!(Path.join(root, "spec.md"), "# Limits {#limits}\n\n`Wren.max_len/0` is 512.\n")
+
+      item = %Item{
+        kind: :function,
+        name: "max_len/0",
+        parent: "Wren",
+        file: "lib/w.ex",
+        hash: "c1"
+      }
+
+      test_scan = %Scan{
+        kind: :test,
+        id: "WrenTest: the limit",
+        hash: "t1",
+        location: %{file: "test/w_test.exs", lines: {3, 5}},
+        calls: ["Wren.max_len/0"]
+      }
+
+      profile = Config.profile!([sources: ["spec.md"]], "Wren")
+      scans = Markdown.records(root, ["spec.md"]) ++ Scan.code([item]) ++ [test_scan]
+
+      {:ok, accepted} =
+        Suggest.accept_all(Suggest.all(profile, [item], scans, [], root), scans, [], @meta)
+
+      # The implements relation validated, as a review leaves it (§18).
+      entries =
+        Enum.map(accepted, fn
+          %{type: :implements} = e ->
+            Entry.new!(at: e.at, op: e.op, type: e.type, ends: e.ends, basis: :review)
+
+          e ->
+            e
+        end)
+
+      assert Enum.all?(Status.derive(scans, entries).relations, &(&1.state == :current))
+
+      # The code and the test both change; the test still calls the code.
+      changed = %{item | hash: "c2"}
+
+      scans2 =
+        Markdown.records(root, ["spec.md"]) ++ Scan.code([changed]) ++ [%{test_scan | hash: "t2"}]
+
+      s = Suggest.all(profile, [changed], scans2, entries, root)
+
+      assert Enum.map(s.refresh, &{&1.type, &1.from.id, &1.to.id}) == [
+               {:tests, "WrenTest: the limit", "Wren.max_len/0"}
+             ]
+
+      {:ok, recorded} = Suggest.accept_all(s, scans2, entries, @meta)
+      states = Map.new(Status.derive(scans2, entries ++ recorded).relations, &{&1.type, &1.state})
+      # The implements relation dangles on the changed code and is not refreshed: only
+      # evidence or a review settles it.
+      assert states == %{tests: :current, implements: :dangling}
+
+      # A test that no longer calls the code states nothing: no refresh.
+      gone =
+        Markdown.records(root, ["spec.md"]) ++
+          Scan.code([changed]) ++ [%{test_scan | hash: "t2", calls: []}]
+
+      assert Suggest.all(profile, [changed], gone, entries, root).refresh == []
     end
   end
 end

@@ -31,6 +31,8 @@ defmodule Surfex.ScanTest do
   defp by_id(text), do: text |> Markdown.sections("spec.md") |> Map.new(&{&1.id, &1})
 
   describe "markdown sections" do
+    @describetag verifies: ["scan-records-pure"]
+
     test "one record per section, identified by file and heading path" do
       assert text_ids(@spec_md) == [
                "spec.md#(preamble)",
@@ -86,6 +88,8 @@ defmodule Surfex.ScanTest do
   # #39: fences follow CommonMark. Each case is a body under `# A`; `# H` must stay in it
   # when it is inside a fence, and becomes a section of its own when it isn't.
   describe "code fences" do
+    @describetag verifies: ["scan-records-pure"]
+
     @inside [
       {"a longer fence quoting a shorter one", "````\n```\n# H\n```\n````"},
       {"a tilde fence", "~~~\n# H\n~~~"},
@@ -126,6 +130,7 @@ defmodule Surfex.ScanTest do
   end
 
   describe "code records" do
+    @tag verifies: ["scan-records-pure"]
     test "carry the item's key, version, location, kind and parent" do
       item = %Item{
         kind: :function,
@@ -149,6 +154,7 @@ defmodule Surfex.ScanTest do
     end
 
     # #60: two items sharing a key are two relation ends.
+    @tag verifies: ["scan-records-pure"]
     test "items sharing a key get ids that carry their kind; a unique key keeps its own" do
       items = [
         %Item{kind: :function, name: "twin", file: "a.c", hash: "1"},
@@ -160,8 +166,27 @@ defmodule Surfex.ScanTest do
       assert Enum.map(scans, & &1.id) == ["alone", "twin (const)", "twin (function)"]
       assert %Scan{id: "twin (const)"} = Scan.for_item(scans, Enum.at(items, 1))
       assert %Scan{id: "alone"} = Scan.for_item(scans, Enum.at(items, 2))
+      # Each is its own definition: they differ in file and version.
+      refute Scan.definition(Enum.at(scans, 1)) == Scan.definition(Enum.at(scans, 2))
+
+      # A function's default arities are one definition: same file, lines and version.
+      arities =
+        for n <- ["f/1", "f/2"],
+            do: %Item{
+              kind: :function,
+              name: n,
+              parent: "M",
+              file: "m.ex",
+              hash: "9",
+              lines: {2, 4}
+            }
+
+      [f1, f2] = Scan.code(arities)
+      assert Scan.definition(f1) == Scan.definition(f2)
+      assert Scan.definition(f1) == {:code, "m.ex", {2, 4}, "9"}
     end
 
+    @tag verifies: ["scan-records-pure"]
     test "status refuses two records with one kind and id, naming where they are" do
       twin = %Scan{kind: :code, id: "twin", hash: "1", location: %{file: "a.c", lines: {1, 2}}}
 
@@ -175,6 +200,7 @@ defmodule Surfex.ScanTest do
                    end
     end
 
+    @tag verifies: ["elixir-scanner-items"]
     test "the Elixir scanner's items span their clauses" do
       items = Surfex.Scanner.Elixir.items(Path.expand("../fixtures/elixir_project", __DIR__))
       by_key = Map.new(items, &{Item.key(&1), &1})
@@ -182,6 +208,7 @@ defmodule Surfex.ScanTest do
       assert by_key["MyApp.Cart"].lines == {1, 28}
     end
 
+    @tag verifies: ["public-definitions"]
     test "line_range/1 spans a node, and is nil without metadata" do
       assert SourceScan.line_range(:atom) == nil
       {:ok, ast} = Code.string_to_quoted("def f do\n  1\nend", token_metadata: true)
@@ -191,6 +218,8 @@ defmodule Surfex.ScanTest do
 
   # #37: anchors, marked blocks and test hints.
   describe "spec units" do
+    @describetag verifies: ["scan-records-pure"]
+
     @units """
     # Carts {#carts}
 

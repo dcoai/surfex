@@ -14,6 +14,10 @@ defmodule Surfex.Log.Entry do
   | `ends` | two `%{kind, id, hash}`: in order, from → to, for a directed type; sorted for an undirected one, so A↔B and B↔A are one relation. A `nil` hash (JSON `null`) is a **planned** end: an id that didn't exist when the relation was recorded. At most one end is planned. |
   | `by` | who recorded it |
   | `note` | why, optionally |
+  | `basis` | how it validates the relation: `:evidence`, `:review`, `:judgement`, `:baseline` or `:proposed`; absent when it validates nothing |
+
+  Which ends and bases each type and op may have is the grammar of spec §12.1, enforced by
+  `build/1` and so by `decode/1`.
 
   An entry is never edited or removed. A later entry for the same relation supersedes it
   and names it as a parent.
@@ -23,11 +27,30 @@ defmodule Surfex.Log.Entry do
   """
 
   @enforce_keys [:id, :at, :parents, :op, :type, :ends]
-  defstruct [:id, :at, :commit, :op, :type, :by, :note, parents: [], ends: []]
+  defstruct [:id, :at, :commit, :op, :type, :by, :note, :basis, parents: [], ends: []]
 
-  @ops [:relate, :retire]
+  @ops [:relate, :retire, :mark, :observe]
+  @bases [:evidence, :review, :judgement, :baseline, :proposed]
   @types [:implements, :refines, :depends_on, :tests, :verifies, :excuses]
-  @kinds [:spec, :code, :test, :config, :class]
+  # A mark is a statement about one spec unit, not a relation (§12.1).
+  @mark_types [:needs_update]
+  # An observation is a fact about one test version (§12.1, §17), not a relation.
+  @observation_types [:red_green, :baseline]
+  @kinds [:spec, :code, :test, :class]
+  # The grammar (§12.1): each type's ends, in order (sorted for an undirected type), and
+  # the bases it may carry. `nil` is no basis; for implements, verifies and excuses it is
+  # legacy, admitted for entries written before bases existed.
+  @grammar %{
+    implements: {[:code, :spec], [nil, :proposed, :evidence, :review, :baseline]},
+    verifies: {[:test, :spec], [nil, :proposed, :evidence, :review, :judgement, :baseline]},
+    tests: {[:test, :code], [nil, :evidence, :judgement, :baseline]},
+    refines: {[:spec, :spec], [nil, :judgement]},
+    depends_on: {[:code, :code], [nil, :judgement]},
+    excuses: {[:class, :code], [nil, :proposed, :judgement]},
+    needs_update: {[:spec], [nil]},
+    red_green: {[:test], [:evidence]},
+    baseline: {[:test], [:baseline]}
+  }
   # "A depends on B" is not "B depends on A": these keep their ends in the order given.
   @directed [:depends_on, :refines, :tests, :verifies]
 
@@ -37,11 +60,12 @@ defmodule Surfex.Log.Entry do
           at: String.t(),
           commit: String.t() | nil,
           parents: [String.t()],
-          op: :relate | :retire,
+          op: :relate | :retire | :mark | :observe,
           type: atom,
           ends: [end_],
           by: String.t() | nil,
-          note: String.t() | nil
+          note: String.t() | nil,
+          basis: :evidence | :review | :judgement | :baseline | :proposed | nil
         }
 
   @doc "The operations an entry may record."
@@ -52,9 +76,29 @@ defmodule Surfex.Log.Entry do
   @spec types() :: [atom]
   def types, do: @types
 
+  @doc "The mark types: statements about one spec unit, not relations."
+  @spec mark_types() :: [atom]
+  def mark_types, do: @mark_types
+
+  @doc "The observation types: facts about one test version, not relations."
+  @spec observation_types() :: [atom]
+  def observation_types, do: @observation_types
+
+  @doc "Whether an entry is a relation's, not a mark's or an observation's."
+  @spec relation?(t) :: boolean
+  def relation?(%__MODULE__{type: type}), do: type in @types
+
+  @doc "Whether an entry is a mark's (the mark, or the retire that withdraws it)."
+  @spec mark?(t) :: boolean
+  def mark?(%__MODULE__{type: type}), do: type in @mark_types
+
   @doc "The directed types: their ends are from → to, in the order given."
   @spec directed() :: [atom]
   def directed, do: @directed
+
+  @doc "The bases an entry may record for validating its relation."
+  @spec bases() :: [atom]
+  def bases, do: @bases
 
   @doc "The kinds an end may be."
   @spec kinds() :: [atom]
@@ -83,7 +127,8 @@ defmodule Surfex.Log.Entry do
            type: fields[:type],
            ends: orient(fields[:type], ends),
            by: fields[:by],
-           note: fields[:note]
+           note: fields[:note],
+           basis: fields[:basis]
          },
          :ok <- check(entry) do
       {:ok, %{entry | id: id(entry)}}
@@ -99,9 +144,14 @@ defmodule Surfex.Log.Entry do
     end
   end
 
-  @doc "The relation this entry is about: its type and its two ends' kinds and ids."
-  @spec relation(t) :: {atom, {atom, String.t()}, {atom, String.t()}}
+  @doc """
+  The relation this entry is about: its type and its two ends' kinds and ids. A mark's is
+  its type and its one end.
+  """
+  @spec relation(t) ::
+          {atom, {atom, String.t()}, {atom, String.t()}} | {atom, {atom, String.t()}}
   def relation(%__MODULE__{type: type, ends: [a, b]}), do: {type, {a.kind, a.id}, {b.kind, b.id}}
+  def relation(%__MODULE__{type: type, ends: [a]}), do: {type, {a.kind, a.id}}
 
   @doc """
   The relation of `type` between two ends (`%{kind, id}` or more), oriented as an entry's
@@ -127,8 +177,9 @@ defmodule Surfex.Log.Entry do
     case json(line) do
       %{"id" => id} = map when is_binary(id) ->
         with {:ok, op} <- atom(map["op"], @ops, "op"),
-             {:ok, type} <- atom(map["type"], @types, "type"),
+             {:ok, type} <- atom(map["type"], @types ++ @mark_types ++ @observation_types, "type"),
              {:ok, ends} <- decode_ends(map["ends"]),
+             {:ok, basis} <- basis(map["basis"]),
              {:ok, entry} <-
                build(
                  at: map["at"],
@@ -138,12 +189,15 @@ defmodule Surfex.Log.Entry do
                  type: type,
                  ends: ends,
                  by: map["by"],
-                 note: map["note"]
+                 note: map["note"],
+                 basis: basis
                ) do
           if entry.id == id,
             do: {:ok, entry},
             else:
               {:error, "entry #{String.slice(id, 0, 12)} does not match its content (edited?)"}
+        else
+          {:error, why} -> {:error, "entry #{String.slice(id, 0, 12)}: #{why}"}
         end
 
       _ ->
@@ -194,6 +248,8 @@ defmodule Surfex.Log.Entry do
       {"note", entry.note}
     ]
 
+    # Written only when set, so an entry recorded before bases existed keeps its line and id.
+    fields = if entry.basis, do: fields ++ [{"basis", Atom.to_string(entry.basis)}], else: fields
     fields = if with_id?, do: [{"id", entry.id} | fields], else: fields
     IO.iodata_to_binary(value({:object, fields}))
   end
@@ -247,6 +303,18 @@ defmodule Surfex.Log.Entry do
   defp orient(type, ends) when type in @directed, do: ends
   defp orient(_type, ends), do: Enum.sort_by(ends, &{&1.kind, &1.id})
 
+  defp shape(type) do
+    case elem(@grammar[type], 0) do
+      [one] -> "one #{one}"
+      [a, b] -> "#{a} #{if type in @directed, do: "→", else: "↔"} #{b}"
+    end
+  end
+
+  defp kinds(ends), do: Enum.map_join(ends, ", ", &to_string(&1.kind))
+
+  defp basis_name(nil), do: "no basis"
+  defp basis_name(basis), do: "basis #{basis}"
+
   defp sort_list(list) when is_list(list), do: Enum.sort(list)
   defp sort_list(other), do: other
 
@@ -258,11 +326,37 @@ defmodule Surfex.Log.Entry do
       e.op not in @ops ->
         bad(:op, e.op)
 
-      e.type not in @types ->
+      e.type not in (@types ++ @mark_types ++ @observation_types) ->
         bad(:type, e.type)
 
-      length(e.ends) != 2 or Enum.any?(e.ends, &(&1.kind not in @kinds)) ->
+      # A mark is made by a mark op and withdrawn by a retire; relations never use `mark`.
+      (e.op == :mark and e.type not in @mark_types) or (e.op == :relate and e.type in @mark_types) ->
+        bad(:type, e.type)
+
+      # An observation is made only by an observe op, and an observe op makes only one.
+      e.op == :observe != e.type in @observation_types ->
+        bad(:type, e.type)
+
+      not (is_nil(e.basis) or e.basis in @bases) ->
+        bad(:basis, e.basis)
+
+      Enum.map(e.ends, & &1.kind) != elem(@grammar[e.type], 0) ->
+        {:error, "#{e.type} ends must be #{shape(e.type)}, got #{kinds(e.ends)}"}
+
+      # A mark and an observation are of a version: their one end always has a hash.
+      e.type not in @types and Enum.any?(e.ends, &is_nil(&1.hash)) ->
         bad(:ends, e.ends)
+
+      e.op == :retire and e.basis != nil ->
+        {:error, "a retire carries no basis, got #{e.basis}"}
+
+      e.op == :mark and e.basis != nil ->
+        {:error, "a mark carries no basis, got #{e.basis}"}
+
+      e.basis not in elem(@grammar[e.type], 1) ->
+        {:error,
+         "#{e.type} can't carry #{basis_name(e.basis)} (allowed: " <>
+           Enum.map_join(elem(@grammar[e.type], 1), ", ", &basis_name/1) <> ")"}
 
       # Planning a relation between two things neither of which exists records nothing.
       Enum.all?(e.ends, &is_nil(&1.hash)) ->
@@ -281,6 +375,9 @@ defmodule Surfex.Log.Entry do
 
   defp bad(field, value),
     do: {:error, "log entry field #{inspect(field)} is invalid: #{inspect(value)}"}
+
+  defp basis(nil), do: {:ok, nil}
+  defp basis(text), do: atom(text, @bases, "basis")
 
   defp atom(text, allowed, field) do
     case Enum.find(allowed, &(Atom.to_string(&1) == text)) do

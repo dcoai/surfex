@@ -46,7 +46,9 @@ defmodule Surfex.GuideTest do
     scans = Markdown.records(root, ["spec.md"]) ++ Scan.code(@items)
 
     candidates = Suggest.candidates(profile, @items, scans, [], root)
-    {:ok, entries} = Suggest.accept(candidates, scans, [], @meta)
+    {:ok, proposed} = Suggest.accept(candidates, scans, [], @meta)
+    # The process then validates them (§18); what dangles is what was validated.
+    entries = Enum.map(proposed, &validated/1)
 
     edited = edit.(spec)
     assert edited != spec
@@ -54,6 +56,17 @@ defmodule Surfex.GuideTest do
     status = Status.derive(Markdown.records(root, ["spec.md"]) ++ Scan.code(@items), entries)
     {pairs(candidates), status}
   end
+
+  defp validated(e),
+    do:
+      Surfex.Log.Entry.new!(
+        at: e.at,
+        op: e.op,
+        type: e.type,
+        parents: e.parents,
+        ends: e.ends,
+        basis: :review
+      )
 
   defp pairs(candidates),
     do: candidates |> Enum.map(&{section(&1.spec.id), &1.code.id}) |> Enum.sort()

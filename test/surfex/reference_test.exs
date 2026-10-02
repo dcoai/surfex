@@ -29,42 +29,54 @@ defmodule Surfex.ReferenceTest do
       items: items,
       root: root,
       scans: scans,
-      citations: Cite.citations(items, profile, root),
+      profile: profile,
       suggestions: Suggest.all(profile, items, scans, [], root)
     }
   end
 
+  # Each test reads the citations itself: what a test exercises is what it calls, not what
+  # its setup prepared (§11).
+  defp citations(c), do: Cite.citations(c.items, c.profile, c.root)
+
   # The sections, as {file, heading}, whose resolved citations name `key`.
   defp cited(c, key) do
-    for %{status: :resolved, items: items} = x <- c.citations,
+    for %{status: :resolved, items: items} = x <- citations(c),
         key in items,
         uniq: true,
         do: {x.file, x.section}
   end
 
-  defp citation(c, file, span), do: Enum.find(c.citations, &(&1.file == file and &1.span == span))
+  defp citation(c, file, span),
+    do: Enum.find(citations(c), &(&1.file == file and &1.span == span))
 
   describe "citations" do
+    @describetag verifies: "citation-resolves"
+
+    @tag verifies: "subject-sections"
     test "a subject section's heading cites what it is about", c do
       assert {"spec/02-wire.md", "1. Common header — 8 bytes"} in cited(c, "wren_hdr")
       assert {"spec/02-wire.md", "3. PING — 24 bytes"} in cited(c, "wren_ping_hdr")
     end
 
+    @tag verifies: "subject-sections"
     test "a bare member in a subject section resolves to the subject's member", c do
       assert %{items: ["wren_hdr.kind"]} = citation(c, "spec/02-wire.md", "kind")
     end
 
+    @tag verifies: "subject-sections"
     test "inside a subject section the member wins over a global of the same name", c do
       assert cited(c, "wren_ping_hdr.window") == [{"spec/02-wire.md", "3. PING — 24 bytes"}]
       assert cited(c, "window") == [{"spec/01-overview.md", "1. Sending and receiving"}]
     end
 
+    @tag verifies: "citation-reading"
     test "table cells under a citing column need no backticks", c do
       assert %{items: ["wren_hdr.len"]} = citation(c, "spec/02-wire.md", "len")
       assert %{items: ["wren_hdr.seq"]} = citation(c, "spec/02-wire.md", "seq")
       assert %{items: ["PING"]} = citation(c, "spec/02-wire.md", "PING")
     end
 
+    @tag verifies: "member-paths"
     test "a member path walks through the member's type and cites every step", c do
       assert %{status: :resolved, items: ["wren_ping_hdr.ack", "wren_ack.id"]} =
                citation(c, "spec/02-wire.md", "ack.id")
@@ -81,6 +93,7 @@ defmodule Surfex.ReferenceTest do
       assert {"spec/01-overview.md", "(code block)"} in cited(c, "wren_send")
     end
 
+    @tag verifies: ["citation-status-kinds", "citation-statuses", "citation-notation"]
     test "every status is reached, and prose in backticks is not a citation", c do
       assert %{status: :unresolved} = citation(c, "spec/01-overview.md", "wren_send_all")
       assert %{status: :ambiguous} = citation(c, "spec/01-overview.md", "wren_twin")
@@ -91,8 +104,11 @@ defmodule Surfex.ReferenceTest do
   end
 
   describe "relating it" do
+    @tag verifies: "suggesting"
     test "a class excuses by kind and name, and parent_cited covers a member", c do
-      assert c.suggestions.excuses |> Enum.map(&{&1.from.id, &1.to.id}) |> Enum.sort() == [
+      suggestions = Suggest.all(c.profile, c.items, c.scans, [], c.root)
+
+      assert suggestions.excuses |> Enum.map(&{&1.from.id, &1.to.id}) |> Enum.sort() == [
                {"internal constants", "WREN_BUCKETS"},
                {"internal constants", "wren_twin (impl_const)"},
                {"locking", "wren_lock"},
@@ -101,6 +117,7 @@ defmodule Surfex.ReferenceTest do
              ]
     end
 
+    @tag verifies: "status-states"
     test "status: what nothing implements or excuses is unmet, and broken citations fail", c do
       {:ok, entries} = Suggest.accept_all(c.suggestions, c.scans, [], @meta)
       citations = Config.broken_citations(c.config, c.items, c.root, nil)

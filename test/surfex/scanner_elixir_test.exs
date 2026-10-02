@@ -1,5 +1,6 @@
 defmodule Surfex.Scanner.ElixirTest do
   use ExUnit.Case, async: true
+  @moduletag verifies: "elixir-scanner-items"
 
   alias Surfex.{Cite, Item, Profile}
   alias Surfex.Scanner.Elixir, as: Scanner
@@ -43,9 +44,15 @@ defmodule Surfex.Scanner.ElixirTest do
   end
 
   test ":paths narrows the scan" do
-    assert Scanner.items(@project, paths: ["lib/my_app/hidden.ex"])
-           |> Enum.map(&Item.key/1)
-           |> Enum.all?(&(String.starts_with?(&1, "MyApp.Hidden") or &1 =~ "Server"))
+    # Only hidden.ex: its @moduledoc false module is skipped, the module nested in it isn't.
+    assert Scanner.items(@project, paths: ["lib/my_app/hidden.ex"]) |> Enum.map(&Item.key/1) ==
+             [
+               "MyApp.Hidden.Visible",
+               "MyApp.Hidden.Visible.shown/0",
+               "MyApp.Server",
+               "MyApp.Server.handle_call/3",
+               "MyApp.Server.start_link/1"
+             ]
   end
 
   test "surfex's own lib scans to its public API, compile-free" do
@@ -63,16 +70,97 @@ defmodule Surfex.Scanner.ElixirTest do
   end
 
   describe "profile_defaults/1" do
-    setup do
-      %{d: Scanner.profile_defaults("MyApp")}
-    end
+    test "shape matches the namespace's names and nothing else" do
+      d = Scanner.profile_defaults("MyApp")
 
-    test "shape matches the namespace's names and nothing else", %{d: d} do
       for name <- ~w(MyApp MyApp.Cart MyApp.Cart.add MyApp.Cart.add/2 MyApp.Cart.valid?/1),
           do: assert(Regex.match?(d[:shape], name), name)
 
       for name <- ~w(Enum.map/2 :ok MyAppX.Cart myapp.cart Other.MyApp.Cart),
           do: refute(Regex.match?(d[:shape], name), name)
+
+      # token: the same names, found inside longer text.
+      assert Regex.scan(d[:token], "see MyApp.Cart.add/2 and Other.MyApp.x here",
+               capture: :all_but_first
+             ) == [["MyApp.Cart.add/2"]]
+    end
+
+    # #69: a name ends where a name ends; a root glued to more letters is another word.
+    @tag verifies: "name-boundary"
+    test "a token ends at a name's end: a glued or hyphenated suffix is no name" do
+      d = Scanner.profile_defaults("MyApp")
+
+      for text <- [
+            "the header MyApp-Profile: <key>",
+            "MyAppCollector.Forge.* builds it",
+            "MyAppWeb.DomainLive.Show renders",
+            "see MyApp.Units-old"
+          ],
+          do: assert(Regex.scan(d[:token], text, capture: :all_but_first) == [], text)
+
+      assert Regex.scan(d[:token], "call MyApp.Units.convert/3. Then", capture: :all_but_first) ==
+               [["MyApp.Units.convert/3"]]
+    end
+
+    @tag verifies: "name-boundary"
+    test "several roots: every top-level module the code has is a root" do
+      d = Scanner.profile_defaults(["MyApp", "MyAppWeb"])
+      assert Regex.match?(d[:shape], "MyAppWeb.DomainLive.Show")
+      assert Regex.match?(d[:shape], "MyApp.Units.convert/3")
+      refute Regex.match?(d[:shape], "MyAppCollector.Forge")
+    end
+
+    # #69's case, end to end with generic names: only the real citation is suggested, and a stale
+    # name under one of the project's roots is reported, not hidden behind the root module.
+    @tag verifies: "name-boundary"
+    test "a glued name, a header and a stale name under a second root: only the real citation is suggested, and the stale name is unresolved" do
+      root = Path.join(System.tmp_dir!(), "surfex_roots_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(root)
+      on_exit(fn -> File.rm_rf!(root) end)
+
+      File.write!(Path.join(root, "spec.md"), """
+      # Profiles
+
+      The header `MyApp-Profile: <key> sha256:<hex>` carries it.
+
+      # Forge
+
+      The collector's `MyAppCollector.Forge.*` builds it.
+
+      # Show
+
+      `MyAppWeb.DomainLive.Show` renders a domain.
+
+      # Units
+
+      `MyApp.Units.convert/3` converts.
+      """)
+
+      items = [
+        %Surfex.Item{kind: :module, name: "MyApp", file: "lib/m.ex", hash: "1"},
+        %Surfex.Item{kind: :module, name: "MyAppWeb", file: "lib/w.ex", hash: "2"},
+        %Surfex.Item{kind: :module, name: "MyApp.Units", file: "lib/u.ex", hash: "3"},
+        %Surfex.Item{
+          kind: :function,
+          name: "convert/3",
+          parent: "MyApp.Units",
+          file: "lib/u.ex",
+          hash: "4"
+        }
+      ]
+
+      config = [sources: ["spec.md"]]
+      profile = Surfex.Status.Config.profile!(config, "MyApp", items)
+      scans = Surfex.Scan.Markdown.records(root, ["spec.md"]) ++ Surfex.Scan.code(items)
+
+      suggested =
+        for c <- Surfex.Suggest.candidates(profile, items, scans, [], root),
+            do: {c.spec.id, c.code.id}
+
+      assert suggested == [{"spec.md#Units", "MyApp.Units.convert/3"}]
+
+      assert [%{span: "MyAppWeb.DomainLive.Show", status: :unresolved}] =
+               Surfex.Status.Config.broken_citations(config, items, root, "MyApp")
     end
 
     test "citing a function without its arity cites every arity; a call's arguments drop" do

@@ -20,7 +20,32 @@ defmodule Surfex.SourceScanTest do
   end
   """
 
+  @tag verifies: "source-not-compiled"
+  test "code no compiler would accept is still read" do
+    # Undefined functions and modules, and a behaviour that doesn't exist: compiling this
+    # fails, reading it doesn't.
+    source = ~S"""
+    defmodule Unbuilt do
+      @behaviour NoSuchBehaviour
+      def f(x), do: not_defined_anywhere(x) + Missing.Module.call()
+      def g, do: undefined_variable
+    end
+    """
+
+    {_, [_ | _]} =
+      Code.with_diagnostics([log: false], fn ->
+        assert_raise CompileError, fn -> Code.compile_string(source) end
+      end)
+
+    [mod] = source |> Code.string_to_quoted!() |> SourceScan.defmodules()
+    assert Enum.map(SourceScan.defs(mod), &{&1.name, &1.arity}) == [f: 1, g: 0]
+    assert SourceScan.module_hash(mod) =~ ~r/^[0-9a-f]{8}$/
+    refute Code.ensure_loaded?(Unbuilt)
+  end
+
   describe "definition_hash/1 is a function of structure, not position" do
+    @describetag verifies: "structure-versions"
+
     # The claim that lets a golden's Locus be a bare path instead of `path.ex:line`.
     test "a blank line above the definition does not change it" do
       assert SourceScan.definition_hash("\n\n" <> @definition) ==
@@ -54,6 +79,8 @@ defmodule Surfex.SourceScanTest do
   end
 
   describe "definition_hash/1's shape" do
+    @describetag verifies: "structure-versions"
+
     test "is 8 lowercase hex characters" do
       hash = SourceScan.definition_hash(@definition)
 
@@ -74,6 +101,8 @@ defmodule Surfex.SourceScanTest do
   end
 
   describe "defmodules/1" do
+    @describetag verifies: "public-definitions"
+
     test "returns every module in source order, nested ones included" do
       ast =
         Code.string_to_quoted!("""
@@ -102,6 +131,8 @@ defmodule Surfex.SourceScanTest do
   # Given a starting directory, never by changing the working directory: that belongs to
   # the whole VM, and this module runs async (#27).
   describe "project_root/2" do
+    @describetag verifies: "finding-lib-sources"
+
     setup do
       root = Path.join(System.tmp_dir!(), "surfex-root-#{System.unique_integer([:positive])}")
       File.mkdir_p!(Path.join(root, "nested/deeper"))
@@ -127,6 +158,8 @@ defmodule Surfex.SourceScanTest do
   end
 
   describe "lib_sources/1" do
+    @describetag verifies: "finding-lib-sources"
+
     setup do
       root = Path.join(System.tmp_dir!(), "surfex-src-#{System.unique_integer([:positive])}")
 
@@ -175,6 +208,8 @@ defmodule Surfex.SourceScanTest do
   end
 
   describe "defs/1" do
+    @describetag verifies: "public-definitions"
+
     defp defs(source) do
       [mod | _] = source |> Code.string_to_quoted!() |> SourceScan.defmodules()
       SourceScan.defs(mod)
@@ -194,6 +229,7 @@ defmodule Surfex.SourceScanTest do
                defdelegate d(x), to: Kernel, as: :abs
                defp p(x), do: x
                defmacrop mp(x), do: x
+               defguardp is_p(n) when n > 0
                def unquote(:dyn)(), do: 1
              end
              """) == [
@@ -279,6 +315,8 @@ defmodule Surfex.SourceScanTest do
 
   # #20: a function's hash covers what it depends on, not only its own clauses.
   describe "defs/1: what a function's hash depends on" do
+    @describetag verifies: "structure-versions"
+
     @base ~S"""
     defmodule M do
       @rate 5
@@ -351,6 +389,8 @@ defmodule Surfex.SourceScanTest do
   # #33: a module's version is its public surface, so its relations don't dangle on every
   # function edit.
   describe "module_hash/1" do
+    @describetag verifies: "structure-versions"
+
     @mod ~S"""
     defmodule M do
       @moduledoc "doc"
@@ -388,6 +428,17 @@ defmodule Surfex.SourceScanTest do
       assert surface_changes?("use GenServer", "use Agent")
       assert surface_changes?("[:a, :b]", "[:a, :c]")
       assert surface_changes?("@type t :: integer", "@type t :: float")
+      assert surface_changes?("@type u :: atom", "@opaque u :: atom")
+      assert surface_changes?("@type u :: atom", "@type u :: atom\n  @callback c() :: :ok")
+      assert surface_changes?("@type u :: atom", "@type u :: atom\n  @macrocallback m() :: :ok")
+      assert surface_changes?("defstruct [:a, :b]", "defexception [:a, :b]")
+    end
+
+    test "a nested module is not part of it" do
+      refute surface_changes?(
+               "defp p(x), do: x",
+               "defp p(x), do: x\n  defmodule Inner do\n    def i, do: 1\n  end"
+             )
     end
 
     test "reordering is not a change" do

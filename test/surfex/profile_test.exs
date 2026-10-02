@@ -1,5 +1,6 @@
 defmodule Surfex.ProfileTest do
   use ExUnit.Case, async: true
+  @moduletag verifies: "profile-validated"
 
   alias Surfex.Profile
 
@@ -53,5 +54,14 @@ defmodule Surfex.ProfileTest do
     assert_raise ArgumentError, ~r/non-empty :kinds/, fn ->
       new(classes: [{"c", "w"}], rules: [%{class: "c", kinds: []}])
     end
+  end
+
+  test "keys/0 lists every key new!/1 accepts" do
+    assert Surfex.Profile.keys() ==
+             ~w(sources exclude shape token known_shape normalise subjects table_columns
+                file_targets known_external documented_absences classes rules never_excused)a
+
+    refute :file_labels in Surfex.Profile.keys()
+    assert %Surfex.Profile{} = Surfex.Profile.new!(sources: ["s.md"], shape: ~r/x/)
   end
 end

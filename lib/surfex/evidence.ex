@@ -18,7 +18,7 @@ defmodule Surfex.Evidence do
   @type t :: %{
           test: String.t(),
           test_hash: String.t(),
-          result: :passed | :failed,
+          result: :passed | :failed | :excluded | :skipped,
           at: String.t(),
           run: String.t(),
           seq: non_neg_integer,
@@ -32,6 +32,7 @@ defmodule Surfex.Evidence do
   its note begins `confirmed by evidence`. That is the claim CI checks against its own run.
   """
   @spec claimed?(Surfex.Log.Entry.t()) :: boolean
+  def claimed?(%{basis: :evidence}), do: true
   def claimed?(%{note: note}), do: is_binary(note) and String.starts_with?(note, @note)
 
   @doc "How a confirmation by evidence's note begins."
@@ -79,7 +80,7 @@ defmodule Surfex.Evidence do
   """
   @spec red_then_green([t], String.t(), String.t()) :: {t, t} | nil
   def red_then_green(evidence, test, test_hash) do
-    runs = for r <- evidence, r.test == test, r.test_hash == test_hash, do: r
+    runs = for r <- ran(evidence), r.test == test, r.test_hash == test_hash, do: r
 
     Enum.find_value(runs, fn
       %{result: :failed} = red ->
@@ -96,11 +97,19 @@ defmodule Surfex.Evidence do
     end)
   end
 
-  @doc "The most recent record of test `test` at version `test_hash`, or `nil`."
+  @doc """
+  The most recent record of test `test` at version `test_hash` that ran (passed or
+  failed), or `nil`. An excluded or skipped record is neither red nor green.
+  """
   @spec latest([t], String.t(), String.t()) :: t | nil
   def latest(evidence, test, test_hash) do
-    evidence |> Enum.filter(&(&1.test == test and &1.test_hash == test_hash)) |> List.last()
+    evidence
+    |> ran()
+    |> Enum.filter(&(&1.test == test and &1.test_hash == test_hash))
+    |> List.last()
   end
+
+  defp ran(evidence), do: Enum.filter(evidence, &(&1.result in [:passed, :failed]))
 
   # ── Lines ───────────────────────────────────────────────────────────────
 
@@ -129,8 +138,15 @@ defmodule Surfex.Evidence do
         "failed" ->
           :failed
 
+        "excluded" ->
+          :excluded
+
+        "skipped" ->
+          :skipped
+
         other ->
-          raise ArgumentError, "evidence result must be passed or failed, got #{inspect(other)}"
+          raise ArgumentError,
+                "evidence result must be passed, failed, excluded or skipped, got #{inspect(other)}"
       end
 
     %{

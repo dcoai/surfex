@@ -30,10 +30,10 @@ What that means for each kind of edit:
 | Rename its heading | changes | same | orphaned, and the section is new |
 | Rename a heading above it | changes | same | orphaned, and the section is new |
 
-A relation **dangles** when either end's version moved since someone confirmed it, and
-it stays dangling until someone reads both ends and confirms it again. Dangling is the
-signal, so the aim is that a relation dangles when, and only when, the text it depends on
-changed.
+A relation **dangles** when either end's version moved since it was validated, and it stays
+dangling until the process validates it again (§7): evidence or a review for code, a read
+of both ends for the rest. Dangling is the signal, so the aim is that a relation dangles
+when, and only when, the text it depends on changed.
 
 ## 2. Size sections to what changes together
 
@@ -162,19 +162,33 @@ ordinary code block.
 
 ## 7. Test-first, with Surfex
 
-The order that makes it hardest to get the code wrong is spec, then test, then code. The
-test is written from the spec's words, before any code exists to copy. Surfex records
-each step, so the order is visible afterwards, and the three relations between a
-requirement, its tests and its code are checked together.
+Code is never taken on anyone's word, not a person's and not an LLM's. It counts as
+implementing a spec unit when the process shows it:
 
-Turn on test scanning in `.surfex.exs`, and require every test hint to be verified:
-
-```elixir
-tests: ["test/**/*_test.exs"],
-require: [code: [:implements], test_hint: [:verifies]]
+```
+the spec unit changes, or has no relation
+  → ensure a failing test (it may exist already; if not, write it)
+  → update the test relation (verifies), on the failing run
+  → build the code until the test is green
+  → update the code relation (implements), on the red run and the green one
 ```
 
-1. **Write the requirement and its test hint, and plan the code.**
+Saying code is implemented without following this is a guess, and a guess never passes.
+A relation established this way stays valid **while its tests pass**, and CI checks that
+on every run, so work already done isn't revalidated again and again.
+
+Turn on test scanning, require every test hint to be verified, and record test runs:
+
+```elixir
+# .surfex.exs
+tests: ["test/**/*_test.exs"],
+require: [code: [:implements], test_hint: [:verifies]]
+
+# test/test_helper.exs
+ExUnit.start(formatters: [ExUnit.CLIFormatter, Surfex.ExUnitFormatter])
+```
+
+1. **Write the requirement and its test hint.** Plan the code if you like:
 
    ````markdown
    ## Sending {#sending}
@@ -187,10 +201,10 @@ require: [code: [:implements], test_hint: [:verifies]]
    ````
 
    `mix surfex.relate --planned spec.md#sending Wren.send/3 --type implements` records
-   that `Wren.send/3` will implement it, although it doesn't exist yet: the relation is
-   **planned**, and the section is **unimplemented**. The hint is **unmet**, because no
-   test verifies it yet, so the check fails until one does.
-2. **Write the test from the hint**, and say so with a tag:
+   that `Wren.send/3` will implement it, although it doesn't exist yet. The hint is
+   **unmet**, since no test verifies it, so the check fails until one does.
+2. **Ensure a failing test.** Write it from the hint, say so with a tag, and run it. It
+   fails, because the code doesn't exist:
 
    ```elixir
    @tag verifies: "sending-queues"
@@ -199,49 +213,103 @@ require: [code: [:implements], test_hint: [:verifies]]
    end
    ```
 
-   Run it: it fails (red), because the code doesn't exist.
-   `mix surfex.suggest --accept` records that the test `verifies` the hint. The hint is
-   met, and the **triangle** shows what's still open: the test calls `Wren.send/3`, and
-   nothing implements the section yet.
-3. **Write the code** until the test passes (green). The planned relation now
-   **dangles** on the code's end: the code exists, and nobody has yet said it matches.
-4. **Let the evidence confirm it.** With `Surfex.ExUnitFormatter` in `test_helper.exs`,
-   each `mix test` records every test's result at its exact version. The red run and the
-   green one are the evidence:
+   Judge, while you write it, that it checks what the hint says: its cases, its
+   boundaries, what must stay unchanged.
+3. **Update the test relation.** `mix surfex.suggest --accept` records that the test
+   verifies the hint, **on its failing run**: it is live, and it tests something the code
+   doesn't do yet. A tag on a test that has never failed records only a *proposed*
+   relation.
+4. **Build the code** until the test passes. The planned relation becomes *proposed*: the
+   code exists, and nothing has validated it yet.
+5. **Update the code relation**, on the red run and the green one:
 
    ```sh
-   mix surfex.suggest --accept      # the test `tests` the code it calls
-   mix surfex.confirm --evidence    # confirmed: red, then green against the new code
+   mix test && mix surfex.confirm --evidence
    ```
 
-   The test went red against the old code and green against the new, unchanged itself, so
-   the `tests` relation is confirmed. So is `implements`, because the test `verifies` the
-   section's hint. No one had to confirm the code by hand. Whether the test expresses the
-   requirement stays a judgement: `verifies` is only ever confirmed by name.
-5. **Check:** `mix surfex.status` is current, and the triangle is closed: the section is
-   implemented by `Wren.send/3`, verified by the test, and the test exercises
-   `Wren.send/3`. A release pipeline runs `mix surfex.status --no-planned`, which also
-   fails on anything planned and not built. A project that wants every open side of the
-   triangle to fail the check sets `triangle: :fail`.
+   The test failed against the old code and passes against the new, unchanged itself, so
+   the code relation is validated. No one confirms code by hand, because
+   `mix surfex.confirm` refuses an `implements` relation.
 
+`mix surfex.status` is then current, and the triangle is closed: the section is
+implemented by `Wren.send/3`, verified by the test, and the test exercises `Wren.send/3`.
 `mix test --only verifies:sending-queues` runs exactly the tests of that requirement.
 
-When the code changes later, a green run re-confirms it:
+**When the code changes and the tests stay green** (a refactor), the same
+`mix test && mix surfex.confirm --evidence` re-validates it. Nothing is redone by hand.
+
+**When the spec changes**, its relations dangle, and the process runs again from the top.
+Update the test to the new words first: that makes it a new test version, which must fail
+again, and its failing run records the test relation. Then change the code, and let the
+evidence validate it. If the spec was only **reworded**, and the behaviour it describes
+didn't change, the existing test still expresses it. Say so for that one relation, with a
+note, as a judgement:
 
 ```sh
-mix test && mix surfex.confirm --evidence
+mix surfex.confirm "test:Wren.SendTest: a sent message can be received" spec.md#sending-queues \
+  --type verifies --note "reworded; the test still checks a sent message is received"
 ```
 
-When the spec changes, its relations dangle and need a judgement:
-1. Update the test to the new words first. That makes it a new test version, which must
-   fail and pass again.
-2. `mix surfex.confirm` its `verifies` relation by name.
-3. Let the evidence confirm the rest.
+**Relations from before this process** (made current by hand, or by an older Surfex) are
+reported as *unvalidated*. Validate each by doing the work:
+1. Read the spec unit's claims, and the test.
+2. Judge whether the test accurately validates that component of the spec, and fix or
+   extend it where it falls short.
+3. Run it green.
+4. Record the review:
+
+   ```sh
+   mix surfex.validate "Wren.SendTest: a sent message can be received" spec.md#sending-queues \
+     --note "asserts the sent message is the one received, in order"
+   ```
+
+`mix surfex.status --validated` fails until none are left.
 
 A test is versioned like code (its body, its helpers, its setups, its table of cases), so
 a test weakened to pass dangles its relations too. In CI, `mix surfex.status --verify
 --evidence` checks every confirmation by evidence against CI's own run, and records
-nothing.
+nothing. Once the backlog is done, add `--validated`, so CI also fails on any relation
+current without validation.
+**When the spec itself is wrong.** Sometimes the tests reflect the spec, the code passes
+them, and the result is still not right: a price that ignores discounts, a screen that
+reads oddly, a limit that turns out too tight in use. That isn't a failing test or a bug
+in the code; it's the spec that needs to change. Don't patch the code around it, since
+the code does what the spec says. Mark the unit instead:
+
+```
+mix surfex.mark spec.md#totals --needs-update \
+  --note "totals ignore discounts: a customer sees the undiscounted price"
+```
+
+The mark is recorded at the unit's current version, with the note saying what is wrong,
+and `mix surfex.status` reports it (in JSON too, for an agent). It is work for your change
+process: take it there. When the spec is rewritten, the mark is resolved, and the process
+runs again from the spec: its relations dangle, the tests change first, then the code.
+`mix surfex.history` keeps the mark, so the log records why the spec changed. If a mark
+proves unfounded, withdraw it with `--withdraw` and a note. A release that must not ship
+with a known spec problem runs `mix surfex.status --no-marks`.
+
+**Found work goes through your change process.** A mark, an unmet requirement and a gap
+in the triangle are all changes to make, and a project already has a way to make changes:
+a tracker, a proposal queue, a review. Surfex doesn't replace it. `mix surfex.draft`
+writes each piece of found work up as a change draft (what's wrong, the spec unit's text,
+the tests and code it touches, and the steps of the process), and prints it. Tell Surfex
+how your process takes work with `process:` in `.surfex.exs`:
+
+```elixir
+process: {:command, ["gh", "issue", "create", "--title", "{title}", "--body", "{body}"]}
+```
+
+Then `mix surfex.draft --file` hands each draft to it. Without `--file`, nothing leaves
+your terminal.
+
+**See what's missing.** `mix surfex.completeness` scores how much of the project is
+covered: each spec unit verified by a test (and its code validated), each test verifying
+something and exercising code, each code item described or excused, and tested. It lists
+every incomplete item with what it lacks, and `--format json` hands the list to an agent.
+Once a project reaches the score it wants, `completeness: [min: N]` in `.surfex.exs` keeps
+it there: `mix surfex.status` fails below it.
+
 
 ## 8. Code the spec doesn't describe
 
@@ -269,23 +337,51 @@ other relation:
 
 Write rules by **class, never by item**. A new helper falls into its class and stays quiet,
 while a new entry point matches no rule and needs a section, which is the direction that
-matters. Prefer a section whenever the code has behaviour a reader of the spec should
+matters.
+
+Some code is plumbing **because of the module it lives in**, not its name: what `phx.new`
+generates in `MyAppWeb.CoreComponents` or `MyAppWeb.Layouts`. Name the family with
+`parent:` (a member's parent module) rather than listing the generator's function names,
+which would also catch a real `list/1` elsewhere. The modules themselves are excused by
+`name:`:
+
+```elixir
+classes: [{"phoenix scaffolding", "what phx.new generated"}],
+rules: [
+  %{class: "phoenix scaffolding", kinds: [:function, :macro],
+    parent: ~r/^MyAppWeb(\.(CoreComponents|Layouts|ErrorHTML|ErrorJSON))?$/},
+  %{class: "phoenix scaffolding", kinds: [:module],
+    name: ~r/^MyAppWeb\.(CoreComponents|Layouts|ErrorHTML|ErrorJSON)$/}
+]
+```
+
+Prefer a section whenever the code has behaviour a reader of the spec should
 know about. A class is for code whose only story is "it wires things together".
 
 ## 9. Working with an LLM
 
-`mix surfex.status --format json` is an agent's work list: every relation needing
-attention, which end changed, where both ends are, and every new section and item.
+Surfex exists so an agent keeps the spec, the tests and the code in step **by doing the
+work**, not by finding the quickest way to a green status. The tool makes the work the
+only way through. An agent working in it should:
 
-- **An agent may relate:** `suggest --accept` and `relate` record relations that don't
-  exist yet, and are cheap to retire if wrong.
-- **Confirming a dangling relation is a claim that someone read both ends.** An agent that
-  confirms should have read the section and the code in the same turn, and say so in
-  `--note`. `confirm` takes named ids only, never everything at once, for this reason.
-- **Give the agent the section, not just the file.** The JSON report's locations point at
-  the lines of each end.
-- Ask for the test before the code (§7), in a separate step, so the test is written
-  from the spec rather than from the code.
+- **Follow the process (§7), one spec unit at a time.** The failing test comes first,
+  written from the spec rather than from the code, then the code, then the evidence.
+- **Never script confirmations.** `confirm` names one relation, and `validate` one test and
+  one unit. A loop over a list of ids defeats the point: every confirmation is a claim
+  that the work was done.
+- **Treat a suggestion as a claim.** `suggest --accept` records what the spec and the tests
+  imply, and validates none of it: code relations are proposed until evidence or a review
+  validates them.
+- **Write what was checked.** A judgement's note, and a review's, say which claim was
+  checked against what. It is the record of the work.
+- **When a relation doesn't hold, change something.** If the test doesn't reflect the
+  spec, fix the test. If the code fails the test, fix the code. If the spec is wrong,
+  mark the unit (`mix surfex.mark … --needs-update`, §7) and take it to the project's own
+  change process; don't bend the code around it. Never confirm a relation to make it go
+  away.
+- **Read the work list.** `mix surfex.status --format json` gives every relation needing
+  attention, which end changed and where both ends are. Give the agent the section, not
+  just the file.
 
 ## 10. A worked example
 
@@ -300,8 +396,9 @@ order they were sent. A message is at most 512 bytes: `Wren.send/3` returns
 limit. `Wren.Queue` holds the messages.
 ```
 
-`mix surfex.suggest --accept` relates that one section to all four names it cites. Then
-the limit changes to 1024 bytes, which is a one-word edit. **All four relations dangle**,
+`mix surfex.suggest --accept` relates that one section to all four names it cites, and the
+process (§7) validates each. Then the limit changes to 1024 bytes, which is a one-word
+edit. **All four relations dangle**,
 including the ones for `Wren.recv/1` and `Wren.Queue`, which the edit didn't touch.
 Whoever confirms them has to reread the whole section to find out that three of them are
 fine.

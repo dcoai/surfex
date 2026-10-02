@@ -18,6 +18,8 @@ defmodule Surfex.Status.Report do
         "  #{type}: #{Enum.join(parts, " · ")}"
       end
 
+    unvalidated_relations = MapSet.new(status.unvalidated, & &1.relation)
+
     lists = [
       section(
         "Dangling (an end changed since it was confirmed)",
@@ -29,6 +31,11 @@ defmodule Surfex.Status.Report do
         "Conflicted (recorded on two branches without seeing each other)",
         status,
         &(&1.state == :conflicted)
+      ),
+      section(
+        "Proposed (a claim nothing has validated yet)",
+        status,
+        &(&1.state == :proposed)
       ),
       section("Impacted (an end depends on something not current)", status, & &1.impacted),
       section("Planned (an end doesn't exist yet)", status, &(&1.state == :planned)),
@@ -59,12 +66,24 @@ defmodule Surfex.Status.Report do
       items(
         "Unproven (a confirmation by evidence this run doesn't bear out)",
         status.unproven,
-        fn u ->
-          {type, {ak, a}, {bk, b}} = u.relation
-          test = if u.test, do: "#{u.test} ", else: ""
-          "#{type}  #{ak} #{a} ↔ #{bk} #{b}: #{test}#{unproven_text(u.reason)}"
-        end
+        &claim_line/1
       ),
+      # Information, not a failure: another job runs these (§17).
+      items(
+        "Not checked here (its test was excluded or skipped in this run)",
+        status.unchecked,
+        &claim_line/1
+      ),
+      # Listed only where they fail: a project moving over has many (§13.3).
+      section(
+        "Unvalidated (current, but nothing has validated it)",
+        status,
+        &(status.policy.validated and &1.relation in unvalidated_relations)
+      ),
+      items("Marked (the spec needs an update)", status.marks, &mark_text/1),
+      items("Undeclared (a test no longer declares what it verifies)", status.undeclared, fn u ->
+        "verifies  test #{u.test} → spec #{u.spec}"
+      end),
       items("Stale (an excuse its class no longer covers)", status.stale, fn s ->
         "class #{s.class} ↔ code #{s.code}: #{stale_text(s.reason)}"
       end),
@@ -81,9 +100,24 @@ defmodule Surfex.Status.Report do
     units =
       "  spec units: sections #{u.section} · blocks #{u.block} · test hints #{u.test_hint}\n"
 
+    unvalidated =
+      case length(status.unvalidated) do
+        0 -> []
+        n -> "  unvalidated: #{n}\n"
+      end
+
+    # How much rests on trust rather than evidence or review (§18.1).
+    baseline =
+      case Status.baseline_count(status) do
+        0 -> []
+        n -> "  baseline: #{n} relations (adoption: #{inspect(status.adoption)})\n"
+      end
+
     IO.iodata_to_binary([
       "relation status: #{verdict}\n",
       Enum.map(counts, &[&1, "\n"]),
+      unvalidated,
+      baseline,
       units,
       lists
     ])
@@ -122,18 +156,34 @@ defmodule Surfex.Status.Report do
             "items" => c.items
           }
         end),
-      "unproven" =>
-        Enum.map(status.unproven, fn u ->
-          {type, {ak, a}, {bk, b}} = u.relation
-
+      "unproven" => Enum.map(status.unproven, &claim_json/1),
+      "unchecked" => Enum.map(status.unchecked, &claim_json/1),
+      "undeclared" => Enum.map(status.undeclared, &%{"test" => &1.test, "spec" => &1.spec}),
+      "baseline" => %{
+        "relations" => Status.baseline_count(status),
+        "adoption" => inspect(status.adoption)
+      },
+      "marks" =>
+        Enum.map(status.marks, fn m ->
+          %{
+            "id" => m.id,
+            "type" => Atom.to_string(m.type),
+            "unit" => m.unit,
+            "state" => Atom.to_string(m.state),
+            "note" => m.note,
+            "by" => m.by,
+            "at" => m.at,
+            "location" => m.location && location_json(m.location)
+          }
+        end),
+      "unvalidated" =>
+        Enum.map(status.unvalidated, fn %{relation: {type, {ak, a}, {bk, b}}} ->
           %{
             "type" => Atom.to_string(type),
             "ends" => [
               %{"kind" => Atom.to_string(ak), "id" => a},
               %{"kind" => Atom.to_string(bk), "id" => b}
-            ],
-            "test" => u.test,
-            "reason" => unproven_text(u.reason)
+            ]
           }
         end),
       "stale" =>
@@ -203,6 +253,9 @@ defmodule Surfex.Status.Report do
           {"unmet", length(status.unmet)},
           {"broken", length(status.broken)},
           {"stale", length(status.stale)},
+          {"undeclared", length(status.undeclared)},
+          {"marks", length(status.marks)},
+          {"baseline", Status.baseline_count(status)},
           {"broken citations", length(status.citations)},
           {"triangle gaps", length(status.triangle)}
         ]),
@@ -231,6 +284,16 @@ defmodule Surfex.Status.Report do
               "Item" => {:code, c.span},
               "Cited at" => {:raw, "`#{c.file}` · #{c.section}: #{citation_text(c)}"}
             }
+          end) ++
+          id_group.("marks", ["Item", "State", "Note"], status.marks, fn m ->
+            %{
+              "Item" => {:code, "spec #{m.unit}"},
+              "State" => Atom.to_string(m.state),
+              "Note" => {:raw, m.note || ""}
+            }
+          end) ++
+          id_group.("undeclared", ["Item", "Verified"], status.undeclared, fn u ->
+            %{"Item" => {:code, "test #{u.test}"}, "Verified" => {:code, "spec #{u.spec}"}}
           end) ++
           id_group.("stale", ["Item", "Excused as"], status.stale, fn s ->
             %{
@@ -321,7 +384,31 @@ defmodule Surfex.Status.Report do
   defp citation_text(%{status: :ambiguous, items: items}),
     do: "names more than one item: #{Enum.join(items, ", ")}"
 
+  # A claim by evidence and why this run doesn't bear it out, or didn't check it.
+  defp claim_line(u) do
+    {type, {ak, a}, {bk, b}} = u.relation
+    test = if u.test, do: "#{u.test} ", else: ""
+    "#{type}  #{ak} #{a} ↔ #{bk} #{b}: #{test}#{unproven_text(u.reason)}"
+  end
+
+  defp claim_json(u) do
+    {type, {ak, a}, {bk, b}} = u.relation
+
+    %{
+      "type" => Atom.to_string(type),
+      "ends" => [
+        %{"kind" => Atom.to_string(ak), "id" => a},
+        %{"kind" => Atom.to_string(bk), "id" => b}
+      ],
+      "test" => u.test,
+      "reason" => unproven_text(u.reason)
+    }
+  end
+
   defp unproven_text(:not_run), do: "didn't run"
+  defp unproven_text(:no_job), do: "no job's evidence ran it"
+  defp unproven_text(:excluded), do: "excluded in this run"
+  defp unproven_text(:skipped), do: "skipped in this run"
   defp unproven_text(:failed), do: "failed"
   defp unproven_text(:other_code), do: "ran against another version of the code"
   defp unproven_text(:no_verifying_test), do: "no current verifying test exercises the code"
@@ -347,6 +434,12 @@ defmodule Surfex.Status.Report do
       "#{kind} #{id} (#{String.replace(Atom.to_string(role), "_", " ")} in #{within})#{at(scan)}"
 
   defp unit_text(scan), do: "#{scan.kind} #{scan.id}#{at(scan)}"
+
+  # An open mark: the unit, where it is, what's wrong and who said so when.
+  defp mark_text(%{state: :orphaned} = m),
+    do: "spec #{m.unit} (no longer scanned): #{m.note} (#{m.by}, #{m.at})"
+
+  defp mark_text(m), do: "spec #{m.unit}#{at(m)}: #{m.note} (#{m.by}, #{m.at})"
 
   defp at(%{location: %{file: file, lines: {first, last}}}), do: " (#{file}:#{first}-#{last})"
   defp at(%{location: %{file: file}}), do: " (#{file})"

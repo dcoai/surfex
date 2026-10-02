@@ -49,11 +49,13 @@ defmodule Surfex.StatusTaskTest do
     end
   end
 
+  @tag verifies: ["status-report-forms"]
   test "a current relation passes, and the report says so", %{root: root} do
     task(root, [])
     assert output() =~ "relation status: ok\n  implements: current 1"
   end
 
+  @tag verifies: ["status-report-forms"]
   test "an edit to the code dangles it and fails, naming the end", %{root: root} do
     path = Path.join(root, "lib/my_app/cart.ex")
 
@@ -66,6 +68,7 @@ defmodule Surfex.StatusTaskTest do
     assert output() =~ "changed: MyApp.Cart.total/0 (lib/my_app/cart.ex:22-22)"
   end
 
+  @tag verifies: ["status-report-forms"]
   test "--format json is the work list", %{root: root} do
     task(root, ["--format", "json"])
     json = :json.decode(output())
@@ -76,6 +79,7 @@ defmodule Surfex.StatusTaskTest do
     assert Enum.any?(json["new"], &(&1["id"] == "MyApp.Cart.add/2"))
   end
 
+  @tag verifies: ["status-report-forms"]
   test "the require policy fails on unrelated code", %{root: root} do
     File.write!(
       Path.join(root, ".surfex.exs"),
@@ -88,6 +92,7 @@ defmodule Surfex.StatusTaskTest do
              "Unmet (required relation missing):\n  code MyApp.Cart needs one of: implements"
   end
 
+  @tag verifies: ["status-report-forms"]
   test "--verify fails on an edited log line", %{root: root} do
     path = Path.join(Log.dir(root), "surfex.log")
 
@@ -99,7 +104,51 @@ defmodule Surfex.StatusTaskTest do
     assert_raise Mix.Error, ~r/does not verify/, fn -> task(root, ["--verify"]) end
   end
 
+  # #76: the relation here was recorded with no basis, as before validation existed.
+  @tag verifies: ["status-report-forms"]
+  test "--validated fails on a relation nothing has validated, and lists it", %{root: root} do
+    task(root, [])
+    assert output() =~ "relation status: ok\n  implements: current 1\n  unvalidated: 1\n"
+
+    assert_raise Mix.Error, ~r/relations need attention/, fn -> task(root, ["--validated"]) end
+
+    assert output() =~
+             "Unvalidated (current, but nothing has validated it):\n  implements  code MyApp.Cart.total/0 ↔ spec spec.md#Totals"
+  end
+
+  # #74: a score to move, and a floor a project may set.
+  @tag verifies: ["completeness-score", "status-report-forms"]
+  test "below completeness: [min: N] the check fails; mix surfex.completeness reports",
+       %{root: root} do
+    File.write!(
+      Path.join(root, ".surfex.exs"),
+      ~s([sources: ["spec.md"], namespace: "MyApp", completeness: [min: 100]])
+    )
+
+    error = assert_raise Mix.Error, fn -> task(root, []) end
+    assert error.message =~ "completeness 0.0% is below the minimum, 100"
+    assert output() =~ "relation status: ok"
+
+    assert_raise Mix.Error, ~r/below the minimum/, fn -> completeness(root, []) end
+    assert output() =~ "completeness: 0.0%"
+
+    # Without a minimum it only reports, here as JSON for an agent.
+    File.write!(Path.join(root, "open.exs"), ~s([sources: ["spec.md"], namespace: "MyApp"]))
+    completeness(root, ["--format", "json", "--config", "open.exs"])
+    assert %{"scores" => %{"overall" => %{"percent" => _}}} = :json.decode(output())
+  end
+
+  defp completeness(root, args) do
+    File.cd!(root, fn ->
+      Mix.shell(Mix.Shell.Process)
+      Mix.Tasks.Surfex.Completeness.run(args)
+    end)
+  after
+    Mix.shell(Mix.Shell.IO)
+  end
+
   # #52: the spec can't name what the code doesn't have.
+  @tag verifies: ["status-report-forms"]
   test "a citation of nothing is a broken citation, and fails", %{root: root} do
     File.write!(
       Path.join(root, "spec.md"),
@@ -114,6 +163,8 @@ defmodule Surfex.StatusTaskTest do
   end
 
   describe "broken_citations/4" do
+    @describetag verifies: "status-config-read"
+
     alias Surfex.Item
 
     @items [
@@ -146,5 +197,25 @@ defmodule Surfex.StatusTaskTest do
                {"wren_twin", :ambiguous}
              ]
     end
+  end
+
+  # #98: --merge reads each job's evidence file in a final job.
+  @tag verifies: "evidence-merged"
+  test "--merge reads the named evidence files, and a missing one fails", %{root: root} do
+    files =
+      for name <- ~w(main slow) do
+        path = Path.join(root, "#{name}.jsonl")
+        Surfex.Evidence.append(path, [])
+        File.write!(path, "")
+        path
+      end
+
+    task(root, Enum.flat_map(files, &["--merge", &1]))
+    assert output() =~ "relation status: ok"
+
+    error =
+      assert_raise Mix.Error, fn -> task(root, ["--merge", Path.join(root, "gone.jsonl")]) end
+
+    assert error.message =~ "no evidence file at"
   end
 end

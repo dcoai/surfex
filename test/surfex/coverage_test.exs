@@ -1,5 +1,6 @@
 defmodule Surfex.CoverageTest do
   use ExUnit.Case, async: true
+  @moduletag verifies: "coverage-verdict"
 
   alias Surfex.{Coverage, Item, Profile}
 
@@ -40,8 +41,70 @@ defmodule Surfex.CoverageTest do
     assert verdict(item(:field, "len")) == :gap
   end
 
-  test "a never-excused kind is a gap" do
+  # #71: scaffolding is plumbing because of the module it lives in, not its name.
+  @tag verifies: "rule-parent"
+  test "parent: excuses a module family's members, composed with the rule's other keys" do
+    scaffolding =
+      Profile.new!(
+        sources: ["spec.md"],
+        shape: ~r/x/,
+        classes: [{"scaffolding", "what the generator emitted"}],
+        rules: [
+          %{
+            class: "scaffolding",
+            kinds: [:function, :macro],
+            parent: ~r/^MyAppWeb(\.(CoreComponents|Layouts))?$/
+          },
+          %{
+            class: "scaffolding",
+            kinds: [:module],
+            name: ~r/^MyAppWeb\.(CoreComponents|Layouts)$/
+          }
+        ]
+      )
+
+    v = &Coverage.verdict(&1, MapSet.new(), scaffolding)
+    assert v.(item(:function, "list/1", "MyAppWeb.CoreComponents")) == {:expected, "scaffolding"}
+    assert v.(item(:macro, "html/0", "MyAppWeb")) == {:expected, "scaffolding"}
+    # Another module's list/1 is not scaffolding: the family is the parent, not the name.
+    assert v.(item(:function, "list/1", "MyApp.Events")) == :gap
+    assert v.(item(:function, "list/1", "MyAppWeb.CoreComponentsExtra")) == :gap
+    # A module has no parent: parent: never matches it; name: excuses the modules.
+    assert v.(item(:module, "MyAppWeb.Layouts")) == {:expected, "scaffolding"}
+    assert v.(item(:module, "MyAppWeb.Other")) == :gap
+
+    # It composes: every constraint a rule gives must hold.
+    both =
+      Profile.new!(
+        sources: ["spec.md"],
+        shape: ~r/x/,
+        classes: [{"s", "r"}],
+        rules: [%{class: "s", kinds: [:function], parent: ~r/^MyAppWeb/, name: ~r/^render/}]
+      )
+
+    assert Coverage.verdict(item(:function, "render/2", "MyAppWeb.X"), MapSet.new(), both) ==
+             {:expected, "s"}
+
+    assert Coverage.verdict(item(:function, "list/1", "MyAppWeb.X"), MapSet.new(), both) == :gap
+
+    assert_raise ArgumentError, ~r/non-regex :parent/, fn ->
+      Profile.new!(
+        sources: ["spec.md"],
+        shape: ~r/x/,
+        classes: [{"s", "r"}],
+        rules: [%{class: "s", kinds: [:function], parent: "MyAppWeb"}]
+      )
+    end
+  end
+
+  test "a never-excused kind is a gap, whatever the rules say" do
     assert verdict(item(:wire, "hdr")) == :gap
+
+    # A rule that would excuse it (new!/1 refuses one; a hand-built map may carry it).
+    excusing = %{class: "helpers", kinds: [:wire], name: nil, parent_cited: false}
+
+    assert Coverage.verdict(item(:wire, "hdr"), MapSet.new(), %{profile() | rules: [excusing]}) ==
+             :gap
   end
 
   test "the first matching rule wins" do
@@ -60,5 +123,18 @@ defmodule Surfex.CoverageTest do
 
     assert Coverage.verdict(gap, MapSet.new(), profile()) == :gap
     assert Coverage.verdict(excused, MapSet.new(), profile()) == {:expected, "helpers"}
+  end
+
+  test "verdict/3 reads the rules from a coverage map as from a profile" do
+    coverage =
+      Surfex.Profile.coverage!(
+        classes: [{"helpers", "the code's own factoring"}],
+        rules: [%{class: "helpers", kinds: [:function], name: ~r/^do_/}]
+      )
+
+    assert Coverage.verdict(item(:function, "do_twin"), MapSet.new(), coverage) ==
+             {:expected, "helpers"}
+
+    assert Coverage.verdict(item(:function, "main"), MapSet.new(), coverage) == :gap
   end
 end

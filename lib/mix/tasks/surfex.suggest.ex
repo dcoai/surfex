@@ -4,9 +4,11 @@ defmodule Mix.Tasks.Surfex.Suggest do
   @moduledoc """
   Lists what the spec already implies (`Surfex.Suggest.all/5`):
 
-    * **moves** — a related spec id that is gone, and a new id at the same version: a
-      renamed heading, or an anchor added. Accepting moves each relation onto the new id
-      (`mix surfex.move`).
+    * **moves** — a spec or test id the log knows that is gone, and a new id at the same
+      version: a renamed heading or an added anchor; a test whose module, `describe` or
+      file was renamed, as when a test file is split. Accepting moves each relation, and a
+      test's red→green and baseline records, onto the new id (`mix surfex.move`). A
+      version found under several ids is listed as ambiguous and never moved.
     * **refines** — each marked block and test hint refines the section or block it sits
       in.
     * **implements** — each spec unit paired with each code item it names.
@@ -42,18 +44,37 @@ defmodule Mix.Tasks.Surfex.Suggest do
     root = File.cwd!()
     config = Config.read!(Path.join(root, opts[:config] || ".surfex.exs"))
     namespace = Mix.Project.config()[:app] |> to_string() |> Macro.camelize()
-    profile = Config.profile!(config, namespace)
     if Keyword.get(config, :scanner, :elixir) != :elixir, do: Mix.Task.run("compile")
 
+    items = Config.items(config, root)
+    profile = Config.profile!(config, namespace, items)
     scans = Config.scans(config, root)
     entries = if File.dir?(Log.dir(root)), do: Log.load(root), else: []
-    suggestions = Suggest.all(profile, Config.items(config, root), scans, entries, root)
+    suggestions = Suggest.all(profile, items, scans, entries, root)
 
     for m <- suggestions.moves, do: Mix.shell().info("move        #{m.from} → #{m.to.id}")
+
+    for a <- suggestions.ambiguous,
+        do:
+          Mix.shell().info(
+            "ambiguous   #{Enum.join(a.from, ", ")} → #{Enum.join(a.to, ", ")}: one version, " <>
+              "several ids; move by hand (mix surfex.move)"
+          )
+
     for r <- suggestions.refines, do: Mix.shell().info("refines     #{r.from.id} → #{r.to.id}")
 
     for v <- suggestions.verifies, do: Mix.shell().info("verifies    #{v.from.id} → #{v.to.id}")
     for t <- suggestions.tests, do: Mix.shell().info("tests       #{t.from.id} → #{t.to.id}")
+
+    for f <- suggestions.refresh,
+        do:
+          Mix.shell().info(
+            "refresh     #{f.type} #{f.from.id} → #{f.to.id} (the source still states it)"
+          )
+
+    for u <- suggestions.undeclared,
+        do: Mix.shell().info("retire      verifies #{u.test} → #{u.spec} (no longer declared)")
+
     for x <- suggestions.excuses, do: Mix.shell().info("excuses     #{x.from.id} ↔ #{x.to.id}")
 
     for c <- suggestions.implements do
@@ -69,7 +90,8 @@ defmodule Mix.Tasks.Surfex.Suggest do
 
       opts[:accept] ->
         {^root, scans, entries, meta} = R.context(Keyword.take(opts, [:note, :config]))
-        R.record(root, Suggest.accept_all(suggestions, scans, entries, meta))
+        evidence = Surfex.Evidence.load(Surfex.Evidence.path(root))
+        R.record(root, Suggest.accept_all(suggestions, scans, entries, meta, evidence: evidence))
 
       true ->
         Mix.shell().info("#{count} suggested; `mix surfex.suggest --accept` records them")

@@ -51,14 +51,21 @@ defmodule Surfex.Profile do
   ## Coverage
 
     * `:classes` — `[{class, reason}]`: a kind of code the spec doesn't describe, and why
-    * `:rules` — `[%{class:, kinds:, name: regex | nil, parent_cited: boolean}]`. The first
+    * `:rules` — `[%{class:, kinds:, name: regex | nil, parent_cited: boolean, parent: regex | nil}]`
+      (`parent:` matches a member's parent module, never an item with no parent). The first
       matching rule excuses an uncited item into its class. Rules are by class, never by
       item, so a new helper falls into its class and a new entry point is a gap.
     * `:never_excused` — kinds that are the spec's subject matter. An uncited one is always
       a GAP, and a rule naming one is a configuration error.
   """
 
-  @type rule :: %{class: String.t(), kinds: [atom], name: Regex.t() | nil, parent_cited: boolean}
+  @type rule :: %{
+          class: String.t(),
+          kinds: [atom],
+          name: Regex.t() | nil,
+          parent_cited: boolean,
+          parent: Regex.t() | nil
+        }
   @type subject :: %{file: String.t() | Regex.t(), heading: Regex.t(), items: [String.t()]}
 
   @type t :: %__MODULE__{
@@ -143,7 +150,8 @@ defmodule Surfex.Profile do
   @doc """
   The coverage keys of a config (`classes:`, `rules:`, `never_excused:`), validated as
   `new!/1` validates them, for the relation log's classes (`Surfex.Scan.Classes`) without
-  a whole profile. Rules get their defaults (`name: nil`, `parent_cited: false`).
+  a whole profile. Rules get their defaults (`name: nil`, `parent_cited: false`,
+  `parent: nil`).
   Raises `ArgumentError` naming what is wrong.
   """
   @spec coverage!(keyword | map) :: %{
@@ -168,7 +176,8 @@ defmodule Surfex.Profile do
   defp rules(rules) when is_list(rules), do: Enum.map(rules, &rule/1)
   defp rules(other), do: other
 
-  defp rule(%{class: _, kinds: _} = r), do: Map.merge(%{name: nil, parent_cited: false}, r)
+  defp rule(%{class: _, kinds: _} = r),
+    do: Map.merge(%{name: nil, parent_cited: false, parent: nil}, r)
 
   defp rule(other),
     do: raise(ArgumentError, "profile rule needs :class and :kinds, got #{inspect(other)}")
@@ -222,6 +231,9 @@ defmodule Surfex.Profile do
 
         not (is_nil(name) or regex?(name)) ->
           raise ArgumentError, "profile rule #{inspect(rule)} has a non-regex :name"
+
+        not (is_nil(rule.parent) or regex?(rule.parent)) ->
+          raise ArgumentError, "profile rule #{inspect(rule)} has a non-regex :parent"
 
         (excused = Enum.filter(kinds, &(&1 in never))) != [] ->
           raise ArgumentError,

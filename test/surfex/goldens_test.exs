@@ -78,6 +78,9 @@ defmodule Surfex.GoldensTest do
   end
 
   describe "mix surfex.goldens" do
+    @describetag verifies: "goldens-task"
+
+    @tag verifies: "purpose"
     test "--write writes every golden, and a check then passes", %{root: root} do
       task(root, ["--write"])
       assert File.read!(Path.join(root, "RELATIONS.md")) =~ "| `code MyApp.Cart` |"
@@ -95,6 +98,29 @@ defmodule Surfex.GoldensTest do
       assert message =~ "API.md: out of date."
       assert message =~ "Changed:\n  /carts\n"
       refute message =~ "RELATIONS.md"
+    end
+
+    # #84: regenerating is how a drift is resolved, so --write never fails for one.
+    test "--write after a drift regenerates every golden and succeeds; a check then passes",
+         %{root: root} do
+      task(root, ["--write"])
+      config(root, "CartController.index", "CartController.list")
+      relate(root)
+      assert fails(root) =~ "API.md: out of date."
+
+      task(root, ["--write"])
+      assert_received {:mix_shell, :info, ["wrote 2 golden(s): all current, nothing failing"]}
+      assert File.read!(Path.join(root, "API.md")) =~ "CartController.list"
+      assert File.read!(Path.join(root, "RELATIONS.md")) =~ "| `code MyApp.Cart` |"
+
+      task(root)
+      assert_received {:mix_shell, :info, ["checked 2 golden(s): all current, nothing failing"]}
+    end
+
+    test "--config reads another definition", %{root: root} do
+      File.rename!(Path.join(root, ".surfex.exs"), Path.join(root, "other.exs"))
+      task(root, ["--config", "other.exs", "--write"])
+      assert File.exists?(Path.join(root, "API.md"))
     end
 
     test "every drifted golden is named in one run", %{root: root} do
@@ -128,6 +154,7 @@ defmodule Surfex.GoldensTest do
       assert File.read!(Path.join(root, "RELATIONS.md")) =~ "| `code MyApp.Broken.call/0` |"
     end
 
+    @tag verifies: "traces"
     test "a config written for the removed trace says so", %{root: root} do
       config(root, "sources: [\"spec.md\"]", "sources: [\"spec.md\"], output: \"SPEC_TRACE.md\"")
 
@@ -140,6 +167,8 @@ defmodule Surfex.GoldensTest do
   end
 
   describe "the :status golden" do
+    @describetag verifies: "goldens-task"
+
     setup %{root: root} do
       File.write!(Path.join(root, ".surfex.exs"), ~s([goldens: [:status], sources: ["spec.md"]]))
       :ok
@@ -175,11 +204,27 @@ defmodule Surfex.GoldensTest do
     end
   end
 
+  describe "project goldens" do
+    @describetag verifies: ["project-golden", "goldens-entries"]
+
+    test "a Surface is a spec/1 callback, rendered and gated by run/6", %{tmp_dir: root} do
+      assert Surfex.Surface.behaviour_info(:callbacks) == [spec: 1]
+
+      entry = {"API.md", Surfex.GoldensTest.Api, routes: [{"/carts", "CartController.index"}]}
+      assert Goldens.run([entry], [], root, [], "mix surfex.goldens", true) == []
+      assert Goldens.run([entry], [], root, [], "mix surfex.goldens", false) == []
+      assert File.read!(Path.join(root, "API.md")) =~ "| `/carts` |"
+    end
+  end
+
   describe "entries!/1" do
+    @describetag verifies: "goldens-entries"
+
     test "defaults to the relation status alone" do
       assert Goldens.entries!(sources: ["spec.md"]) == [:status]
     end
 
+    @tag verifies: "traces"
     test "names a malformed entry, and the removed :trace with its reason" do
       assert_raise ArgumentError, ~r/goldens entry "API.md" is not :status/, fn ->
         Goldens.entries!(goldens: ["API.md"])
@@ -199,7 +244,34 @@ defmodule Surfex.GoldensTest do
     end
   end
 
+  # #74: the completeness report as a committed record.
+  describe "the :completeness golden" do
+    @describetag verifies: "goldens-entries"
+
+    test "entries!/1 takes it, and run/6 writes COMPLETENESS.md, then checks it", %{
+      tmp_dir: root
+    } do
+      assert Goldens.entries!(goldens: [:status, :completeness]) == [:status, :completeness]
+
+      assert Goldens.entries!(goldens: [{:completeness, "docs/C.md"}]) == [
+               {:completeness, "docs/C.md"}
+             ]
+
+      config = [sources: ["spec.md"], namespace: "MyApp"]
+      assert Goldens.run([:completeness], config, root, [namespace: "MyApp"], "mix g", true) == []
+
+      assert Goldens.run([:completeness], config, root, [namespace: "MyApp"], "mix g", false) ==
+               []
+
+      golden = File.read!(Path.join(root, "COMPLETENESS.md"))
+      assert golden =~ "# COMPLETENESS.md"
+      assert golden =~ "`code MyApp.Cart`"
+    end
+  end
+
   describe "needs_compile?/2" do
+    @describetag verifies: "goldens-entries"
+
     test "only project code needs a compile" do
       refute Goldens.needs_compile?([:status], [])
       refute Goldens.needs_compile?([:status], scanner: :elixir)

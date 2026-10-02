@@ -52,8 +52,10 @@ test:
     - mix test
     # Every relation in .surfex/ still holds, every public item implements a spec section
     # and every test hint is verified (require: in .surfex.exs), the log verifies, and every
-    # confirmation by evidence is borne out by the run above. It checks; it records nothing.
-    - mix surfex.status --verify --evidence
+    # confirmation by evidence is borne out by the run above, and every relation was
+    # validated by the process (§18): nothing current is merely asserted. It checks; it
+    # records nothing.
+    - mix surfex.status --verify --evidence --validated
 
 goldens:
   extends: .elixir

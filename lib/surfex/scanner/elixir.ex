@@ -55,7 +55,8 @@ defmodule Surfex.Scanner.Elixir do
 
   @doc """
   The `Surfex.Profile` keys that reading an Elixir project's citations starts from, for a
-  project whose modules live under `namespace` (`"MyApp"`):
+  project whose modules live under its roots (`"MyApp"`, or a list such as
+  `["MyApp", "MyAppWeb"]`):
 
     * `:shape` — `MyApp`, `MyApp.Cart`, `MyApp.Cart.add`, `MyApp.Cart.add/2`: a span of
       this shape that names nothing is an unresolved citation
@@ -63,14 +64,22 @@ defmodule Surfex.Scanner.Elixir do
     * `:normalise` — drops a call's arguments, so `MyApp.Cart.add(cart, item)` names
       `MyApp.Cart.add`
   """
-  @spec profile_defaults(String.t()) :: keyword
-  def profile_defaults(namespace) do
-    ns = Regex.escape(namespace)
-    name = "#{ns}(?:\\.[A-Z]\\w*)*(?:\\.[a-z_]\\w*[?!]?(?:/\\d+)?)?"
+  @spec profile_defaults(String.t() | [String.t()]) :: keyword
+  def profile_defaults(roots) do
+    # Longest first, so `MyAppWeb` is tried before `MyApp`.
+    alternatives =
+      roots
+      |> List.wrap()
+      |> Enum.uniq()
+      |> Enum.sort_by(&(-String.length(&1)))
+      |> Enum.map_join("|", &Regex.escape/1)
+
+    name = "(?:#{alternatives})(?:\\.[A-Z]\\w*)*(?:\\.[a-z_]\\w*[?!]?(?:/\\d+)?)?"
 
     [
       shape: Regex.compile!("^#{name}$"),
-      token: Regex.compile!("(?<![\\w.])(#{name})"),
+      # A name ends where a name ends: not glued to letters, a hyphen or a further segment.
+      token: Regex.compile!("(?<![\\w.])(#{name})(?![\\w-]|\\.\\w)"),
       normalise: [{~r/\(.*\)$/s, ""}]
     ]
   end

@@ -46,11 +46,21 @@ How precisely Surfex can relate a spec depends on how the spec is written.
 - **Loud over silent.** Configuration that cannot be right (an unknown key, a pattern
   that matches nothing, a scan that found nothing) raises before anything renders. A
   misconfigured check must never pass.
+- **Published text is prose.** The spec, the README and the guides never carry script
+  text outside a code fence: a scripted edit that writes its own source into them is
+  caught by the tests, not by a reader (#83).
+- **The test suite can't race itself.** The working directory belongs to the whole VM, so
+  a test module that changes it doesn't run async.
 
 ## 2. Surface goldens {#goldens}
 
 `Surfex.Golden` is the one renderer. `Surfex.Golden.render/1` takes a spec (a map) and
 returns the golden's text.
+
+```test golden-renders
+a golden spec renders to markdown: a header block naming what regenerates it, the prose,
+the stats lines, and a table per group of typed cells; one spec always renders one text
+```
 
 ### 2.1 Shape {#golden-shape}
 
@@ -64,6 +74,11 @@ returns the golden's text.
 3. **Tables.** The first column is the catalogued item and the last is conventionally
    `Locus`. A golden is either one flat table or `## <heading>` groups, each with its
    own table and optionally its own columns.
+
+```test golden-stats
+a stats line reads **N noun** followed by each label and count, and a header block
+names the golden, its purpose, the task that regenerates it and its gate
+```
 
 ### 2.2 Cells are typed {#golden-cells}
 
@@ -86,9 +101,19 @@ sorted by the spec's `:sort` function, or by default by the first column's natur
 (`Surfex.Golden.natural_key/1`: alternating text and integer chunks, so `Foo.9` sorts
 before `Foo.10`). Two specs differing only in those orderings render identical bytes.
 
+```test golden-order
+rows come out in natural-key order whatever order they went in, and a golden never
+carries a date, a time or a commit
+```
+
 ## 3. Reading source {#reading-source}
 
 `Surfex.SourceScan` holds the primitives every scanner of Elixir source shares.
+
+```test source-not-compiled
+source is read as text and parsed, never compiled: code no compiler would accept is
+still read
+```
 
 ### 3.1 Finding source {#finding-source}
 
@@ -110,6 +135,11 @@ before `Foo.10`). Two specs differing only in those orderings render identical b
   A looser rule would let the scratch trees a test run leaves behind into a golden,
   which would then drift on that machine and never in CI.
 
+```test finding-lib-sources
+a project's root is found from a marker file; lib sources are the .ex files under a lib/
+whose parent has a mix.exs, skipping deps, _build, test, tmp and hidden directories
+```
+
 ### 3.2 Modules and definitions {#definitions}
 
 - `Surfex.SourceScan.defmodules/1` returns every `defmodule` node in a quoted AST, in
@@ -127,6 +157,11 @@ before `Foo.10`). Two specs differing only in those orderings render identical b
     visibility
   - a default argument declares every arity it generates
   - each function carries one hash over what it depends on (§3.3)
+
+```test public-definitions
+a module's public definitions are listed with name, arity and kind; a default argument
+declares each arity; @doc false and implicit @impl callbacks are hidden
+```
 
 ### 3.3 Content versions {#content-versions}
 
@@ -166,6 +201,12 @@ and nested modules are left out: each public function has its own version, so a 
 changes that function's version and not its module's, and a relation to the module
 doesn't dangle for it.
 
+```test structure-versions
+a definition's version changes with its structure and not with its position or layout;
+a function's version follows its private helpers and the attributes they read; a
+module's follows its public surface only
+```
+
 ## 4. Items {#items}
 
 `Surfex.Item` is one thing a scanner found: the unit a citation resolves to, and the
@@ -187,6 +228,10 @@ source of a code record (§11).
 The hash is never part of the key, so an edit changes a row's version and not its
 identity.
 
+```test item-key
+an item's key is its name, or parent.name when it has a parent
+```
+
 ## 5. Scanners {#scanners}
 
 ### 5.1 The contract {#scanner-contract}
@@ -195,6 +240,11 @@ identity.
 item under `root`. A scanner reads source and never compiles or loads it. The contract
 is language-agnostic: a project whose code is in C implements it for C, and the rest is
 unchanged.
+
+```test scanner-behaviour
+a project scanner implements Surfex.Scanner, and a module that doesn't is refused,
+named
+```
 
 ### 5.2 The built-in Elixir scanner {#elixir-scanner}
 
@@ -215,17 +265,42 @@ options) returns:
   project's own source. A poncho lists its members.
 
 `Surfex.Scanner.Elixir.profile_defaults/1` gives the profile settings reading an Elixir
-project's citations starts from, for a root namespace:
-- `shape`: the namespace's module and function names, with or without an arity
-- `token`: the same names, found inside longer text
+project's citations starts from, for its **roots**: `namespace:`, and every top-level
+module the code scanner found (a Phoenix app's `MyAppWeb` beside `MyApp`), since the code
+says what the project's names are (`Surfex.Status.Config.profile!/3`):
+- `shape`: the roots' module and function names, with or without an arity
+- `token`: the same names, found inside longer text. A name ends where a name ends: a
+  root glued to more letters (`MyAppCollector`), a hyphen (`MyApp-Profile`) or a further
+  segment that isn't a name is another word, not a citation of the root
 - a `normalise` rule that drops a call's arguments, so `MyApp.Cart.add(cart, item)` names
   `MyApp.Cart.add`
+
+A well-formed name under any root that resolves to nothing is an unresolved citation
+(§6), so a stale name in the spec is reported rather than matched to a shorter one. A
+name under no root (another library's, `Ecto.Changeset`) is not the project's to cite
+unless `known_external:` says so.
+
+```test name-boundary
+a token ends at a name's end, so a root glued to letters, a hyphen or a non-name segment
+is no citation of it; every top-level module the code has is a root, so a stale name
+under any root is unresolved rather than suggested against the root module
+```
+
+```test elixir-scanner-items
+the Elixir scanner reports every public module and definition under the paths it is
+given, with nested modules named in full, and profile defaults for a namespace
+```
 
 ## 6. Citations {#citations}
 
 `Surfex.Cite` finds a specification's citations of the code and resolves them.
 `Surfex.Cite.citations/3` returns every citation in the profile's sources, sorted by
 file, line and span.
+
+```test citation-status-kinds
+each citation ends in exactly one status: resolved, ambiguous, unresolved, external or
+a documented absence
+```
 
 ### 6.1 No new notation {#citation-notation}
 
@@ -259,6 +334,12 @@ Every citation has exactly one status:
 - **Fenced code blocks**: shape-matching tokens are credited to `(code block)`. Inside a
   fence nothing else is read, so a `# comment` in a code block is not a heading.
 
+```test citation-sections
+a citation is credited to the nearest heading above it (or the defmodule in an .ex
+source); inside a fence nothing but shaped tokens is read; sources are globbed, excluded
+and sorted
+```
+
 ### 6.4 Resolution {#citation-resolution}
 
 A span is normalised (trimmed, then the profile's rewrites in order) and then resolved
@@ -281,6 +362,11 @@ citing `MyApp.Cart.add` means the function, whatever its arity.
 A member is reached through its parent (`struct.field`), a subject, or a member path,
 **never by its bare name**: a bare `offset` naming three structs' fields is not a claim
 about any one of them.
+
+```test citation-resolves
+a span resolves through absences, externals, subject members, item keys, aliases and
+member paths, in that order; a bare member name never resolves on its own
+```
 
 ### 6.5 Member paths {#member-paths}
 
@@ -319,6 +405,12 @@ gives.
 **A verdict belongs to an item, not to a key.** Two items may share a key (a citation of
 it is then ambiguous), and each is judged on its own.
 
+```test coverage-verdict
+an item is cited, excused by the first rule that matches, or a gap; a never-excused
+kind is a gap whatever the rules say; the rules can come from a profile or its coverage
+map
+```
+
 ## 8. Profiles {#profiles}
 
 `Surfex.Profile` is everything project-specific about reading a spec's citations and
@@ -328,7 +420,7 @@ it, and `Surfex.Profile.keys/0` lists its keys:
 | Key | Meaning |
 |---|---|
 | `sources` (required) | globs of the files whose prose cites the code |
-| `exclude` | path prefixes to drop from them |
+| `exclude` | path prefixes to drop from them: an excluded file is no part of the spec, contributing neither sections nor citations (`Surfex.Scan.Markdown.files/3` is the one answer to which files are the spec) |
 | `shape` (required) | regex: what a claim about the code looks like |
 | `token` | regex whose first group finds names inside longer text |
 | `known_shape` | regex: tokens trusted only when they resolve |
@@ -339,7 +431,7 @@ it, and `Surfex.Profile.keys/0` lists its keys:
 | `known_external` | `%{name => reason}` |
 | `documented_absences` | `%{{name, file} => reason}` |
 | `classes` | `[{class, reason}]` |
-| `rules` | `%{class, kinds, name, parent_cited}` excusal rules |
+| `rules` | `%{class, kinds, name, parent_cited, parent}` excusal rules; `parent` is a regex on a member's parent module (an item with no parent, such as a module, never matches it), so a module family's members are excused by family |
 | `never_excused` | kinds that are the spec's subject matter |
 
 It raises, naming the key, on an unknown key, a missing required key, a wrong type, a
@@ -348,6 +440,22 @@ rule naming an undeclared class, and a rule that would excuse a never-excused ki
 A project writes these keys in `.surfex.exs`, alongside the relation log's own (§13.2).
 For the built-in Elixir scanner, `shape`, `token` and `normalise` default from the
 project's namespace (§5.2).
+
+```test exclude-both
+a file under exclude: contributes neither spec sections nor citations; excluding every
+file is an empty spec, which is an error
+```
+
+```test rule-parent
+a rule's parent: excuses the members of a module family and no other module's members of
+the same name; it never matches an item with no parent; it composes with the rule's other
+keys, must be a regex, and a rule without it keeps its class's version
+```
+
+```test profile-validated
+a profile rejects an unknown key, a missing required key, a wrong type, and a rule that
+names an unknown class or excuses a never-excused kind
+```
 
 ## 9. The v0.2 trace, removed {#traces}
 
@@ -389,11 +497,21 @@ A `.surfex.exs` that still has a trace-only key (`output`, `purpose`, `task`, `g
 - `Surfex.Gate.config!/1` evaluates a `.surfex.exs`-style data file, which must return a
   keyword list.
 
+```test gate-drift
+the gate writes a golden or checks it: a missing file and a drift fail, naming the rows
+that changed, appeared or went, or that only the prose changed
+```
+
 ### 10.2 Project goldens {#project-goldens}
 
 `Surfex.Surface` is the behaviour for a golden only the project can scan for (the
 endpoints a router declares, the actions a model defines): `spec(opts)` returns a
 `Surfex.Golden` spec, which is rendered and gated like any golden.
+
+```test project-golden
+a module implementing Surfex.Surface is rendered and gated like any golden, and a module
+that doesn't is named
+```
 
 ### 10.3 Every golden at once {#all-goldens}
 
@@ -402,6 +520,9 @@ Each entry is one of:
 - `:status` or `{:status, output}`: the relation status as a golden (§13.3),
   `RELATIONS.md` by default. Its drift fails here; whether the relations are healthy is
   `mix surfex.status`'s question.
+- `:completeness` or `{:completeness, output}`: the completeness report as a golden (§20),
+  `COMPLETENESS.md` by default. Its drift fails here; whether the project is complete
+  enough is `mix surfex.status`'s question, under `completeness: [min: N]`.
 - `{output, module, opts}`: a `Surfex.Surface`
 
 With no key, the list is `[:status]`.
@@ -415,20 +536,36 @@ With no key, the list is `[:status]`.
   drift in entry order. A module that does not implement `Surfex.Surface` raises, naming
   it.
 
+```test goldens-entries
+goldens: defaults to [:status]; each entry is validated, :trace is refused with its
+reason, and every golden's drift is reported in one run
+```
+
 ### 10.4 The task {#golden-tasks}
 
 `Mix.Tasks.Surfex.Goldens` is `mix surfex.goldens`:
 
 - Without `--write`, the task checks. It fails if any golden is missing or has drifted.
-- `--write` regenerates. It writes every golden even when some have drifted, so the
-  drift shows up in the diff, and then fails.
+- `--write` regenerates. It writes every golden, drifted or not, so a drift shows up in
+  the diff, and succeeds, saying how many it wrote. Regenerating is how a drift is
+  resolved, so it never fails for one; checking is what fails.
 - `--config PATH` reads a definition other than `.surfex.exs`.
 - The namespace citations are read under defaults to the app's name camelized. The task
   compiles the project only when `Surfex.Goldens.needs_compile?/2` says so.
 - Every failure of every golden is reported in one run.
 
 Surfex gates itself this way: CI runs `mix surfex.goldens`, which gates `RELATIONS.md`,
-and `mix surfex.status --verify`, which checks the relation log itself (§13.3).
+and, after its tests, `mix surfex.status --verify --evidence --validated`, which checks
+the relation log itself (§13.3, §17): every relation holds, every confirmation by evidence
+is borne out, and every relation was validated by the process (§18). Surfex's own
+triangle is closed and gated (`triangle: :fail`): every section something implements
+states its claims as test hints, each verified by a tagged test that exercises the
+implementing code.
+
+```test goldens-task
+mix surfex.goldens checks every golden and fails on a drift; --write regenerates them
+all, even when some have drifted, and succeeds
+```
 
 ## 11. Scan records {#scan-records}
 
@@ -459,7 +596,9 @@ key, version (§3.3) and line range, its kind as `role` and its parent as `withi
 The id is the item's key. When two items share a key (a C function and a constant both
 called `twin`), each id carries its kind, `twin (function)` and `twin (const)`, so each is
 a relation end of its own. `Surfex.Scan.for_item/2` finds an item's record whatever its
-id. A citation of a shared key stays ambiguous (§6.2). `Surfex.Status.derive/4` raises on
+id. A citation of a shared key stays ambiguous (§6.2). `Surfex.Scan.definition/1` is
+what a code record is a version of: its file, lines and version. A function with default
+arguments is one definition reported as several items (`f/1`, `f/2`), and they share it. `Surfex.Status.derive/4` raises on
 two records with one kind and id, naming both locations: no record may shadow another.
 
 `Surfex.Scan.ExUnit` is the test scanner. It makes one record of kind `:test` per ExUnit
@@ -474,6 +613,8 @@ scans one text.
   (transitively) and the module attributes they read, with variables normalised. Every
   `setup` that applies to it (the module's and its `describe`'s, including named
   callbacks) and the generators of a comprehension that defines it are also part of it.
+  A private helper defined inside a `describe` block counts like one at the module's top
+  level, as ExUnit compiles it there.
   Weakening a test through a helper, a setup or its table of cases changes its version.
 - **Its location** is the file and the test's lines.
 - **What it declares**: a test says what it verifies with ExUnit's own tags.
@@ -483,7 +624,11 @@ scans one text.
   runs exactly the tests of one requirement. A `verifies` value that isn't a literal
   string or list of strings raises, naming the file and line.
 - **What it calls**: the record's `calls` lists the functions the test's body and the
-  private helpers it reaches call, as `Module.fun/arity`. Aliases are resolved, a
+  private helpers it reaches call, as `Module.fun/arity`, and every module it calls or
+  names as a value (a module handed to a helper is exercised through it). Aliases are resolved
+  where they're declared, as the compiler sees them: a module's apply throughout it, a
+  `describe`'s to its tests and the helpers defined in it (not to another describe), and
+  one in a test or helper body to that body, from its line on. A
   piped call counts the piped value, and a capture (`&Mod.fun/2`) is a call. A local
   call the module doesn't define is listed under each module it imports. Setups are
   left out: they prepare a test, and what a test tests is what it calls itself. These
@@ -503,23 +648,15 @@ the profile's keys (§8), validated the same way by `Surfex.Profile.coverage!/1`
 It is pure: a function of the config alone. `Surfex.Status.Config.scans/2` includes class
 records when `classes:` is present.
 
-A declaration is a claim in the source, not a relation. `Surfex.Scan.resolve/2` finds""")
-  |> edit.("- **tests**: each test paired with each scanned code item in its `calls` (§11).\n", ~S"""
-- **tests**: each test paired with each scanned code item in its `calls` (§11).
-- **excuses**: each code item that nothing implements, and that no `implements`
-  candidate in the same run will, paired with the class of the first rule it matches.
-  Matching is `Surfex.Coverage`'s (§7), where a parent counts as cited when something
-  implements it. A `never_excused` kind is never proposed. With `require: [code:
-  [:implements, :excuses]]`, every public item is then either described or deliberately
-  excused, and both are on record. An excuse dangles when its item or its class changes.
-
+A declaration is a claim in the source, not a relation. `Surfex.Scan.resolve/2` finds
 the spec unit it names: a full id (`spec.md#cart-add`, `spec.md#Carts/Adding items`), or
 a bare anchor, block or hint id (`cart-add`) looked up across every spec file. A bare
 id never names a heading path. It gives `{:error, :unknown}` when nothing has the id,
 and `{:error, {:ambiguous, ids}}` when more than one file does.
 
 `Surfex.Scan.Markdown` is the spec scanner for markdown. `Surfex.Scan.Markdown.records/2`
-reads every file matching a list of globs under a root; `Surfex.Scan.Markdown.sections/2`
+reads every file matching a list of globs under a root (`Surfex.Scan.Markdown.records/3`
+leaves out those under an `exclude:` prefix, §8); `Surfex.Scan.Markdown.sections/2`
 scans one text. Both give every unit (sections, marked blocks and test hints) in the
 order they start.
 - **A section** is a heading and the lines under it, up to the next heading of any
@@ -590,6 +727,17 @@ reads, a setup that applies to it, or its comprehension's cases change;
 not when a variable is renamed, or a setup it doesn't get changes
 ```
 
+```test scan-records-pure
+scanners produce scan records only, each a pure function of the source: spec units,
+code items, tests and classes
+```
+
+```test test-alias-scope
+a test's calls resolve each alias where it's declared: a module's throughout, a describe's
+for its tests and helpers but not a sibling describe, a body's from its line on; every
+alias form
+```
+
 ## 12. The relation log {#relation-log}
 
 The relation log records judgements: that two things relate, at two versions. It is the
@@ -605,20 +753,56 @@ only state surfex keeps. Scanners never read or write it (§11).
 | `at` | when it was recorded, UTC ISO 8601: orders the history |
 | `commit` | HEAD when it was recorded: context only, since squash merges can make it unreachable |
 | `parents` | the entry ids it follows for the same relation; two means it resolves a fork |
-| `op` | `relate` or `retire` (`Surfex.Log.Entry.ops/0`) |
-| `type` | `implements`, `refines`, `depends_on`, `tests`, `verifies` (a test verifies a spec unit) or `excuses` (`Surfex.Log.Entry.types/0`) |
-| `ends` | two `{kind, id, hash}`, of the kinds `Surfex.Log.Entry.kinds/0` lists. A `null` hash is a **planned** end: an id that didn't exist when the relation was recorded (§14). At most one end is planned. |
+| `op` | `relate`, `retire`, `mark` or `observe` (`Surfex.Log.Entry.ops/0`) |
+| `type` | a relation's: `implements`, `refines`, `depends_on`, `tests`, `verifies` (a test verifies a spec unit) or `excuses` (`Surfex.Log.Entry.types/0`); or a mark's: `needs_update` (`Surfex.Log.Entry.mark_types/0`); or an observation's: `red_green` or `baseline` (`Surfex.Log.Entry.observation_types/0`) |
+| `ends` | a relation's two `{kind, id, hash}`, of the kinds `Surfex.Log.Entry.kinds/0` lists (`spec`, `code`, `test`, `class`) and the grammar below allows. A `null` hash is a **planned** end: an id that didn't exist when the relation was recorded (§14). At most one end is planned. A mark's one end: the spec unit, at its hash. An observation's one end: the test, at its version |
 | `by` | who recorded it |
 | `note` | why, optionally |
+| `basis` | how the entry validates the relation (§18): `evidence`, `review`, `judgement`, `baseline` (§18.1) or `proposed` (`Surfex.Log.Entry.bases/0`); absent when it validates nothing, which keeps every older entry's canonical line and id |
 
+- **An observation** is a fact the log keeps about one test version, not a relation:
+  `op: observe`, type `red_green`, one `test` end at its version, basis `evidence`. It
+  records that the version **discriminated** (§17): it failed against one version of its
+  code and later passed against another, with the two runs in its note. It is never
+  withdrawn: a changed test is a new version, which the observation doesn't speak for.
+  `Surfex.Log.Entry.relation?/1` tells a relation's entries from a mark's or an
+  observation's.
+- **A mark** is a statement about one spec unit, not a relation: `op: mark`, type
+  `needs_update`, one `spec` end at the unit's version, and a note (required) saying what is
+  wrong in the result. A `retire` of the same type and end, naming the mark as its parent,
+  withdraws it. `Surfex.Log.Entry.mark?/1` tells a mark's entries from a relation's.
 - **A relation is its type and its two ends' kinds and ids** (`Surfex.Log.Entry.relation/1`).
   For the undirected types (`implements`, `excuses`), ends are sorted, so A↔B and B↔A are
   one relation. The directed types (`Surfex.Log.Entry.directed/0`: `depends_on`,
   `refines`, `tests`, `verifies`) keep their ends in the order given, from → to, because "A depends on
   B" is not "B depends on A". `Surfex.Log.Entry.relation/3` gives the relation of a type
   between two ends without an entry, oriented the same way.
+- **The grammar.** What a well-formed entry is, the log enforces itself, rather than
+  trusting its writers. A malformed entry from a bad merge, a hand edit or a writer's bug
+  is refused where it is read, not left to surface as a confusing state far away:
+
+  | Type | Op | Ends | Basis |
+  |---|---|---|---|
+  | `implements` | relate, retire | code ↔ spec | `proposed`, `evidence`, `review`, `baseline`; or none (legacy) |
+  | `verifies` | relate, retire | test → spec | `proposed`, `evidence`, `review`, `judgement`, `baseline`; or none (legacy) |
+  | `tests` | relate, retire | test → code | none, `evidence`, `judgement`, `baseline` |
+  | `refines` | relate, retire | spec → spec | none, `judgement` |
+  | `depends_on` | relate, retire | code → code | none, `judgement` |
+  | `excuses` | relate, retire | class ↔ code | `proposed`, `judgement`; or none (legacy) |
+  | `needs_update` | mark, retire | one spec | none |
+  | `red_green` | observe | one test | `evidence` |
+  | `baseline` | observe | one test | `baseline` |
+
+  A `retire` has the ends of what it retires and never a basis. **None (legacy)** admits
+  entries written before bases existed (0.4 and earlier): they decode, and status reports
+  an `implements` or `verifies` among them unvalidated (§13.1). `Surfex.Record` never
+  writes one: every `implements` and `verifies` it records carries a basis. `implements`
+  never carries `judgement`, since code is validated by evidence or a review (§18). A
+  violation names the rule ("implements ends must be code ↔ spec, got test, test"), and
+  at decode the entry too. `mix surfex.log --verify` lists every violation with its file
+  and line.
 - `Surfex.Log.Entry.build/1` makes an entry from its fields and computes its id, or says
-  which field is invalid. `Surfex.Log.Entry.new!/1` raises instead.
+  which field or rule is broken. `Surfex.Log.Entry.new!/1` raises instead.
 - **The canonical line is JSON**, keys in the order above (`Surfex.Log.Entry.encode/1`). It
   is readable by anything, and parsing it never evaluates code.
 - `Surfex.Log.Entry.decode/1` reads a line back, or says why it isn't an entry: a missing
@@ -627,9 +811,37 @@ only state surfex keeps. Scanners never read or write it (§11).
   raises, since the file is then corrupt. `Surfex.Log.Entry.json/1` reads one JSON value
   with `null` as `nil`.
 
+```test mark-entry
+a mark is one spec end with op mark and type needs_update, refused with two ends or a
+non-spec end; entries recorded before marks existed keep their lines and ids
+```
+
 ```test entry-tamper
 an entry whose line is edited no longer decodes under its id,
 and verifying the log reports it
+```
+
+```test entry-canonical
+an entry's canonical line is JSON with fixed keys, its id a hash of that line; undirected
+ends are sorted; the vocabulary of ops, types, kinds and bases is fixed; a basis is
+written only when set, so an entry without one keeps its line and id
+```
+
+```test grammar-ends
+each type joins only its kinds of end, and a directed type only from → to; a mark is one
+spec end and an observation one test end; there is no config kind
+```
+
+```test grammar-bases
+each type carries only its bases, with none admitted as legacy for implements, verifies
+and excuses; implements never carries judgement; a retire and a mark carry no basis; an
+observation carries exactly its own
+```
+
+```test grammar-loud
+a line breaking the grammar is refused at decode, naming the entry and the rule, and
+verifying the log lists it with its file and line; every entry in surfex's own log fits,
+with its id unchanged
 ```
 
 ### 12.2 The log {#log-segments}
@@ -662,12 +874,23 @@ two branches that each append to the log merge without a conflict,
 and the merged log loads to one state
 ```
 
+```test log-append-only
+the log only appends: segments load together with duplicates dropped, a break starts a
+new segment, and verifying finds an edited line, a removed parent or a truncation
+```
+
 ## 13. Relation status {#status}
 
 `Surfex.Status` derives the state of every relation from the scans (§11) and the log
 (§12). `Surfex.Status.derive/2`, `Surfex.Status.derive/3` (with a `require:` policy) and
 `Surfex.Status.derive/4` (with options: `planned: :allow | :fail`, `triangle: :report |
-:fail`) are pure: the same scans and log always give the same status.
+:fail`, `validated:` (§18), `evidence:` (§17), `citations:` (§6), `coverage:` (§13.1)) are
+pure: the same scans, log and options always give the same status.
+
+```test status-pure
+the status is derived from the scans and the log alone: the same inputs always give the
+same status
+```
 
 ### 13.1 States {#status-states}
 
@@ -679,7 +902,7 @@ other entry of it names as a parent (`Surfex.Status.tips/2`).
 | **conflicted** | more than one tip: entries recorded without seeing each other (sharing a parent, or both with none) |
 | **retired** | the tip retires the relation |
 | **orphaned** | an end recorded at a hash is no longer scanned (removed or renamed) |
-| **planned** | an end was recorded without a hash, before it existed, and still isn't scanned. Once it is scanned, the relation is dangling on that end until someone confirms it. |
+| **planned** | an end was recorded without a hash, before it existed, and still isn't scanned. Once it is scanned, a planned `implements` relation is proposed until evidence or a review validates it (§18); a planned relation recorded without a basis is dangling on that end until it is confirmed. |
 | **dangling** | both ids are scanned, but at least one is at a different hash than the tip recorded; the report names which ends changed |
 | **current** | both ends are at the hashes the tip recorded |
 
@@ -708,6 +931,25 @@ other entry of it names as a parent (`Surfex.Status.tips/2`).
   `implements` relation, some test with a current `verifies` relation to the unit (or
   inside it) and a current `tests` relation to the code must pass. Without `evidence:`
   nothing is checked, and a relation confirmed by hand never is.
+- **Undeclared:** a live `verifies` relation whose test no longer declares its spec unit
+  (§11): the tag was removed or changed. A tag isn't part of a test's version, so without
+  this the relation would stay current, asserting a claim the source no longer makes. A
+  `verifies` relation recorded by hand, with no declaration, is undeclared too: a test must
+  say what it verifies.
+- **Proposed:** the tip is recorded with basis `proposed`: a claim (a citation, a tag, a
+  pair named by hand) that nothing has validated yet (§18). It fails the check, like a
+  dangling relation, until evidence or a review validates it.
+- **Unvalidated:** a current `implements` or `verifies` relation whose tip has no
+  validating basis (`evidence`, `review` or `judgement`, §18), such as one recorded before
+  validation existed. It is reported, and fails the check only when the status is derived
+  with `validated: true` (`mix surfex.status --validated`).
+- **Marks** (§14): a `needs_update` mark says the spec unit itself needs to change: the
+  tests reflect it and the code passes them, but the result is wrong or clearly
+  sub-optimal. Each mark is **open** while the unit is at the version it recorded,
+  **resolved** once the unit's version moves (the spec changed, and the process starts
+  over from it), **withdrawn** when a retire names it, and **orphaned** when the unit is
+  no longer scanned. Open and orphaned marks are reported (`Surfex.Status.derive/4`'s
+  `marks`); resolved and withdrawn ones live on in the history.
 - **Stale:** a live `excuses` relation whose code item its class no longer covers,
   judged by `Surfex.Coverage.verdict/3` as the suggestion was (§15). The item may now be
   implemented, no rule of any class may match it, or another class's rule may match it
@@ -715,12 +957,16 @@ other entry of it names as a parent (`Surfex.Status.tips/2`).
   confirmed at. Judging it needs the rules, which `Surfex.Status.derive/4` takes as
   `coverage:`.
 
-`Surfex.Status.failing?/1` is true when any relation is dangling, orphaned or conflicted,
-any id is unmet, any declaration or citation is broken, any excuse is stale, or any
-confirmation by evidence is unproven. New,
-retired, impacted, planned and unimplemented don't fail on their own. A status derived with
-`planned: :fail` (`Surfex.Status.derive/4`) fails on any planned relation too: the check
-that everything planned has been built, such as a release's.
+`Surfex.Status.failing?/1` is true when any relation is dangling, orphaned, conflicted or
+proposed, any id is unmet, any `verifies` relation is undeclared, any declaration or
+citation is broken, any excuse is stale, or any confirmation by evidence is unproven. New,
+retired, impacted, planned, unimplemented and unvalidated don't fail on their own. A
+status derived with `planned: :fail` (`Surfex.Status.derive/4`) fails on any planned
+relation too: the check that everything planned has been built, such as a release's. One
+derived with `validated: true` fails on any unvalidated relation: the check that every
+relation was validated by the process (§18). Marks don't fail on their own either: a known
+spec problem is backlog, not a broken build. One derived with `marks: :fail` fails on any
+open or orphaned mark: the check that nothing ships with a known spec problem.
 
 **The triangle.** A spec unit, its tests and its code relate three ways: the code
 `implements` the unit, a test `verifies` the unit, and the test `tests` the code. When
@@ -732,7 +978,10 @@ missing:
 - `:code_untested`: code implements it that no verifying test exercises, naming the
   code.
 
-The gaps are the status's `triangle`. They are reported, and fail the check only when
+Code is compared by its definition (§11), so a test calling `f/1` exercises the `f/2` a
+unit names when both are one function with a default argument. The same holds when
+evidence confirms `implements` (§17) and when CI checks the claim. The gaps are the
+status's `triangle`. They are reported, and fail the check only when
 derived with `triangle: :fail`. Without scanned tests there is no triangle, since
 every unit would otherwise report a missing test for a project that doesn't scan them.
 `Surfex.Status.summary/1` counts relations per type and state. `Surfex.Status.units/1`
@@ -744,8 +993,9 @@ and names which end changed
 ```
 
 ```test planned-state
-a relation to an id that doesn't exist yet is planned and passes the check;
-when the id appears it dangles; once confirmed it is current
+a relation to an id that doesn't exist yet is planned and passes the check; when the id
+appears a planned implements is proposed, and one recorded without a basis dangles; once
+validated or confirmed it is current
 ```
 
 ```test triangle-gaps
@@ -754,11 +1004,33 @@ no verifying test, a verifying test that calls none of its code, and implementin
 code no verifying test calls are each reported, naming the test or the code
 ```
 
+```test mark-states
+a mark is open while its unit is at the marked version, resolved when the unit changes,
+withdrawn by a retire naming it, and orphaned when the unit is gone; open and orphaned
+marks are reported and fail only under marks: :fail
+```
+
+```test status-failing
+the check fails on a dangling, orphaned, conflicted or proposed relation, an unmet id, an
+undeclared verifies relation, a broken declaration or citation, a stale excuse, or an
+unproven confirmation, and on nothing else by default; planned: :fail adds planned
+relations, and validated: true unvalidated ones
+```
+
+```test units-by-role
+the spec units scanned are counted by role: sections, blocks and test hints
+```
+
+```test undeclared-verifies
+a verifies relation whose test no longer declares its spec unit is undeclared and fails;
+suggest --accept retires it
+```
+
 ### 13.2 Configuration {#status-config}
 
 `Surfex.Status.Config` reads `.surfex.exs`. It holds the profile keys (§8) and the
 log's own: `scanner`, `scanner_opts`, `namespace`, `goldens` (§10.3), `require`, `tests`,
-`triangle` and `require_red` (§17).
+`triangle`, `require_red` (§17), `adoption` (§18.1), `process` (§19) and `completeness` (§20).
 - `Surfex.Status.Config.read!/1` reads and validates it. It raises on an unknown key, and
   on a key of the removed trace, saying so (§9). Every task reads its config through
   it, so a misspelt key is never silently ignored.
@@ -779,32 +1051,49 @@ log's own: `scanner`, `scanner_opts`, `namespace`, `goldens` (§10.3), `require`
   `Surfex.Cite` under `Surfex.Status.Config.profile!/2`: the config's profile keys
   (`Surfex.Profile.keys/0`) over the Elixir scanner's defaults for `namespace:`, which
   defaults to the project's app name.
+- `Surfex.Status.Config.status/4` derives the whole status as `mix surfex.status` does: the
+  scans, the log, the policy and the options (`load/3`), plus the caller's own options.
+  Every task that needs the status derives it this way.
+- `Surfex.Status.Config.process!/1` validates `process:` (§19): `:print`, the default, or
+  `{:command, argv}` with a non-empty list of strings, and raises on anything else.
 - `Surfex.Status.Config.require!/1` validates the `require:` policy against the known
   kinds, spec roles and types, and raises naming what's wrong.
+
+```test status-config-read
+.surfex.exs is read and validated: unknown keys and keys of the removed trace are refused,
+the code is scanned once, and citations are read under the config's profile
+```
 
 ### 13.3 Reports and the check {#status-reports}
 
 `Surfex.Status.Report` presents a status:
 - `Surfex.Status.Report.text/1`: the verdict, the counts per type and the spec units by
-  role. Then each dangling, orphaned, conflicted, impacted and planned relation, the
-  unimplemented, new and unmet ids, the broken citations, the unproven confirmations, the
-  stale excuses, the broken declarations and the triangle's gaps, with locations. A block or hint in a list says what it sits in.
+  role. Then each dangling, orphaned, conflicted, proposed, impacted and planned relation,
+  the unimplemented, new and unmet ids, the broken citations, the unproven confirmations,
+  the undeclared relations, the stale excuses, the broken declarations, the triangle's
+  gaps and the open and orphaned marks (with their notes, who and when), with locations. A block or hint in a list says what it sits in. Unvalidated
+  relations (§18) are counted; they are listed only when the status is derived with
+  `validated: true`, where they fail, since a project moving over has many.
 - `Surfex.Status.Report.golden/2` (`Surfex.Status.Report.golden/1` writes `RELATIONS.md`):
   the status as a golden to commit. It has a table per relation type (end, other end,
   state, the ends that changed or are planned), then the unimplemented, new and unmet
   ids, the broken citations (by section, not line), the stale excuses, the broken
-  declarations and the triangle's gaps, with the spec units by role among its stats. It holds no hashes and no times, so it changes when a relation's
+  declarations, the triangle's gaps and the open and orphaned marks (unit, state, note), with
+  the spec units by role among its stats. It holds no hashes and no times, so it changes when a relation's
   state changes, not on every confirmation. It's a pure function of the scans and the
   log, so a merge conflict in it is resolved by regenerating. It leaves unproven
-  confirmations out, since they depend on the last test run, not on the source or the log.
+  confirmations out, since they depend on the last test run, not on the source or the log,
+  and validation too: it follows the relations' states, and a proposed relation shows as
+  one.
 - `Surfex.Status.Report.json/1`: the work list for tools and agents. For each relation,
   its type, state and impact, and per end the recorded hash, the current hash, whether
   it changed, whether it is planned, and its location. Plus the spec units by role, the
   unimplemented, new and unmet ids (each with its role, what it sits in and what it
   declares), the broken citations, the unproven confirmations, the stale excuses, the
-  broken declarations and the triangle's gaps. A value that doesn't
-  exist (a planned end's recorded hash, a gone end's hash and location, or a conflicted
-  relation's recorded hashes, since it has no one tip) is JSON `null`.
+  broken declarations, the triangle's gaps, the unvalidated relations and the open and
+  orphaned marks (unit, state, note, who, when, entry id, location). A value that
+  doesn't exist (a planned end's recorded hash, a gone end's hash and location, or a
+  conflicted relation's recorded hashes, since it has no one tip) is JSON `null`.
 
 `Mix.Tasks.Surfex.Status` is `mix surfex.status`:
 - `--format text|json` (text by default)
@@ -814,8 +1103,23 @@ log's own: `scanner`, `scanner_opts`, `namespace`, `goldens` (§10.3), `require`
   `mix test` recorded (`evidence:`), and fails on any that is unproven. It only reads.
 - `--no-planned` fails on any planned relation as well (`planned: :fail`). Which
   pipeline allows plans is the caller's decision, so it is a flag, not a setting
+- `--validated` fails on any unvalidated relation as well (`validated: true`, §18), and
+  lists them
+- `--no-marks` fails on any open or orphaned mark as well (`marks: :fail`), for a release
+  that must not ship with a known spec problem
+- `--no-baseline` fails on any relation resting on the baseline (`baseline: :fail`,
+  §18.1), and the report counts them with the adoption mode
+- `--merge PATH`, once per file, checks the confirmations by evidence against several CI
+  jobs' evidence files together, in place of `--evidence`'s one file (§17)
+- with `completeness: [min: N]` in `.surfex.exs`, it fails when the overall completeness
+  score (§20) is below `N`, printing the score
 - it fails when the status is failing, or the log doesn't verify
 - it compiles the project first only when `.surfex.exs` names a project scanner
+
+```test status-report-forms
+the status reads as text for people, JSON for tools and a golden for review, the golden
+with no hashes or times
+```
 
 ## 14. Recording {#recording}
 
@@ -832,13 +1136,13 @@ time (context only), and when.
 
 | Function | Records |
 |---|---|
-| `Surfex.Record.relate/6` | a relation of a type between two ids at their current hashes, from → to for a directed type, superseding the relation's tips |
+| `Surfex.Record.relate/6`, `Surfex.Record.relate/7` | a relation of a type between two ids at their current hashes, from → to for a directed type, superseding the relation's tips. `implements` is recorded as proposed; `verifies` too, unless the test's current version has failed in the evidence given (`evidence:`), when it is recorded on that evidence (§18) |
 | `Surfex.Record.plan/7` | a **planned** relation: one end is scanned and recorded at its hash, the other doesn't exist yet and is recorded without one. Its kind is its `spec:`/`code:` prefix, else `spec` when it has a `#`, else `code`. A plausibility check refuses an id the project couldn't have, so a typo doesn't become a permanent plan. `mix surfex.relate --planned` asks whether a spec id is in a file the scanner reads, and whether a code id has the scanner's shape (for Elixir, a name under one of the project's namespaces). Both ends scanned, or neither, is an error. |
-| `Surfex.Record.confirm/4` | for every **dangling** relation touching one of the named ids, the relation again at the current hashes, superseding its tip. Only named ids, and an id with nothing dangling is an error, never a silent no-op. Orphaned and conflicted relations aren't confirmed: they need re-pointing or resolving. |
-| `Surfex.Record.confirm/5` | `Surfex.Record.confirm/4` under the `require_red:` policy (§17): with it, a `tests` relation isn't confirmed by hand either until its test's current version has discriminated |
-| `Surfex.Record.confirm_by_evidence/4` | every confirmation the test evidence justifies (§17): each dangling `tests` relation, then each dangling `implements` relation, with the evidence in the note. Nothing justified is `{:ok, []}`, not an error |
-| `Surfex.Record.retire/6` | that a relation no longer applies, naming every tip as a parent, with the ends as the tip recorded them. An end need not still be scanned: this is how an orphaned relation is put to rest. |
-| `Surfex.Record.resolve/7` | the chosen tip of a **conflicted** relation, recorded again with every tip as a parent. If the scans have moved since, the relation is then dangling, and confirming it is next. |
+| `Surfex.Record.confirm/6`, `Surfex.Record.confirm/7` | one **dangling** or **proposed** relation, named by its ends and type, again at the current hashes, with a note (required) saying what was judged: basis `judgement`. `implements` is refused: code is validated by evidence or a review (§18), never asserted. Orphaned and conflicted relations aren't confirmed: they need re-pointing or resolving. Under `require_red:` (`opts`, §17) a `tests` relation isn't confirmed until its test's current version has discriminated |
+| `Surfex.Record.validate/6` | a review (§18): the `verifies` relation from a test to a spec unit, and each `implements` relation of that unit whose code the test exercises (by definition, so one arity covers a function's others, §11) and that isn't validated already, validated at the current versions, basis `review`. The unit may be a section whose block or hint the test verifies: that relation must already be current, and the review records the section's `implements` relations alone |
+| `Surfex.Record.confirm_by_evidence/4` | every confirmation the test evidence justifies (§17, §18), basis `evidence`, with the evidence in the note: each dangling or proposed `verifies` relation whose test's current version has failed (unless only the spec changed, which is a judgement), then each dangling `tests` relation and each dangling or proposed `implements` relation whose test went red and then green. Nothing justified is `{:ok, []}`, not an error |
+| `Surfex.Record.retire/6` | that a relation no longer applies, naming every tip as a parent, with the ends as the tip recorded them. An end need not still be scanned: this is how an orphaned relation is put to rest. A pair **never related** is declined: a retire at both ends' current versions with no parent, recording the decision not to relate them, so `mix surfex.suggest` never proposes it. Both must be scanned, and the note is required, as the only record of why. A later relate revives it. |
+| `Surfex.Record.resolve/7` | the chosen tip of a **conflicted** relation, recorded again **with its basis** and every tip as a parent: picking a side judges nothing new. If the scans have moved since, the relation is then dangling, and confirming it is next. |
 
 `Surfex.Record.move/5` moves every live relation of an id onto a new one: a renamed
 heading, an anchor added, a section moved. For each relation whose tip names the old id
@@ -847,30 +1151,86 @@ in the old one's place, both noting the move. The moved end keeps the hash **rec
 for the old id**, and the other end its recorded hash, so a move carries a judgement
 across and never makes one. If the text changed as it moved, or the other end changed,
 the moved relation dangles. The new id must be scanned. A conflicted relation must be
-resolved first. An old id with no live relation is an error.
+resolved first. An old id with nothing to move is an error.
+
+**A retirement moves too.** A retired relation is a decision with a reason, and a rename
+is no reason to forget it: for each retired relation of the old id, the move records a
+`retire` of the same relation on the new id, at the recorded versions, its note naming
+the original retire and its reason. It is skipped where the new id already has that
+relation, so it never retires a decision taken since. `mix surfex.move` reports how many
+live and retired relations came across, and `mix surfex.suggest` finds a move whose old
+id only retired relations name (§15), so a declined pair stays declined.
+
+**Moving a test carries its records.** A test's version is its content (§11): renaming
+its module, its `describe` or its file leaves the version as it was, under a new id. Each
+`red_green` and `baseline` observation (§12.1) of the old id at the version the new id is
+scanned at is recorded again on the new id, with its type and basis and a note naming the
+original entry, so the test stays discriminated and, under trust, baselined. A test with
+such records and no live relation still moves. An observation at another version stays
+behind (`Surfex.Record.left_behind/4`, which `mix surfex.move` lists): the test changed, so
+it earns it again. Renaming the test itself changes its version, since its name is part of
+the test node that is hashed, so its records stay behind too.
+
+`Surfex.Record.mark/5` records a `needs_update` mark on one spec unit, at its current
+version, with a note (required) saying what is wrong in the result. The id must be a
+scanned spec unit. `Surfex.Record.withdraw/5` withdraws its open mark, with a note saying
+why it proved unfounded: a retire naming the mark as its parent. With no open mark it is
+an error; with several, the one to withdraw is named by an id prefix (`pick:`).
 
 `Surfex.Record.history/2` lists every entry touching an id, oldest first, from the log
 alone.
 
 The tasks:
 - `Mix.Tasks.Surfex.Relate`: `mix surfex.relate FROM TO --type T [--planned] [--note N]`
-- `Mix.Tasks.Surfex.Confirm`: `mix surfex.confirm ID… [--note N]`, or
-  `mix surfex.confirm --evidence` with no ids
+- `Mix.Tasks.Surfex.Confirm`: `mix surfex.confirm FROM TO --type T --note N`, or
+  `mix surfex.confirm --evidence`
+- `Mix.Tasks.Surfex.Validate`: `mix surfex.validate TEST SPEC_UNIT --note N`
 - `Mix.Tasks.Surfex.Retire`: `mix surfex.retire FROM TO --type T [--note N]`
 - `Mix.Tasks.Surfex.Resolve`: `mix surfex.resolve FROM TO --type T --pick ID_PREFIX`
 - `Mix.Tasks.Surfex.Move`: `mix surfex.move OLD NEW [--note N]`
 - `Mix.Tasks.Surfex.History`: `mix surfex.history ID`
+- `Mix.Tasks.Surfex.Mark`: `mix surfex.mark SPEC_UNIT --needs-update --note N`, or
+  `mix surfex.mark SPEC_UNIT --withdraw --note N [--pick ID_PREFIX]`
 
 Each reads `.surfex.exs` as `mix surfex.status` does. Each needs the log to exist
 (`mix surfex.log --init`), and prints every entry it recorded.
 
 ```test confirm-named
-confirming an id with nothing dangling is an error, never a silent no-op
+confirming a relation with nothing to confirm is an error, never a silent no-op
 ```
 
 ```test move-carries
 a move records the recorded versions under the new id: if the text changed as it
 moved, or the other end changed, the moved relation dangles
+```
+
+```test move-carries-observations
+moving a test whose version is unchanged carries its red_green and baseline records to
+the new id, which is then discriminated and baselined; a carried baseline is no new one;
+a changed version carries nothing and says what stayed behind
+```
+
+```test move-carries-retirements
+a move carries a retired relation onto the new id as retired, with its reason, and never
+over a relation the new id already has; suggest still finds the move and goes on
+skipping the declined pair
+```
+
+```test decline-recorded
+retiring a pair never related records the decision not to relate it, at both ends'
+current versions, and needs a note; suggest never proposes it again, and a later relate
+revives it with the retire as its parent
+```
+
+```test mark-recorded
+mark records one needs_update mark at the unit's current version with a required note;
+withdraw retires the open mark, naming it when there are several; both refuse what
+isn't a scanned spec unit, and history shows them
+```
+
+```test recording-by-name
+relate, confirm, validate, retire, resolve, move and history each record or read entries by
+name, and never edit or remove one
 ```
 
 ## 15. Suggesting relations {#suggesting}
@@ -888,25 +1248,49 @@ relates the block, not its section. A family names every member. Left out:
 
 Each candidate records where it was first cited. `Surfex.Suggest.accept/4` records one
 `relate` per candidate, at the current hashes. It only ever creates relations that don't
-exist. **It never confirms a dangling relation**, which stays a named `confirm` (§14).
+exist. **It never confirms a dangling judgement**: a dangling `implements`, `verifies` or
+`excuses` relation is settled by evidence, a review or a named `confirm` (§14, §18).
 
 `Surfex.Suggest.all/5` gives every suggestion at once, computed together so that none
 repeats another:
-- **moves**: a spec id the log relates that is no longer scanned, and a spec id in no
-  relation at the **same version**, such as a renamed heading or an added anchor.
-  Only one-to-one matches are suggested. Two candidates at one version are ambiguous
-  and left alone. A section renamed and reworded at once is not recognised: its old
+- **moves**: a spec or test id the log knows that is no longer scanned, and an id of the
+  same kind with no records of its own at the **same version**: a renamed heading or an
+  added anchor; a test whose module, `describe` or file was renamed, as when a test file
+  is split into sub-modules. A test is known by its relations, or by its records alone
+  (§14). Accepting carries the relations and a test's records (`Surfex.Record.move/5`).
+  Only one-to-one matches are suggested. A version found under several gone or new ids is
+  **ambiguous**: reported, never suggested, since which is which is a judgement (`mix
+  surfex.move` does it by hand). A section renamed and reworded at once is not
+  recognised, and neither is a renamed test, whose name is part of its version: their old
   relations stay orphaned for review.
 - **refines**: each marked block and test hint `refines` the unit it sits in
   (`within`, §11), unless that relation exists in any state.
 - **implements**: the candidates above.
 - **verifies**: each test's declaration (§11) that resolves to a spec unit.
 - **tests**: each test paired with each scanned code item in its `calls` (§11).
+- **refresh**: each dangling structural relation whose fact the source still states: a
+  `tests` relation whose test still has the code in its `calls`, a `refines` relation
+  whose block or hint is still `within` the unit. These relations record what the source
+  says, not a judgement, so reading the source again re-establishes them. Judgement
+  relations are never refreshed.
+- **undeclared**: each undeclared `verifies` relation (§13.1), which accepting retires:
+  the test's own source says the claim is gone.
+- **excuses**: each code item that nothing implements, and that no `implements`
+  candidate in the same run will, paired with the class of the first rule it matches.
+  Matching is `Surfex.Coverage`'s (§7), where a parent counts as cited when something
+  implements it. A `never_excused` kind is never proposed. With `require: [code:
+  [:implements, :excuses]]`, every public item is then either described or deliberately
+  excused, and both are on record. An excuse dangles when its item or its class changes.
 
 The others are computed as if the moves were already recorded, so a moved
 section's relations are not suggested again under its new id.
-`Surfex.Suggest.accept_all/4` records them: each move (`Surfex.Record.move/5`), then each
-other suggestion as a `relate` at the current hashes.
+`Surfex.Suggest.accept_all/5` records them (its options carry the test evidence): each
+move (`Surfex.Record.move/5`), then each other suggestion as a `relate` at the current
+hashes, except an undeclared relation, which is retired. **Accepting validates nothing:**
+an `implements`, `verifies` or `excuses` relation is recorded as proposed, since a
+citation, a tag or a matching rule is a claim, not a judgement (§18). A `verifies`
+relation whose test has already failed at its current version is recorded on that
+evidence.
 
 `Mix.Tasks.Surfex.Suggest` is `mix surfex.suggest [--accept] [--note N]`: without
 `--accept` it lists every suggestion and writes nothing. Adopting the relation log is
@@ -917,9 +1301,25 @@ a pair already related, in any state, is never suggested again,
 so accepting suggestions never confirms a dangling relation
 ```
 
+```test suggest-test-moves
+a test id gone from the scan whose version one new test id has, with no records of its
+own, is suggested as a move, and accepting carries its relations and records; a version
+under several new ids is reported as ambiguous and not suggested
+```
+
 ```test suggest-moves
 an anchor added to a related section is suggested as a move, and its relations
 aren't suggested again; two new ids at one version are not suggested
+```
+
+```test suggest-refresh
+a dangling tests relation whose test still calls the code is refreshed on --accept; one
+whose test no longer calls it is not, and a dangling implements relation never is
+```
+
+```test suggest-proposes
+suggest proposes relations the spec and tests already imply and records them only on
+--accept
 ```
 
 ## 16. The specification guide {#spec-guide}
@@ -964,6 +1364,14 @@ runs aren't needed afterwards.
   `Surfex.Evidence.discriminating?/3`, with `Surfex.Evidence.red_then_green/3` giving the
   two runs that show it. A test changed in any way (body, helpers, setups, cases) is a new
   version, which must fail and pass again.
+- **Discrimination is kept in the log.** The evidence file is scratch: `mix clean`, a
+  fresh checkout, another machine or another worktree loses it. So `mix surfex.confirm
+  --evidence` records each test version that has discriminated as a `red_green`
+  observation (§12.1), once. From then on that version counts as discriminated wherever
+  the log is, and a green run against the current code is all a re-confirmation needs
+  (`tests`, `implements`, and `require_red`). The guards stay: the red and green runs
+  were against different code, and the observation is for one test version only.
+  `Surfex.Status.derive/4` lists the discriminated test versions (`discriminated`).
 - `Surfex.Evidence.latest/3` is a test version's most recent record.
 
 `Surfex.ExUnitFormatter` records it. A project adds it beside the usual formatter
@@ -973,7 +1381,11 @@ runs aren't needed afterwards.
 - A finished test is matched to its scanned record by file and line, so a test a
   comprehension generates counts for the record that defines it. A record whose test ran
   once per case failed if any case failed.
-- Skipped, excluded and invalid tests, and tests outside `tests:`, record nothing.
+- An excluded test (a tag the run's `exclude:` or `--only` leaves out) is recorded as
+  `excluded`, and a skipped one (`@tag :skip`) as `skipped`, at its version with no code
+  versions. They are neither red nor green: `Surfex.Evidence.latest/3` and
+  `Surfex.Evidence.red_then_green/3` pass over them. Invalid tests, and tests outside
+  `tests:`, record nothing.
 - When the suite finishes, the run's records are appended to the evidence file. The
   formatter never touches the relation log.
 
@@ -987,7 +1399,7 @@ red, or a changed test, does not
 
 | Relation | Confirmed by |
 |---|---|
-| `verifies` (test → spec) | judgement only (`Surfex.Record.confirm/4`): does the test still express the requirement? |
+| `verifies` (test → spec) | recorded on the red step: the test's current version has failed (§18). After a spec rewording that changes no behaviour, a named judgement (`Surfex.Record.confirm/6`) |
 | `tests` (test → code) | evidence: the test's current version has discriminated, and its latest run passed against the code's current version |
 | `implements` (spec ↔ code) | derived: a test with a current `verifies` relation to the spec unit, or to a block or hint inside it, has a current `tests` relation to the code, and such evidence. When the **spec** side is what changed, the `verifies` must be to that exact unit: someone has judged that the test expresses the reworded requirement |
 
@@ -1002,21 +1414,336 @@ for a confirmation by hand, unless `require_red: true` in `.surfex.exs` refuses 
 
 ```test evidence-confirms
 a code change whose test went red then green confirms the tests relation and then the
-implements relation; a test never red, failing now, green against other code, or changed
-confirms nothing; verifies is never confirmed by evidence; after a spec change only a test
-verifying that exact unit carries implements
+implements relation; a test never red, failing now, or green against other code confirms
+nothing; a changed test's failing run confirms its verifies relation, but after a spec-only
+rewording that is a judgement; after a spec change only a test verifying that exact unit
+carries implements
 ```
 
 **CI validates; it records nothing.** A CI job runs the tests with the formatter, from an
 empty evidence file (a cached `_build` would otherwise carry evidence from other runs),
 then `mix surfex.status --verify --evidence`. That checks that every relation holds and
-that every confirmation by evidence (`Surfex.Evidence.claimed?/1`: its note begins
-`Surfex.Evidence.note/0`) is borne out by this run. A claim the run contradicts fails the
-pipeline. CI never appends to the log and never saves evidence: the log's claims are made
-where the work is done, and CI only checks them.
+that every confirmation by evidence (`Surfex.Evidence.claimed?/1`: its basis is
+`evidence`, or, recorded before bases existed, its note begins `Surfex.Evidence.note/0`)
+is borne out by this run. A claim the run contradicts fails the
+pipeline. A project whose backlog of unvalidated relations is done adds `--validated`, so
+no relation is current without validation. CI never appends to the log and never saves
+evidence: the log's claims are made where the work is done, and CI only checks them.
 
 ```test evidence-checked
 a run where the test passes against the code as confirmed bears the claims out; a test
 that didn't run, failed, or ran against other code disproves them and fails the check;
 without evidence nothing is checked, and relations confirmed by hand never are
+```
+
+**A suite split across jobs.** Projects often run some tests in a job of their own
+(mutation, integration, slow or external-service tests) and exclude them elsewhere. A
+claim whose deciding test this run excluded or skipped is **not checked here**
+(`unchecked`, beside `unproven`): it is listed by test and reason in every report, and
+doesn't fail the check. A test with no record at all still **didn't run**, and fails: a
+job that silently stopped running a test can't hide behind an exclusion. For an
+`implements` carried by several tests, a disproof outranks a test that didn't run, which
+outranks an exclusion.
+
+**The jobs together check every claim.** Each job passing alone isn't enough: a claim
+could then be checked by none of them. A final job reads every job's evidence file (its
+CI artifact) with `mix surfex.status --evidence --merge PATH` (once per file;
+`Surfex.Status.derive/4` with `evidence: {:merged, [records, …]}`), and judges each claim
+against each file:
+- a disproof in any file (its test failed, or ran against other code) fails it, whatever
+  another file shows;
+- otherwise, a file that bears it out passes it;
+- otherwise no job's evidence ran it, and it fails (**no job**).
+
+A test absent from one job's file is normal in a split. Only the named files are read,
+and a named file that doesn't exist fails, rather than reading as an empty run. CI still
+records nothing: the evidence files are artifacts, not log entries.
+
+```test evidence-merged
+merged evidence passes a claim one job bears out, fails one any job disproves, and fails
+one no job ran; only the named files are read, and a missing one fails
+```
+
+```test evidence-excluded
+an excluded or skipped test is recorded at its version as such, neither red nor green;
+a claim whose test this run excluded or skipped is not checked here, listed and not
+failing, while a test with no record still fails
+```
+
+```test red-green-recorded
+a test version's red then green is recorded in the log once; with it, a green run
+re-confirms after the evidence file is lost; a changed test version, or red and green
+against the same code, records nothing
+```
+
+```test evidence-recorded
+a test run's results are recorded per scanned test at its versions, under _build, and
+read back oldest first
+```
+
+## 18. Validation by process {#validation}
+
+A current relation means the spec, the tests and the code were shown to belong together,
+not that someone said they do. **Saying code is implemented without following the process
+is a guess**, and a guess must never pass for validation. The process:
+
+```
+a spec unit changes, or has no relation
+  → ensure a failing test: it may exist already; if not, write it
+  → update the test relation (verifies), on the failing run
+  → build the code until the test is green
+  → update the code relation (implements), on the red run and the green one
+```
+
+**The balance.** A relation established by the process gives a reasonable understanding
+that the code is correct **while its tests pass**, and CI checks that on every run (§17).
+Nothing is revalidated unless the spec, the test or the code changes. A refactor that
+stays green is re-confirmed by evidence.
+
+**Each entry records its basis**, how it validates the relation (§12.1):
+
+| Basis | How the relation got it |
+|---|---|
+| `evidence` | test runs: a failing run for `verifies`; a red run and then a green one for `tests` and `implements` (`Surfex.Record.confirm_by_evidence/4`) |
+| `review` | a test examined against its spec unit and judged to validate it, then run green against the code (`Surfex.Record.validate/6`) |
+| `judgement` | a relation confirmed by name, with a note (`Surfex.Record.confirm/6`): for `verifies`, a spec reworded without a change of behaviour; for `excuses`, the item is what its class says |
+| `proposed` | a claim nothing has validated: a citation, a tag with no failing run, a pair named by hand (`Surfex.Record.relate/7`) |
+
+A move carries its tip's basis across (§14, `Surfex.Record.move/5`): a move changes where a relation points, not
+what validates it. A resolve (`Surfex.Record.resolve/7`) carries the chosen tip's: picking between judgements
+already made validates nothing new.
+
+- **What makes each relation current:**
+  - `implements`: **only** evidence or a review. Never by hand.
+  - `verifies`: evidence of the failing run, a review, or the judgement path.
+  - `excuses` and the other types: a judgement by name.
+  - Structural relations, `refines` and `tests`, record facts read from source and need no
+    basis.
+- **Unvalidated relations** are current `implements` or `verifies` relations with no
+  validating basis, such as those recorded before validation existed. They are reported,
+  and `mix surfex.status --validated` fails on them, so a project moves over once its
+  backlog is done. `Surfex.Status.derive/4` reports them, and fails on them under
+  `validated: true`.
+- **Validating an existing relation** means doing the work. Read the spec unit's claims
+  and the test. Judge whether the test accurately validates that component of the spec:
+  its cases, its boundaries, what must stay unchanged. Fix or extend the test where it
+  falls short; a changed test is a new version and follows the process. Then run it green
+  against the code, and record it with `Surfex.Record.validate/6`
+  (`mix surfex.validate TEST SPEC_UNIT --note N`). The note says which claim each
+  assertion checks. It needs the `verifies` relation, and green evidence at the current
+  versions of the test and of the code it exercises. Code usually implements a section
+  while its tests verify the hints inside it, so the unit may be that section: the review
+  judges that the test validates the section's claims for the code it exercises, and
+  needs the test's relation to the hint to be current already (validated first, against
+  the hint). Breaking the code to get a red run was rejected: a test that fails against a
+  mutant shows it is sensitive to the code, not that it reflects the spec.
+- **One relation at a time.** `confirm` (`Mix.Tasks.Surfex.Confirm`) names one relation, and
+  `validate` (`Mix.Tasks.Surfex.Validate`) one test and one unit. There is no form that
+  confirms or validates a list, and no form that confirms every relation touching an id.
+  The note is required, and records what was checked.
+
+```test process-proposed
+a citation, a tag with no failing run, or a pair named by hand is proposed and fails the
+check until evidence or a review validates it; accepting suggestions validates nothing
+```
+
+```test process-validated
+an implements relation becomes current only by evidence or a review, never by hand; a
+current relation without a validating basis is unvalidated, and fails only under
+--validated; a move, and a resolve, keeps its basis
+```
+
+```test process-one-at-a-time
+confirm takes one relation and a note, refuses implements, and records a judgement;
+validate needs the verifies relation and green evidence, and records a review; against a
+section it needs the test's current relation to a hint inside it, and records the section's
+implements alone
+```
+
+### 18.1 Adopting an existing suite {#adoption}
+
+The process (§18) suits new work. A project with an established suite has another
+problem: its passing tests can't honestly go red, so every relation would need a review
+up front, and again after every refactor until its test next discriminates. A project
+chooses how it adopts, with `adoption:` in `.surfex.exs`, read against the test files under the
+project root by `Surfex.Status.Config.adoption!/2` (and asked of one file by
+`Surfex.Status.Config.trusted?/2`):
+
+- `:reevaluate`, the default: nothing is taken on trust. Every relation is validated by
+  evidence, a review or a judgement, as §18 describes.
+- `:trust`: the existing tests may be adopted once, by a **baseline**.
+- `[trust: globs, reevaluate: globs]`: per area, for a codebase with both a well-kept
+  core and tests nobody has read in a while. The globs lie within `tests:` and don't
+  overlap; a test in neither is re-evaluated.
+
+`Surfex.Record.baseline/4` takes the baseline; `Mix.Tasks.Surfex.Baseline` is `mix surfex.baseline
+--note N`:
+
+- **Once.** It refuses when the log already holds a baseline, under `:reevaluate`,
+  without `tests:`, and when a trusted test's current version hasn't run green.
+- **What it records:** a `baseline` observation (§12.1) for each trusted test version,
+  basis `baseline`, with the adoption setting and the note; and, for each trusted test's
+  `verifies:` declarations at that commit, a `verifies` relation with basis `baseline`.
+- **What it means:** a baselined test version counts as if it had discriminated. A green
+  run then re-confirms its `tests` and `implements` relations after a code change, with
+  basis `baseline`, so they stay counted as trusted.
+- **It only shrinks.**
+  - A changed test version isn't covered by its record.
+  - A test's first real red→green records a `red_green` observation (§17), and its
+    relations move to `evidence`.
+  - Narrowing `adoption:` (`:trust` to `:reevaluate`, or a smaller trusted glob) stops the
+    records it no longer covers from counting. Their relations are reported unvalidated:
+    the backlog to review.
+  - Moving a test carries its baseline record to the new id when its version is unchanged
+    (§14): the same trust under a new name, not a second baseline.
+  - Widening trusts nothing new: the baseline is one-shot, and only the test versions it
+    recorded are trusted.
+- **It is visible.** A `baseline` relation is validated while its test's current version
+  is baselined and trusted; for an `implements`, while some such test verifies the unit
+  and exercises the code (`Surfex.Status.validated?/2` answers it for any relation).
+  `--validated` accepts it. Status, its JSON and `RELATIONS.md`
+  count `baseline` relations (`Surfex.Status.baseline_count/1`) and name the adoption mode,
+  and `mix surfex.status --no-baseline` (`baseline: :fail`) fails on them, for a project
+  finishing that backlog.
+
+```test adoption-modes
+adoption: is :reevaluate by default, :trust, or trusted and re-evaluated globs that lie
+within tests: and don't overlap; anything else is refused
+```
+
+```test baseline-one-shot
+the baseline refuses under :reevaluate, a second time, without tests:, or before the
+trusted tests run green; it records each trusted test version and its declared verifies,
+basis baseline
+```
+
+```test baseline-shrinks
+a baselined test re-confirms a refactor as baseline; its first red→green moves it to
+evidence; a changed test version, or narrowed trust, leaves its relations unvalidated;
+baseline relations are counted, and fail under baseline: :fail
+```
+
+## 19. Handing off found work {#hand-off}
+
+What Surfex finds is work: a spec unit marked as needing an update (§13.1), an id the
+policy says is unmet, a gap in the triangle. That work is a change to the spec, the tests
+or the code, and **it goes through the change process of the environment Surfex runs
+in**: a tracker, a proposal queue, a pull-request template, a person's inbox. Surfex knows
+no tracker. It drafts, and the environment's process decides.
+
+`Surfex.Change` makes a **change draft** for one piece of found work:
+- a title;
+- the problem: the mark's note, who made it and when; the unmet requirement; or the gap;
+- what it touches: the spec unit (with its location and current text), the tests that
+  verify it and the code that implements it, each with its relation's state;
+- the steps the process implies (§18): spec, failing test, test relation, code, code
+  relation.
+
+`Surfex.Change.drafts/3` gives a draft for every open mark, unmet id and triangle gap of a
+status, or, given ids, for those items: a marked unit's marks, or a draft to change the
+item. `Surfex.Change.markdown/1` renders one for a person; `Surfex.Change.json/1` renders
+a list for tools and agents.
+
+The **hand-off** is the project's own setting, `process:` in `.surfex.exs`
+(`Surfex.Change.hand_off/3`):
+- `:print` (the default): the draft is printed, for a person or an agent to carry into
+  their process;
+- `{:command, argv}`: the command runs once per draft, with `{title}`, `{body}` (the
+  markdown) and `{file}` (a file holding it) substituted into `argv`, and never through a
+  shell. A command that exits non-zero stops the hand-off with its output. The draft is
+  given as arguments, not on standard input: an argument needs no wrapper around the
+  command, and `{file}` serves a command that reads a file.
+
+`Mix.Tasks.Surfex.Draft` is `mix surfex.draft [ID…] [--format markdown|json] [--file]`.
+It prints the drafts and changes nothing. With `--file` it hands each draft to the hook
+instead. Surfex never hands anything off on its own initiative: only `--file` runs the
+hook. `mix surfex.mark` prints the new mark's draft.
+
+Surfex's own `.surfex.exs` hands drafts to this environment's proposal system:
+`{:command, ["glab", "issue", "create", "--label", "Proposal", "--title", "{title}",
+"--description", "{body}"]}`.
+
+```test change-drafts
+a draft is made for each open mark, unmet id and triangle gap, or for a named item, with
+its title, problem, the unit, tests and code it touches, and the process's steps; it
+renders as markdown and JSON
+```
+
+```test change-hand-off
+process: :print prints each draft; {:command, argv} runs once per draft with {title},
+{body} and {file} substituted and no shell; a failing command stops, with its output;
+mix surfex.draft prints unless --file is given
+```
+
+## 20. Completeness {#completeness}
+
+Status answers whether anything is broken. Completeness answers **how much of the project
+is covered**: which spec units, tests and code are missing a relation they need, and a
+score to move. `Surfex.Completeness.report/1` (`Surfex.Completeness`) derives it from a status, and it is a pure
+function of the scans and the log.
+
+**What counts.** Every spec unit with text of its own (a section, marked block or test
+hint whose own body isn't empty, `Surfex.Scan.Markdown.empty?/1`; a heading over
+subsections carries no claims), every
+test, and every code item. What's complete is judged on **validated** relations (§18):
+complete means validated, not asserted.
+
+| Kind | Complete when | Missing, as listed |
+|---|---|---|
+| spec unit | a test verifies it, or a unit inside it, by a current, validated relation; and every `implements` relation to it is current and validated. A unit no code implements (a policy, say) is complete with its test alone: every unit needs a test, and code only where the spec describes code | `no_relation` (in none), `no_test`, `unvalidated` |
+| test | it verifies a spec unit by a current, validated relation, and exercises code (a current `tests` relation). A test verifying only units no code implements is complete with its `verifies` alone | `no_relation`, `verifies_nothing`, `exercises_nothing` |
+| code | it implements a unit by a current, validated relation, or is excused by a current `excuses` relation; and, when implemented, a test verifying the unit exercises it (no `code_untested` gap, §13.1) | `no_relation`, `not_described` (neither implemented nor excused), `unvalidated`, `untested` |
+
+**The score** is complete items over all items, per kind and overall (every item weighted
+the same), as a percentage to one decimal with the counts. With nothing to count, a kind
+scores 100.
+
+- `Surfex.Completeness.text/1`: the scores, then each incomplete item with what it lacks
+  and where it is.
+- `Surfex.Completeness.json/1`: the work list for an agent: the scores, and each
+  incomplete item with its kind, id, what it lacks and its location.
+- `Surfex.Completeness.golden/2`: the report as a golden, `COMPLETENESS.md` by default, for
+  `goldens:` (§10.3). It holds counts and lists, with no hashes and no times.
+- `Surfex.Status.Config.completeness!/1` reads `completeness: [min: N]` (a number from 0
+  to 100; no key, no minimum), raising on anything else. It is the maintainer's intent,
+  and loud: below it (`Surfex.Completeness.below?/2`), `mix surfex.status` fails with the
+  score. Off by default, since the score is information first.
+
+`Mix.Tasks.Surfex.Completeness` is `mix surfex.completeness [--format text|json]`. It prints
+the report, and fails below `completeness: [min: N]`.
+
+```test completeness-rules
+a spec unit is complete when a validated test verifies it (or a unit inside it) and any
+implementing code is validated, with a test alone for a unit no code implements; a
+heading-only section isn't counted; a test is complete verifying and exercising code, or
+verifying only code-less units; code is complete when validated and exercised, or
+excused; each incomplete item names what it lacks
+```
+
+```test completeness-score
+the score is complete over all per kind and overall, to one decimal, 100 with nothing to
+count; it reads as text, JSON and a golden with no hashes or times; below completeness:
+[min: N] the status check fails
+```
+
+## 21. Discovering the tool {#info}
+
+Surfex's main user is an agent working out the state of a spec, its tests and its code.
+The agent shouldn't have to piece the tool together from the README, the guides and each
+task's moduledoc. `Mix.Tasks.Surfex.Info` is `mix surfex.info [TOPIC]`, and it tells the
+agent how the tool works from the installed version itself:
+
+- **With no topic, a directory** (`Surfex.Info.directory/0`) of fewer than 100 lines: what
+  Surfex is in a few lines, every topic with a one-line summary, and every `mix surfex.*`
+  command, grouped by job, one line each.
+- **With a topic, its page** (`Surfex.Info.page/1`): a focused, dense page with exact
+  commands, written for an agent. An unknown topic is refused, and the refusal names the
+  topics.
+- **The pages ship with the code.** They are Markdown files under `priv/info/`, built into
+  `Surfex.Info` at compile time, so they always match the installed version.
+  `Surfex.Info.topics/0` lists each topic with its summary.
+
+```test info-directory
+the directory is under 100 lines, names every topic and every mix surfex.* command; each
+topic prints its page; an unknown topic is refused, naming the topics
 ```

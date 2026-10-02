@@ -21,7 +21,19 @@ defmodule Surfex.Status.Config do
   @roles [:section, :block, :test_hint]
 
   # The keys a `.surfex.exs` may hold, besides the profile's (`Surfex.Profile.keys/0`).
-  @own [:scanner, :scanner_opts, :namespace, :goldens, :require, :tests, :triangle, :require_red]
+  @own [
+    :scanner,
+    :scanner_opts,
+    :namespace,
+    :goldens,
+    :require,
+    :tests,
+    :triangle,
+    :require_red,
+    :adoption,
+    :process,
+    :completeness
+  ]
 
   # The v0.2 trace's own keys, removed with it in 0.4.0.
   @removed [
@@ -115,6 +127,129 @@ defmodule Surfex.Status.Config do
     end
   end
 
+  @doc """
+  The `process:` hand-off (§19), validated: `:print` (the default) or `{:command, argv}`
+  with a non-empty list of strings.
+  """
+  @spec process!(keyword) :: :print | {:command, [String.t()]}
+  def process!(config) do
+    case Keyword.get(config, :process, :print) do
+      :print ->
+        :print
+
+      {:command, [_ | _] = argv} = process ->
+        if Enum.all?(argv, &is_binary/1), do: process, else: bad_process(process)
+
+      other ->
+        bad_process(other)
+    end
+  end
+
+  defp bad_process(value),
+    do:
+      raise(
+        ArgumentError,
+        "process: must be :print or {:command, argv} with argv a list of strings, got #{inspect(value)}"
+      )
+
+  @doc """
+  The status of the project at `root` under `config`, as `mix surfex.status` derives it:
+  the scans, the log, the `require:` policy and the options, plus `extra` options. For the
+  tasks that need the whole status, so each derives it the same way.
+  """
+  @spec status(keyword, String.t(), String.t(), keyword) :: Surfex.Status.t()
+  def status(config, root, namespace, extra) do
+    entries = if File.dir?(Surfex.Log.dir(root)), do: Surfex.Log.load(root), else: []
+    {scans, options} = load(config, root, namespace)
+    adoption = [adoption: adoption!(config, root)]
+    Surfex.Status.derive(scans, entries, require!(config), extra ++ adoption ++ options)
+  end
+
+  @doc """
+  The `completeness: [min: N]` floor (§20), a number from 0 to 100, or `nil` with no key.
+  Raises on anything else.
+  """
+  @spec completeness!(keyword) :: number | nil
+  def completeness!(config) do
+    case Keyword.fetch(config, :completeness) do
+      :error ->
+        nil
+
+      {:ok, [min: min]} when is_number(min) and min >= 0 and min <= 100 ->
+        min
+
+      {:ok, other} ->
+        raise ArgumentError,
+              "completeness: must be [min: N] with N from 0 to 100, got #{inspect(other)}"
+    end
+  end
+
+  @doc """
+  The `adoption:` setting (§18.1), validated against the test files under `root`:
+  `:reevaluate` (the default), `:trust`, or `[trust: globs, reevaluate: globs]`, whose globs
+  lie within `tests:` and don't overlap. Gives the setting and the trusted test files
+  (`:all` under `:trust`).
+  """
+  @spec adoption!(keyword, String.t()) :: %{setting: term, trusted: :all | MapSet.t(String.t())}
+  def adoption!(config, root) do
+    case Keyword.get(config, :adoption, :reevaluate) do
+      :reevaluate ->
+        %{setting: :reevaluate, trusted: MapSet.new()}
+
+      :trust ->
+        %{setting: :trust, trusted: :all}
+
+      setting ->
+        unless Keyword.keyword?(setting) and setting != [] and
+                 Enum.all?(setting, fn {k, v} ->
+                   k in [:trust, :reevaluate] and is_list(v) and Enum.all?(v, &is_binary/1)
+                 end),
+               do: bad_adoption(setting)
+
+        files = &files(root, Keyword.get(setting, &1, []))
+        {trusted, reevaluated} = {files.(:trust), files.(:reevaluate)}
+        tests = files(root, Keyword.get(config, :tests, []))
+
+        case MapSet.difference(MapSet.union(trusted, reevaluated), tests) |> Enum.sort() do
+          [] ->
+            :ok
+
+          outside ->
+            raise ArgumentError, "adoption: globs match files outside tests: #{inspect(outside)}"
+        end
+
+        case MapSet.intersection(trusted, reevaluated) |> Enum.sort() do
+          [] ->
+            :ok
+
+          both ->
+            raise ArgumentError,
+                  "adoption: trust and reevaluate globs overlap on #{inspect(both)}"
+        end
+
+        %{setting: setting, trusted: trusted}
+    end
+  end
+
+  defp bad_adoption(value),
+    do:
+      raise(
+        ArgumentError,
+        "adoption: must be :reevaluate, :trust or [trust: globs, reevaluate: globs], got #{inspect(value)}"
+      )
+
+  defp files(root, globs) do
+    for glob <- globs,
+        file <- Path.wildcard(Path.join(root, glob)),
+        into: MapSet.new(),
+        do: Path.relative_to(file, root)
+  end
+
+  @doc "Whether a test file is trusted under an adoption setting (`adoption!/2`)."
+  @spec trusted?(%{trusted: :all | MapSet.t(String.t())}, String.t()) :: boolean
+  def trusted?(%{trusted: :all}, _file), do: true
+  def trusted?(%{trusted: trusted}, file), do: MapSet.member?(trusted, file)
+
   @doc "The `require:` policy, validated. Raises `ArgumentError` naming what is wrong."
   @spec require!(keyword) :: keyword
   def require!(config) do
@@ -173,17 +308,18 @@ defmodule Surfex.Status.Config do
         ]
   def broken_citations(config, items, root, namespace) do
     items
-    |> Surfex.Cite.citations(profile!(config, namespace), root)
+    |> Surfex.Cite.citations(profile!(config, namespace, items), root)
     |> Enum.filter(&(&1.status in [:unresolved, :ambiguous]))
   end
 
   @doc """
   The citation-reading profile of a config: its profile keys (`Surfex.Profile.keys/0`),
-  over the Elixir scanner's defaults for its namespace (`namespace:` in the config, else
-  the one given). A project scanner's config gives its own `shape:`.
+  over the Elixir scanner's defaults for its roots: its namespace (`namespace:` in the
+  config, else the one given), and every top-level module the scanned `items` define (a
+  module whose name has no dot). A project scanner's config gives its own `shape:`.
   """
-  @spec profile!(keyword, String.t() | nil) :: Surfex.Profile.t()
-  def profile!(config, namespace) do
+  @spec profile!(keyword, String.t() | nil, [Surfex.Item.t()]) :: Surfex.Profile.t()
+  def profile!(config, namespace, items \\ []) do
     defaults =
       case Keyword.get(config, :scanner, :elixir) do
         :elixir ->
@@ -191,7 +327,12 @@ defmodule Surfex.Status.Config do
             Keyword.get(config, :namespace, namespace) ||
               raise(ArgumentError, "reading citations needs namespace: for the Elixir scanner")
 
-          Surfex.Scanner.Elixir.profile_defaults(ns)
+          roots =
+            for %Surfex.Item{kind: :module, name: name} <- items,
+                not String.contains?(name, "."),
+                do: name
+
+          Surfex.Scanner.Elixir.profile_defaults([ns | roots])
 
         _project_scanner ->
           []
@@ -205,7 +346,7 @@ defmodule Surfex.Status.Config do
       Keyword.get(config, :sources) ||
         raise(ArgumentError, ".surfex.exs needs sources: (the spec's globs)")
 
-    spec = Scan.Markdown.records(root, sources)
+    spec = Scan.Markdown.records(root, sources, Keyword.get(config, :exclude, []))
 
     if spec == [],
       do: raise(ArgumentError, "no spec sections found in #{inspect(sources)} under #{root}")

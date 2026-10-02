@@ -1,5 +1,6 @@
 defmodule Surfex.ScanExUnitTest do
   use ExUnit.Case, async: true
+  @moduletag verifies: "scan-records-pure"
 
   alias Surfex.Scan
   alias Surfex.Scan.ExUnit, as: Tests
@@ -177,7 +178,7 @@ defmodule Surfex.ScanExUnitTest do
     end
   end
 
-  test "calls: aliases, pipes, captures and imports resolved, helpers followed" do
+  test "calls: aliases, pipes, captures and imports resolved, helpers followed, modules named" do
     source = ~S'''
     defmodule MyApp.CartTest do
       use ExUnit.Case
@@ -202,15 +203,158 @@ defmodule Surfex.ScanExUnitTest do
 
     [test] = Tests.tests(source, "t.exs")
 
+    # Each function it calls, and each module it calls or names (#62).
     assert test.calls == [
+             "Enum",
              "Enum.map/2",
+             "MyApp.Cart",
              "MyApp.Cart.add/2",
              "MyApp.Cart.new/0",
              "MyApp.Cart.total/1",
              "MyApp.Fixtures.fixture/1",
+             "MyApp.Line",
              "MyApp.Line.new/1",
+             "MyApp.Price",
              "MyApp.Price.of/2",
+             "MyApp.Tax",
              "MyApp.Tax.apply/1"
            ]
+  end
+
+  test "a setup's calls are not the test's: it prepares, the test is what it calls" do
+    source = ~S"""
+    defmodule T do
+      use ExUnit.Case
+      setup_all do
+        %{seeded: MyApp.Seed.run()}
+      end
+
+      setup do
+        %{cart: MyApp.Cart.new()}
+      end
+
+      test "a", %{cart: cart}, do: assert(MyApp.Cart.total(cart) == 0)
+    end
+    """
+
+    [test] = Tests.tests(source, "t.exs")
+    assert test.calls == ["MyApp.Cart", "MyApp.Cart.total/1"]
+
+    # A setup is still part of the test's version.
+    [changed] =
+      Tests.tests(String.replace(source, "MyApp.Seed.run()", "MyApp.Seed.run(:all)"), "t.exs")
+
+    refute changed.hash == test.hash
+  end
+
+  test "a module handed to a helper counts as exercised" do
+    source = ~S"""
+    defmodule T do
+      use ExUnit.Case
+      defp run(module, args), do: module.run(args)
+      test "a", do: run(Mix.Tasks.Surfex.Status, [])
+    end
+    """
+
+    assert "Mix.Tasks.Surfex.Status" in hd(Tests.tests(source, "t.exs")).calls
+  end
+
+  # #62: a helper defined inside a describe block is the module's function too.
+  # #87: an alias applies where it's declared, as the compiler sees it.
+  describe "aliases are lexical" do
+    @describetag verifies: "test-alias-scope"
+
+    defp calls_of(source), do: Map.new(Tests.tests(source, "t.exs"), &{&1.id, &1.calls})
+
+    test "an alias in a test body applies to that test, from its line on" do
+      calls =
+        calls_of(~S"""
+        defmodule T do
+          use ExUnit.Case
+
+          test "a" do
+            Cart.empty()
+            alias MyApp.Cart
+            Cart.total([])
+          end
+
+          test "b", do: Cart.total([])
+        end
+        """)
+
+      assert "MyApp.Cart.total/1" in calls["T: a"]
+      # Before its alias, Cart is Cart: the line it's declared on is where it starts.
+      assert "Cart.empty/0" in calls["T: a"]
+      refute "MyApp.Cart.empty/0" in calls["T: a"]
+      # Another test doesn't see it.
+      assert calls["T: b"] == ["Cart", "Cart.total/1"]
+    end
+
+    test "a describe's alias applies to its tests and helpers, not to a sibling describe" do
+      calls =
+        calls_of(~S"""
+        defmodule T do
+          use ExUnit.Case
+
+          describe "d" do
+            alias MyApp.Cart, as: C
+            defp total(x), do: C.total(x)
+            test "a", do: total([])
+            test "b", do: C.add([], 1)
+          end
+
+          describe "e" do
+            test "c", do: C.add([], 1)
+          end
+        end
+        """)
+
+      assert "MyApp.Cart.total/1" in calls["T: d: a"]
+      assert "MyApp.Cart.add/2" in calls["T: d: b"]
+      assert calls["T: e: c"] == ["C", "C.add/2"]
+    end
+
+    test "every form: alias A.B, as:, and A.{B, C}, at any level" do
+      calls =
+        calls_of(~S"""
+        defmodule T do
+          use ExUnit.Case
+          alias MyApp.Line
+
+          describe "d" do
+            alias MyApp.{Cart, Price}
+
+            test "a" do
+              alias MyApp.Tax, as: T
+              Line.new(Cart.total([]), Price.of(1), T.rate())
+            end
+          end
+        end
+        """)
+
+      assert Enum.all?(
+               ~w(MyApp.Line.new/3 MyApp.Cart.total/1 MyApp.Price.of/1 MyApp.Tax.rate/0),
+               &(&1 in calls["T: d: a"])
+             )
+    end
+  end
+
+  test "a describe block's helpers are followed, for the version and the calls" do
+    source = ~S"""
+    defmodule T do
+      use ExUnit.Case
+
+      describe "d" do
+        defp check(x), do: MyApp.Cart.total(x) == 0
+        test "a", do: assert(check([]))
+      end
+    end
+    """
+
+    [test] = Tests.tests(source, "t.exs")
+    assert "MyApp.Cart.total/1" in test.calls
+
+    [weakened] = Tests.tests(String.replace(source, "== 0", ">= 0"), "t.exs")
+    refute weakened.hash == test.hash
   end
 end

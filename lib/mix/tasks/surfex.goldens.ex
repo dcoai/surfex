@@ -7,14 +7,15 @@ defmodule Mix.Tasks.Surfex.Goldens do
   of them.
 
       mix surfex.goldens            # check: fails on any drift
-      mix surfex.goldens --write    # regenerate every golden, then report the same failures
+      mix surfex.goldens --write    # regenerate every golden, drifted or not
 
   `--config PATH` reads another file. The namespace citations are read under defaults to
   the app's name camelized. The project is compiled only when an entry is project code;
   the built-in Elixir scanner reads source and needs no compile.
 
   **Every failure of every golden is reported in one run.** `--write` writes them all,
-  even when some fail, so the failures show up in the diff, and still exits non-zero.
+  drifted or not, so a drift shows up in the diff, and succeeds: regenerating is how a
+  drift is resolved. Checking is what fails.
   """
 
   use Mix.Task
