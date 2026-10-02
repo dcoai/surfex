@@ -308,17 +308,18 @@ defmodule Surfex.Status.Config do
         ]
   def broken_citations(config, items, root, namespace) do
     items
-    |> Surfex.Cite.citations(profile!(config, namespace), root)
+    |> Surfex.Cite.citations(profile!(config, namespace, items), root)
     |> Enum.filter(&(&1.status in [:unresolved, :ambiguous]))
   end
 
   @doc """
   The citation-reading profile of a config: its profile keys (`Surfex.Profile.keys/0`),
-  over the Elixir scanner's defaults for its namespace (`namespace:` in the config, else
-  the one given). A project scanner's config gives its own `shape:`.
+  over the Elixir scanner's defaults for its roots: its namespace (`namespace:` in the
+  config, else the one given), and every top-level module the scanned `items` define (a
+  module whose name has no dot). A project scanner's config gives its own `shape:`.
   """
-  @spec profile!(keyword, String.t() | nil) :: Surfex.Profile.t()
-  def profile!(config, namespace) do
+  @spec profile!(keyword, String.t() | nil, [Surfex.Item.t()]) :: Surfex.Profile.t()
+  def profile!(config, namespace, items \\ []) do
     defaults =
       case Keyword.get(config, :scanner, :elixir) do
         :elixir ->
@@ -326,7 +327,12 @@ defmodule Surfex.Status.Config do
             Keyword.get(config, :namespace, namespace) ||
               raise(ArgumentError, "reading citations needs namespace: for the Elixir scanner")
 
-          Surfex.Scanner.Elixir.profile_defaults(ns)
+          roots =
+            for %Surfex.Item{kind: :module, name: name} <- items,
+                not String.contains?(name, "."),
+                do: name
+
+          Surfex.Scanner.Elixir.profile_defaults([ns | roots])
 
         _project_scanner ->
           []

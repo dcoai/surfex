@@ -85,6 +85,84 @@ defmodule Surfex.Scanner.ElixirTest do
              ) == [["MyApp.Cart.add/2"]]
     end
 
+    # #69: a name ends where a name ends; a root glued to more letters is another word.
+    @tag verifies: "name-boundary"
+    test "a token ends at a name's end: a glued or hyphenated suffix is no name" do
+      d = Scanner.profile_defaults("Metresis")
+
+      for text <- [
+            "the header Metresis-Profile: <key>",
+            "MetresisCollector.Forge.* builds it",
+            "MetresisWeb.DomainLive.Show renders",
+            "see Metresis.Units-old"
+          ],
+          do: assert(Regex.scan(d[:token], text, capture: :all_but_first) == [], text)
+
+      assert Regex.scan(d[:token], "call Metresis.Units.convert/3. Then", capture: :all_but_first) ==
+               [["Metresis.Units.convert/3"]]
+    end
+
+    @tag verifies: "name-boundary"
+    test "several roots: every top-level module the code has is a root" do
+      d = Scanner.profile_defaults(["Metresis", "MetresisWeb"])
+      assert Regex.match?(d[:shape], "MetresisWeb.DomainLive.Show")
+      assert Regex.match?(d[:shape], "Metresis.Units.convert/3")
+      refute Regex.match?(d[:shape], "MetresisCollector.Forge")
+    end
+
+    # #69's reproduction, end to end: only the real citation is suggested, and a stale
+    # name under one of the project's roots is reported, not hidden behind the root module.
+    @tag verifies: "name-boundary"
+    test "metresis's spans: no root-module suggestion, and the stale name is unresolved" do
+      root = Path.join(System.tmp_dir!(), "surfex_roots_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(root)
+      on_exit(fn -> File.rm_rf!(root) end)
+
+      File.write!(Path.join(root, "spec.md"), """
+      # Profiles
+
+      The header `Metresis-Profile: <key> sha256:<hex>` carries it.
+
+      # Forge
+
+      The collector's `MetresisCollector.Forge.*` builds it.
+
+      # Show
+
+      `MetresisWeb.DomainLive.Show` renders a domain.
+
+      # Units
+
+      `Metresis.Units.convert/3` converts.
+      """)
+
+      items = [
+        %Surfex.Item{kind: :module, name: "Metresis", file: "lib/m.ex", hash: "1"},
+        %Surfex.Item{kind: :module, name: "MetresisWeb", file: "lib/w.ex", hash: "2"},
+        %Surfex.Item{kind: :module, name: "Metresis.Units", file: "lib/u.ex", hash: "3"},
+        %Surfex.Item{
+          kind: :function,
+          name: "convert/3",
+          parent: "Metresis.Units",
+          file: "lib/u.ex",
+          hash: "4"
+        }
+      ]
+
+      config = [sources: ["spec.md"]]
+      profile = Surfex.Status.Config.profile!(config, "Metresis", items)
+      scans = Surfex.Scan.Markdown.records(root, ["spec.md"]) ++ Surfex.Scan.code(items)
+
+      suggested =
+        for c <- Surfex.Suggest.candidates(profile, items, scans, [], root),
+            do: {c.spec.id, c.code.id}
+
+      assert suggested == [{"spec.md#Units", "Metresis.Units.convert/3"}]
+
+      assert [%{span: "MetresisWeb.DomainLive.Show", status: :unresolved}] =
+               Surfex.Status.Config.broken_citations(config, items, root, "Metresis")
+    end
+
     test "citing a function without its arity cites every arity; a call's arguments drop" do
       items = Scanner.items(@project)
       root = Path.join(System.tmp_dir!(), "surfex_elixir_#{System.unique_integer([:positive])}")

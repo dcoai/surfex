@@ -265,11 +265,26 @@ options) returns:
   project's own source. A poncho lists its members.
 
 `Surfex.Scanner.Elixir.profile_defaults/1` gives the profile settings reading an Elixir
-project's citations starts from, for a root namespace:
-- `shape`: the namespace's module and function names, with or without an arity
-- `token`: the same names, found inside longer text
+project's citations starts from, for its **roots**: `namespace:`, and every top-level
+module the code scanner found (a Phoenix app's `MyAppWeb` beside `MyApp`), since the code
+says what the project's names are (`Surfex.Status.Config.profile!/3`):
+- `shape`: the roots' module and function names, with or without an arity
+- `token`: the same names, found inside longer text. A name ends where a name ends: a
+  root glued to more letters (`MyAppCollector`), a hyphen (`MyApp-Profile`) or a further
+  segment that isn't a name is another word, not a citation of the root
 - a `normalise` rule that drops a call's arguments, so `MyApp.Cart.add(cart, item)` names
   `MyApp.Cart.add`
+
+A well-formed name under any root that resolves to nothing is an unresolved citation
+(§6), so a stale name in the spec is reported rather than matched to a shorter one. A
+name under no root (another library's, `Ecto.Changeset`) is not the project's to cite
+unless `known_external:` says so.
+
+```test name-boundary
+a token ends at a name's end, so a root glued to letters, a hyphen or a non-name segment
+is no citation of it; every top-level module the code has is a root, so a stale name
+under any root is unresolved rather than suggested against the root module
+```
 
 ```test elixir-scanner-items
 the Elixir scanner reports every public module and definition under the paths it is
