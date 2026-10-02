@@ -112,6 +112,11 @@ confirmed by hand.
 
 ### Fixed
 
+- **A test's calls see aliases where they're declared** (§11). An alias inside a test
+  body was ignored, so a call through it was recorded under the short name and the test
+  had no `tests` relation to the code it plainly calls. A `describe`'s alias, meanwhile,
+  reached every describe in the module. Aliases now apply as the compiler sees them.
+
 - **A planned `verifies` is proposed** (§14). `mix surfex.relate --planned` wrote one with
   no basis, so it read as a legacy entry. `Surfex.Record` now refuses to write any
   basis-less `implements` or `verifies`.

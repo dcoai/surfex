@@ -599,7 +599,10 @@ scans one text.
   string or list of strings raises, naming the file and line.
 - **What it calls**: the record's `calls` lists the functions the test's body and the
   private helpers it reaches call, as `Module.fun/arity`, and every module it calls or
-  names as a value (a module handed to a helper is exercised through it). Aliases are resolved, a
+  names as a value (a module handed to a helper is exercised through it). Aliases are resolved
+  where they're declared, as the compiler sees them: a module's apply throughout it, a
+  `describe`'s to its tests and the helpers defined in it (not to another describe), and
+  one in a test or helper body to that body, from its line on. A
   piped call counts the piped value, and a capture (`&Mod.fun/2`) is a call. A local
   call the module doesn't define is listed under each module it imports. Setups are
   left out: they prepare a test, and what a test tests is what it calls itself. These
@@ -700,6 +703,12 @@ not when a variable is renamed, or a setup it doesn't get changes
 ```test scan-records-pure
 scanners produce scan records only, each a pure function of the source: spec units,
 code items, tests and classes
+```
+
+```test test-alias-scope
+a test's calls resolve each alias where it's declared: a module's throughout, a describe's
+for its tests and helpers but not a sibling describe, a body's from its line on; every
+alias form
 ```
 
 ## 12. The relation log {#relation-log}
