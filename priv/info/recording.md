@@ -5,7 +5,8 @@ Create the log once with `mix surfex.log --init` (it also sets git's union merge
 
 - `mix surfex.suggest` lists relations the source already states: a spec section citing
   code by name (`implements`), test tags (`verifies`), what each test calls (`tests`),
-  units inside sections (`refines`). `--accept --note N` records them. Accepting validates
+  units inside sections (`refines`), and moves (a renamed heading, anchor, test module or
+  describe at the same version). `--accept --note N` records them. Accepting validates
   nothing: an `implements` from a citation is `proposed` until evidence or a review.
 - `mix surfex.relate FROM TO --type T --note N`: one relation by hand, `proposed`.
   `--planned` records an end that doesn't exist yet (the code you're about to write).

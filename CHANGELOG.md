@@ -16,7 +16,8 @@ confirmed by hand.
   red→green and baseline records to its new id when its version is unchanged, as when a
   test file is split into sub-modules or a `describe` regrouped. A test that changed earns
   them again, and the task lists what stayed behind. A carried baseline is not a second
-  one.
+  one. `mix surfex.suggest` spots these moves itself (same version, one to one), and lists
+  a version found under several ids as ambiguous rather than guessing.
 - **A suite split across CI jobs can pass `--evidence`** (§17). The formatter records an
   excluded or skipped test as such, at its version. A claim whose test this run left out
   is listed as *not checked here* in every report and doesn't fail; a test with no record
