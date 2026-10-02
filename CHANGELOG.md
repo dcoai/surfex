@@ -9,6 +9,14 @@ All notable changes to Surfex are recorded here, following
 `mix.exs` reads `0.5.17-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
 release it merely follows.
 
+### Changed
+
+- **The usage rules are one short page that points to `mix surfex.info`** (§21).
+  `usage-rules.md` is now the agent page: what surfex is, the rules for an agent, and where
+  to find the rest. The directory and the other topics are back in `priv/info/`, so
+  `mix usage_rules.sync` copies one short page into a project's `AGENTS.md` instead of
+  every topic, and the detail always matches the installed version.
+
 ## [0.5.16] — 2026-10-02
 
 The first release on Hex. Its docs are a guide to using surfex as a mix tool, and its

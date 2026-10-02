@@ -1,6 +1,9 @@
 # Working as an agent
 
-Surfex exists so the work of relating spec, tests and code is done, not waved through.
+Surfex keeps a project's specification, its tests and its code aligned, and makes doing
+that work, not waving it through, the only way to pass. It is a mix tool: **run `mix
+surfex.info`** for the directory of topics and commands, and `mix surfex.info TOPIC` for
+one. Both come from the installed version, so they are always current.
 
 **Read first.**
 - `mix surfex.status --format json`: the work list. Each relation needing attention, its

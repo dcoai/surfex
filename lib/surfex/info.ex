@@ -3,15 +3,17 @@ defmodule Surfex.Info do
   How Surfex works, told by the installed version itself (§21): a directory of under 100
   lines and a page per topic, for an agent meeting Surfex in a project.
 
-  The pages are the package's usage rules, built in at compile time: the directory is
-  `usage-rules.md` and each topic is `usage-rules/TOPIC.md` (the layout `usage_rules`
-  gathers into a project's `AGENTS.md`, and hexdocs show). The directory lists each topic
-  as a ``- `mix surfex.info TOPIC`: summary`` item, and that item is the topic's one
-  definition.
+  The pages are Markdown, built in at compile time: the directory is
+  `priv/info/index.md`, and each topic is `priv/info/TOPIC.md`, except the agent topic,
+  which is the package's `usage-rules.md`: the short page `usage_rules` copies into a
+  project's `AGENTS.md`, pointing back here. The directory lists each topic as a
+  ``- `mix surfex.info TOPIC`: summary`` item, and that item is the topic's one definition.
   """
 
-  @dir Path.expand("../../usage-rules", __DIR__)
-  @index Path.expand("../../usage-rules.md", __DIR__)
+  @dir Path.expand("../../priv/info", __DIR__)
+  @index Path.join(@dir, "index.md")
+  # The agent topic is the package's usage rules (§21).
+  @agent Path.expand("../../usage-rules.md", __DIR__)
   @external_resource @index
   @directory File.read!(@index)
 
@@ -20,7 +22,7 @@ defmodule Surfex.Info do
               do: {topic, summary}
 
   @pages Map.new(@topics, fn {topic, _} ->
-           path = Path.join(@dir, topic <> ".md")
+           path = if topic == "agent", do: @agent, else: Path.join(@dir, topic <> ".md")
            @external_resource path
            {topic, File.read!(path)}
          end)

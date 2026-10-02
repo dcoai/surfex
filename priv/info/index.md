@@ -7,23 +7,12 @@ confirmed at and with the basis that validated it. When an end changes, its rela
 dangle; `mix surfex.status` says exactly what needs attention and why.
 
 Code is never taken on anyone's word: a relation is validated by evidence (a test that
-went red, then green), a review, or a judgement. Run `mix surfex.status` first.
-
-## Rules
-
-- Work one relation at a time: read both ends, judge, record it with a note saying what
-  you checked. Never script confirmations, loop over the work list, or bulk-accept to go
-  green: a status reached that way is false.
-- A failing test comes before the code; record `verifies` on the failing run. A changed
-  test must fail first again, or be reviewed (`mix surfex.validate`).
-- Never confirm `implements` by hand: it needs evidence or a review.
-- If the spec is what's wrong, mark it (`mix surfex.mark`); don't bend the test.
-- Found work beyond the task goes to the project's process (`mix surfex.draft`).
-- Never hand-edit `.surfex/`; on a golden's merge conflict run `mix surfex.goldens --write`.
+went red, then green), a review, or a judgement. Run `mix surfex.status` first, and read
+the rules for an agent: `mix surfex.info agent`.
 
 ## Topics
 
-Read one with `mix surfex.info TOPIC` (with usage_rules: `surfex:TOPIC`).
+Read one with `mix surfex.info TOPIC`.
 
 - `mix surfex.info model`: spec, tests, code; relations, their states and bases
 - `mix surfex.info process`: spec → failing test → green code, and what each change needs
