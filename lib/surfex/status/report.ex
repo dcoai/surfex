@@ -66,11 +66,13 @@ defmodule Surfex.Status.Report do
       items(
         "Unproven (a confirmation by evidence this run doesn't bear out)",
         status.unproven,
-        fn u ->
-          {type, {ak, a}, {bk, b}} = u.relation
-          test = if u.test, do: "#{u.test} ", else: ""
-          "#{type}  #{ak} #{a} ↔ #{bk} #{b}: #{test}#{unproven_text(u.reason)}"
-        end
+        &claim_line/1
+      ),
+      # Information, not a failure: another job runs these (§17).
+      items(
+        "Not checked here (its test was excluded or skipped in this run)",
+        status.unchecked,
+        &claim_line/1
       ),
       # Listed only where they fail: a project moving over has many (§13.3).
       section(
@@ -154,20 +156,8 @@ defmodule Surfex.Status.Report do
             "items" => c.items
           }
         end),
-      "unproven" =>
-        Enum.map(status.unproven, fn u ->
-          {type, {ak, a}, {bk, b}} = u.relation
-
-          %{
-            "type" => Atom.to_string(type),
-            "ends" => [
-              %{"kind" => Atom.to_string(ak), "id" => a},
-              %{"kind" => Atom.to_string(bk), "id" => b}
-            ],
-            "test" => u.test,
-            "reason" => unproven_text(u.reason)
-          }
-        end),
+      "unproven" => Enum.map(status.unproven, &claim_json/1),
+      "unchecked" => Enum.map(status.unchecked, &claim_json/1),
       "undeclared" => Enum.map(status.undeclared, &%{"test" => &1.test, "spec" => &1.spec}),
       "baseline" => %{
         "relations" => Status.baseline_count(status),
@@ -394,7 +384,30 @@ defmodule Surfex.Status.Report do
   defp citation_text(%{status: :ambiguous, items: items}),
     do: "names more than one item: #{Enum.join(items, ", ")}"
 
+  # A claim by evidence and why this run doesn't bear it out, or didn't check it.
+  defp claim_line(u) do
+    {type, {ak, a}, {bk, b}} = u.relation
+    test = if u.test, do: "#{u.test} ", else: ""
+    "#{type}  #{ak} #{a} ↔ #{bk} #{b}: #{test}#{unproven_text(u.reason)}"
+  end
+
+  defp claim_json(u) do
+    {type, {ak, a}, {bk, b}} = u.relation
+
+    %{
+      "type" => Atom.to_string(type),
+      "ends" => [
+        %{"kind" => Atom.to_string(ak), "id" => a},
+        %{"kind" => Atom.to_string(bk), "id" => b}
+      ],
+      "test" => u.test,
+      "reason" => unproven_text(u.reason)
+    }
+  end
+
   defp unproven_text(:not_run), do: "didn't run"
+  defp unproven_text(:excluded), do: "excluded in this run"
+  defp unproven_text(:skipped), do: "skipped in this run"
   defp unproven_text(:failed), do: "failed"
   defp unproven_text(:other_code), do: "ran against another version of the code"
   defp unproven_text(:no_verifying_test), do: "no current verifying test exercises the code"

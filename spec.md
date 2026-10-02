@@ -1305,7 +1305,11 @@ runs aren't needed afterwards.
 - A finished test is matched to its scanned record by file and line, so a test a
   comprehension generates counts for the record that defines it. A record whose test ran
   once per case failed if any case failed.
-- Skipped, excluded and invalid tests, and tests outside `tests:`, record nothing.
+- An excluded test (a tag the run's `exclude:` or `--only` leaves out) is recorded as
+  `excluded`, and a skipped one (`@tag :skip`) as `skipped`, at its version with no code
+  versions. They are neither red nor green: `Surfex.Evidence.latest/3` and
+  `Surfex.Evidence.red_then_green/3` pass over them. Invalid tests, and tests outside
+  `tests:`, record nothing.
 - When the suite finishes, the run's records are appended to the evidence file. The
   formatter never touches the relation log.
 
@@ -1354,6 +1358,21 @@ evidence: the log's claims are made where the work is done, and CI only checks t
 a run where the test passes against the code as confirmed bears the claims out; a test
 that didn't run, failed, or ran against other code disproves them and fails the check;
 without evidence nothing is checked, and relations confirmed by hand never are
+```
+
+**A suite split across jobs.** Projects often run some tests in a job of their own
+(mutation, integration, slow or external-service tests) and exclude them elsewhere. A
+claim whose deciding test this run excluded or skipped is **not checked here**
+(`unchecked`, beside `unproven`): it is listed by test and reason in every report, and
+doesn't fail the check. A test with no record at all still **didn't run**, and fails: a
+job that silently stopped running a test can't hide behind an exclusion. For an
+`implements` carried by several tests, a disproof outranks a test that didn't run, which
+outranks an exclusion.
+
+```test evidence-excluded
+an excluded or skipped test is recorded at its version as such, neither red nor green;
+a claim whose test this run excluded or skipped is not checked here, listed and not
+failing, while a test with no record still fails
 ```
 
 ```test red-green-recorded

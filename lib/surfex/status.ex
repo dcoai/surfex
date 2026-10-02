@@ -90,6 +90,7 @@ defmodule Surfex.Status do
           unvalidated: [%{relation: tuple}],
           undeclared: [%{test: String.t(), spec: String.t()}],
           unproven: [%{relation: tuple, test: String.t() | nil, reason: atom}],
+          unchecked: [%{relation: tuple, test: String.t(), reason: :excluded | :skipped}],
           citations: [Surfex.Cite.t()],
           stale: [
             %{
@@ -181,6 +182,12 @@ defmodule Surfex.Status do
 
     relations = impacted(relations)
 
+    # A claim this run left its test out of is not checked here, not disproved (§17).
+    {unchecked, unproven} =
+      scans
+      |> unproven(relations, Keyword.get(opts, :evidence))
+      |> Enum.split_with(&(&1.reason in [:excluded, :skipped]))
+
     related =
       for r <- relations, {_type, a, b} = r.relation, end_ <- [a, b], into: MapSet.new(), do: end_
 
@@ -195,7 +202,8 @@ defmodule Surfex.Status do
       undeclared: undeclared(scans, relations),
       citations: Keyword.get(opts, :citations, []),
       stale: stale(scans, relations, Keyword.get(opts, :coverage)),
-      unproven: unproven(scans, relations, Keyword.get(opts, :evidence)),
+      unproven: unproven,
+      unchecked: unchecked,
       triangle: triangle(scans, relations),
       unvalidated: unvalidated(relations, baselined, scans),
       baselined: baselined,
@@ -613,6 +621,9 @@ defmodule Surfex.Status do
   # holds, must have passed against the code's version. For `implements`, some test with
   # a current `verifies` to the spec unit (or inside it) and a current `tests` to the code
   # must. `nil` evidence means no check.
+  # Why a claim isn't borne out, strongest first (§17).
+  @reasons [:failed, :other_code, :not_run, :excluded, :skipped]
+
   defp unproven(_scans, _relations, nil), do: []
 
   defp unproven(scans, relations, evidence) do
@@ -665,7 +676,11 @@ defmodule Surfex.Status do
       failures =
         for t <- candidates, f = passes(evidence, t, nil, [c], code_hash, definition), do: f
 
-      if length(failures) == length(candidates), do: hd(failures), else: nil
+      # Every candidate failed to bear it out: the strongest reason wins, so an exclusion
+      # never hides a disproof or a test that didn't run.
+      if length(failures) == length(candidates),
+        do: Enum.min_by(failures, &Enum.find_index(@reasons, fn r -> r == &1.reason end)),
+        else: nil
     end
   end
 
@@ -682,6 +697,10 @@ defmodule Surfex.Status do
     cond do
       latest == nil ->
         %{test: test, reason: :not_run}
+
+      # Left out of this run on purpose: not checked here, not disproved (§17).
+      latest.result in [:excluded, :skipped] ->
+        %{test: test, reason: latest.result}
 
       latest.result != :passed ->
         %{test: test, reason: :failed}
