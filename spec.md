@@ -1063,7 +1063,7 @@ time (context only), and when.
 | `Surfex.Record.validate/6` | a review (§18): the `verifies` relation from a test to a spec unit, and each `implements` relation of that unit whose code the test exercises (by definition, so one arity covers a function's others, §11) and that isn't validated already, validated at the current versions, basis `review`. The unit may be a section whose block or hint the test verifies: that relation must already be current, and the review records the section's `implements` relations alone |
 | `Surfex.Record.confirm_by_evidence/4` | every confirmation the test evidence justifies (§17, §18), basis `evidence`, with the evidence in the note: each dangling or proposed `verifies` relation whose test's current version has failed (unless only the spec changed, which is a judgement), then each dangling `tests` relation and each dangling or proposed `implements` relation whose test went red and then green. Nothing justified is `{:ok, []}`, not an error |
 | `Surfex.Record.retire/6` | that a relation no longer applies, naming every tip as a parent, with the ends as the tip recorded them. An end need not still be scanned: this is how an orphaned relation is put to rest. |
-| `Surfex.Record.resolve/7` | the chosen tip of a **conflicted** relation, recorded again with every tip as a parent. If the scans have moved since, the relation is then dangling, and confirming it is next. |
+| `Surfex.Record.resolve/7` | the chosen tip of a **conflicted** relation, recorded again **with its basis** and every tip as a parent: picking a side judges nothing new. If the scans have moved since, the relation is then dangling, and confirming it is next. |
 
 `Surfex.Record.move/5` moves every live relation of an id onto a new one: a renamed
 heading, an anchor added, a section moved. For each relation whose tip names the old id
@@ -1346,7 +1346,8 @@ stays green is re-confirmed by evidence.
 | `proposed` | a claim nothing has validated: a citation, a tag with no failing run, a pair named by hand (`Surfex.Record.relate/7`) |
 
 A move carries its tip's basis across (§14, `Surfex.Record.move/5`): a move changes where a relation points, not
-what validates it.
+what validates it. A resolve (`Surfex.Record.resolve/7`) carries the chosen tip's: picking between judgements
+already made validates nothing new.
 
 - **What makes each relation current:**
   - `implements`: **only** evidence or a review. Never by hand.
@@ -1385,7 +1386,7 @@ check until evidence or a review validates it; accepting suggestions validates n
 ```test process-validated
 an implements relation becomes current only by evidence or a review, never by hand; a
 current relation without a validating basis is unvalidated, and fails only under
---validated; a move keeps its basis
+--validated; a move, and a resolve, keeps its basis
 ```
 
 ```test process-one-at-a-time

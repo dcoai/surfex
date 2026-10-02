@@ -105,6 +105,10 @@ confirmed by hand.
 
 ### Fixed
 
+- **Resolving a conflict keeps the chosen tip's basis** (§14, §18). `mix surfex.resolve`
+  re-recorded the tip without it, so resolving between validated tips left the relation
+  unvalidated, and resolving between proposed ones made a claim current.
+
 - **A `verifies` relation outlived its test's declaration.** Removing a
   `@tag verifies:` left the relation current, because a tag isn't part of a test's
   version. Such a relation is now **undeclared**, and fails the check;
