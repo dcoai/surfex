@@ -44,12 +44,13 @@ defmodule Mix.Tasks.Surfex.Suggest do
     root = File.cwd!()
     config = Config.read!(Path.join(root, opts[:config] || ".surfex.exs"))
     namespace = Mix.Project.config()[:app] |> to_string() |> Macro.camelize()
-    profile = Config.profile!(config, namespace)
     if Keyword.get(config, :scanner, :elixir) != :elixir, do: Mix.Task.run("compile")
 
+    items = Config.items(config, root)
+    profile = Config.profile!(config, namespace, items)
     scans = Config.scans(config, root)
     entries = if File.dir?(Log.dir(root)), do: Log.load(root), else: []
-    suggestions = Suggest.all(profile, Config.items(config, root), scans, entries, root)
+    suggestions = Suggest.all(profile, items, scans, entries, root)
 
     for m <- suggestions.moves, do: Mix.shell().info("move        #{m.from} → #{m.to.id}")
 
