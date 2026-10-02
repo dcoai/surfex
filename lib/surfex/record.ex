@@ -322,15 +322,42 @@ defmodule Surfex.Record do
   Retires the relation of `type` between `from` and `to`: an entry naming every tip as a
   parent, with the ends as the tip recorded them. An end need not still be scanned, since
   retiring is how an orphaned relation is put to rest.
+
+  A pair **never related** can be retired too: that declines it, recording the decision
+  not to relate them before anyone has (§14). Both must be scanned, the entry is at their
+  current versions with no parent, and `meta[:note]` is required: it is the only record of
+  why. `Surfex.Suggest` then never proposes the pair, and a later `relate/6` revives it.
   """
   @spec retire([Scan.t()], [Entry.t()], String.t(), String.t(), atom, meta) ::
           {:ok, [Entry.t()]} | {:error, String.t()}
   def retire(scans, entries, from, to, type, meta) do
-    with {:ok, tips} <- tips(scans, entries, from, to, type) do
-      [tip | _] = tips
+    with {:ok, a} <- find_or_recorded(scans, entries, from),
+         {:ok, b} <- find_or_recorded(scans, entries, to) do
+      case Status.tips(entries, Entry.relation(type, a, b)) do
+        [] ->
+          decline(scans, from, to, type, meta)
 
-      with {:ok, entry} <- entry(:retire, type, tip.ends, Enum.map(tips, & &1.id), meta),
-           do: {:ok, [entry]}
+        [tip | _] = tips ->
+          with {:ok, entry} <- entry(:retire, type, tip.ends, Enum.map(tips, & &1.id), meta),
+               do: {:ok, [entry]}
+      end
+    end
+  end
+
+  # A retire of a pair the log has never related: the decision not to relate it.
+  defp decline(scans, from, to, type, meta) do
+    with {:ok, a} <- find(scans, from),
+         {:ok, b} <- find(scans, to),
+         :ok <-
+           if(is_binary(meta[:note]) and String.trim(meta[:note]) != "",
+             do: :ok,
+             else:
+               {:error,
+                "#{from} and #{to} were never related as #{type}: declining them needs a note " <>
+                  "saying why (--note)"}
+           ),
+         {:ok, entry} <- entry(:retire, type, [end_(a), end_(b)], [], with_basis(meta, nil)) do
+      {:ok, [entry]}
     end
   end
 

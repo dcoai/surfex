@@ -241,6 +241,20 @@ defmodule Surfex.SuggestTest do
       assert summary(again) == %{moves: [], refines: [], implements: []}
     end
 
+    @tag verifies: "decline-recorded"
+    test "a declined suggestion is never suggested again", %{tmp_dir: root} do
+      {s, scans} = suggest(root, @spec_md, [])
+      assert {"spec.md#Limits", "Wren.max_len/0"} in summary(s).implements
+
+      why = [note: "512 is the wire limit, documented in §2"] ++ @meta
+
+      {:ok, declined} =
+        Surfex.Record.retire(scans, [], "spec.md#Limits", "Wren.max_len/0", :implements, why)
+
+      {again, _} = suggest(root, @spec_md, declined)
+      refute {"spec.md#Limits", "Wren.max_len/0"} in summary(again).implements
+    end
+
     test "a heading renamed and reworded at once is not a move", %{tmp_dir: root} do
       entries = adopted(root)
 

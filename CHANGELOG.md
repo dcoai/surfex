@@ -12,6 +12,9 @@ confirmed by hand.
 
 ### Added
 
+- **Declining a suggestion** (§14). `mix surfex.retire` on a pair never related records
+  the decision not to relate it, with a required note, so `suggest` never proposes it.
+  Before, declining took a `relate` whose only purpose was to be retired.
 - **Excusing a module family** (§8). A rule's `parent:` regex matches a member's parent
   module, so scaffolding a generator emits (`MyAppWeb.CoreComponents`, `Layouts`, …) is
   excused by family rather than by a list of function names that also catches real
