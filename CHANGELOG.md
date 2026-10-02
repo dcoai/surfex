@@ -4,10 +4,12 @@ All notable changes to Surfex are recorded here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.16] — 2026-10-02
 
-`mix.exs` reads `0.5.1-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
-release it merely follows.
+The first release on Hex. Its docs are a guide to using surfex as a mix tool, and its
+usage pages ship as `usage-rules.md` for `usage_rules`, so the same text reaches the
+terminal (`mix surfex.info`), hexdocs and a project's `AGENTS.md`. It also keeps a moved
+baseline relation in CI's check, and makes the baseline adopt tags deliberately.
 
 ### Added
 
