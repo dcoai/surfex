@@ -55,6 +55,13 @@ confirmed by hand.
 
 ### Changed
 
+- **The log enforces its own grammar** (§12.1). Each type's end kinds and direction, and
+  the bases each type and op may carry, are checked when an entry is built or decoded, so
+  a malformed line from a bad merge or a hand edit is refused where it is read, naming the
+  entry and the rule. `mix surfex.log --verify` gives each problem's file and line.
+  Entries written before bases existed still load (a basis-less `implements`, `verifies`
+  or `excuses`), and every existing id is unchanged. `implements` never carries
+  `judgement`; a `depends_on` joins code to code. The unused `config` end kind is gone.
 - **The README opens with what Surfex does** and the situations it handles, without
   commands; the how-to list gave way to `mix surfex.info`.
 - **A relation is validated by the process, never asserted** (§18).
@@ -104,6 +111,10 @@ confirmed by hand.
   mentioned code described elsewhere were retired.
 
 ### Fixed
+
+- **A planned `verifies` is proposed** (§14). `mix surfex.relate --planned` wrote one with
+  no basis, so it read as a legacy entry. `Surfex.Record` now refuses to write any
+  basis-less `implements` or `verifies`.
 
 - **Resolving a conflict keeps the chosen tip's basis** (§14, §18). `mix surfex.resolve`
   re-recorded the tip without it, so resolving between validated tips left the relation

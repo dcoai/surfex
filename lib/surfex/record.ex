@@ -52,6 +52,8 @@ defmodule Surfex.Record do
   defp relate_basis(:verifies, %Scan{kind: :test} = test, evidence),
     do: if(red?(evidence, test), do: :evidence, else: :proposed)
 
+  # A planned verifies has no test that could have failed yet: it is a claim.
+  defp relate_basis(:verifies, _from, _evidence), do: :proposed
   defp relate_basis(_type, _from, _evidence), do: nil
 
   # Whether the test's current version has failed in `evidence`.
@@ -892,6 +894,15 @@ defmodule Surfex.Record do
   end
 
   defp entry(op, type, ends, parents, meta, note \\ nil) do
+    # The log admits a basis-less implements or verifies only as legacy (§12.1), so it
+    # can't tell a new one from an old one. Writing one is a bug here, and must be loud.
+    if op == :relate and type in [:implements, :verifies] and is_nil(meta[:basis]),
+      do:
+        raise(
+          ArgumentError,
+          "Surfex.Record would write a basis-less #{type}: every claim it records carries a basis (§12.1)"
+        )
+
     Entry.build(
       at:
         Keyword.get_lazy(meta, :at, fn ->

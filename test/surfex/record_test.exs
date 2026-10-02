@@ -265,6 +265,21 @@ defmodule Surfex.RecordTest do
                Record.confirm(written, [e], @spec_id, "M.later/1", :implements, note)
     end
 
+    # #90: Surfex.Record never writes a basis-less implements or verifies; the grammar
+    # admits those only as legacy, so it can't tell a new one from an old one.
+    @tag verifies: "grammar-bases"
+    test "a planned verifies or implements is proposed: the writers never leave a claim basis-less" do
+      {:ok, [ver]} =
+        Record.plan(scans(), [], "test:T: later", @spec_id, :verifies, @anything, @meta)
+
+      assert ver.basis == :proposed
+
+      {:ok, [impl]} =
+        Record.plan(scans(), [], @spec_id, "M.later/1", :implements, @anything, @meta)
+
+      assert impl.basis == :proposed
+    end
+
     test "the unscanned end's kind comes from its prefix, or from a # for a spec id" do
       {:ok, [e]} =
         Record.plan(scans(), [], "spec.md#Later", @code_id, :implements, @anything, @meta)
@@ -771,7 +786,8 @@ defmodule Surfex.RecordTest do
       impl = &rel(:implements, {:spec, @spec_id, "s1"}, {:code, @code_id, &1})
       renamed = [%{scan(:spec, "spec.md#new", "s1") | role: :section} | tl(world())]
 
-      for basis <- Entry.bases() do
+      # Every basis an implements may carry (never judgement, §12.1).
+      for basis <- Entry.bases() -- [:judgement] do
         {:ok, [_retired, moved]} =
           Record.move(renamed, [with_basis(impl.("c1"), basis)], @spec_id, "spec.md#new", @meta)
 

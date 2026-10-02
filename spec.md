@@ -719,7 +719,7 @@ only state surfex keeps. Scanners never read or write it (§11).
 | `parents` | the entry ids it follows for the same relation; two means it resolves a fork |
 | `op` | `relate`, `retire`, `mark` or `observe` (`Surfex.Log.Entry.ops/0`) |
 | `type` | a relation's: `implements`, `refines`, `depends_on`, `tests`, `verifies` (a test verifies a spec unit) or `excuses` (`Surfex.Log.Entry.types/0`); or a mark's: `needs_update` (`Surfex.Log.Entry.mark_types/0`); or an observation's: `red_green` or `baseline` (`Surfex.Log.Entry.observation_types/0`) |
-| `ends` | a relation's two `{kind, id, hash}`, of the kinds `Surfex.Log.Entry.kinds/0` lists. A `null` hash is a **planned** end: an id that didn't exist when the relation was recorded (§14). At most one end is planned. A mark's one end: the spec unit, at its hash. An observation's one end: the test, at its version |
+| `ends` | a relation's two `{kind, id, hash}`, of the kinds `Surfex.Log.Entry.kinds/0` lists (`spec`, `code`, `test`, `class`) and the grammar below allows. A `null` hash is a **planned** end: an id that didn't exist when the relation was recorded (§14). At most one end is planned. A mark's one end: the spec unit, at its hash. An observation's one end: the test, at its version |
 | `by` | who recorded it |
 | `note` | why, optionally |
 | `basis` | how the entry validates the relation (§18): `evidence`, `review`, `judgement`, `baseline` (§18.1) or `proposed` (`Surfex.Log.Entry.bases/0`); absent when it validates nothing, which keeps every older entry's canonical line and id |
@@ -741,8 +741,32 @@ only state surfex keeps. Scanners never read or write it (§11).
   `refines`, `tests`, `verifies`) keep their ends in the order given, from → to, because "A depends on
   B" is not "B depends on A". `Surfex.Log.Entry.relation/3` gives the relation of a type
   between two ends without an entry, oriented the same way.
+- **The grammar.** What a well-formed entry is, the log enforces itself, rather than
+  trusting its writers. A malformed entry from a bad merge, a hand edit or a writer's bug
+  is refused where it is read, not left to surface as a confusing state far away:
+
+  | Type | Op | Ends | Basis |
+  |---|---|---|---|
+  | `implements` | relate, retire | code ↔ spec | `proposed`, `evidence`, `review`, `baseline`; or none (legacy) |
+  | `verifies` | relate, retire | test → spec | `proposed`, `evidence`, `review`, `judgement`, `baseline`; or none (legacy) |
+  | `tests` | relate, retire | test → code | none, `evidence`, `judgement`, `baseline` |
+  | `refines` | relate, retire | spec → spec | none, `judgement` |
+  | `depends_on` | relate, retire | code → code | none, `judgement` |
+  | `excuses` | relate, retire | class ↔ code | `proposed`, `judgement`; or none (legacy) |
+  | `needs_update` | mark, retire | one spec | none |
+  | `red_green` | observe | one test | `evidence` |
+  | `baseline` | observe | one test | `baseline` |
+
+  A `retire` has the ends of what it retires and never a basis. **None (legacy)** admits
+  entries written before bases existed (0.4 and earlier): they decode, and status reports
+  an `implements` or `verifies` among them unvalidated (§13.1). `Surfex.Record` never
+  writes one: every `implements` and `verifies` it records carries a basis. `implements`
+  never carries `judgement`, since code is validated by evidence or a review (§18). A
+  violation names the rule ("implements ends must be code ↔ spec, got test, test"), and
+  at decode the entry too. `mix surfex.log --verify` lists every violation with its file
+  and line.
 - `Surfex.Log.Entry.build/1` makes an entry from its fields and computes its id, or says
-  which field is invalid. `Surfex.Log.Entry.new!/1` raises instead.
+  which field or rule is broken. `Surfex.Log.Entry.new!/1` raises instead.
 - **The canonical line is JSON**, keys in the order above (`Surfex.Log.Entry.encode/1`). It
   is readable by anything, and parsing it never evaluates code.
 - `Surfex.Log.Entry.decode/1` reads a line back, or says why it isn't an entry: a missing
@@ -765,6 +789,23 @@ and verifying the log reports it
 an entry's canonical line is JSON with fixed keys, its id a hash of that line; undirected
 ends are sorted; the vocabulary of ops, types, kinds and bases is fixed; a basis is
 written only when set, so an entry without one keeps its line and id
+```
+
+```test grammar-ends
+each type joins only its kinds of end, and a directed type only from → to; a mark is one
+spec end and an observation one test end; there is no config kind
+```
+
+```test grammar-bases
+each type carries only its bases, with none admitted as legacy for implements, verifies
+and excuses; implements never carries judgement; a retire and a mark carry no basis; an
+observation carries exactly its own
+```
+
+```test grammar-loud
+a line breaking the grammar is refused at decode, naming the entry and the rule, and
+verifying the log lists it with its file and line; every entry in surfex's own log fits,
+with its id unchanged
 ```
 
 ### 12.2 The log {#log-segments}

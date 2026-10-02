@@ -95,11 +95,11 @@ defmodule Surfex.Log do
 
     {entries, broken} =
       segments
-      |> Enum.flat_map(fn {_n, path} -> Enum.map(entry_lines(path), &{path, &1}) end)
-      |> Enum.reduce({[], []}, fn {path, line}, {ok, bad} ->
+      |> Enum.flat_map(fn {_n, path} -> Enum.map(numbered_lines(path), &{path, &1}) end)
+      |> Enum.reduce({[], []}, fn {path, {line, n}}, {ok, bad} ->
         case Entry.decode(line) do
           {:ok, entry} -> {[entry | ok], bad}
-          {:error, why} -> {ok, ["#{Path.basename(path)}: #{why}" | bad]}
+          {:error, why} -> {ok, ["#{Path.basename(path)}:#{n}: #{why}" | bad]}
         end
       end)
 
@@ -165,6 +165,15 @@ defmodule Surfex.Log do
 
     open = Path.join(dir, @open)
     if File.exists?(open), do: closed ++ [{:open, open}], else: closed
+  end
+
+  # Each entry line with its line number in the file, for reporting where a problem is.
+  defp numbered_lines(path) do
+    path
+    |> File.read!()
+    |> String.split("\n")
+    |> Enum.with_index(1)
+    |> Enum.reject(fn {line, _n} -> line == "" or header?(line) end)
   end
 
   defp entry_lines(path) do

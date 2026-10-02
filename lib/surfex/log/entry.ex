@@ -14,7 +14,10 @@ defmodule Surfex.Log.Entry do
   | `ends` | two `%{kind, id, hash}`: in order, from → to, for a directed type; sorted for an undirected one, so A↔B and B↔A are one relation. A `nil` hash (JSON `null`) is a **planned** end: an id that didn't exist when the relation was recorded. At most one end is planned. |
   | `by` | who recorded it |
   | `note` | why, optionally |
-  | `basis` | how it validates the relation: `:evidence`, `:review`, `:judgement` or `:proposed`; absent when it validates nothing |
+  | `basis` | how it validates the relation: `:evidence`, `:review`, `:judgement`, `:baseline` or `:proposed`; absent when it validates nothing |
+
+  Which ends and bases each type and op may have is the grammar of spec §12.1, enforced by
+  `build/1` and so by `decode/1`.
 
   An entry is never edited or removed. A later entry for the same relation supersedes it
   and names it as a parent.
@@ -33,7 +36,21 @@ defmodule Surfex.Log.Entry do
   @mark_types [:needs_update]
   # An observation is a fact about one test version (§12.1, §17), not a relation.
   @observation_types [:red_green, :baseline]
-  @kinds [:spec, :code, :test, :config, :class]
+  @kinds [:spec, :code, :test, :class]
+  # The grammar (§12.1): each type's ends, in order (sorted for an undirected type), and
+  # the bases it may carry. `nil` is no basis; for implements, verifies and excuses it is
+  # legacy, admitted for entries written before bases existed.
+  @grammar %{
+    implements: {[:code, :spec], [nil, :proposed, :evidence, :review, :baseline]},
+    verifies: {[:test, :spec], [nil, :proposed, :evidence, :review, :judgement, :baseline]},
+    tests: {[:test, :code], [nil, :evidence, :judgement, :baseline]},
+    refines: {[:spec, :spec], [nil, :judgement]},
+    depends_on: {[:code, :code], [nil, :judgement]},
+    excuses: {[:class, :code], [nil, :proposed, :judgement]},
+    needs_update: {[:spec], [nil]},
+    red_green: {[:test], [:evidence]},
+    baseline: {[:test], [:baseline]}
+  }
   # "A depends on B" is not "B depends on A": these keep their ends in the order given.
   @directed [:depends_on, :refines, :tests, :verifies]
 
@@ -179,6 +196,8 @@ defmodule Surfex.Log.Entry do
             do: {:ok, entry},
             else:
               {:error, "entry #{String.slice(id, 0, 12)} does not match its content (edited?)"}
+        else
+          {:error, why} -> {:error, "entry #{String.slice(id, 0, 12)}: #{why}"}
         end
 
       _ ->
@@ -284,6 +303,18 @@ defmodule Surfex.Log.Entry do
   defp orient(type, ends) when type in @directed, do: ends
   defp orient(_type, ends), do: Enum.sort_by(ends, &{&1.kind, &1.id})
 
+  defp shape(type) do
+    case elem(@grammar[type], 0) do
+      [one] -> "one #{one}"
+      [a, b] -> "#{a} #{if type in @directed, do: "→", else: "↔"} #{b}"
+    end
+  end
+
+  defp kinds(ends), do: Enum.map_join(ends, ", ", &to_string(&1.kind))
+
+  defp basis_name(nil), do: "no basis"
+  defp basis_name(basis), do: "basis #{basis}"
+
   defp sort_list(list) when is_list(list), do: Enum.sort(list)
   defp sort_list(other), do: other
 
@@ -306,15 +337,26 @@ defmodule Surfex.Log.Entry do
       e.op == :observe != e.type in @observation_types ->
         bad(:type, e.type)
 
-      e.type in @observation_types and
-          not match?([%{kind: :test, hash: h}] when is_binary(h), e.ends) ->
+      not (is_nil(e.basis) or e.basis in @bases) ->
+        bad(:basis, e.basis)
+
+      Enum.map(e.ends, & &1.kind) != elem(@grammar[e.type], 0) ->
+        {:error, "#{e.type} ends must be #{shape(e.type)}, got #{kinds(e.ends)}"}
+
+      # A mark and an observation are of a version: their one end always has a hash.
+      e.type not in @types and Enum.any?(e.ends, &is_nil(&1.hash)) ->
         bad(:ends, e.ends)
 
-      e.type in @mark_types and not match?([%{kind: :spec, hash: h}] when is_binary(h), e.ends) ->
-        bad(:ends, e.ends)
+      e.op == :retire and e.basis != nil ->
+        {:error, "a retire carries no basis, got #{e.basis}"}
 
-      e.type in @types and (length(e.ends) != 2 or Enum.any?(e.ends, &(&1.kind not in @kinds))) ->
-        bad(:ends, e.ends)
+      e.op == :mark and e.basis != nil ->
+        {:error, "a mark carries no basis, got #{e.basis}"}
+
+      e.basis not in elem(@grammar[e.type], 1) ->
+        {:error,
+         "#{e.type} can't carry #{basis_name(e.basis)} (allowed: " <>
+           Enum.map_join(elem(@grammar[e.type], 1), ", ", &basis_name/1) <> ")"}
 
       # Planning a relation between two things neither of which exists records nothing.
       Enum.all?(e.ends, &is_nil(&1.hash)) ->
@@ -322,9 +364,6 @@ defmodule Surfex.Log.Entry do
 
       not (is_list(e.parents) and Enum.all?(e.parents, &is_binary/1)) ->
         bad(:parents, e.parents)
-
-      not (is_nil(e.basis) or e.basis in @bases) ->
-        bad(:basis, e.basis)
 
       not Enum.all?([e.commit, e.by, e.note], &(is_nil(&1) or is_binary(&1))) ->
         bad(:commit_by_note, {e.commit, e.by, e.note})
