@@ -12,6 +12,11 @@ confirmed by hand.
 
 ### Added
 
+- **A suite split across CI jobs can pass `--evidence`** (§17). The formatter records an
+  excluded or skipped test as such, at its version. A claim whose test this run left out
+  is listed as *not checked here* in every report and doesn't fail; a test with no record
+  at all still fails, so a broken job can't hide behind an exclusion.
+
 - **`mix surfex.info [TOPIC]`** (§21): Surfex explains itself to an agent from the
   installed version. With no topic, a directory of under 100 lines: what Surfex is, a
   topic per line, and every command grouped by job. With a topic (model, process, agent,

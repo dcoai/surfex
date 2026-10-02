@@ -11,8 +11,9 @@ defmodule Surfex.ExUnitFormatter do
   `tests:` names in `.surfex.exs`, and the code. A finished test is matched to its scanned
   record by file and line, so a test a comprehension generates counts for the record that
   defines it. When a record's test ran more than once in a run (one per case), it failed
-  if any case failed. Skipped and excluded tests, and tests outside `tests:`, record
-  nothing. When the suite finishes, the run's records are appended to
+  if any case failed. An excluded or skipped test is recorded as such, with no code
+  versions, so a run that leaves a test out is told apart from one where it didn't run.
+  Invalid tests, and tests outside `tests:`, record nothing. When the suite finishes, the run's records are appended to
   `Surfex.Evidence.path/1` under `_build`: scratch data, never committed.
 
   It never touches the relation log. Evidence justifies confirmations only when someone
@@ -77,7 +78,9 @@ defmodule Surfex.ExUnitFormatter do
 
   defp outcome(nil), do: {:ok, :passed}
   defp outcome({:failed, _}), do: {:ok, :failed}
-  defp outcome(_skipped_excluded_or_invalid), do: :none
+  defp outcome({:excluded, _}), do: {:ok, :excluded}
+  defp outcome({:skipped, _}), do: {:ok, :skipped}
+  defp outcome(_invalid), do: :none
 
   # The scanned test whose lines hold the line ExUnit tags the test with.
   defp find(index, %{file: file, line: line}) do
@@ -90,6 +93,17 @@ defmodule Surfex.ExUnitFormatter do
 
   defp find(_index, _tags), do: nil
 
+  # A test's result over its cases: failed if any failed, passed if any ran; otherwise
+  # excluded or skipped, as its cases were.
+  defp result(outcomes) do
+    cond do
+      :failed in outcomes -> :failed
+      :passed in outcomes -> :passed
+      :excluded in outcomes -> :excluded
+      true -> :skipped
+    end
+  end
+
   # One record per scanned test: failed if any of its cases failed.
   defp records(state) do
     run = :crypto.strong_rand_bytes(4) |> Base.encode16(case: :lower)
@@ -100,14 +114,23 @@ defmodule Surfex.ExUnitFormatter do
     |> Enum.sort_by(fn {scan, _} -> scan.id end)
     |> Enum.with_index()
     |> Enum.map(fn {{scan, outcomes}, seq} ->
+      result = result(outcomes)
+
+      # A test that didn't run was run against no code.
+      code =
+        if result in [:passed, :failed],
+          do:
+            for(id <- scan.calls, hash = state.code[id], hash != nil, into: %{}, do: {id, hash}),
+          else: %{}
+
       %{
         test: scan.id,
         test_hash: scan.hash,
-        result: if(:failed in outcomes, do: :failed, else: :passed),
+        result: result,
         at: at,
         run: run,
         seq: seq,
-        code: for(id <- scan.calls, hash = state.code[id], hash != nil, into: %{}, do: {id, hash})
+        code: code
       }
     end)
   end

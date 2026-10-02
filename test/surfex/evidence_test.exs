@@ -145,6 +145,33 @@ defmodule Surfex.EvidenceTest do
       assert generated.run == totals.run
     end
 
+    # #98: a job that excludes a tag says so, so an excluded test isn't one that didn't run.
+    @tag verifies: "evidence-excluded"
+    test "an excluded or skipped test is recorded as such at its version, with no code",
+         %{cart_test: file, tmp_dir: root} do
+      {:ok, pid} = GenServer.start_link(Surfex.ExUnitFormatter, surfex_root: root)
+      GenServer.cast(pid, {:suite_started, []})
+      finished(pid, file, 4, {:excluded, "due to mutation filter"})
+      finished(pid, file, 9, {:skipped, "due to skip tag"})
+      finished(pid, file, 9, {:skipped, "due to skip tag"})
+      GenServer.cast(pid, {:suite_finished, %{}})
+      GenServer.stop(pid)
+
+      [generated, totals] = Evidence.load(Evidence.path(root))
+      assert %{test: "MyApp.CartTest: totals", result: :excluded, code: code} = totals
+      assert code == %{}
+      assert %{result: :skipped} = generated
+
+      # Neither red nor green: discrimination and the latest result ignore them.
+      runs = [record(:failed, "c1", 1), record(:excluded, nil, 2), record(:passed, "c2", 3)]
+
+      assert {%{result: :failed}, %{result: :passed}} =
+               Evidence.red_then_green(runs, "T: a", "t1")
+
+      assert Evidence.latest([record(:passed, "c1", 1), record(:skipped, nil, 2)], "T: a", "t1").result ==
+               :passed
+    end
+
     test "without tests: in .surfex.exs it raises", %{tmp_dir: root} do
       File.write!(Path.join(root, ".surfex.exs"), ~s([sources: ["spec.md"]]))
       {:ok, state} = Surfex.ExUnitFormatter.init(surfex_root: root)

@@ -23,7 +23,8 @@ marks), `--no-baseline` (fail on relations resting on an adoption baseline).
 | Triangle | the unit's verifying test must call the implementing code (`triangle: :fail`) |
 | Unvalidated (`--validated`) | review it (`mix surfex.validate`) |
 
-Not failing: new, planned, impacted, open marks (unless `--no-marks`).
+Not failing: new, planned, impacted, open marks (unless `--no-marks`), and claims not
+checked here because this run excluded or skipped their test.
 
 JSON, per relation: `type`, `state`, `impacted`, `tips`, and `ends`, each with `kind`, `id`,
 `recorded` and `now` (hashes), `changed`, `planned` and `location`. Work it one relation

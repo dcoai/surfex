@@ -691,6 +691,28 @@ defmodule Surfex.RecordTest do
                "Unproven (a confirmation by evidence this run doesn't bear out)"
     end
 
+    # #98: a test this job excluded wasn't checked here; that isn't a disproof.
+    @tag verifies: "evidence-excluded"
+    test "a test excluded or skipped in this run leaves its claims not checked here, not failing" do
+      for reason <- [:excluded, :skipped] do
+        status = Status.derive(world("s1", "c2"), claimed(), [], evidence: [ev(reason, nil, 5)])
+        assert status.unproven == []
+        assert [%{reason: ^reason, test: @t} | _] = status.unchecked
+        refute Status.failing?(status)
+
+        assert Surfex.Status.Report.text(status) =~
+                 "Not checked here (its test was excluded or skipped in this run)"
+
+        {json, :ok, _} =
+          status |> Surfex.Status.Report.json() |> :json.decode(:ok, %{null: nil})
+
+        assert [%{"reason" => _} | _] = json["unchecked"]
+      end
+
+      # A test that simply didn't run still fails: a broken job can't hide behind this.
+      assert [%{reason: :not_run} | _] = unproven([])
+    end
+
     test "without evidence given, nothing is checked; relations confirmed by hand never are" do
       assert Status.derive(world("s1", "c2"), claimed(), []).unproven == []
 
