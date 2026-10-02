@@ -1153,6 +1153,14 @@ across and never makes one. If the text changed as it moved, or the other end ch
 the moved relation dangles. The new id must be scanned. A conflicted relation must be
 resolved first. An old id with nothing to move is an error.
 
+**A retirement moves too.** A retired relation is a decision with a reason, and a rename
+is no reason to forget it: for each retired relation of the old id, the move records a
+`retire` of the same relation on the new id, at the recorded versions, its note naming
+the original retire and its reason. It is skipped where the new id already has that
+relation, so it never retires a decision taken since. `mix surfex.move` reports how many
+live and retired relations came across, and `mix surfex.suggest` finds a move whose old
+id only retired relations name (§15), so a declined pair stays declined.
+
 **Moving a test carries its records.** A test's version is its content (§11): renaming
 its module, its `describe` or its file leaves the version as it was, under a new id. Each
 `red_green` and `baseline` observation (§12.1) of the old id at the version the new id is
@@ -1200,6 +1208,12 @@ moved, or the other end changed, the moved relation dangles
 moving a test whose version is unchanged carries its red_green and baseline records to
 the new id, which is then discriminated and baselined; a carried baseline is no new one;
 a changed version carries nothing and says what stayed behind
+```
+
+```test move-carries-retirements
+a move carries a retired relation onto the new id as retired, with its reason, and never
+over a relation the new id already has; suggest still finds the move and goes on
+skipping the declined pair
 ```
 
 ```test mark-recorded

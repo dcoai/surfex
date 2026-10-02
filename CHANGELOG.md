@@ -129,6 +129,10 @@ confirmed by hand.
 
 ### Fixed
 
+- **A move keeps the relations someone retired** (§14). `mix surfex.move` carried only
+  live relations, so after an anchor was added the retired ones were forgotten and
+  `suggest` proposed them again. A retired relation now comes across as retired, with its
+  reason, and `suggest` finds a move whose old id only retirements name.
 - **A name glued to a root is no citation of it** (§5.2). `MetresisCollector.Forge`,
   `MetresisWeb.…` and a `Metresis-Profile` header were read as citations of the root
   module `Metresis` and suggested as `implements`, hiding a stale name as a plausible
