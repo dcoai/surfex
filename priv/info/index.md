@@ -1,6 +1,6 @@
 # Surfex
 
-Surfex keeps a project's specification, its tests and its code in step. It scans the
+Surfex keeps a project's specification, its tests and its code aligned. It scans the
 three (spec sections, test cases, code items, each at a content hash) and keeps an
 append-only log of the relations between them, each recorded at the versions it was
 confirmed at and with the basis that validated it. When an end changes, its relations

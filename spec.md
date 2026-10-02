@@ -1,6 +1,6 @@
 # Surfex specification {#surfex}
 
-Surfex keeps a specification, its tests and its code in step. It reads source without
+Surfex keeps a specification, its tests and its code aligned. It reads source without
 compiling it, versions every spec section, test and public definition, and keeps an
 append-only log of which versions someone confirmed belong together (§11–§15). When
 either side changes, the relation dangles until it is confirmed again. It also renders
@@ -20,7 +20,7 @@ Surfex is a build-time tool. A project takes it as a dev/test dependency
 
 It serves two uses:
 
-1. **Keeping a spec, its tests and its code in step** (§11–§15). The spec, the tests and
+1. **Keeping a spec, its tests and its code aligned** (§11–§15). The spec, the tests and
    the code are scanned into versioned records. A log records which versions were
    confirmed to belong together, and `mix surfex.status` checks it: nothing changed
    since it was confirmed, every item described or deliberately excused, and every name
