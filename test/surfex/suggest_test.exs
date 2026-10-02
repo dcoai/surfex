@@ -203,6 +203,44 @@ defmodule Surfex.SuggestTest do
       assert Enum.frequencies_by(status.relations, & &1.state) == %{proposed: 2, retired: 1}
     end
 
+    # #70: an anchor added to a section whose decisions are all retirements still moves,
+    # and suggest goes on honouring them under the new id.
+    @tag verifies: "move-carries-retirements"
+    test "a retired pair stays declined across an added anchor", %{tmp_dir: root} do
+      entries = adopted(root)
+      {_s, scans} = suggest(root, @spec_md, entries)
+      note = [note: "512 is the wire limit, documented in §2, not here"] ++ @meta
+
+      {:ok, retired} =
+        Surfex.Record.retire(
+          scans,
+          entries,
+          "spec.md#Limits",
+          "Wren.max_len/0",
+          :implements,
+          note
+        )
+
+      entries = entries ++ retired
+
+      {s, scans} =
+        suggest(root, String.replace(@spec_md, "# Limits", "# Limits {#limits}"), entries)
+
+      assert summary(s).moves == [{"spec.md#Limits", "spec.md#limits"}]
+      assert summary(s).implements == []
+
+      {:ok, recorded} = Suggest.accept_all(s, scans, entries, @meta)
+
+      {again, _} =
+        suggest(
+          root,
+          String.replace(@spec_md, "# Limits", "# Limits {#limits}"),
+          entries ++ recorded
+        )
+
+      assert summary(again) == %{moves: [], refines: [], implements: []}
+    end
+
     test "a heading renamed and reworded at once is not a move", %{tmp_dir: root} do
       entries = adopted(root)
 

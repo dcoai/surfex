@@ -357,6 +357,45 @@ defmodule Surfex.RecordTest do
       assert :dangling in state(renamed("s1", "c2"), [old | entries])
     end
 
+    # #70: a retirement is a decision with a reason; a rename is no reason to forget it.
+    @tag verifies: "move-carries-retirements"
+    test "carries a retired relation as retired, with its reason, and never over a live one" do
+      old = related()
+      note = later(@meta, 1) ++ [note: "the section describes the wire format, not add/2"]
+      {:ok, [retired]} = Record.retire(scans(), [old], @spec_id, @code_id, :implements, note)
+
+      {:ok, recorded} = Record.move(renamed(), [old, retired], @spec_id, @new_id, later(@meta, 2))
+
+      assert [%Entry{op: :retire, type: :implements} = carried] = recorded
+      assert %{kind: :spec, id: @new_id, hash: "s1"} in carried.ends
+      assert carried.note =~ "the section describes the wire format, not add/2"
+      assert carried.note =~ String.slice(retired.id, 0, 12)
+
+      status = Status.derive(renamed(), [old, retired | recorded])
+
+      assert %{state: :retired} =
+               Enum.find(
+                 status.relations,
+                 &(&1.relation == {:implements, {:code, @code_id}, {:spec, @new_id}})
+               )
+
+      # The new id already relates the pair: the live decision stands, nothing is retired.
+      live =
+        Entry.new!(
+          at: "2026-09-28T12:00:00Z",
+          op: :relate,
+          type: :implements,
+          basis: :review,
+          ends: [
+            %{kind: :spec, id: @new_id, hash: "s1"},
+            %{kind: :code, id: @code_id, hash: "c1"}
+          ]
+        )
+
+      assert {:error, "no live relation names " <> _} =
+               Record.move(renamed(), [old, retired, live], @spec_id, @new_id, later(@meta, 2))
+    end
+
     test "refuses a new id that isn't scanned, an old id with nothing live, and a conflict" do
       old = related()
 

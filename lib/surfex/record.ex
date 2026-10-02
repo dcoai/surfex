@@ -361,9 +361,10 @@ defmodule Surfex.Record do
     with {:ok, target} <- find(scans, new),
          {_kind, old_id} = split_kind(old),
          groups = live_groups(entries, target.kind, old_id),
+         retirements = retirements(entries, target, old_id),
          {carry, _left} = test_observations(entries, target, old_id),
          :ok <-
-           if(groups == [] and carry == [],
+           if(groups == [] and retirements == [] and carry == [],
              do: {:error, "no live relation names #{old}: nothing to move"},
              else: :ok
            ) do
@@ -371,8 +372,9 @@ defmodule Surfex.Record do
       meta = Keyword.put(meta, :note, note)
 
       with {:ok, moved} <- move_relations(groups, entries, target, old_id, meta),
+           {:ok, kept} <- carry_retirements(retirements, meta),
            {:ok, carried} <- carry(carry, target, old_id, meta),
-           do: {:ok, moved ++ carried}
+           do: {:ok, moved ++ kept ++ carried}
     end
   end
 
@@ -442,6 +444,43 @@ defmodule Surfex.Record do
 
         error ->
           {:halt, error}
+      end
+    end)
+  end
+
+  # The retired relations of `old_id` whose moved relation the log doesn't have yet: a
+  # retirement is a decision, carried as one, and never over a relation the new id has.
+  defp retirements(entries, target, old_id) do
+    known = MapSet.new(for e <- entries, Entry.relation?(e), do: Entry.relation(e))
+
+    for %Entry{op: :retire} = tip <- retired_tips(entries, target.kind, old_id),
+        ends = Enum.map(tip.ends, &moved_end(&1, target, old_id)),
+        not MapSet.member?(known, Entry.relation(tip.type, hd(ends), List.last(ends))),
+        do: {tip, ends}
+  end
+
+  defp carry_retirements(retirements, meta) do
+    Enum.reduce_while(retirements, {:ok, []}, fn {tip, ends}, {:ok, acc} ->
+      reason = if tip.note, do: ": #{tip.note}", else: ""
+      note = "#{meta[:note]}; still retired (entry #{String.slice(tip.id, 0, 12)})#{reason}"
+
+      case entry(:retire, tip.type, ends, [], meta |> Keyword.put(:note, note) |> with_basis(nil)) do
+        {:ok, kept} -> {:cont, {:ok, acc ++ [kept]}}
+        error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp retired_tips(entries, kind, old_id) do
+    entries
+    |> Enum.filter(&Entry.relation?/1)
+    |> Enum.filter(fn e -> Enum.any?(e.ends, &(&1.kind == kind and &1.id == old_id)) end)
+    |> Enum.map(&Entry.relation/1)
+    |> Enum.uniq()
+    |> Enum.flat_map(fn relation ->
+      case Status.tips(entries, relation) do
+        [%Entry{op: :retire} = tip] -> [tip]
+        _ -> []
       end
     end)
   end

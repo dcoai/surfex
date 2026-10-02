@@ -227,11 +227,14 @@ defmodule Surfex.Suggest do
 
     # Ends of orphaned relations, and a test's observations: a test may have records and
     # no relation (§14).
+    # A retired relation's gone end counts too: its retirement is a decision to carry (§14).
     orphaned =
-      for %{state: :orphaned, tips: [tip], changed: changed} <- status.relations,
+      for %{state: state, tips: [tip], changed: changed} <- status.relations,
+          state in [:orphaned, :retired],
           end_ <- tip.ends,
           end_.kind in [:spec, :test],
-          {end_.kind, end_.id} in changed,
+          state == :retired or {end_.kind, end_.id} in changed,
+          not MapSet.member?(scanned, {end_.kind, end_.id}),
           do: {end_.kind, end_.id, end_.hash}
 
     observed =
