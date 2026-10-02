@@ -768,6 +768,8 @@ defmodule Surfex.Record do
              else: {:error, "the #{type} relation is not conflicted: nothing to resolve"}
            ),
          {:ok, chosen} <- choose(tips, pick),
+         # Picking a side judges nothing new: the chosen tip keeps what validated it.
+         meta = with_basis(meta, chosen.basis),
          {:ok, entry} <-
            entry(chosen.op, type, chosen.ends, Enum.map(tips, & &1.id), meta, chosen.note) do
       {:ok, [entry]}

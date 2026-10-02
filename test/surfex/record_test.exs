@@ -765,6 +765,47 @@ defmodule Surfex.RecordTest do
       assert moved.basis == :review
     end
 
+    # #89: re-recording a tip judges nothing new, so it keeps whatever validated it.
+    @tag verifies: "process-validated"
+    test "re-recording a tip keeps its basis: move, and resolve between conflicted tips" do
+      impl = &rel(:implements, {:spec, @spec_id, "s1"}, {:code, @code_id, &1})
+      renamed = [%{scan(:spec, "spec.md#new", "s1") | role: :section} | tl(world())]
+
+      for basis <- Entry.bases() do
+        {:ok, [_retired, moved]} =
+          Record.move(renamed, [with_basis(impl.("c1"), basis)], @spec_id, "spec.md#new", @meta)
+
+        assert moved.basis == basis, "move dropped #{basis}"
+
+        # Two tips recorded without seeing each other, from one base; pick one.
+        base = impl.("c0")
+        tip = &%{with_basis(impl.(&1), basis) | parents: [base.id]}
+        [a, b] = [tip.("c1"), tip.("c9")] |> Enum.map(&Entry.new!(Map.from_struct(&1)))
+        entries = [base, a, b]
+        assert [%{state: :conflicted}] = Status.derive(world(), entries).relations
+
+        {:ok, [fix]} =
+          Record.resolve(world(), entries, @spec_id, @code_id, :implements, a.id, @meta)
+
+        assert fix.basis == basis, "resolve dropped #{basis}"
+      end
+
+      # Resolving between proposed tips leaves a claim, still proposed and failing.
+      base = impl.("c0")
+
+      proposed =
+        &Entry.new!(Map.from_struct(%{with_basis(impl.(&1), :proposed) | parents: [base.id]}))
+
+      [a, b] = [proposed.("c1"), proposed.("c9")]
+
+      {:ok, [fix]} =
+        Record.resolve(world(), [base, a, b], @spec_id, @code_id, :implements, a.id, @meta)
+
+      status = Status.derive(world(), [base, a, b, fix])
+      assert [%{state: :proposed}] = status.relations
+      assert Status.failing?(status)
+    end
+
     @tag verifies: "process-one-at-a-time"
     test "confirm takes one relation and a note, refuses implements, and records a judgement" do
       legacy = rel(:implements, {:spec, @spec_id, "s1"}, {:code, @code_id, "c1"})
