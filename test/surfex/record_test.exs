@@ -373,6 +373,93 @@ defmodule Surfex.RecordTest do
     end
   end
 
+  # #99: a renamed test module or describe is the same test version under a new id; what
+  # the log knows about that version comes with it.
+  describe "moving a test" do
+    @describetag verifies: "move-carries-observations"
+    @old_t "OldTest: totals: empty"
+    @new_t "NewTest: totals: empty"
+
+    defp test_scan(id, hash, file \\ "test/core/new_test.exs"),
+      do: %{scan(:test, id, hash) | location: %{file: file, lines: {1, 1}}}
+
+    defp observed(type, basis, hash \\ "t1"),
+      do:
+        Entry.new!(
+          at: "2026-09-28T09:30:00Z",
+          op: :observe,
+          type: type,
+          basis: basis,
+          ends: [%{kind: :test, id: @old_t, hash: hash}]
+        )
+
+    defp tested,
+      do:
+        Entry.new!(
+          at: "2026-09-28T09:00:00Z",
+          op: :relate,
+          type: :tests,
+          ends: [%{kind: :test, id: @old_t, hash: "t1"}, %{kind: :code, id: @code_id, hash: "c1"}]
+        )
+
+    test "carries its red→green and baseline records when its version is unchanged" do
+      log = [tested(), observed(:red_green, :evidence), observed(:baseline, :baseline)]
+      scans = [scan(:code, @code_id, "c1"), test_scan(@new_t, "t1")]
+
+      {:ok, recorded} = Record.move(scans, log, "test:" <> @old_t, "test:" <> @new_t, @meta)
+
+      carried = for %Entry{op: :observe} = e <- recorded, do: {e.type, e.basis, hd(e.ends)}
+
+      assert Enum.sort(carried) == [
+               {:baseline, :baseline, %{kind: :test, id: @new_t, hash: "t1"}},
+               {:red_green, :evidence, %{kind: :test, id: @new_t, hash: "t1"}}
+             ]
+
+      assert Enum.all?(recorded, &(&1.op != :observe or &1.note =~ "carried from #{@old_t}"))
+
+      trust = %{setting: :trust, trusted: :all}
+      status = Status.derive(scans, log ++ recorded, [], adoption: trust)
+      assert MapSet.member?(status.discriminated, {@new_t, "t1"})
+      assert MapSet.member?(status.baselined, {@new_t, "t1"})
+
+      # Not a second baseline: the one-shot refusal still holds.
+      assert {:error, "a baseline was already taken" <> _} =
+               Record.baseline(
+                 scans,
+                 log ++ recorded,
+                 [],
+                 Keyword.merge(@meta, adoption: trust, note: "again")
+               )
+    end
+
+    test "a changed version carries nothing, and says which records stayed behind" do
+      log = [tested(), observed(:red_green, :evidence)]
+      scans = [scan(:code, @code_id, "c1"), test_scan(@new_t, "t2")]
+
+      {:ok, recorded} = Record.move(scans, log, "test:" <> @old_t, "test:" <> @new_t, @meta)
+      refute Enum.any?(recorded, &(&1.op == :observe))
+
+      assert [%{type: :red_green, hash: "t1", now: "t2"}] =
+               Record.left_behind(scans, log, "test:" <> @old_t, "test:" <> @new_t)
+    end
+
+    test "a test with records but no live relation still moves them" do
+      scans = [test_scan(@new_t, "t1")]
+
+      assert {:ok, [%Entry{op: :observe, type: :red_green}]} =
+               Record.move(
+                 scans,
+                 [observed(:red_green, :evidence)],
+                 "test:" <> @old_t,
+                 "test:" <> @new_t,
+                 @meta
+               )
+
+      assert {:error, "no live relation names" <> _} =
+               Record.move(scans, [], "test:" <> @old_t, "test:" <> @new_t, @meta)
+    end
+  end
+
   # #54: people or agents judge meaning, and evidence judges behaviour.
   describe "confirm_by_evidence/4" do
     @describetag verifies: "evidence-confirms"

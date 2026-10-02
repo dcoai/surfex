@@ -12,6 +12,10 @@ defmodule Mix.Tasks.Surfex.Move do
   keeps the version recorded for `OLD`, so a move never confirms anything: if the text
   changed as it moved, the relation dangles until you confirm it. `mix surfex.suggest`
   proposes moves it can see (the same version under a new id).
+
+  Moving a test (a renamed module, `describe` or file) also carries its `red_green` and
+  `baseline` records, when its version is unchanged. Any it leaves behind are listed: the
+  test changed, so it earns them again.
   """
 
   use Mix.Task
@@ -24,5 +28,12 @@ defmodule Mix.Tasks.Surfex.Move do
     {old, new} = R.two!(ids)
     {root, scans, entries, meta} = R.context(opts)
     R.record(root, Surfex.Record.move(scans, entries, old, new, meta))
+
+    for left <- Surfex.Record.left_behind(scans, entries, old, new) do
+      Mix.shell().info(
+        "not carried: #{left.type} for version #{left.hash}, but #{new} is at #{left.now}: " <>
+          "the test changed, so it earns this again"
+      )
+    end
   end
 end

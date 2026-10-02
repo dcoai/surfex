@@ -347,7 +347,13 @@ defmodule Surfex.Record do
   relation is dangling and needs confirming like any other.
 
   `old` need not be scanned any more; `new` must be, as the same kind. A conflicted
-  relation must be resolved first, and an `old` with no live relation is an error.
+  relation must be resolved first, and an `old` with nothing to move is an error.
+
+  **A test's records come too** (§14). A test's version is its content, not its name, so a
+  renamed module, `describe` or file is the same version under a new id. Each `red_green`
+  and `baseline` observation of `old` at the version `new` is scanned at is recorded again
+  on `new`, with its type and basis and a note naming the original. One at another
+  version stays behind (`left_behind/4`): the test changed, and earns its records again.
   """
   @spec move([Scan.t()], [Entry.t()], String.t(), String.t(), meta) ::
           {:ok, [Entry.t()]} | {:error, String.t()}
@@ -355,37 +361,89 @@ defmodule Surfex.Record do
     with {:ok, target} <- find(scans, new),
          {_kind, old_id} = split_kind(old),
          groups = live_groups(entries, target.kind, old_id),
+         {carry, _left} = test_observations(entries, target, old_id),
          :ok <-
-           if(groups == [],
+           if(groups == [] and carry == [],
              do: {:error, "no live relation names #{old}: nothing to move"},
              else: :ok
            ) do
       note = Keyword.get(meta, :note, "moved from #{old_id} to #{target.id}")
       meta = Keyword.put(meta, :note, note)
 
-      Enum.reduce_while(groups, {:ok, []}, fn {relation, tips}, {:ok, acc} ->
-        with [tip] <- tips,
-             ends = Enum.map(tip.ends, &moved_end(&1, target, old_id)),
-             {:ok, retired} <- entry(:retire, tip.type, tip.ends, [tip.id], with_basis(meta, nil)),
-             # A move changes where a relation points, not what validates it (§18).
-             {:ok, moved} <-
-               entry(
-                 :relate,
-                 tip.type,
-                 ends,
-                 parents(entries ++ acc, tip.type, hd(ends), List.last(ends)),
-                 with_basis(meta, tip.basis)
-               ) do
-          {:cont, {:ok, acc ++ [retired, moved]}}
-        else
-          [_, _ | _] ->
-            {:halt, {:error, "#{inspect(relation)} is conflicted: resolve it before moving"}}
-
-          error ->
-            {:halt, error}
-        end
-      end)
+      with {:ok, moved} <- move_relations(groups, entries, target, old_id, meta),
+           {:ok, carried} <- carry(carry, target, old_id, meta),
+           do: {:ok, moved ++ carried}
     end
+  end
+
+  @doc """
+  The observations of test `old` that a move to `new` leaves behind (`move/5`): those at a
+  version other than the one `new` is scanned at, each with its type, the version it was
+  for (`hash`) and `new`'s (`now`).
+  """
+  @spec left_behind([Scan.t()], [Entry.t()], String.t(), String.t()) :: [
+          %{type: atom, hash: String.t(), now: String.t(), entry: String.t()}
+        ]
+  def left_behind(scans, entries, old, new) do
+    {:ok, target} = find(scans, new)
+    {_kind, old_id} = split_kind(old)
+    {_carry, left} = test_observations(entries, target, old_id)
+    for e <- left, do: %{type: e.type, hash: hd(e.ends).hash, now: target.hash, entry: e.id}
+  end
+
+  # A test's observations under `old_id`: those at `target`'s version, not already on
+  # `target`, to carry; those at another version, left behind.
+  defp test_observations(entries, %Scan{kind: :test} = target, old_id) do
+    mine = for %Entry{op: :observe, ends: [%{id: ^old_id}]} = e <- entries, do: e
+
+    have =
+      MapSet.new(
+        for %Entry{op: :observe, ends: [%{id: id, hash: h}]} = e <- entries,
+            id == target.id,
+            do: {e.type, h}
+      )
+
+    {carry, left} = Enum.split_with(mine, &(hd(&1.ends).hash == target.hash))
+    {Enum.reject(carry, &MapSet.member?(have, {&1.type, target.hash})), left}
+  end
+
+  defp test_observations(_entries, _target, _old_id), do: {[], []}
+
+  defp carry(observations, target, old_id, meta) do
+    Enum.reduce_while(observations, {:ok, []}, fn e, {:ok, acc} ->
+      note = "#{meta[:note]}; carried from #{old_id} (entry #{String.slice(e.id, 0, 12)})"
+      meta = meta |> Keyword.put(:note, note) |> with_basis(e.basis)
+
+      case entry(:observe, e.type, [%{kind: :test, id: target.id, hash: target.hash}], [], meta) do
+        {:ok, carried} -> {:cont, {:ok, acc ++ [carried]}}
+        error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp move_relations(groups, entries, target, old_id, meta) do
+    Enum.reduce_while(groups, {:ok, []}, fn {relation, tips}, {:ok, acc} ->
+      with [tip] <- tips,
+           ends = Enum.map(tip.ends, &moved_end(&1, target, old_id)),
+           {:ok, retired} <- entry(:retire, tip.type, tip.ends, [tip.id], with_basis(meta, nil)),
+           # A move changes where a relation points, not what validates it (§18).
+           {:ok, moved} <-
+             entry(
+               :relate,
+               tip.type,
+               ends,
+               parents(entries ++ acc, tip.type, hd(ends), List.last(ends)),
+               with_basis(meta, tip.basis)
+             ) do
+        {:cont, {:ok, acc ++ [retired, moved]}}
+      else
+        [_, _ | _] ->
+          {:halt, {:error, "#{inspect(relation)} is conflicted: resolve it before moving"}}
+
+        error ->
+          {:halt, error}
+      end
+    end)
   end
 
   # Relations with an end `{kind, old_id}`, grouped with their tips, excluding retired ones.

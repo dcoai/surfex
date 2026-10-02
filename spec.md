@@ -1124,7 +1124,17 @@ in the old one's place, both noting the move. The moved end keeps the hash **rec
 for the old id**, and the other end its recorded hash, so a move carries a judgement
 across and never makes one. If the text changed as it moved, or the other end changed,
 the moved relation dangles. The new id must be scanned. A conflicted relation must be
-resolved first. An old id with no live relation is an error.
+resolved first. An old id with nothing to move is an error.
+
+**Moving a test carries its records.** A test's version is its content (§11): renaming
+its module, its `describe` or its file leaves the version as it was, under a new id. Each
+`red_green` and `baseline` observation (§12.1) of the old id at the version the new id is
+scanned at is recorded again on the new id, with its type and basis and a note naming the
+original entry, so the test stays discriminated and, under trust, baselined. A test with
+such records and no live relation still moves. An observation at another version stays
+behind (`Surfex.Record.left_behind/4`, which `mix surfex.move` lists): the test changed, so
+it earns it again. Renaming the test itself changes its version, since its name is part of
+the test node that is hashed, so its records stay behind too.
 
 `Surfex.Record.mark/5` records a `needs_update` mark on one spec unit, at its current
 version, with a note (required) saying what is wrong in the result. The id must be a
@@ -1157,6 +1167,12 @@ confirming a relation with nothing to confirm is an error, never a silent no-op
 ```test move-carries
 a move records the recorded versions under the new id: if the text changed as it
 moved, or the other end changed, the moved relation dangles
+```
+
+```test move-carries-observations
+moving a test whose version is unchanged carries its red_green and baseline records to
+the new id, which is then discriminated and baselined; a carried baseline is no new one;
+a changed version carries nothing and says what stayed behind
 ```
 
 ```test mark-recorded
@@ -1520,6 +1536,8 @@ project root by `Surfex.Status.Config.adoption!/2` (and asked of one file by
   - Narrowing `adoption:` (`:trust` to `:reevaluate`, or a smaller trusted glob) stops the
     records it no longer covers from counting. Their relations are reported unvalidated:
     the backlog to review.
+  - Moving a test carries its baseline record to the new id when its version is unchanged
+    (§14): the same trust under a new name, not a second baseline.
   - Widening trusts nothing new: the baseline is one-shot, and only the test versions it
     recorded are trusted.
 - **It is visible.** A `baseline` relation is validated while its test's current version
