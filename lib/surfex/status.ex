@@ -616,14 +616,14 @@ defmodule Surfex.Status do
     end
   end
 
+  # Why a claim isn't borne out, strongest first (§17).
+  @reasons [:failed, :other_code, :not_run, :excluded, :skipped]
+
   # A current relation confirmed by evidence (`Surfex.Evidence.claimed?/1`) whose claim the
   # given evidence (this run's) doesn't bear out: its test, at the version the relation
   # holds, must have passed against the code's version. For `implements`, some test with
   # a current `verifies` to the spec unit (or inside it) and a current `tests` to the code
-  # must. `nil` evidence means no check.
-  # Why a claim isn't borne out, strongest first (§17).
-  @reasons [:failed, :other_code, :not_run, :excluded, :skipped]
-
+  # must. `nil` evidence means no check; `{:merged, runs}` is several CI jobs' runs (§17).
   defp unproven(_scans, _relations, nil), do: []
 
   defp unproven(scans, relations, evidence) do
@@ -634,12 +634,36 @@ defmodule Surfex.Status do
     tests = pairs.(:tests)
     verifies = pairs.(:verifies)
 
+    judge = fn r, tip, run -> disproved(r, tip, run, tests, verifies, {within, definition}) end
+
     for {%{relation: relation} = r, tip} <- current,
         Surfex.Evidence.claimed?(tip),
-        failure = disproved(r, tip, evidence, tests, verifies, {within, definition}),
+        failure = against(evidence, &judge.(r, tip, &1)),
         failure != nil,
         do: Map.put(failure, :relation, relation)
   end
+
+  # One run's verdict on a claim; or, for several jobs' runs merged (§17), a disproof in
+  # any run, else borne out by any, else no job ran it.
+  defp against({:merged, runs}, judge) do
+    verdicts = Enum.map(runs, judge)
+
+    cond do
+      disproof = Enum.find(verdicts, &match?(%{reason: r} when r in [:failed, :other_code], &1)) ->
+        disproof
+
+      structural = Enum.find(verdicts, &match?(%{reason: :no_verifying_test}, &1)) ->
+        structural
+
+      runs != [] and Enum.any?(verdicts, &is_nil/1) ->
+        nil
+
+      true ->
+        %{test: Enum.find_value(verdicts, & &1[:test]), reason: :no_job}
+    end
+  end
+
+  defp against(run, judge), do: judge.(run)
 
   defp disproved(
          %{type: :tests, relation: {_, {:test, t}, {:code, c}}},

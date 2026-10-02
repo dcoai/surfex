@@ -713,6 +713,35 @@ defmodule Surfex.RecordTest do
       assert [%{reason: :not_run} | _] = unproven([])
     end
 
+    # #98: each CI job's evidence, read together in a final job.
+    @tag verifies: "evidence-merged"
+    test "merged jobs: one bearing a claim out passes it, a disproof anywhere fails, and none checking it fails" do
+      merged = fn files ->
+        Status.derive(world("s1", "c2"), claimed(), [], evidence: {:merged, files})
+      end
+
+      job_main = [ev(:excluded, nil, 5)]
+      job_slow = [ev(:passed, "c2", 6)]
+
+      # The main job excluded the test, the slow job ran it: checked, borne out.
+      status = merged.([job_main, job_slow])
+      assert status.unproven == [] and status.unchecked == []
+      refute Status.failing?(status)
+
+      # A test simply absent from a job's file is normal in a split.
+      refute Status.failing?(merged.([[], job_slow]))
+
+      # Every job left it out: no job checked it, and that fails.
+      status = merged.([job_main, [ev(:skipped, nil, 6)]])
+      assert [%{reason: :no_job} | _] = status.unproven
+      assert Status.failing?(status)
+      assert Surfex.Status.Report.text(status) =~ "no job's evidence ran it"
+
+      # A disproof in any job fails, whatever another job shows.
+      assert [%{reason: :failed} | _] =
+               merged.([job_slow, [ev(:failed, "c2", 7)]]).unproven
+    end
+
     test "without evidence given, nothing is checked; relations confirmed by hand never are" do
       assert Status.derive(world("s1", "c2"), claimed(), []).unproven == []
 

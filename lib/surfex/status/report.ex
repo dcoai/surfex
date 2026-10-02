@@ -406,6 +406,7 @@ defmodule Surfex.Status.Report do
   end
 
   defp unproven_text(:not_run), do: "didn't run"
+  defp unproven_text(:no_job), do: "no job's evidence ran it"
   defp unproven_text(:excluded), do: "excluded in this run"
   defp unproven_text(:skipped), do: "skipped in this run"
   defp unproven_text(:failed), do: "failed"
