@@ -136,12 +136,12 @@ confirmed by hand.
   live relations, so after an anchor was added the retired ones were forgotten and
   `suggest` proposed them again. A retired relation now comes across as retired, with its
   reason, and `suggest` finds a move whose old id only retirements name.
-- **A name glued to a root is no citation of it** (§5.2). `MetresisCollector.Forge`,
-  `MetresisWeb.…` and a `Metresis-Profile` header were read as citations of the root
-  module `Metresis` and suggested as `implements`, hiding a stale name as a plausible
-  relation. A name now ends where a name ends, and every top-level module the code
-  defines is a root (a Phoenix app's `MyAppWeb` beside `MyApp`), so a stale name under
-  any root is reported as an unresolved citation.
+- **A name glued to a root is no citation of it** (§5.2). `MyAppCollector.Forge`,
+  `MyAppWeb.…` and a `MyApp-Profile` header were read as citations of the root module
+  `MyApp` and suggested as `implements`, hiding a stale name as a plausible relation.
+  A name now ends where a name ends, and every top-level module the code defines is a
+  root (a Phoenix app's `MyAppWeb` beside `MyApp`), so a stale name under any root is
+  reported as an unresolved citation.
 - **`exclude:` drops a file from the spec entirely** (§8). It left an excluded file's
   headings in as spec sections and dropped only its citations, so an excluded README
   became sections in no relation.

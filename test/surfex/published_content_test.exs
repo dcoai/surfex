@@ -5,8 +5,9 @@ defmodule Surfex.PublishedContentTest do
   (its code, its fixtures, its private spec text, even its name as a source of test data)
   does not belong in this repository.
 
-  This guards the one case that has happened: a consumer's fixture captured into surfex's
-  tests. Add a name here when another consumer's material must never appear.
+  This guards the cases that have happened: a consumer's fixture captured into surfex's
+  tests, and a consumer's module names used as a test's data (#112). Add a name here when
+  another consumer's material must never appear.
   """
   use ExUnit.Case, async: true
 
@@ -14,6 +15,10 @@ defmodule Surfex.PublishedContentTest do
 
   # Built at runtime so that this file does not match itself.
   @forbidden [Enum.join(["ho", "ma"])]
+
+  # The projects that adopt surfex (#112). RELATIONS.md is left out: it is rendered from
+  # the relation log, which is append-only and still names a test from before the rename.
+  @adopters [Enum.join(["met", "resis"]), Enum.join(["dep", "dep"])]
 
   @published ~w(lib/**/* guides/**/* test/**/* spec.md README.md CHANGELOG.md RELEASING.md mix.exs .surfex.exs RELATIONS.md)
 
@@ -29,9 +34,9 @@ defmodule Surfex.PublishedContentTest do
 
     offending =
       for file <- files,
-          text = File.read!(file),
-          word <- @forbidden,
-          String.contains?(String.downcase(text), word),
+          text = String.downcase(File.read!(file)),
+          word <- @forbidden ++ adopters(file),
+          String.contains?(text, word),
           do: "#{Path.relative_to(file, @root)} mentions #{inspect(word)}"
 
     assert offending == []
@@ -55,6 +60,8 @@ defmodule Surfex.PublishedContentTest do
 
     assert offending == []
   end
+
+  defp adopters(file), do: if(Path.basename(file) == "RELATIONS.md", do: [], else: @adopters)
 
   # The lines outside fenced blocks, with their numbers.
   defp unfenced(text) do
