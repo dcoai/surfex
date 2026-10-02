@@ -1,5 +1,8 @@
 # Surfex
 
+> **Note:** this is still somewhat experimental, but has been helpful for the author in
+> keeping spec->test->code aligned when using LLMs for development of significant projects.
+
 Surfex keeps a specification, its tests and its code aligned, and makes doing that work
 the only way to pass.
 
