@@ -1,6 +1,6 @@
 # Surfex
 
-Surfex keeps a specification, its tests and its code in step, and makes doing that work
+Surfex keeps a specification, its tests and its code aligned, and makes doing that work
 the only way to pass.
 
 It reads every section of the spec, every test and every public function, and keeps a
@@ -13,7 +13,7 @@ validated, CI fails on anything that hasn't, and an agent gets a precise work li
 
 ## What it handles
 
-- **Keeping spec, tests and code in step** as any of them changes: a refactor, a new test,
+- **Keeping spec, tests and code aligned** as any of them changes: a refactor, a new test,
   a reworded or changed requirement, a renamed section or function.
 - **Validating rather than asserting:** each relation records how it was shown, by test
   evidence, a review or a judgement, and a claim nobody has shown never passes.

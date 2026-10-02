@@ -29,7 +29,7 @@ defmodule Surfex.MixProject do
       deps: [{:ex_doc, "~> 0.40", only: :dev, runtime: false}],
       name: "Surfex",
       description:
-        "Keep a specification, its tests and its code in step: a log of which versions were confirmed to belong together, checked from source without compiling it",
+        "Keep a specification, its tests and its code aligned: a log of which versions were confirmed to belong together, checked from source without compiling it",
       package: [
         licenses: ["MIT"],
         links: %{"GitHub" => @source_url},
