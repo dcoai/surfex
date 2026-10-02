@@ -23,9 +23,10 @@ defmodule Surfex.MixProject do
       # Fixture data and sources, not tests.
       test_ignore_filters: [&String.starts_with?(&1, "test/fixtures/")],
       start_permanent: Mix.env() == :prod,
-      # A true leaf. Anything added here is inherited by every project that scans its own
-      # source, so the bar is: it cannot be done with the stdlib.
-      deps: [],
+      # A true leaf at runtime. A runtime or test dependency is inherited by every project
+      # that scans its own source, so the bar for one is: it cannot be done with the stdlib.
+      # ex_doc builds the docs and is dev-only, so no consumer ever fetches it.
+      deps: [{:ex_doc, "~> 0.40", only: :dev, runtime: false}],
       name: "Surfex",
       description:
         "Keep a specification, its tests and its code in step: a log of which versions were confirmed to belong together, checked from source without compiling it",
@@ -45,7 +46,9 @@ defmodule Surfex.MixProject do
           "guides/adopting-an-existing-suite.md",
           "spec.md",
           "CHANGELOG.md"
-        ]
+        ],
+        # The changelog names functions earlier versions removed: history, not dead links.
+        skip_undefined_reference_warnings_on: ["CHANGELOG.md"]
       ]
     ]
   end
