@@ -657,14 +657,28 @@ defmodule Surfex.WalkthroughTest do
 
   @tag verifies: "recording-by-name"
   test "move carries a renamed section's relation, retire puts one to rest", %{root: root} do
-    task(root, Mix.Tasks.Surfex.Relate, [@section, @function, "--type", "depends_on"])
-    File.write!(Path.join(root, "spec.md"), "# Totals {#totals}\n\nA cart's total.\n")
+    # A relation a section takes part in, of a type that needs no validation: refines.
+    discounts = "\n# Discounts\n\nOff the total.\n"
+    File.write!(Path.join(root, "spec.md"), "# Totals\n\nA cart's total.\n" <> discounts)
+    task(root, Mix.Tasks.Surfex.Relate, ["spec.md#Discounts", @section, "--type", "refines"])
+
+    File.write!(
+      Path.join(root, "spec.md"),
+      "# Totals {#totals}\n\nA cart's total.\n" <> discounts
+    )
+
     task(root, Mix.Tasks.Surfex.Move, [@section, "spec.md#totals"])
 
     assert %{"state" => "current"} =
              Enum.find(passing_json(root)["relations"], &(&1["state"] != "retired"))
 
-    task(root, Mix.Tasks.Surfex.Retire, ["spec.md#totals", @function, "--type", "depends_on"])
+    task(root, Mix.Tasks.Surfex.Retire, [
+      "spec.md#Discounts",
+      "spec.md#totals",
+      "--type",
+      "refines"
+    ])
+
     assert Enum.all?(passing_json(root)["relations"], &(&1["state"] == "retired"))
   end
 end

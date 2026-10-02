@@ -66,7 +66,7 @@ defmodule Surfex.LogTest do
     test "the vocabulary is fixed: ops, types, kinds, and which types are directed" do
       assert Entry.ops() == [:relate, :retire, :mark, :observe]
       assert Entry.types() == [:implements, :refines, :depends_on, :tests, :verifies, :excuses]
-      assert Entry.kinds() == [:spec, :code, :test, :config, :class]
+      assert Entry.kinds() == [:spec, :code, :test, :class]
       assert Entry.directed() == [:depends_on, :refines, :tests, :verifies]
 
       a = %{kind: :spec, id: "spec.md#S"}
@@ -79,11 +79,26 @@ defmodule Surfex.LogTest do
     test "a basis is one of a fixed set, written only when set, so an entry without one keeps its id" do
       assert Entry.bases() == [:evidence, :review, :judgement, :baseline, :proposed]
 
-      plain = entry(1)
+      # verifies may carry every basis (the grammar limits the others, §12.1).
+      verifies = fn extra ->
+        Entry.new!(
+          [
+            at: "2026-09-28T10:00:01Z",
+            op: :relate,
+            type: :verifies,
+            ends: [
+              %{kind: :test, id: "T: t", hash: "t1"},
+              %{kind: :spec, id: "spec.md#S1", hash: "s1"}
+            ]
+          ] ++ extra
+        )
+      end
+
+      plain = verifies.([])
       refute Entry.encode(plain) =~ "basis"
 
       for basis <- Entry.bases() do
-        e = entry(1, basis: basis)
+        e = verifies.(basis: basis)
         assert Entry.encode(e) =~ ~s("basis":"#{basis}")
         assert Entry.decode!(Entry.encode(e)) == e
         refute e.id == plain.id
@@ -136,7 +151,10 @@ defmodule Surfex.LogTest do
 
       # One test end at a version; nothing else is an observation.
       spec = %{kind: :spec, id: "spec.md#S1", hash: "s1"}
-      assert_raise ArgumentError, ~r/:ends/, fn -> Entry.new!(base ++ [ends: [spec]]) end
+
+      assert_raise ArgumentError, ~r/red_green ends must be one test/, fn ->
+        Entry.new!(base ++ [ends: [spec]])
+      end
 
       assert_raise ArgumentError, ~r/:ends/, fn ->
         Entry.new!(base ++ [ends: [%{test_end | hash: nil}]])
@@ -164,8 +182,12 @@ defmodule Surfex.LogTest do
 
       # One end, and it is a spec unit; a relation's type can't be a mark, nor the reverse.
       code = %{kind: :code, id: "M.f/1", hash: "c1"}
-      assert_raise ArgumentError, ~r/:ends/, fn -> Entry.new!(base ++ [ends: [unit, code]]) end
-      assert_raise ArgumentError, ~r/:ends/, fn -> Entry.new!(base ++ [ends: [code]]) end
+
+      for ends <- [[unit, code], [code]] do
+        assert_raise ArgumentError, ~r/needs_update ends must be one spec/, fn ->
+          Entry.new!(base ++ [ends: ends])
+        end
+      end
 
       assert_raise ArgumentError, ~r/:type/, fn ->
         Entry.new!(Keyword.put(base, :type, :implements) ++ [ends: [unit]])
@@ -214,6 +236,178 @@ defmodule Surfex.LogTest do
       assert {:error, msg} = Entry.decode(line)
       assert msg =~ "does not match its content"
     end
+  end
+
+  # #90: what a well-formed entry is, enforced at build and decode, not left to the writers.
+  describe "the entry grammar" do
+    defp e(op, type, ends, basis \\ nil) do
+      Entry.build(
+        at: "2026-10-02T10:00:00Z",
+        op: op,
+        type: type,
+        ends: for({kind, id} <- ends, do: %{kind: kind, id: id, hash: "h-#{id}"}),
+        basis: basis
+      )
+    end
+
+    @tag verifies: "grammar-ends"
+    test "each type joins its kinds of end, and a directed one only from → to" do
+      for {type, ends} <- [
+            implements: [code: "M.f/1", spec: "s#a"],
+            verifies: [test: "T: t", spec: "s#a"],
+            tests: [test: "T: t", code: "M.f/1"],
+            refines: [spec: "s#a", spec: "s#b"],
+            depends_on: [code: "M.f/1", code: "M.g/1"],
+            excuses: [class: "generated", code: "M.f/1"]
+          ] do
+        assert {:ok, _} = e(:relate, type, ends), "#{type} refused its own ends"
+        assert {:ok, _} = e(:retire, type, ends)
+      end
+
+      assert {:error, "implements ends must be code ↔ spec, got test, test"} =
+               e(:relate, :implements, test: "T: a", test: "T: b")
+
+      assert {:error, "verifies ends must be test → spec, got spec, test"} =
+               e(:relate, :verifies, spec: "s#a", test: "T: t")
+
+      assert {:error, "tests ends must be test → code, got code, test"} =
+               e(:retire, :tests, code: "M.f/1", test: "T: t")
+
+      assert {:error, "excuses ends must be class ↔ code, got class, spec"} =
+               e(:relate, :excuses, class: "generated", spec: "s#a")
+
+      assert {:error, "needs_update ends must be one spec, got code"} =
+               e(:mark, :needs_update, code: "M.f/1")
+
+      assert {:error, "red_green ends must be one test, got spec"} =
+               e(:observe, :red_green, [spec: "s#a"], :evidence)
+
+      # Nothing records a config end: it is no kind.
+      assert {:error, msg} = e(:relate, :depends_on, config: "x", code: "M.f/1")
+      assert msg =~ "depends_on ends must be code → code"
+    end
+
+    @tag verifies: "grammar-bases"
+    test "each type carries only its bases; a retire and a mark carry none" do
+      ok = fn type, ends, bases ->
+        for basis <- bases,
+            do: assert({:ok, _} = e(:relate, type, ends, basis), "#{type} #{basis}")
+      end
+
+      code_spec = [code: "M.f/1", spec: "s#a"]
+      test_spec = [test: "T: t", spec: "s#a"]
+      ok.(:implements, code_spec, [nil, :proposed, :evidence, :review, :baseline])
+      ok.(:verifies, test_spec, [nil, :proposed, :evidence, :review, :judgement, :baseline])
+      ok.(:tests, [test: "T: t", code: "M.f/1"], [nil, :evidence, :judgement, :baseline])
+      ok.(:refines, [spec: "s#a", spec: "s#b"], [nil, :judgement])
+      ok.(:depends_on, [code: "M.f/1", code: "M.g/1"], [nil, :judgement])
+      # A basis-less excuses is legacy, from before bases (0.4), as for implements and verifies.
+      ok.(:excuses, [class: "generated", code: "M.f/1"], [nil, :proposed, :judgement])
+
+      # Code is validated by evidence or a review, never asserted (§18).
+      assert {:error, "implements can't carry basis judgement" <> _} =
+               e(:relate, :implements, code_spec, :judgement)
+
+      assert {:error, "refines can't carry basis proposed" <> _} =
+               e(:relate, :refines, [spec: "s#a", spec: "s#b"], :proposed)
+
+      assert {:error, "a retire carries no basis, got review"} =
+               e(:retire, :verifies, test_spec, :review)
+
+      assert {:error, "a mark carries no basis, got judgement"} =
+               e(:mark, :needs_update, [spec: "s#a"], :judgement)
+
+      assert {:ok, _} = e(:observe, :red_green, [test: "T: t"], :evidence)
+      assert {:ok, _} = e(:observe, :baseline, [test: "T: t"], :baseline)
+
+      assert {:error, "red_green can't carry basis review" <> _} =
+               e(:observe, :red_green, [test: "T: t"], :review)
+
+      assert {:error, "baseline can't carry no basis" <> _} =
+               e(:observe, :baseline, test: "T: t")
+    end
+
+    @tag verifies: "grammar-loud"
+    test "a line breaking the grammar is refused at decode, naming the entry and the rule, and --verify lists it with its line",
+         %{tmp_dir: root} do
+      # A well-formed line, then the same with its basis forged: a valid id over bad content.
+      {:ok, good} = e(:relate, :implements, [code: "M.f/1", spec: "s#a"], :review)
+
+      forged =
+        Entry.encode(good)
+        |> Entry.json()
+        |> Map.put("basis", "judgement")
+        |> then(fn map ->
+          content = map |> Map.delete("id")
+          # Rebuild the canonical line by hand, as a hand edit or another tool might.
+          id =
+            :crypto.hash(:sha256, canonical(content)) |> Base.encode16(case: :lower)
+
+          canonical(Map.put(content, "id", id))
+        end)
+
+      assert {:error, "entry " <> rest} = Entry.decode(forged)
+      assert rest =~ ": implements can't carry basis judgement"
+
+      Log.init(root)
+      Log.append(root, [entry(1)])
+      File.write!(open(root), forged <> "\n", [:append])
+
+      assert [problem] = Log.verify(root)
+
+      assert problem =~
+               ~r/^surfex\.log:\d+: entry [0-9a-f]{12}: implements can't carry basis judgement/
+    end
+
+    @tag verifies: "grammar-loud"
+    test "every entry in surfex's own log fits the grammar, with its id unchanged" do
+      lines =
+        Path.wildcard(Path.expand("../../.surfex/*.log", __DIR__))
+        |> Enum.flat_map(&String.split(File.read!(&1), "\n", trim: true))
+        |> Enum.reject(&String.starts_with?(&1, ~s({"segment")))
+
+      assert length(lines) > 7000
+
+      for line <- lines do
+        assert {:ok, entry} = Entry.decode(line)
+        assert Entry.encode(entry) == line
+      end
+    end
+
+    # The canonical key order (§12.1), for forging a line in a test.
+    defp canonical(map) do
+      keys = ~w(id at commit parents op type ends by note basis)
+
+      pairs =
+        for k <- keys, Map.has_key?(map, k), not (k == "basis" and is_nil(map[k])) do
+          [:json.encode(k), ":", encode(k, map[k])]
+        end
+
+      IO.iodata_to_binary(["{", Enum.intersperse(pairs, ","), "}"])
+    end
+
+    defp encode("ends", ends),
+      do: [
+        "[",
+        ends
+        |> Enum.map(
+          &[
+            "{",
+            ~s("kind":),
+            :json.encode(&1["kind"]),
+            ~s(,"id":),
+            :json.encode(&1["id"]),
+            ~s(,"hash":),
+            (&1["hash"] && :json.encode(&1["hash"])) || "null",
+            "}"
+          ]
+        )
+        |> Enum.intersperse(","),
+        "]"
+      ]
+
+    defp encode(_k, nil), do: "null"
+    defp encode(_k, v), do: :json.encode(v)
   end
 
   describe "the log" do
@@ -297,7 +491,7 @@ defmodule Surfex.LogTest do
       path = Path.join(Log.dir(root), "surfex.log")
       File.write!(path, String.replace(File.read!(path), ~s("hash":"c3"), ~s("hash":"cX")))
       assert [problem] = Log.verify(root)
-      assert problem =~ "surfex.log: entry"
+      assert problem =~ ~r/^surfex\.log:\d+: entry/
       assert problem =~ "does not match its content"
     end
 
