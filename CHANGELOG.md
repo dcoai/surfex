@@ -4,10 +4,11 @@ All notable changes to Surfex are recorded here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.24] — 2026-10-02
 
-`mix.exs` reads `0.5.17-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
-release it merely follows.
+The first release on Hex. Its usage rules are one short page for an agent that points to
+`mix surfex.info`, so a project's `AGENTS.md` stays small and the detail always matches the
+installed version.
 
 ### Changed
 
