@@ -4,11 +4,19 @@ All notable changes to Surfex are recorded here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.0] — 2026-10-02
 
-`mix.exs` reads `0.5.0-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
-release it merely follows. The next release is a **minor** one: code can no longer be
-confirmed by hand.
+Validated, not asserted. Every `implements` relation is now shown by the process: a test
+that failed and then passed against the code, or a reviewed test that passes against
+it, recorded with the basis that validated it. A test version's red→green is kept in the
+log, so it survives a clean checkout. An established project can adopt its suite on
+trust, once, and earn evidence as its tests next discriminate. Surfex now explains itself
+to an agent (`mix surfex.info`), scores completeness, marks a spec that is wrong in use,
+hands found work to a project's own process, checks a suite split across CI jobs, and
+keeps what the log decided across renames. A **minor** release that breaks:
+`implements` can no longer be confirmed by hand (`mix surfex.confirm` refuses it), the
+log enforces its own grammar when it reads an entry, and the unused `config` end kind is
+gone. Existing logs load unchanged, with every id as it was.
 
 ### Added
 
@@ -120,8 +128,6 @@ confirmed by hand.
   the task's docs now say it succeeds, and a test pins it (#84).
 - The README's worked example, and the guide's test-first and LLM sections, now describe
   the process.
-
-### Changed
 
 - **Surfex closes its own spec/test/code triangle, and gates it** (`triangle: :fail`).
   Every section that code implements now states its claims as test hints (46 in all),
