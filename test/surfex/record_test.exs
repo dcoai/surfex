@@ -115,8 +115,39 @@ defmodule Surfex.RecordTest do
     assert %Entry{op: :retire, parents: [_]} = retired
     assert state(gone, [first, retired]) == [:retired]
 
+    # A pair never related can be declined only with a reason (#70).
     assert {:error, msg} = Record.retire(scans(), [], @spec_id, @code_id, :implements, @meta)
-    assert msg =~ "no implements relation"
+    assert msg =~ "never related" and msg =~ "note"
+  end
+
+  # #70: declining a suggestion is the same decision as retiring it, made earlier.
+  describe "declining a pair never related" do
+    @describetag verifies: "decline-recorded"
+
+    test "retire records the decision not to relate, at both ends' versions, with its reason" do
+      why = Keyword.put(@meta, :note, "add/2 is described by the wire format, not this section")
+      {:ok, [declined]} = Record.retire(scans(), [], @spec_id, @code_id, :implements, why)
+
+      assert %Entry{op: :retire, type: :implements, parents: [], basis: nil} = declined
+      assert %{kind: :spec, id: @spec_id, hash: "s1"} in declined.ends
+      assert state(scans(), [declined]) == [:retired]
+
+      # A later relate revives it, naming the retire as its parent.
+      {:ok, [revived]} =
+        Record.relate(scans(), [declined], @spec_id, @code_id, :implements, later(@meta, 1))
+
+      assert revived.parents == [declined.id]
+    end
+
+    test "it needs a reason, and both ends scanned" do
+      assert {:error, msg} = Record.retire(scans(), [], @spec_id, @code_id, :implements, @meta)
+      assert msg =~ "note"
+
+      why = Keyword.put(@meta, :note, "never")
+
+      assert {:error, _not_scanned} =
+               Record.retire(scans(), [], "spec.md#Nowhere", @code_id, :implements, why)
+    end
   end
 
   # #73: the tests reflect the spec and the code passes them, but the result is wrong.
