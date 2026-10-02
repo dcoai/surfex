@@ -47,19 +47,32 @@ defmodule Surfex.Scan.Markdown do
   @close_block ~r/^ {0,3}<!--\s*\/surfex\s*-->\s*$/
   @hint ~r/^test\s+(\S+)$/
 
-  @doc "Every unit of every markdown file matching `globs` under `root`, in order."
-  @spec records(String.t(), [String.t()]) :: [Scan.t()]
-  def records(root, globs) do
+  @doc """
+  Every unit of every markdown file of the spec under `root`, in order: the files
+  `globs` match, less those under an `exclude` prefix (`files/3`).
+  """
+  @spec records(String.t(), [String.t()], [String.t()]) :: [Scan.t()]
+  def records(root, globs, exclude \\ []) do
+    root
+    |> files(globs, exclude)
+    |> Enum.flat_map(fn file -> root |> Path.join(file) |> File.read!() |> sections(file) end)
+  end
+
+  @doc """
+  The spec's files, relative to `root`, in a stable order: those `globs` match, less any
+  whose path starts with an `exclude` prefix. The one answer to which files are the spec,
+  for its sections and its citations alike (§8).
+  """
+  @spec files(String.t(), [String.t()], [String.t()]) :: [String.t()]
+  def files(root, globs, exclude) do
     root = Path.expand(root)
 
     globs
     |> Enum.flat_map(&Path.wildcard(Path.join(root, &1)))
+    |> Enum.map(&Path.relative_to(&1, root))
+    |> Enum.reject(fn p -> Enum.any?(exclude, &String.starts_with?(p, &1)) end)
     |> Enum.uniq()
     |> Enum.sort()
-    |> Enum.flat_map(fn path ->
-      file = Path.relative_to(path, root)
-      path |> File.read!() |> sections(file)
-    end)
   end
 
   @doc """

@@ -405,7 +405,7 @@ it, and `Surfex.Profile.keys/0` lists its keys:
 | Key | Meaning |
 |---|---|
 | `sources` (required) | globs of the files whose prose cites the code |
-| `exclude` | path prefixes to drop from them |
+| `exclude` | path prefixes to drop from them: an excluded file is no part of the spec, contributing neither sections nor citations (`Surfex.Scan.Markdown.files/3` is the one answer to which files are the spec) |
 | `shape` (required) | regex: what a claim about the code looks like |
 | `token` | regex whose first group finds names inside longer text |
 | `known_shape` | regex: tokens trusted only when they resolve |
@@ -425,6 +425,11 @@ rule naming an undeclared class, and a rule that would excuse a never-excused ki
 A project writes these keys in `.surfex.exs`, alongside the relation log's own (§13.2).
 For the built-in Elixir scanner, `shape`, `token` and `normalise` default from the
 project's namespace (§5.2).
+
+```test exclude-both
+a file under exclude: contributes neither spec sections nor citations; excluding every
+file is an empty spec, which is an error
+```
 
 ```test profile-validated
 a profile rejects an unknown key, a missing required key, a wrong type, and a rule that
@@ -629,7 +634,8 @@ id never names a heading path. It gives `{:error, :unknown}` when nothing has th
 and `{:error, {:ambiguous, ids}}` when more than one file does.
 
 `Surfex.Scan.Markdown` is the spec scanner for markdown. `Surfex.Scan.Markdown.records/2`
-reads every file matching a list of globs under a root; `Surfex.Scan.Markdown.sections/2`
+reads every file matching a list of globs under a root (`Surfex.Scan.Markdown.records/3`
+leaves out those under an `exclude:` prefix, §8); `Surfex.Scan.Markdown.sections/2`
 scans one text. Both give every unit (sections, marked blocks and test hints) in the
 order they start.
 - **A section** is a heading and the lines under it, up to the next heading of any

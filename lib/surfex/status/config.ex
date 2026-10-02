@@ -340,7 +340,7 @@ defmodule Surfex.Status.Config do
       Keyword.get(config, :sources) ||
         raise(ArgumentError, ".surfex.exs needs sources: (the spec's globs)")
 
-    spec = Scan.Markdown.records(root, sources)
+    spec = Scan.Markdown.records(root, sources, Keyword.get(config, :exclude, []))
 
     if spec == [],
       do: raise(ArgumentError, "no spec sections found in #{inspect(sources)} under #{root}")

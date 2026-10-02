@@ -125,6 +125,9 @@ confirmed by hand.
 
 ### Fixed
 
+- **`exclude:` drops a file from the spec entirely** (§8). It left an excluded file's
+  headings in as spec sections and dropped only its citations, so an excluded README
+  became sections in no relation.
 - **A test's calls see aliases where they're declared** (§11). An alias inside a test
   body was ignored, so a call through it was recorded under the short name and the test
   had no `tests` relation to the code it plainly calls. A `describe`'s alias, meanwhile,
