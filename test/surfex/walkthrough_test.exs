@@ -634,9 +634,16 @@ defmodule Surfex.WalkthroughTest do
 
     run_test(root, nil, 5)
     task(root, Mix.Tasks.Surfex.Baseline, baseline)
+    said = drain()
+    # #123: it says what it adopted.
+    assert Enum.any?(
+             said,
+             &(&1 =~
+                 "baseline: 1 trusted test version, 1 verifies adopted, 0 spec units without one")
+           )
 
     assert Enum.any?(
-             drain(),
+             said,
              &(&1 =~
                  "recorded observe baseline  test MyApp.CartTest: an empty cart totals nothing@")
            )

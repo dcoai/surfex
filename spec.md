@@ -1588,6 +1588,13 @@ project root by `Surfex.Status.Config.adoption!/2` (and asked of one file by
 
 - **Once.** It refuses when the log already holds a baseline, under `:reevaluate`,
   without `tests:`, and when a trusted test's current version hasn't run green.
+- **It adopts the tags already written.** The baseline doesn't create `verifies:` tags,
+  and a tag added afterwards is an ordinary claim, validated on its own (§18). So tagging
+  comes first. With no tags on the trusted tests it refuses, since a one-shot step would
+  spend itself on test versions alone, unless `--no-tags` (`meta[:no_tags]`) says that is
+  intended. `Surfex.Record.baseline_summary/2` reports what it adopted, and the task
+  prints it: the trusted test versions, the `verifies` relations, and the spec units no
+  adopted `verifies` reaches.
 - **What it records:** a `baseline` observation (§12.1) for each trusted test version,
   basis `baseline`, with the adoption setting and the note; and, for each trusted test's
   `verifies:` declarations at that commit, a `verifies` relation with basis `baseline`.
@@ -1622,6 +1629,12 @@ within tests: and don't overlap; anything else is refused
 the baseline refuses under :reevaluate, a second time, without tests:, or before the
 trusted tests run green; it records each trusted test version and its declared verifies,
 basis baseline
+```
+
+```test baseline-adopts-tags
+the baseline adopts the verifies: tags already written: with none it refuses, unless
+--no-tags says that is intended, and it reports the trusted test versions, the verifies it
+adopted and the spec units left without one
 ```
 
 ```test baseline-shrinks
