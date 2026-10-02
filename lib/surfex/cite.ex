@@ -71,16 +71,8 @@ defmodule Surfex.Cite do
 
   @doc "The source files scanned, relative to `root`, in a stable order."
   @spec sources(Profile.t(), String.t()) :: [String.t()]
-  def sources(%Profile{sources: globs, exclude: exclude}, root) do
-    root = Path.expand(root)
-
-    globs
-    |> Enum.flat_map(&Path.wildcard(Path.join(root, &1)))
-    |> Enum.map(&Path.relative_to(&1, root))
-    |> Enum.reject(fn p -> Enum.any?(exclude, &String.starts_with?(p, &1)) end)
-    |> Enum.uniq()
-    |> Enum.sort()
-  end
+  def sources(%Profile{sources: globs, exclude: exclude}, root),
+    do: Surfex.Scan.Markdown.files(root, globs, exclude)
 
   @doc """
   Key => items. Every item is indexed by `Item.key/1`, so a member is reached only through

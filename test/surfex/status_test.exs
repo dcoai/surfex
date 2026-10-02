@@ -761,6 +761,34 @@ defmodule Surfex.StatusTest do
       end
     end
 
+    # #68: one answer to which files are the spec, for its sections and its citations.
+    @tag :tmp_dir
+    @tag verifies: "exclude-both"
+    test "a file under exclude: contributes neither sections nor citations", %{tmp_dir: root} do
+      File.mkdir_p!(Path.join(root, "spec"))
+      File.write!(Path.join(root, "spec/01-cart.md"), "# Cart\n\n`MyApp.Cart.total/0` totals.\n")
+
+      File.write!(
+        Path.join(root, "spec/README.md"),
+        "# How the spec is organised\n\n`MyApp.Gone` is not cited.\n"
+      )
+
+      config = [sources: ["spec/*.md"], exclude: ["spec/README.md"]]
+      files = Surfex.Scan.Markdown.files(root, ["spec/*.md"], ["spec/README.md"])
+      assert files == ["spec/01-cart.md"]
+
+      ids = for %Scan{kind: :spec, id: id} <- Config.scans(config, root), do: id
+      assert ids == ["spec/01-cart.md#Cart"]
+
+      profile = Config.profile!(config, "MyApp")
+      assert Surfex.Cite.sources(profile, root) == ["spec/01-cart.md"]
+
+      # Excluding every file is an empty spec, and that stays an error.
+      assert_raise ArgumentError, ~r/no spec sections found/, fn ->
+        Config.scans([sources: ["spec/*.md"], exclude: ["spec/"]], root)
+      end
+    end
+
     @tag :tmp_dir
     test "no spec sections is an error, not a quiet empty status", %{tmp_dir: root} do
       assert_raise ArgumentError, ~r/no spec sections found/, fn ->
