@@ -72,5 +72,26 @@ docs:
   script:
     # What hexdocs.pm will show. ex_doc is surfex's one dependency, dev-only; a reference to
     # a function that doesn't exist fails here rather than on the published docs.
-    - mix deps.get
+    # This environment's dependencies only: a plain deps.get fetches every environment's,
+    # extla (MIX_ENV=model) included, which this image has no git to fetch.
+    - mix deps.get --only dev
     - mix docs --warnings-as-errors
+
+model:
+  extends: .elixir
+  stage: check
+  variables:
+    # extla is a dependency of this environment only (#128): no other job fetches it.
+    MIX_ENV: model
+  script:
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends git ca-certificates > /dev/null
+    # extla is a private git dependency, fetched with this job's CI_JOB_TOKEN: per-job and
+    # ephemeral. That needs dco-tek/surfex on dco-tek/extla's job-token allowlist, which is
+    # per-project and not inherited from the group: "HTTP Basic: Access denied" means check
+    # it. `--add` on the second line is load-bearing: insteadOf is multi-valued, and plain
+    # `git config` replaces the first value rather than adding one (extla 7e16bd3).
+    - git config --global url."https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/".insteadOf "https://${CI_SERVER_HOST}/"
+    - git config --global --add url."https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/".insteadOf "git@${CI_SERVER_HOST}:"
+    - mix deps.get --only model
+    # Every invariant in every state the bounded model reaches (spec §22).
+    - mix test test/surfex/relation_log_model_test.exs

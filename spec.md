@@ -1785,3 +1785,30 @@ every other topic are pages under priv/info, listed as items; the package ships 
 the docs carry them; hexdocs show the mix tasks and the formatter, scanner and item
 modules, and no other module
 ```
+
+## 22. A model of the log {#model}
+
+Unit tests sample the relation log's behaviour; a model explores it. The log is checked
+by an exhaustive model in extla, the TLA+-style checker for Elixir: branches record,
+retire and resolve relations, main takes each branch by git's union merge, and a branch
+catches up with main the same way. Every entry is written by the real recording code and
+every judgement made by the real status derivation, called from the model, so the model is
+an oracle for the code rather than a second copy of it.
+
+In every state the bounded model reaches:
+- **The order of lines doesn't matter.** A log's status is the same for its lines in any
+  order, as a union merge writes them.
+- **A conflict is more than one tip.** A relation is conflicted exactly when more than one
+  tip is in force.
+- **Resolving ends a conflict.** Picking a side always leaves one tip.
+- **Every entry reads back.** Each entry written decodes under its own id.
+
+The model runs in a Mix environment of its own (`MIX_ENV=model`), so the rest of the
+suite neither fetches nor compiles the checker, and CI runs it as a job of its own. A
+violation fails it with the shortest trace to the state that breaks the property.
+
+```test log-model
+in every state branches and merges reach, a log's status is the same for its lines in any
+order, a relation is conflicted exactly when more than one tip is in force, resolving ends
+the conflict, and every entry reads back under its id
+```

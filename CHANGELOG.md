@@ -9,6 +9,14 @@ All notable changes to Surfex are recorded here, following
 `mix.exs` reads `0.5.25-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
 release it merely follows.
 
+### Added
+
+- **A model of the relation log** (§22). An exhaustive extla model drives the real
+  recording code across two branches and main, merging by git's union merge, and checks
+  the real status in every state it reaches: order doesn't matter, a conflict is more than
+  one tip, resolving ends it, and every entry reads back. It runs in a Mix environment of
+  its own (`MIX_ENV=model`) and its own CI job, so nothing else fetches the checker.
+
 ## [0.5.24] — 2026-10-02
 
 The first release on Hex. Its usage rules are one short page for an agent that points to
