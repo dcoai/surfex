@@ -13,9 +13,18 @@ release it merely follows.
 
 - **A model of the relation log** (§22). An exhaustive extla model drives the real
   recording code across two branches and main, merging by git's union merge, and checks
-  the real status in every state it reaches: order doesn't matter, a conflict is more than
-  one tip, resolving ends it, and every entry reads back. It runs in a Mix environment of
+  the real status in every state it reaches: order doesn't matter, a conflict is a
+  disagreement between tips, resolving ends it, and every entry reads back. It runs in a Mix environment of
   its own (`MIX_ENV=model`) and its own CI job, so nothing else fetches the checker.
+
+### Changed
+
+- **Tips that agree are not a conflict** (§13.1). Two branches that record the same
+  judgement without seeing each other (the same operation, ends at the same versions, and
+  basis) no longer leave a conflict to resolve, as when both re-run `confirm --evidence`
+  after merging main. Who recorded it, when and the note are context, so both entries
+  stay in the log and both tips are reported. A different operation, version or basis still
+  conflicts, and `resolve` refuses tips that agree. Found by the model of the log.
 
 ## [0.5.24] — 2026-10-02
 

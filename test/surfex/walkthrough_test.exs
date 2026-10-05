@@ -123,18 +123,20 @@ defmodule Surfex.WalkthroughTest do
     commit(root, "confirm")
     assert %{"state" => "current"} = status(root)
 
-    # Another edit, then both branches confirm it without seeing each other.
+    # Another edit, then the branches judge it differently without seeing each other: one
+    # retires the relation, the other confirms it. (Two identical confirms would agree, and
+    # be no conflict: #133.)
     edit_total(root, 2)
     commit(root, "edit again")
     git(root, ["checkout", "--quiet", "-b", "other"])
 
-    task(root, Mix.Tasks.Surfex.Confirm, [
+    task(root, Mix.Tasks.Surfex.Retire, [
       @function,
       @other,
       "--type",
       "depends_on",
       "--note",
-      "checked on other"
+      "checked on other: it no longer depends"
     ])
 
     commit(root, "confirm on other")
@@ -152,7 +154,11 @@ defmodule Surfex.WalkthroughTest do
     commit(root, "confirm on main")
     git(root, ["merge", "--quiet", "--no-edit", "other"])
 
-    assert %{"state" => "conflicted", "tips" => [tip, _]} = failing_status(root)
+    assert %{"state" => "conflicted", "tips" => tips} = failing_status(root)
+
+    # Keep main's confirm: the tip that relates, not the one that retires.
+    entries = Surfex.Log.load(root)
+    tip = Enum.find(tips, fn id -> Enum.find(entries, &(&1.id == id)).op == :relate end)
 
     task(root, Mix.Tasks.Surfex.Resolve, [
       @function,
