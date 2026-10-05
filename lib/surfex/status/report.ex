@@ -7,6 +7,7 @@ defmodule Surfex.Status.Report do
   has to scan anything again to act on it.
   """
 
+  alias Surfex.Log.Entry
   alias Surfex.Status
 
   @doc "The status as text: the summary per relation type, then everything needing attention."
@@ -480,7 +481,9 @@ defmodule Surfex.Status.Report do
   end
 
   # The hashes the tip recorded for each end (none when conflicted: there is no one tip).
-  defp recorded_hashes(%{tips: [tip]}), do: Map.new(tip.ends, &{{&1.kind, &1.id}, &1.hash})
+  defp recorded_hashes(%{tip: %Entry{} = tip}),
+    do: Map.new(tip.ends, &{{&1.kind, &1.id}, &1.hash})
+
   defp recorded_hashes(_), do: %{}
 
   defp scan_json(scan) do

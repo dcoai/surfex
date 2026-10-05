@@ -899,12 +899,19 @@ other entry of it names as a parent (`Surfex.Status.tips/2`).
 
 | State | When |
 |---|---|
-| **conflicted** | more than one tip: entries recorded without seeing each other (sharing a parent, or both with none) |
+| **conflicted** | tips that **disagree**: entries recorded without seeing each other (sharing a parent, or both with none) that record different judgements. A tip's judgement is its operation, type, ends at their versions, and basis; who recorded it, when, on which commit and with which note are context. Tips that agree are one judgement, represented by the one with the smallest id (`Surfex.Status.representative/1`): two branches confirming the same change identically make no conflict. A different basis at the same versions still disagrees: CI checks an `evidence` claim and not a review, so a person picks which record stands |
 | **retired** | the tip retires the relation |
 | **orphaned** | an end recorded at a hash is no longer scanned (removed or renamed) |
 | **planned** | an end was recorded without a hash, before it existed, and still isn't scanned. Once it is scanned, a planned `implements` relation is proposed until evidence or a review validates it (§18); a planned relation recorded without a basis is dangling on that end until it is confirmed. |
 | **dangling** | both ids are scanned, but at least one is at a different hash than the tip recorded; the report names which ends changed |
 | **current** | both ends are at the hashes the tip recorded |
+
+```test agreeing-tips
+tips that record the same judgement (operation, ends at their versions, basis) are one
+judgement: judged, validated, checked and reported as one tip, and re-recorded with every
+one as a parent; a different operation, version or basis is a conflict, and resolve refuses
+tips that agree
+```
 
 - **Impacted** is a flag, not a state. A relation is impacted when one of its ends has a
   `depends_on` relation to something that is not current. It doesn't fail the check:
@@ -1142,7 +1149,7 @@ time (context only), and when.
 | `Surfex.Record.validate/6` | a review (§18): the `verifies` relation from a test to a spec unit, and each `implements` relation of that unit whose code the test exercises (by definition, so one arity covers a function's others, §11) and that isn't validated already, validated at the current versions, basis `review`. The unit may be a section whose block or hint the test verifies: that relation must already be current, and the review records the section's `implements` relations alone |
 | `Surfex.Record.confirm_by_evidence/4` | every confirmation the test evidence justifies (§17, §18), basis `evidence`, with the evidence in the note: each dangling or proposed `verifies` relation whose test's current version has failed (unless only the spec changed, which is a judgement), then each dangling `tests` relation and each dangling or proposed `implements` relation whose test went red and then green. Nothing justified is `{:ok, []}`, not an error |
 | `Surfex.Record.retire/6` | that a relation no longer applies, naming every tip as a parent, with the ends as the tip recorded them. An end need not still be scanned: this is how an orphaned relation is put to rest. A pair **never related** is declined: a retire at both ends' current versions with no parent, recording the decision not to relate them, so `mix surfex.suggest` never proposes it. Both must be scanned, and the note is required, as the only record of why. A later relate revives it. |
-| `Surfex.Record.resolve/7` | the chosen tip of a **conflicted** relation, recorded again **with its basis** and every tip as a parent: picking a side judges nothing new. If the scans have moved since, the relation is then dangling, and confirming it is next. |
+| `Surfex.Record.resolve/7` | the chosen tip of a **conflicted** relation, recorded again **with its basis** and every tip as a parent: picking a side judges nothing new. Tips that agree are no conflict, and it refuses them. If the scans have moved since, the relation is then dangling, and confirming it is next. |
 
 `Surfex.Record.move/5` moves every live relation of an id onto a new one: a renamed
 heading, an anchor added, a section moved. For each relation whose tip names the old id
@@ -1798,8 +1805,9 @@ an oracle for the code rather than a second copy of it.
 In every state the bounded model reaches:
 - **The order of lines doesn't matter.** A log's status is the same for its lines in any
   order, as a union merge writes them.
-- **A conflict is more than one tip.** A relation is conflicted exactly when more than one
-  tip is in force.
+- **A conflict is a disagreement.** A relation is conflicted exactly when the tips in force
+  record different judgements; tips that agree are one, so two resolutions that pick the
+  same side don't conflict again.
 - **Resolving ends a conflict.** Picking a side always leaves one tip.
 - **Every entry reads back.** Each entry written decodes under its own id.
 
@@ -1809,6 +1817,6 @@ violation fails it with the shortest trace to the state that breaks the property
 
 ```test log-model
 in every state branches and merges reach, a log's status is the same for its lines in any
-order, a relation is conflicted exactly when more than one tip is in force, resolving ends
+order, a relation is conflicted exactly when the tips in force disagree, resolving ends
 the conflict, and every entry reads back under its id
 ```

@@ -96,11 +96,15 @@ if Code.ensure_loaded?(ExTLA.Spec) do
       v == verdict(Enum.reverse(lines(log))) and v == verdict(Enum.sort_by(log, & &1.id))
     end
 
-    # Conflicted exactly when more than one tip is in force (§13.1).
-    def conflict_iff_tips?(log),
+    # Conflicted exactly when the tips in force disagree (§13.1, #133): tips that record
+    # the same judgement are one, however many there are.
+    def conflict_iff_disagree?(log),
       do:
         Enum.all?(Status.derive(scans(), lines(log)).relations, fn r ->
-          r.state == :conflicted == length(r.tips) > 1
+          disagree =
+            r.tips |> Enum.map(&{&1.op, &1.ends, &1.basis}) |> Enum.uniq() |> length() > 1
+
+          r.state == :conflicted == disagree
         end)
 
     # Every entry written is one the log can read back, under the same id (§12.1).
@@ -174,8 +178,9 @@ if Code.ensure_loaded?(ExTLA.Spec) do
       Log.order_free?(main) and Enum.all?(^branches, &Log.order_free?(work[&1]))
     end
 
-    invariant :conflict_iff_tips, desc: "conflicted exactly when more than one tip is in force" do
-      Log.conflict_iff_tips?(main) and Enum.all?(^branches, &Log.conflict_iff_tips?(work[&1]))
+    invariant :conflict_iff_disagree, desc: "conflicted exactly when the tips disagree" do
+      Log.conflict_iff_disagree?(main) and
+        Enum.all?(^branches, &Log.conflict_iff_disagree?(work[&1]))
     end
 
     invariant :resolve_ends_conflict, desc: "resolving always ends the conflict" do

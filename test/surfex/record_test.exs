@@ -205,7 +205,18 @@ defmodule Surfex.RecordTest do
       {:ok, [base]} = Record.relate(scans(), [], @code_id, "M.helper/1", :depends_on, @meta)
       confirm = &Record.confirm(scans("c2"), [base], @code_id, "M.helper/1", :depends_on, &1)
       {:ok, [a]} = confirm.(later(@meta, 1) ++ [note: "a"])
-      {:ok, [b]} = confirm.(later(@meta, 2) ++ [note: "b"])
+      # The other branch re-relates rather than confirms: a different basis, so the tips
+      # disagree (#133: two identical confirms would agree, and be no conflict).
+      {:ok, [b]} =
+        Record.relate(
+          scans("c2"),
+          [base],
+          @code_id,
+          "M.helper/1",
+          :depends_on,
+          later(@meta, 2) ++ [note: "b"]
+        )
+
       %{entries: [base, a, b], a: a, b: b}
     end
 
@@ -436,7 +447,18 @@ defmodule Surfex.RecordTest do
       assert {:error, "no live relation names spec.md#Gone" <> _} =
                Record.move(renamed(), [old], "spec.md#Gone", @new_id, @meta)
 
-      other = validated(later(@meta, 2))
+      # Another tip that disagrees on the code's version (#133: an agreeing one is no conflict).
+      other =
+        Entry.new!(
+          at: later(@meta, 2)[:at],
+          op: :relate,
+          type: :implements,
+          basis: :review,
+          ends: [
+            %{kind: :spec, id: @spec_id, hash: "s1"},
+            %{kind: :code, id: @code_id, hash: "c0"}
+          ]
+        )
 
       assert {:error, _conflicted} =
                Record.move(renamed(), [old, other], @spec_id, @new_id, @meta)

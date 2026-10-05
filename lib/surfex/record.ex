@@ -508,9 +508,11 @@ defmodule Surfex.Record do
 
   defp move_relations(groups, entries, target, old_id, meta) do
     Enum.reduce_while(groups, {:ok, []}, fn {relation, tips}, {:ok, acc} ->
-      with [tip] <- tips,
+      # Tips that agree are one judgement (§13.1): move it, retiring every one of them.
+      with %Entry{} = tip <- Status.representative(tips) || tips,
            ends = Enum.map(tip.ends, &moved_end(&1, target, old_id)),
-           {:ok, retired} <- entry(:retire, tip.type, tip.ends, [tip.id], with_basis(meta, nil)),
+           {:ok, retired} <-
+             entry(:retire, tip.type, tip.ends, Enum.map(tips, & &1.id), with_basis(meta, nil)),
            # A move changes where a relation points, not what validates it (§18).
            {:ok, moved} <-
              entry(
@@ -561,8 +563,8 @@ defmodule Surfex.Record do
     |> Enum.map(&Entry.relation/1)
     |> Enum.uniq()
     |> Enum.flat_map(fn relation ->
-      case Status.tips(entries, relation) do
-        [%Entry{op: :retire} = tip] -> [tip]
+      case Status.representative(Status.tips(entries, relation)) do
+        %Entry{op: :retire} = tip -> [tip]
         _ -> []
       end
     end)
@@ -576,7 +578,9 @@ defmodule Surfex.Record do
     |> Enum.filter(fn e -> Enum.any?(e.ends, &(&1.kind == kind and &1.id == old_id)) end)
     |> Enum.group_by(&Entry.relation/1)
     |> Enum.map(fn {relation, _} -> {relation, Status.tips(entries, relation)} end)
-    |> Enum.reject(fn {_relation, tips} -> match?([%Entry{op: :retire}], tips) end)
+    |> Enum.reject(fn {_relation, tips} ->
+      match?(%Entry{op: :retire}, Status.representative(tips))
+    end)
     |> Enum.sort()
   end
 
@@ -683,7 +687,7 @@ defmodule Surfex.Record do
   # nil), a relate at the current versions.
   defp by_evidence(status, type, why, meta) do
     Enum.reduce_while(status.relations, {:ok, []}, fn
-      %{type: ^type, state: state, tips: [tip]} = r, {:ok, acc}
+      %{type: ^type, state: state, tip: %Entry{} = tip} = r, {:ok, acc}
       when state in [:dangling, :proposed] ->
         case why.(r) do
           nil ->
@@ -699,7 +703,9 @@ defmodule Surfex.Record do
 
             ends = Enum.map(tip.ends, &end_(Map.fetch!(status.scans, {&1.kind, &1.id})))
 
-            case entry(:relate, type, ends, [tip.id], Keyword.put(meta, :note, note)) do
+            parents = Enum.map(r.tips, & &1.id)
+
+            case entry(:relate, type, ends, parents, Keyword.put(meta, :note, note)) do
               {:ok, e} -> {:cont, {:ok, acc ++ [e]}}
               error -> {:halt, error}
             end
@@ -945,10 +951,16 @@ defmodule Surfex.Record do
   def resolve(scans, entries, from, to, type, pick, meta) do
     with {:ok, tips} <- tips(scans, entries, from, to, type),
          :ok <-
-           if(length(tips) > 1,
-             do: :ok,
-             else: {:error, "the #{type} relation is not conflicted: nothing to resolve"}
-           ),
+           (cond do
+              length(tips) < 2 ->
+                {:error, "the #{type} relation is not conflicted: nothing to resolve"}
+
+              Status.representative(tips) != nil ->
+                {:error, "the tips of the #{type} relation agree: nothing to resolve (§13.1)"}
+
+              true ->
+                :ok
+            end),
          {:ok, chosen} <- choose(tips, pick),
          # Picking a side judges nothing new: the chosen tip keeps what validated it.
          meta = with_basis(meta, chosen.basis),
@@ -972,11 +984,9 @@ defmodule Surfex.Record do
 
   defp confirm_each(dangling, status, meta) do
     Enum.reduce_while(dangling, {:ok, []}, fn r, {:ok, acc} ->
-      [tip] = r.tips
+      ends = Enum.map(r.tip.ends, fn e -> end_(Map.fetch!(status.scans, {e.kind, e.id})) end)
 
-      ends = Enum.map(tip.ends, fn e -> end_(Map.fetch!(status.scans, {e.kind, e.id})) end)
-
-      case entry(:relate, r.type, ends, [tip.id], meta) do
+      case entry(:relate, r.type, ends, Enum.map(r.tips, & &1.id), meta) do
         {:ok, entry} -> {:cont, {:ok, [entry | acc]}}
         error -> {:halt, error}
       end
