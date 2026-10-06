@@ -1146,7 +1146,7 @@ time (context only), and when.
 | `Surfex.Record.relate/6`, `Surfex.Record.relate/7` | a relation of a type between two ids at their current hashes, from → to for a directed type, superseding the relation's tips. `implements` is recorded as proposed; `verifies` too, unless the test's current version has failed in the evidence given (`evidence:`), when it is recorded on that evidence (§18) |
 | `Surfex.Record.plan/7` | a **planned** relation: one end is scanned and recorded at its hash, the other doesn't exist yet and is recorded without one. Its kind is its `spec:`/`code:` prefix, else `spec` when it has a `#`, else `code`. A plausibility check refuses an id the project couldn't have, so a typo doesn't become a permanent plan. `mix surfex.relate --planned` asks whether a spec id is in a file the scanner reads, and whether a code id has the scanner's shape (for Elixir, a name under one of the project's namespaces). Both ends scanned, or neither, is an error. |
 | `Surfex.Record.confirm/6`, `Surfex.Record.confirm/7` | one **dangling** or **proposed** relation, named by its ends and type, again at the current hashes, with a note (required) saying what was judged: basis `judgement`. `implements` is refused: code is validated by evidence or a review (§18), never asserted. Orphaned and conflicted relations aren't confirmed: they need re-pointing or resolving. Under `require_red:` (`opts`, §17) a `tests` relation isn't confirmed until its test's current version has discriminated |
-| `Surfex.Record.validate/6` | a review (§18): the `verifies` relation from a test to a spec unit, and each `implements` relation of that unit whose code the test exercises (by definition, so one arity covers a function's others, §11) and that isn't validated already, validated at the current versions, basis `review`. The unit may be a section whose block or hint the test verifies: that relation must already be current, and the review records the section's `implements` relations alone |
+| `Surfex.Record.validate/6` | a review (§18): the `verifies` relation from a test to a spec unit, and each `implements` relation of that unit whose code the test exercises (by definition, so one arity covers a function's others, §11), each only if it isn't validated already, validated at the current versions, basis `review`; with nothing left to record it is refused. The unit may be a section whose block or hint the test verifies: that relation must already be current, and the review records the section's `implements` relations alone |
 | `Surfex.Record.confirm_by_evidence/4` | every confirmation the test evidence justifies (§17, §18), basis `evidence`, with the evidence in the note: each dangling or proposed `verifies` relation whose test's current version has failed (unless only the spec changed, which is a judgement), then each dangling `tests` relation and each dangling or proposed `implements` relation whose test went red and then green. Nothing justified is `{:ok, []}`, not an error |
 | `Surfex.Record.retire/6` | that a relation no longer applies, naming every tip as a parent, with the ends as the tip recorded them. An end need not still be scanned: this is how an orphaned relation is put to rest. A pair **never related** is declined: a retire at both ends' current versions with no parent, recording the decision not to relate them, so `mix surfex.suggest` never proposes it. Both must be scanned, and the note is required, as the only record of why. A later relate revives it. |
 | `Surfex.Record.resolve/7` | the chosen tip of a **conflicted** relation, recorded again **with its basis** and every tip as a parent: picking a side judges nothing new. Tips that agree are no conflict, and it refuses them. If the scans have moved since, the relation is then dangling, and confirming it is next. |
@@ -1549,8 +1549,11 @@ already made validates nothing new.
   while its tests verify the hints inside it, so the unit may be that section: the review
   judges that the test validates the section's claims for the code it exercises, and
   needs the test's relation to the hint to be current already (validated first, against
-  the hint). Breaking the code to get a red run was rejected: a test that fails against a
-  mutant shows it is sensitive to the code, not that it reflects the spec.
+  the hint). A review records only what isn't validated already: a `verifies` on its
+  failing run keeps that basis, so CI goes on checking it (§17), and with nothing left to
+  record `validate` refuses rather than write the same judgement again. Breaking the code
+  to get a red run was rejected: a test that fails against a mutant shows it is sensitive
+  to the code, not that it reflects the spec.
 - **One relation at a time.** `confirm` (`Mix.Tasks.Surfex.Confirm`) names one relation, and
   `validate` (`Mix.Tasks.Surfex.Validate`) one test and one unit. There is no form that
   confirms or validates a list, and no form that confirms every relation touching an id.
@@ -1572,6 +1575,11 @@ confirm takes one relation and a note, refuses implements, and records a judgeme
 validate needs the verifies relation and green evidence, and records a review; against a
 section it needs the test's current relation to a hint inside it, and records the section's
 implements alone
+```
+
+```test review-records-once
+a review records only what isn't validated already: a verifies on its failing run keeps
+that basis, and validate with nothing left to record refuses
 ```
 
 ### 18.1 Adopting an existing suite {#adoption}

@@ -24,6 +24,10 @@ release it merely follows.
 
 ### Changed
 
+- **A review records only what isn't validated already** (#138). `validate` re-recorded
+  the test's `verifies` on every call, and replaced one on its failing run (a claim CI
+  checks) with a review (which it doesn't). Now that `verifies` keeps its basis, and a
+  review with nothing left to record is refused. Found by the model of the log.
 - **The README installs surfex from Hex** (`~> 0.5.24`) rather than from GitHub, and
   points to the docs on hexdocs.
 - **Tips that agree are not a conflict** (§13.1). Two branches that record the same

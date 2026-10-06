@@ -341,9 +341,6 @@ if Code.ensure_loaded?(ExTLA.Spec) do
     def settled?(log, ev, v, type),
       do: state_of(log, v, type) == :current or not green_now?(ev, v)
 
-    # The judgements a log holds, whoever recorded them and when.
-    def judgements(log), do: MapSet.new(log, &{&1.op, &1.type, &1.ends, &1.basis})
-
     # The state of the one relation of `type`, or :none before it is related.
     def state_of(log, v, type) do
       case Enum.find(derive(log, v).relations, &(&1.type == type)) do
@@ -633,11 +630,11 @@ if Code.ensure_loaded?(ExTLA.Spec) do
       log = after_confirm
     end
 
-    # Guarded against re-recording a judgement the log already holds: validate does that
-    # today, without end (#138). The guard goes with that fix.
+    # Unguarded: validate records only what isn't validated already (#138), so recording
+    # stops by itself.
     action :validate do
       let after_validate = Proof.validate(log, %{spec: spec, code: code, test: test}, ev)
-      require Proof.judgements(after_validate) != Proof.judgements(log)
+      require after_validate != log
       log = after_validate
     end
 

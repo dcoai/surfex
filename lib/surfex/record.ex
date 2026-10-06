@@ -831,9 +831,10 @@ defmodule Surfex.Record do
   gets validated, by doing the work rather than asserting it.
 
   It needs a live `verifies` relation from the test to the unit, and green evidence for
-  the test's current version (its latest run passed). It records that `verifies` relation,
-  and each live `implements` relation of the unit, not validated already, whose code the
-  test's latest run exercised at its current version, at the current hashes with basis `:review`. The note
+  the test's current version (its latest run passed). It records that `verifies` relation
+  and each live `implements` relation of the unit whose code the test's latest run
+  exercised at its current version, each only if it isn't validated already, at the
+  current hashes with basis `:review`; with nothing left to record it refuses. The note
   (`meta[:note]`) is required: it says which claim each assertion checks. One test and one
   unit per call.
 
@@ -880,7 +881,12 @@ defmodule Surfex.Record do
             exercised.(code),
             do: r
 
-      confirm_each(reviewed ++ implements, status, meta)
+      # What is validated already stays as it was: a verifies on its failing run keeps
+      # that basis, so CI goes on checking it (§17), and a review re-records nothing.
+      case Enum.reject(reviewed, &Status.validated?(status, &1)) ++ implements do
+        [] -> {:error, "already validated: nothing to record (#{test.id} and #{unit.id})"}
+        unvalidated -> confirm_each(unvalidated, status, meta)
+      end
     end
   end
 

@@ -16,7 +16,9 @@ defmodule Mix.Tasks.Surfex.Validate do
 
   It needs a `verifies` relation from the test to the unit, and the last `mix test` to have
   passed the test's current version. It validates that relation and each `implements`
-  relation of the unit whose code the test exercised. One test and one unit per run.
+  relation of the unit whose code the test exercised, each only if it isn't validated
+  already (a `verifies` on its failing run keeps that basis); with nothing left to record
+  it refuses. One test and one unit per run.
 
   Code usually implements a section while its tests verify the hints inside it. Review
   the test against its hint first, then against the section, judging that it validates
