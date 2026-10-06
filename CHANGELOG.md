@@ -17,8 +17,10 @@ release it merely follows.
   tips, resolving ends it, and every entry reads back. Through versions and validation,
   on the evidence path and the review path: a current relation's ends are at their
   versions, a current `implements` rests on evidence or a review, every entry on evidence
-  is borne out by runs, and every review rests on a green run. They run in a Mix
-  environment of their own (`MIX_ENV=model`) and their own CI job.
+  is borne out by runs, and every review rests on a green run. Through moves: every claim,
+  retirement and red→green survives a rename. And liveness: whatever changes, a dangling
+  relation whose test passes comes back to current. They run in a Mix environment of
+  their own (`MIX_ENV=model`) and their own CI job.
 
 ### Changed
 
