@@ -1121,6 +1121,38 @@ defmodule Surfex.RecordTest do
       assert Status.derive(world(), [impl, tests, ver | recorded]).unvalidated == []
     end
 
+    # #138: a review records what isn't validated already. A verifies on its failing run
+    # keeps that basis (CI goes on checking it), and a second review records nothing.
+    @tag verifies: "review-records-once"
+    test "validate records only what isn't validated already, and refuses when that's nothing" do
+      impl = rel(:implements, {:spec, @hint, "h1"}, {:code, @code_id, "c1"})
+      tests = rel(:tests, {:test, @t, "t1"}, {:code, @code_id, "c1"})
+
+      on_red =
+        Entry.new!(
+          at: "2026-09-28T09:00:00Z",
+          op: :relate,
+          type: :verifies,
+          basis: :evidence,
+          ends: [%{kind: :test, id: @t, hash: "t1"}, %{kind: :spec, id: @hint, hash: "h1"}]
+        )
+
+      note = Keyword.put(@meta, :note, "asserts a closed cart is refused")
+      green = [ev(:passed, "c1", 1)]
+      entries = [impl, tests, on_red]
+
+      {:ok, recorded} = Record.validate(world(), entries, @t, @hint, green, note)
+      assert Enum.map(recorded, &{&1.type, &1.basis}) == [implements: :review]
+
+      verifies =
+        Enum.find(Status.derive(world(), entries ++ recorded).relations, &(&1.type == :verifies))
+
+      assert verifies.tip.basis == :evidence
+
+      assert {:error, "already validated: nothing to record" <> _} =
+               Record.validate(world(), entries ++ recorded, @t, @hint, green, note)
+    end
+
     @tag verifies: "process-one-at-a-time"
     test "validate carries a review of one arity to the arity the spec names" do
       located = &%{scan(:code, &1, &2) | location: %{file: "lib/m.ex", lines: {3, 5}}}
@@ -1169,8 +1201,8 @@ defmodule Surfex.RecordTest do
 
       assert Status.derive(world(), [impl, tests, validated_hint | recorded]).unvalidated == []
 
-      # Reviewing again records nothing for code already validated.
-      assert {:ok, []} =
+      # Reviewing again has nothing to record, and says so (#138).
+      assert {:error, "already validated: nothing to record" <> _} =
                Record.validate(
                  world(),
                  [impl, tests, validated_hint | recorded],
