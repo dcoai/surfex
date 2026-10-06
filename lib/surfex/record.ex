@@ -116,7 +116,9 @@ defmodule Surfex.Record do
   An `implements` relation is refused: code is validated by evidence
   (`confirm_by_evidence/4`) or a review (`validate/6`), never asserted. The judgement path
   is for what only a judgement can settle: a `verifies` relation after a spec rewording
-  that changes no behaviour, an `excuses` relation, a structural relation after a change.
+  that changes no behaviour, an `excuses` relation, a structural relation after a change,
+  and an `implements` relation to a shape (`Surfex.Scan` `:shape`, a type): no run
+  exercises one, so a reviewer reads it against the spec.
   Under `require_red: true` (`opts`, with `evidence:`), a `tests` relation is refused until
   its test's current version has discriminated.
   """
@@ -126,7 +128,7 @@ defmodule Surfex.Record do
     note = meta[:note]
 
     cond do
-      type == :implements ->
+      type == :implements and not shape_end?(scans, from, to) ->
         {:error,
          "implements is validated by evidence or a review, never by hand: " <>
            "`mix surfex.confirm --evidence` or `mix surfex.validate`"}
@@ -1136,6 +1138,14 @@ defmodule Surfex.Record do
              "#{id} is scanned as more than one kind; prefix it with spec:, code:, test: or class:"},
           else: {:error, "#{id} names #{length(several)} scanned records of one kind"}
     end
+  end
+
+  # An implements whose code end is a shape (a type) has no behaviour for a run to show:
+  # it is judged (§18).
+  defp shape_end?(scans, from, to) do
+    Enum.any?([from, to], fn id ->
+      match?({:ok, %Scan{kind: :code, shape: true}}, find(scans, id))
+    end)
   end
 
   defp split_kind("spec:" <> rest), do: {:spec, rest}

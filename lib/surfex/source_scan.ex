@@ -136,6 +136,44 @@ defmodule Surfex.SourceScan do
     |> Enum.sort_by(&{&1.name, &1.arity})
   end
 
+  @doc """
+  The module's public types: each `@type` and `@opaque`, minus one under `@typedoc false`,
+  as Elixir's docs leave it out. A `@typep` is private. Each has its name, arity, version
+  (the hash of its declaration, so it changes with the type alone) and lines.
+  """
+  @spec types(Macro.t()) :: [
+          %{
+            name: atom,
+            arity: non_neg_integer,
+            hash: String.t(),
+            lines: {pos_integer, pos_integer} | nil
+          }
+        ]
+  def types({:defmodule, _, [_aliases, [do: body]]}) do
+    {types, _hidden} =
+      Enum.reduce(exprs(body), {[], false}, fn
+        {:@, _, [{:typedoc, _, [false]}]}, {acc, _hidden} ->
+          {acc, true}
+
+        {:@, _, [{kind, _, [{:"::", _, [head, _body]}]}]} = node, {acc, hidden}
+        when kind in [:type, :opaque] ->
+          {if(hidden, do: acc, else: [type(head, node) | acc]), false}
+
+        _other, state ->
+          state
+      end)
+
+    Enum.sort_by(types, &{&1.name, &1.arity})
+  end
+
+  defp type({name, _meta, args}, node),
+    do: %{
+      name: name,
+      arity: if(is_list(args), do: length(args), else: 0),
+      hash: definition_hash(node),
+      lines: line_range(node)
+    }
+
   @doc false
   # The content version of arbitrary `nodes` in a module, hashed as `defs/1` hashes a
   # function: over the nodes, the private definitions they reach, and the attributes read

@@ -7,10 +7,35 @@ All notable changes to Surfex are recorded here, following
 ## [Unreleased]
 
 `mix.exs` reads `0.5.25-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
-release it merely follows.
+release it merely follows. The next release is 0.6.0, since public types become items.
+
+### Upgrading (0.6)
+
+Public types are now code items (#137). A project whose `require:` asks code for a
+relation (`require: [code: [...]]`) finds each public type unmet until it is related or
+excused. To excuse them as a class, add to `.surfex.exs`:
+
+```elixir
+require: [code: [:implements, :excuses], ...],
+classes: [{"type", "a type is the shape of the data its functions take and return"}],
+rules: [%{class: "type", kinds: [:type]}],
+```
+
+then `mix surfex.suggest --accept` proposes one `excuses` per type, and each is confirmed
+by judgement (`mix surfex.confirm class:type code:t:Mod.t/0 --type excuses --note …`). A
+type the spec cites is related instead, by judgement (below).
 
 ### Added
 
+- **Types are items** (#137). Each public `@type` and `@opaque` is an item keyed as ExDoc
+  writes it, `t:Mod.t/0`, versioned by its own declaration. A spec cites it as `Mod.t()`
+  or `t:Mod.t/0`; an undeclared or private type is still an unresolved citation. A
+  function of the same name keeps its own key.
+- **A shape is judged** (#137). A type has no behaviour for a test run to exercise, so an
+  `implements` relation to one is confirmed by judgement, with a note saying what was
+  compared, and dangles when the type changes. The scanner marks such items (`shape`);
+  code with behaviour is still never confirmed by hand, and a judgement on it doesn't
+  validate.
 - **Models of the relation log** (§22). Exhaustive extla models drive the real recording
   code and check the real status in every state they reach. Across two branches and main,
   merged by git's union merge: order doesn't matter, a conflict is a disagreement between
