@@ -1811,7 +1811,18 @@ In every state the bounded model reaches:
 - **Resolving ends a conflict.** Picking a side always leaves one tip.
 - **Every entry reads back.** Each entry written decodes under its own id.
 
-The model runs in a Mix environment of its own (`MIX_ENV=model`), so the rest of the
+Two more models follow the log through versions and validation, on one log: a spec unit,
+its code and a test that verifies the unit and calls the code, each at one of two
+versions, with test runs that pass or fail against the code as it is. The **evidence
+path** changes the code and confirms by evidence; the **review path** changes the spec and
+the test and validates by a review or a judgement. In every state each reaches:
+- **Current means current.** A current relation's ends are at the versions scanned now.
+- **Shown, not asserted.** A current `implements` rests on evidence or a review.
+- **Evidence is borne out.** Every entry on evidence is backed by runs that happened: a
+  `verifies` by its test version's failing run, anything else by a red then a green.
+- **A review rests on a green run** of the test at the versions it records.
+
+The models run in a Mix environment of their own (`MIX_ENV=model`), so the rest of the
 suite neither fetches nor compiles the checker, and CI runs it as a job of its own. A
 violation fails it with the shortest trace to the state that breaks the property.
 
@@ -1819,4 +1830,10 @@ violation fails it with the shortest trace to the state that breaks the property
 in every state branches and merges reach, a log's status is the same for its lines in any
 order, a relation is conflicted exactly when the tips in force disagree, resolving ends
 the conflict, and every entry reads back under its id
+```
+
+```test log-model-validation
+with versions changing and tests run red or green, a current relation's ends are at the
+current versions, a current implements rests on evidence or a review, every entry on
+evidence is borne out by runs, and every review rests on a green run
 ```

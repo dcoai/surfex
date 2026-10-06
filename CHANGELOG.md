@@ -11,11 +11,14 @@ release it merely follows.
 
 ### Added
 
-- **A model of the relation log** (§22). An exhaustive extla model drives the real
-  recording code across two branches and main, merging by git's union merge, and checks
-  the real status in every state it reaches: order doesn't matter, a conflict is a
-  disagreement between tips, resolving ends it, and every entry reads back. It runs in a Mix environment of
-  its own (`MIX_ENV=model`) and its own CI job, so nothing else fetches the checker.
+- **Models of the relation log** (§22). Exhaustive extla models drive the real recording
+  code and check the real status in every state they reach. Across two branches and main,
+  merged by git's union merge: order doesn't matter, a conflict is a disagreement between
+  tips, resolving ends it, and every entry reads back. Through versions and validation,
+  on the evidence path and the review path: a current relation's ends are at their
+  versions, a current `implements` rests on evidence or a review, every entry on evidence
+  is borne out by runs, and every review rests on a green run. They run in a Mix
+  environment of their own (`MIX_ENV=model`) and their own CI job.
 
 ### Changed
 
