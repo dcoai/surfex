@@ -45,15 +45,19 @@ writing specs and adopting an existing suite.
 
 ## Installation
 
-Surfex is a build-time tool with no dependencies of its own:
+Surfex is a build-time tool from [Hex](https://hex.pm/packages/surfex), with no runtime
+dependencies of its own:
 
 ```elixir
 def deps do
   [
-    {:surfex, github: "dcoai/surfex", tag: "v0.5.0", only: [:dev, :test], runtime: false}
+    {:surfex, "~> 0.5.24", only: [:dev, :test], runtime: false}
   ]
 end
 ```
+
+Then `mix deps.get`. The docs are at [hexdocs](https://hexdocs.pm/surfex), and `mix
+surfex.info` lists the topics and commands from the installed version.
 
 ## A worked example
 

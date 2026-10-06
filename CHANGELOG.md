@@ -22,6 +22,8 @@ release it merely follows.
 
 ### Changed
 
+- **The README installs surfex from Hex** (`~> 0.5.24`) rather than from GitHub, and
+  points to the docs on hexdocs.
 - **Tips that agree are not a conflict** (§13.1). Two branches that record the same
   judgement without seeing each other (the same operation, ends at the same versions, and
   basis) no longer leave a conflict to resolve, as when both re-run `confirm --evidence`
