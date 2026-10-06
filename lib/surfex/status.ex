@@ -426,10 +426,14 @@ defmodule Surfex.Status do
         end)
     end
 
+    shapes = for %Scan{kind: :code, shape: true, id: id} <- scans, into: MapSet.new(), do: id
+
     validating? = fn r, tip ->
-      case tip.basis do
-        basis when basis in [:evidence, :review, :judgement] -> true
-        :baseline -> holds?.(r, tip)
+      case {r.relation, tip.basis} do
+        # Code with behaviour is shown by a run, never judged: only a shape is (§18).
+        {{:implements, {:code, c}, _spec}, :judgement} -> MapSet.member?(shapes, c)
+        {_relation, basis} when basis in [:evidence, :review, :judgement] -> true
+        {_relation, :baseline} -> holds?.(r, tip)
         _none_or_proposed -> false
       end
     end

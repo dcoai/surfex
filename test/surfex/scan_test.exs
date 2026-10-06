@@ -153,6 +153,17 @@ defmodule Surfex.ScanTest do
              ]
     end
 
+    # #137: a shape (a type) stays one in its code record, which is what confirm and
+    # status read.
+    @tag verifies: ["scan-records-pure"]
+    test "a shape's code record is a shape" do
+      type = %Item{kind: :type, name: "t:M.t/0", file: "lib/m.ex", hash: "y", shape: true}
+      fun = %Item{kind: :function, name: "t/0", parent: "M", file: "lib/m.ex", hash: "f"}
+
+      assert [%Scan{id: "M.t/0", shape: false}, %Scan{id: "t:M.t/0", role: :type, shape: true}] =
+               Scan.code([type, fun])
+    end
+
     # #60: two items sharing a key are two relation ends.
     @tag verifies: ["scan-records-pure"]
     test "items sharing a key get ids that carry their kind; a unique key keeps its own" do

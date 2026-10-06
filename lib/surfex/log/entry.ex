@@ -41,7 +41,7 @@ defmodule Surfex.Log.Entry do
   # the bases it may carry. `nil` is no basis; for implements, verifies and excuses it is
   # legacy, admitted for entries written before bases existed.
   @grammar %{
-    implements: {[:code, :spec], [nil, :proposed, :evidence, :review, :baseline]},
+    implements: {[:code, :spec], [nil, :proposed, :evidence, :review, :judgement, :baseline]},
     verifies: {[:test, :spec], [nil, :proposed, :evidence, :review, :judgement, :baseline]},
     tests: {[:test, :code], [nil, :evidence, :judgement, :baseline]},
     refines: {[:spec, :spec], [nil, :judgement]},

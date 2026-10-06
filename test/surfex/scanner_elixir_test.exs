@@ -192,4 +192,110 @@ defmodule Surfex.Scanner.ElixirTest do
                by_span["MyApp.Cart.Line.new"]
     end
   end
+
+  # #137: a public type is an item, keyed as ExDoc writes it, so a spec may cite it.
+  describe "types" do
+    @shapes """
+    defmodule Shapes do
+      @moduledoc "Shapes."
+      @type t :: %{sides: pos_integer}
+      @opaque handle :: reference
+      @type pair(a, b) :: {a, b}
+      @typep secret :: binary
+      @typedoc false
+      @type internal :: atom
+
+      def t, do: %{sides: 3}
+      def area(_shape), do: 0
+    end
+
+    defmodule Shapes.Point do
+      @moduledoc "A point."
+      @type t :: {number, number}
+    end
+    """
+
+    defp shapes(source \\ @shapes) do
+      root = Path.join(System.tmp_dir!(), "surfex_types_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(Path.join(root, "lib"))
+      on_exit(fn -> File.rm_rf!(root) end)
+      File.write!(Path.join(root, "lib/shapes.ex"), source)
+      root
+    end
+
+    test "each public @type and @opaque is an item, keyed t:Mod.name/arity" do
+      items = Map.new(Scanner.items(shapes()), &{Item.key(&1), &1})
+
+      assert %Item{
+               kind: :type,
+               parent: nil,
+               file: "lib/shapes.ex",
+               aliases: ["Shapes.t"],
+               shape: true
+             } = items["t:Shapes.t/0"]
+
+      # A function has behaviour a run exercises; a type is a shape.
+      assert %Item{shape: false} = items["Shapes.t/0"]
+
+      assert %Item{kind: :type, aliases: ["Shapes.handle"]} = items["t:Shapes.handle/0"]
+      assert %Item{kind: :type, aliases: ["Shapes.pair"]} = items["t:Shapes.pair/2"]
+      assert %Item{kind: :type} = items["t:Shapes.Point.t/0"]
+
+      # A private type, or one hidden from the docs, is not the module's to cite.
+      refute Map.has_key?(items, "t:Shapes.secret/0")
+      refute Map.has_key?(items, "t:Shapes.internal/0")
+
+      # A function and a type of one name are two items with two keys.
+      assert %Item{kind: :function} = items["Shapes.t/0"]
+    end
+
+    test "a type's version is its declaration: it changes with the type, not the module" do
+      before = Map.new(Scanner.items(shapes()), &{Item.key(&1), &1.hash})
+
+      retyped =
+        Map.new(
+          Scanner.items(shapes(String.replace(@shapes, "pos_integer", "non_neg_integer"))),
+          &{Item.key(&1), &1.hash}
+        )
+
+      other =
+        Map.new(
+          Scanner.items(
+            shapes(String.replace(@shapes, "def area(_shape), do: 0", "def area(_s), do: 1"))
+          ),
+          &{Item.key(&1), &1.hash}
+        )
+
+      refute retyped["t:Shapes.t/0"] == before["t:Shapes.t/0"]
+      assert retyped["t:Shapes.pair/2"] == before["t:Shapes.pair/2"]
+      # The module's version covers its types (§3), as it did.
+      refute retyped["Shapes"] == before["Shapes"]
+      assert other["t:Shapes.t/0"] == before["t:Shapes.t/0"]
+    end
+
+    @tag verifies: "type-citations"
+    test "Mod.t() and t:Mod.t/0 cite a declared type; an undeclared or private one is unresolved" do
+      root = shapes()
+      items = Scanner.items(root)
+
+      File.write!(Path.join(root, "spec.md"), """
+      # Shapes
+      A point is `Shapes.Point.t()`, also written `t:Shapes.Point.t/0`. A pair is
+      `Shapes.pair(a, b)`. `Shapes.Point.gone()` and `Shapes.secret()` are no types it has.
+      `Shapes.t()` names the function and the type together.
+      """)
+
+      profile = Profile.new!([sources: ["spec.md"]] ++ Scanner.profile_defaults("Shapes"))
+      by_span = Cite.citations(items, profile, root) |> Map.new(&{&1.span, &1})
+
+      assert %{status: :resolved, items: ["t:Shapes.Point.t/0"]} = by_span["Shapes.Point.t()"]
+      assert %{status: :resolved, items: ["t:Shapes.Point.t/0"]} = by_span["t:Shapes.Point.t/0"]
+      assert %{status: :resolved, items: ["t:Shapes.pair/2"]} = by_span["Shapes.pair(a, b)"]
+      assert %{status: :unresolved} = by_span["Shapes.Point.gone()"]
+      assert %{status: :unresolved} = by_span["Shapes.secret()"]
+
+      assert %{status: :resolved, items: items} = by_span["Shapes.t()"]
+      assert Enum.sort(items) == ["Shapes.t/0", "t:Shapes.t/0"]
+    end
+  end
 end

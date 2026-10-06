@@ -942,6 +942,58 @@ defmodule Surfex.RecordTest do
   end
 
   # #72: a current relation means validated, not asserted.
+  # #137: a type has no behaviour for a run to exercise, so its implements is judged.
+  describe "shapes" do
+    @describetag verifies: "shapes-by-judgement"
+
+    @type_id "t:M.cart/0"
+
+    defp shaped(code \\ "c1") do
+      shape = %{scan(:code, @type_id, "y1") | shape: true}
+      [scan(:spec, @spec_id, "s1"), scan(:code, @code_id, code), shape]
+    end
+
+    defp shape_note,
+      do: Keyword.put(@meta, :note, "the cart type has the fields the section lists")
+
+    test "an implements to a shape is confirmed by judgement, and validates" do
+      {:ok, [proposed]} = Record.relate(shaped(), [], @spec_id, @type_id, :implements, @meta)
+      assert proposed.basis == :proposed
+
+      {:ok, [judgement]} =
+        Record.confirm(shaped(), [proposed], @spec_id, @type_id, :implements, shape_note())
+
+      assert judgement.basis == :judgement
+      status = Status.derive(shaped(), [proposed, judgement])
+      assert [%{state: :current} = r] = status.relations
+      assert Status.validated?(status, r)
+      assert status.unvalidated == []
+    end
+
+    test "code with behaviour is still never confirmed by hand, and a judgement on it is unvalidated" do
+      {:ok, [proposed]} = Record.relate(shaped(), [], @spec_id, @code_id, :implements, @meta)
+
+      assert {:error, "implements is validated by evidence or a review" <> _} =
+               Record.confirm(shaped(), [proposed], @spec_id, @code_id, :implements, shape_note())
+
+      # Written by hand, the log reads it, and status doesn't count it as validated.
+      forged =
+        Entry.new!(
+          at: "2026-09-28T11:00:00Z",
+          op: :relate,
+          type: :implements,
+          basis: :judgement,
+          note: "asserted",
+          parents: [proposed.id],
+          ends: proposed.ends
+        )
+
+      status = Status.derive(shaped(), [proposed, forged])
+      assert [%{state: :current, relation: relation}] = status.relations
+      assert [%{relation: ^relation}] = status.unvalidated
+    end
+  end
+
   describe "validation by process" do
     defp with_basis(entry, basis),
       do:

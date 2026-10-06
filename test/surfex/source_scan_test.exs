@@ -453,4 +453,42 @@ defmodule Surfex.SourceScanTest do
              )
     end
   end
+
+  # #137: a public type's version is its own declaration.
+  describe "types/1" do
+    @describetag verifies: "structure-versions"
+
+    @typed ~S"""
+    defmodule M do
+      @type t :: integer
+      @opaque h :: reference
+      @type pair(a, b) :: {a, b}
+      @typep secret :: binary
+      @typedoc false
+      @type internal :: atom
+      def f(x), do: x
+    end
+    """
+
+    defp types(source) do
+      [mod | _] = source |> Code.string_to_quoted!() |> SourceScan.defmodules()
+      Map.new(SourceScan.types(mod), &{{&1.name, &1.arity}, &1})
+    end
+
+    test "the public types, each versioned by its declaration alone" do
+      types = types(@typed)
+      assert Map.keys(types) |> Enum.sort() == [h: 0, pair: 2, t: 0]
+      assert %{lines: {2, 2}} = types[{:t, 0}]
+
+      retyped = types(String.replace(@typed, "@type t :: integer", "@type t :: float"))
+      refute retyped[{:t, 0}].hash == types[{:t, 0}].hash
+      assert retyped[{:pair, 2}].hash == types[{:pair, 2}].hash
+
+      # Layout and the function beside it are not the type.
+      moved = types(String.replace(@typed, "  def f(x), do: x\n", "\n\n  def f(x), do: x + 1\n"))
+
+      assert Map.new(moved, fn {k, v} -> {k, v.hash} end) ==
+               Map.new(types, fn {k, v} -> {k, v.hash} end)
+    end
+  end
 end
