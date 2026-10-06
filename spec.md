@@ -1822,6 +1822,16 @@ the test and validates by a review or a judgement. In every state each reaches:
   `verifies` by its test version's failing run, anything else by a red then a green.
 - **A review rests on a green run** of the test at the versions it records.
 
+Two more follow what a change asks of the log. **Moves:** a spec section and a test are
+renamed and moved (`mix surfex.move`, or suggest's move); a move keeps every claim with its
+basis, every retirement and every red→green record, under the new ids. **Recovery:** from a
+triangle established test-first, the spec, the code and the test change in any order, each
+test version runs once against each code version, and recording is done when it can be
+(`confirm --evidence`, `validate`, confirm by judgement, suggest's refresh). Under that
+fairness, a dangling relation whose test passes is brought back to current, unless the test
+stops passing: nothing is current on a red test. It is a liveness property, so nothing in
+the model is capped; a stranded relation would be a finding, not the bound.
+
 The models run in a Mix environment of their own (`MIX_ENV=model`), so the rest of the
 suite neither fetches nor compiles the checker, and CI runs it as a job of its own. A
 violation fails it with the shortest trace to the state that breaks the property.
@@ -1836,4 +1846,14 @@ the conflict, and every entry reads back under its id
 with versions changing and tests run red or green, a current relation's ends are at the
 current versions, a current implements rests on evidence or a review, every entry on
 evidence is borne out by runs, and every review rests on a green run
+```
+
+```test log-model-moves
+renaming and moving a spec section and a test keeps every claim with its basis, every
+retirement and every red→green record, under the new ids
+```
+
+```test log-model-recovery
+whatever changes, a dangling relation whose test passes is brought back to current by the
+work surfex asks for, unless the test stops passing
 ```
