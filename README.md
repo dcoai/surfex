@@ -160,16 +160,6 @@ the process and what each change needs, reading the status, recording and valida
 relations, marks, adoption, completeness, change drafts, goldens and every `.surfex.exs`
 key. Each topic is one command away (`mix surfex.info process`).
 
-## Upgrading from the v0.2 trace
-
-The trace (`mix surfex.trace`, `SPEC_TRACE.md`) was removed in 0.4.0; the relation log
-replaces it. Its checks all live on: citations become suggested `implements` relations,
-excusing classes become `excuses` relations, uncited code is **unmet** under `require:`,
-and a citation of something that doesn't exist fails `mix surfex.status`. To move a project
-over, delete the trace-only keys from `.surfex.exs` (Surfex names them), replace `:trace`
-in `goldens:` with `:status`, then run `mix surfex.log --init` and
-`mix surfex.suggest --accept`.
-
 ## Reference
 
 [`guides/writing-specs.md`](guides/writing-specs.md) is how to write a spec Surfex relates
