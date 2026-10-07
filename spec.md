@@ -619,9 +619,12 @@ arguments is one definition reported as several items (`f/1`, `f/2`), and they s
 two records with one kind and id, naming both locations: no record may shadow another.
 
 `Surfex.Scan.ExUnit` is the test scanner. It makes one record of kind `:test` per ExUnit
-`test`, read from source without compiling it. `Surfex.Scan.ExUnit.records/2` reads
-every file matching a list of globs under a root, and `Surfex.Scan.ExUnit.tests/2`
-scans one text.
+`test`, and per ExUnitProperties `property`, read from source without compiling it.
+`Surfex.Scan.ExUnit.records/2` reads every file matching a list of globs under a root,
+and `Surfex.Scan.ExUnit.tests/2` scans one text. A property is a test in everything
+below: its id, version, tags and calls, and its runs are evidence (§17), found by its
+lines as a test's are. Its `check all` generators are part of its body, so weakening one
+changes its version.
 - **Its id** is the module, the `describe` if any, and the test's name:
   `MyApp.CartTest: adding: rejects a closed cart`. A test defined in a comprehension
   keeps its name as written (`counts #{name}`), since the names it generates are only
@@ -651,6 +654,11 @@ scans one text.
   left out: they prepare a test, and what a test tests is what it calls itself. These
   are facts about the source; which of them are code the project has is for
   `Surfex.Suggest` to find (§15).
+
+```test property-tests
+a property is scanned as a test: its id, its declarations, what it calls, and a version
+that changes with its generators
+```
 
 `Surfex.Scan.Classes` is the class scanner. `Surfex.Scan.Classes.records/1` makes one
 record of kind `:class` per class in `.surfex.exs`. A class names a kind of code the spec

@@ -9,6 +9,13 @@ All notable changes to Surfex are recorded here, following
 `mix.exs` reads `0.6.1-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
 release it merely follows.
 
+### Added
+
+- **Properties are tests** (#141). The ExUnit scanner records an ExUnitProperties
+  `property` as it does a `test`: its id, its `verifies` tags, what it calls, and a version
+  that changes with its `check all` generators. Its runs are evidence, so a property can
+  verify a spec unit.
+
 ## [0.6.0] — 2026-10-07
 
 Public types are items: a spec may cite `Mod.t()`, and a relation to a type is judged,
