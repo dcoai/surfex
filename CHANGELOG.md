@@ -6,8 +6,11 @@ All notable changes to Surfex are recorded here, following
 
 ## [0.6.0] — 2026-10-07
 
-`mix.exs` reads `0.5.25-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
-release it merely follows. The next release is 0.6.0, since public types become items.
+Public types are items: a spec may cite `Mod.t()`, and a relation to a type is judged,
+since no test run exercises one. The relation log is model-checked with extla, the real
+code as oracle, which found two defects, both fixed here: tips that agree are not a
+conflict, and a review records only what isn't validated already. Projects that require
+code relations have one upgrade step (below).
 
 ### Upgrading (0.6)
 
@@ -53,7 +56,7 @@ type the spec cites is related instead, by judgement (below).
   the test's `verifies` on every call, and replaced one on its failing run (a claim CI
   checks) with a review (which it doesn't). Now that `verifies` keeps its basis, and a
   review with nothing left to record is refused. Found by the model of the log.
-- **The README installs surfex from Hex** (`~> 0.5.24`) rather than from GitHub, and
+- **The README installs surfex from Hex** (`~> 0.6.0`) rather than from GitHub, and
   points to the docs on hexdocs.
 - **Tips that agree are not a conflict** (§13.1). Two branches that record the same
   judgement without seeing each other (the same operation, ends at the same versions, and

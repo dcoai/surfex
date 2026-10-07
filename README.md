@@ -51,7 +51,7 @@ dependencies of its own:
 ```elixir
 def deps do
   [
-    {:surfex, "~> 0.5.24", only: [:dev, :test], runtime: false}
+    {:surfex, "~> 0.6.0", only: [:dev, :test], runtime: false}
   ]
 end
 ```
