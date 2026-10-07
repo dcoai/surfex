@@ -6,8 +6,8 @@ All notable changes to Surfex are recorded here, following
 
 ## [0.6.1] — 2026-10-07
 
-`mix.exs` reads `0.6.1-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
-release it merely follows.
+An ExUnitProperties `property` is now a test, so a suite's generative tests can verify
+spec units. No upgrade step.
 
 ### Added
 
