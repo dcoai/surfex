@@ -102,6 +102,52 @@ defmodule Surfex.ScanExUnitTest do
     assert version(renamed, @closed) == version(@closed)
   end
 
+  # #141: an ExUnitProperties `property` is a test like any other.
+  @property_source ~S'''
+  defmodule MyApp.CartPropertyTest do
+    use ExUnit.Case
+    use ExUnitProperties
+
+    describe "totals" do
+      @describetag verifies: "cart-totals"
+
+      @tag verifies: "cart-total-sum"
+      property "sum of the lines", %{cart: cart} do
+        check all n <- integer(1..10) do
+          assert MyApp.Cart.total(cart, n) >= 0
+        end
+      end
+
+      test "sum of the lines" do
+        assert MyApp.Cart.total() == 0
+      end
+    end
+  end
+  '''
+
+  @tag verifies: "property-tests"
+  test "a property is a test: its id, declarations, calls, and a version over its generators" do
+    by_id = Map.new(Tests.tests(@property_source, "test/p_test.exs"), &{&1.id, &1})
+
+    assert %{kind: :test, declares: declares, calls: calls, location: %{lines: {9, 13}}} =
+             by_id["MyApp.CartPropertyTest: totals: sum of the lines"]
+
+    assert {:verifies, "cart-totals"} in declares
+    assert {:verifies, "cart-total-sum"} in declares
+    assert "MyApp.Cart.total/2" in calls
+
+    # A test of the same name beside it is told apart, as two tests are.
+    assert %{calls: calls} = by_id["MyApp.CartPropertyTest: totals: sum of the lines~2"]
+    assert "MyApp.Cart.total/0" in calls
+
+    # Weakening a generator weakens the property: a new version.
+    weakened = String.replace(@property_source, "integer(1..10)", "constant(1)")
+    retyped = Map.new(Tests.tests(weakened, "test/p_test.exs"), &{&1.id, &1.hash})
+
+    refute retyped["MyApp.CartPropertyTest: totals: sum of the lines"] ==
+             by_id["MyApp.CartPropertyTest: totals: sum of the lines"].hash
+  end
+
   test "two tests with one id are numbered" do
     twice =
       "defmodule T do\n  test \"a\", do: :ok\n  describe \"x\" do\n  end\n  test \"a\", do: :ok\nend\n"

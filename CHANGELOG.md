@@ -4,6 +4,18 @@ All notable changes to Surfex are recorded here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] — 2026-10-07
+
+An ExUnitProperties `property` is now a test, so a suite's generative tests can verify
+spec units. No upgrade step.
+
+### Added
+
+- **Properties are tests** (#141). The ExUnit scanner records an ExUnitProperties
+  `property` as it does a `test`: its id, its `verifies` tags, what it calls, and a version
+  that changes with its `check all` generators. Its runs are evidence, so a property can
+  verify a spec unit.
+
 ## [0.6.0] — 2026-10-07
 
 Public types are items: a spec may cite `Mod.t()`, and a relation to a type is judged,

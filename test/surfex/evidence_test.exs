@@ -145,6 +145,50 @@ defmodule Surfex.EvidenceTest do
       assert generated.run == totals.run
     end
 
+    # #141: ExUnitProperties names a property's test "property …"; the formatter finds it by
+    # its lines, so its run is evidence like a test's.
+    test "a property's run is recorded at its version, with what it calls", %{tmp_dir: root} do
+      file = Path.join(root, "test/cart_property_test.exs")
+
+      File.write!(file, """
+      defmodule MyApp.CartPropertyTest do
+        use ExUnit.Case
+        use ExUnitProperties
+
+        property "totals are never negative" do
+          check all n <- integer() do
+            assert MyApp.Cart.total() >= n - n
+          end
+        end
+      end
+      """)
+
+      {:ok, pid} = GenServer.start_link(Surfex.ExUnitFormatter, surfex_root: root)
+      GenServer.cast(pid, {:suite_started, []})
+
+      GenServer.cast(
+        pid,
+        {:test_finished,
+         %ExUnit.Test{
+           name: :"property totals are never negative",
+           module: MyApp.CartPropertyTest,
+           state: {:failed, []},
+           tags: %{file: file, line: 5}
+         }}
+      )
+
+      GenServer.cast(pid, {:suite_finished, %{}})
+      GenServer.stop(pid)
+
+      assert [
+               %{
+                 test: "MyApp.CartPropertyTest: totals are never negative",
+                 result: :failed,
+                 code: %{"MyApp.Cart.total/0" => _}
+               }
+             ] = Evidence.load(Evidence.path(root))
+    end
+
     # #98: a job that excludes a tag says so, so an excluded test isn't one that didn't run.
     @tag verifies: "evidence-excluded"
     test "an excluded or skipped test is recorded as such at its version, with no code",
