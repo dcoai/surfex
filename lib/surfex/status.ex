@@ -73,7 +73,8 @@ defmodule Surfex.Status do
           state: state,
           changed: [{atom, String.t()}],
           impacted: boolean,
-          tips: [Entry.t()]
+          tips: [Entry.t()],
+          tip: Entry.t() | nil
         }
   @type gap :: %{
           spec: String.t(),
@@ -311,8 +312,9 @@ defmodule Surfex.Status do
 
   @doc """
   The tips of `relation` among `entries`: its entries that no other entry of it names as a
-  parent, oldest first. One tip is the judgement in force; more than one is a conflict;
-  none means the log has never recorded the relation.
+  parent, oldest first. One tip, or several that agree (`representative/1`), is the
+  judgement in force; tips that disagree are a conflict; none means the log has never
+  recorded the relation.
   """
   @spec tips([Entry.t()], {atom, {atom, String.t()}, {atom, String.t()}}) :: [Entry.t()]
   def tips(entries, relation),
@@ -327,15 +329,44 @@ defmodule Surfex.Status do
 
   defp judge({type, _a, _b} = relation, group, by_id) do
     tips = tips_of(group)
+    tip = representative(tips)
 
     {state, changed} =
-      case tips do
-        [tip] -> judge_tip(tip, by_id)
-        _ -> {:conflicted, []}
+      case tip do
+        %Entry{} -> judge_tip(tip, by_id)
+        nil -> {:conflicted, []}
       end
 
-    %{relation: relation, type: type, state: state, changed: changed, impacted: false, tips: tips}
+    %{
+      relation: relation,
+      type: type,
+      state: state,
+      changed: changed,
+      impacted: false,
+      tips: tips,
+      tip: tip
+    }
   end
+
+  @doc """
+  The one judgement a relation's tips record (§13.1): the tip itself when there is one;
+  when several tips agree (the same operation, ends at the same versions, and basis,
+  recorded without seeing each other), the one with the smallest id; `nil` when they
+  disagree, which is a conflict, or when there are none. Who recorded a tip, when, on which
+  commit and with which note are context, not part of the judgement.
+  """
+  @spec representative([Entry.t()]) :: Entry.t() | nil
+  def representative([]), do: nil
+
+  def representative(tips) do
+    case tips |> Enum.map(&judgement/1) |> Enum.uniq() do
+      [_one] -> Enum.min_by(tips, & &1.id)
+      _disagree -> nil
+    end
+  end
+
+  defp judgement(%Entry{} = e),
+    do: {e.op, e.type, Enum.map(e.ends, &{&1.kind, &1.id, &1.hash}), e.basis}
 
   defp judge_tip(%Entry{op: :retire}, _by_id), do: {:retired, []}
 
@@ -377,7 +408,7 @@ defmodule Surfex.Status do
   # inside it) and exercises the code.
   defp unvalidated(relations, baselined, scans) do
     within = for %Scan{kind: :spec, within: w} = s <- scans, w != nil, into: %{}, do: {s.id, w}
-    current = for %{state: :current, tips: [tip]} = r <- relations, do: {r, tip}
+    current = for %{state: :current, tip: %Entry{} = tip} = r <- relations, do: {r, tip}
     pairs = fn type -> for {%{type: ^type, relation: {_, a, b}}, _} <- current, do: {a, b} end
     {verifies, tests} = {pairs.(:verifies), pairs.(:tests)}
 
@@ -395,10 +426,14 @@ defmodule Surfex.Status do
         end)
     end
 
+    shapes = for %Scan{kind: :code, shape: true, id: id} <- scans, into: MapSet.new(), do: id
+
     validating? = fn r, tip ->
-      case tip.basis do
-        basis when basis in [:evidence, :review, :judgement] -> true
-        :baseline -> holds?.(r, tip)
+      case {r.relation, tip.basis} do
+        # Code with behaviour is shown by a run, never judged: only a shape is (§18).
+        {{:implements, {:code, c}, _spec}, :judgement} -> MapSet.member?(shapes, c)
+        {_relation, basis} when basis in [:evidence, :review, :judgement] -> true
+        {_relation, :baseline} -> holds?.(r, tip)
         _none_or_proposed -> false
       end
     end
@@ -414,7 +449,7 @@ defmodule Surfex.Status do
   unvalidated (a `baseline` that still holds, §18.1).
   """
   @spec validated?(t, map) :: boolean
-  def validated?(status, %{state: :current, tips: [tip], relation: relation}),
+  def validated?(status, %{state: :current, tip: %Entry{} = tip, relation: relation}),
     do:
       tip.basis in [:evidence, :review, :judgement, :baseline] and
         not Enum.any?(status.unvalidated, &(&1.relation == relation))
@@ -424,7 +459,7 @@ defmodule Surfex.Status do
   @doc "How many current relations rest on the baseline (§18.1)."
   @spec baseline_count(t) :: non_neg_integer
   def baseline_count(status),
-    do: Enum.count(status.relations, &match?(%{state: :current, tips: [%{basis: :baseline}]}, &1))
+    do: Enum.count(status.relations, &match?(%{state: :current, tip: %{basis: :baseline}}, &1))
 
   # A relation is impacted when an end of it depends on something whose dependency
   # relation is not current.
@@ -629,7 +664,7 @@ defmodule Surfex.Status do
   defp unproven(scans, relations, evidence) do
     definition = definitions(scans)
     within = for %Scan{kind: :spec, within: w} = s <- scans, w != nil, into: %{}, do: {s.id, w}
-    current = for %{state: :current, tips: [tip]} = r <- relations, do: {r, tip}
+    current = for %{state: :current, tip: %Entry{} = tip} = r <- relations, do: {r, tip}
     pairs = fn type -> for {%{type: ^type, relation: {_, a, b}}, _} <- current, do: {a, b} end
     tests = pairs.(:tests)
     verifies = pairs.(:verifies)

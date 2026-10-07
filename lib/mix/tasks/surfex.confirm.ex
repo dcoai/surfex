@@ -9,9 +9,10 @@ defmodule Mix.Tasks.Surfex.Confirm do
         --type verifies --note "spec reworded; the test still checks a closed cart is refused"
 
   It is the judgement path (§18): a `verifies` relation after a spec rewording that
-  changes no behaviour, an `excuses` relation, a structural relation after a change. It
-  never confirms an `implements` relation: code is validated by evidence or a review,
-  never asserted. There is no form that confirms more than one relation.
+  changes no behaviour, an `excuses` relation, a structural relation after a change, and
+  an `implements` relation to a shape (a type, which no run exercises). It never confirms
+  any other `implements` relation: code is validated by evidence or a review, never
+  asserted. There is no form that confirms more than one relation.
 
   With `--evidence` it confirms instead what the test evidence justifies
   (`Surfex.Record.confirm_by_evidence/4`): each test relation on its test's failing run,

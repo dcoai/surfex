@@ -13,7 +13,19 @@ defmodule Surfex.Item do
   """
 
   @enforce_keys [:kind, :name, :file, :hash]
-  defstruct [:kind, :name, :file, :hash, :value, :parent, :type, :detail, :lines, aliases: []]
+  defstruct [
+    :kind,
+    :name,
+    :file,
+    :hash,
+    :value,
+    :parent,
+    :type,
+    :detail,
+    :lines,
+    aliases: [],
+    shape: false
+  ]
 
   @type t :: %__MODULE__{
           kind: atom,
@@ -37,7 +49,10 @@ defmodule Surfex.Item do
           aliases: [String.t()],
           # First and last line in `file`, when the scanner knows them. Where the item is,
           # for people and tools; never part of its identity or its version.
-          lines: {pos_integer, pos_integer} | nil
+          lines: {pos_integer, pos_integer} | nil,
+          # A shape has no behaviour of its own (a type): no test run exercises it, so an
+          # `implements` relation to it is validated by judgement (§18). The scanner says so.
+          shape: boolean
         }
 
   @doc """

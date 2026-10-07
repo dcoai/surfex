@@ -38,7 +38,7 @@ defmodule Surfex.Scan do
   alias Surfex.Item
 
   @enforce_keys [:kind, :id, :hash, :location]
-  defstruct [:kind, :id, :hash, :location, :role, :within, declares: [], calls: []]
+  defstruct [:kind, :id, :hash, :location, :role, :within, declares: [], calls: [], shape: false]
 
   @type location :: %{file: String.t(), lines: {pos_integer, pos_integer} | nil}
   @type role :: atom | nil
@@ -50,7 +50,9 @@ defmodule Surfex.Scan do
           role: role,
           within: String.t() | nil,
           declares: [{atom, String.t()}],
-          calls: [String.t()]
+          calls: [String.t()],
+          # A code record of a shape (`Surfex.Item` `:shape`): judged, never exercised.
+          shape: boolean
         }
 
   @doc """
@@ -133,7 +135,8 @@ defmodule Surfex.Scan do
         hash: item.hash,
         location: %{file: item.file, lines: item.lines},
         role: item.kind,
-        within: item.parent
+        within: item.parent,
+        shape: item.shape
       }
     end)
     |> Enum.sort_by(& &1.id)

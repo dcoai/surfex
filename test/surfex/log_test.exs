@@ -296,7 +296,9 @@ defmodule Surfex.LogTest do
 
       code_spec = [code: "M.f/1", spec: "s#a"]
       test_spec = [test: "T: t", spec: "s#a"]
-      ok.(:implements, code_spec, [nil, :proposed, :evidence, :review, :baseline])
+      # Judgement is grammatical on implements; whether it validates is status's to say:
+      # only a shape's, whose code has no behaviour to run (§18).
+      ok.(:implements, code_spec, [nil, :proposed, :evidence, :review, :judgement, :baseline])
       ok.(:verifies, test_spec, [nil, :proposed, :evidence, :review, :judgement, :baseline])
       ok.(:tests, [test: "T: t", code: "M.f/1"], [nil, :evidence, :judgement, :baseline])
       ok.(:refines, [spec: "s#a", spec: "s#b"], [nil, :judgement])
@@ -304,9 +306,9 @@ defmodule Surfex.LogTest do
       # A basis-less excuses is legacy, from before bases (0.4), as for implements and verifies.
       ok.(:excuses, [class: "generated", code: "M.f/1"], [nil, :proposed, :judgement])
 
-      # Code is validated by evidence or a review, never asserted (§18).
-      assert {:error, "implements can't carry basis judgement" <> _} =
-               e(:relate, :implements, code_spec, :judgement)
+      # A test relation is shown by a run, or judged: never reviewed (§18).
+      assert {:error, "tests can't carry basis review" <> _} =
+               e(:relate, :tests, [test: "T: t", code: "M.f/1"], :review)
 
       assert {:error, "refines can't carry basis proposed" <> _} =
                e(:relate, :refines, [spec: "s#a", spec: "s#b"], :proposed)
@@ -331,12 +333,12 @@ defmodule Surfex.LogTest do
     test "a line breaking the grammar is refused at decode, naming the entry and the rule, and --verify lists it with its line",
          %{tmp_dir: root} do
       # A well-formed line, then the same with its basis forged: a valid id over bad content.
-      {:ok, good} = e(:relate, :implements, [code: "M.f/1", spec: "s#a"], :review)
+      {:ok, good} = e(:relate, :tests, [test: "T: t", code: "M.f/1"], :judgement)
 
       forged =
         Entry.encode(good)
         |> Entry.json()
-        |> Map.put("basis", "judgement")
+        |> Map.put("basis", "review")
         |> then(fn map ->
           content = map |> Map.delete("id")
           # Rebuild the canonical line by hand, as a hand edit or another tool might.
@@ -347,7 +349,7 @@ defmodule Surfex.LogTest do
         end)
 
       assert {:error, "entry " <> rest} = Entry.decode(forged)
-      assert rest =~ ": implements can't carry basis judgement"
+      assert rest =~ ": tests can't carry basis review"
 
       Log.init(root)
       Log.append(root, [entry(1)])
@@ -356,7 +358,7 @@ defmodule Surfex.LogTest do
       assert [problem] = Log.verify(root)
 
       assert problem =~
-               ~r/^surfex\.log:\d+: entry [0-9a-f]{12}: implements can't carry basis judgement/
+               ~r/^surfex\.log:\d+: entry [0-9a-f]{12}: tests can't carry basis review/
     end
 
     @tag verifies: "grammar-loud"

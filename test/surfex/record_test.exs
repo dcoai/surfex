@@ -205,7 +205,18 @@ defmodule Surfex.RecordTest do
       {:ok, [base]} = Record.relate(scans(), [], @code_id, "M.helper/1", :depends_on, @meta)
       confirm = &Record.confirm(scans("c2"), [base], @code_id, "M.helper/1", :depends_on, &1)
       {:ok, [a]} = confirm.(later(@meta, 1) ++ [note: "a"])
-      {:ok, [b]} = confirm.(later(@meta, 2) ++ [note: "b"])
+      # The other branch re-relates rather than confirms: a different basis, so the tips
+      # disagree (#133: two identical confirms would agree, and be no conflict).
+      {:ok, [b]} =
+        Record.relate(
+          scans("c2"),
+          [base],
+          @code_id,
+          "M.helper/1",
+          :depends_on,
+          later(@meta, 2) ++ [note: "b"]
+        )
+
       %{entries: [base, a, b], a: a, b: b}
     end
 
@@ -436,7 +447,18 @@ defmodule Surfex.RecordTest do
       assert {:error, "no live relation names spec.md#Gone" <> _} =
                Record.move(renamed(), [old], "spec.md#Gone", @new_id, @meta)
 
-      other = validated(later(@meta, 2))
+      # Another tip that disagrees on the code's version (#133: an agreeing one is no conflict).
+      other =
+        Entry.new!(
+          at: later(@meta, 2)[:at],
+          op: :relate,
+          type: :implements,
+          basis: :review,
+          ends: [
+            %{kind: :spec, id: @spec_id, hash: "s1"},
+            %{kind: :code, id: @code_id, hash: "c0"}
+          ]
+        )
 
       assert {:error, _conflicted} =
                Record.move(renamed(), [old, other], @spec_id, @new_id, @meta)
@@ -920,6 +942,58 @@ defmodule Surfex.RecordTest do
   end
 
   # #72: a current relation means validated, not asserted.
+  # #137: a type has no behaviour for a run to exercise, so its implements is judged.
+  describe "shapes" do
+    @describetag verifies: "shapes-by-judgement"
+
+    @type_id "t:M.cart/0"
+
+    defp shaped(code \\ "c1") do
+      shape = %{scan(:code, @type_id, "y1") | shape: true}
+      [scan(:spec, @spec_id, "s1"), scan(:code, @code_id, code), shape]
+    end
+
+    defp shape_note,
+      do: Keyword.put(@meta, :note, "the cart type has the fields the section lists")
+
+    test "an implements to a shape is confirmed by judgement, and validates" do
+      {:ok, [proposed]} = Record.relate(shaped(), [], @spec_id, @type_id, :implements, @meta)
+      assert proposed.basis == :proposed
+
+      {:ok, [judgement]} =
+        Record.confirm(shaped(), [proposed], @spec_id, @type_id, :implements, shape_note())
+
+      assert judgement.basis == :judgement
+      status = Status.derive(shaped(), [proposed, judgement])
+      assert [%{state: :current} = r] = status.relations
+      assert Status.validated?(status, r)
+      assert status.unvalidated == []
+    end
+
+    test "code with behaviour is still never confirmed by hand, and a judgement on it is unvalidated" do
+      {:ok, [proposed]} = Record.relate(shaped(), [], @spec_id, @code_id, :implements, @meta)
+
+      assert {:error, "implements is validated by evidence or a review" <> _} =
+               Record.confirm(shaped(), [proposed], @spec_id, @code_id, :implements, shape_note())
+
+      # Written by hand, the log reads it, and status doesn't count it as validated.
+      forged =
+        Entry.new!(
+          at: "2026-09-28T11:00:00Z",
+          op: :relate,
+          type: :implements,
+          basis: :judgement,
+          note: "asserted",
+          parents: [proposed.id],
+          ends: proposed.ends
+        )
+
+      status = Status.derive(shaped(), [proposed, forged])
+      assert [%{state: :current, relation: relation}] = status.relations
+      assert [%{relation: ^relation}] = status.unvalidated
+    end
+  end
+
   describe "validation by process" do
     defp with_basis(entry, basis),
       do:
@@ -1099,6 +1173,38 @@ defmodule Surfex.RecordTest do
       assert Status.derive(world(), [impl, tests, ver | recorded]).unvalidated == []
     end
 
+    # #138: a review records what isn't validated already. A verifies on its failing run
+    # keeps that basis (CI goes on checking it), and a second review records nothing.
+    @tag verifies: "review-records-once"
+    test "validate records only what isn't validated already, and refuses when that's nothing" do
+      impl = rel(:implements, {:spec, @hint, "h1"}, {:code, @code_id, "c1"})
+      tests = rel(:tests, {:test, @t, "t1"}, {:code, @code_id, "c1"})
+
+      on_red =
+        Entry.new!(
+          at: "2026-09-28T09:00:00Z",
+          op: :relate,
+          type: :verifies,
+          basis: :evidence,
+          ends: [%{kind: :test, id: @t, hash: "t1"}, %{kind: :spec, id: @hint, hash: "h1"}]
+        )
+
+      note = Keyword.put(@meta, :note, "asserts a closed cart is refused")
+      green = [ev(:passed, "c1", 1)]
+      entries = [impl, tests, on_red]
+
+      {:ok, recorded} = Record.validate(world(), entries, @t, @hint, green, note)
+      assert Enum.map(recorded, &{&1.type, &1.basis}) == [implements: :review]
+
+      verifies =
+        Enum.find(Status.derive(world(), entries ++ recorded).relations, &(&1.type == :verifies))
+
+      assert verifies.tip.basis == :evidence
+
+      assert {:error, "already validated: nothing to record" <> _} =
+               Record.validate(world(), entries ++ recorded, @t, @hint, green, note)
+    end
+
     @tag verifies: "process-one-at-a-time"
     test "validate carries a review of one arity to the arity the spec names" do
       located = &%{scan(:code, &1, &2) | location: %{file: "lib/m.ex", lines: {3, 5}}}
@@ -1147,8 +1253,8 @@ defmodule Surfex.RecordTest do
 
       assert Status.derive(world(), [impl, tests, validated_hint | recorded]).unvalidated == []
 
-      # Reviewing again records nothing for code already validated.
-      assert {:ok, []} =
+      # Reviewing again has nothing to record, and says so (#138).
+      assert {:error, "already validated: nothing to record" <> _} =
                Record.validate(
                  world(),
                  [impl, tests, validated_hint | recorded],

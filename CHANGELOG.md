@@ -4,6 +4,69 @@ All notable changes to Surfex are recorded here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] — 2026-10-07
+
+Public types are items: a spec may cite `Mod.t()`, and a relation to a type is judged,
+since no test run exercises one. The relation log is model-checked with extla, the real
+code as oracle, which found two defects, both fixed here: tips that agree are not a
+conflict, and a review records only what isn't validated already. Projects that require
+code relations have one upgrade step (below).
+
+### Upgrading (0.6)
+
+Public types are now code items (#137). A project whose `require:` asks code for a
+relation (`require: [code: [...]]`) finds each public type unmet until it is related or
+excused. To excuse them as a class, add to `.surfex.exs`:
+
+```elixir
+require: [code: [:implements, :excuses], ...],
+classes: [{"type", "a type is the shape of the data its functions take and return"}],
+rules: [%{class: "type", kinds: [:type]}],
+```
+
+then `mix surfex.suggest --accept` proposes one `excuses` per type, and each is confirmed
+by judgement (`mix surfex.confirm class:type code:t:Mod.t/0 --type excuses --note …`). A
+type the spec cites is related instead, by judgement (below).
+
+### Added
+
+- **Types are items** (#137). Each public `@type` and `@opaque` is an item keyed as ExDoc
+  writes it, `t:Mod.t/0`, versioned by its own declaration. A spec cites it as `Mod.t()`
+  or `t:Mod.t/0`; an undeclared or private type is still an unresolved citation. A
+  function of the same name keeps its own key.
+- **A shape is judged** (#137). A type has no behaviour for a test run to exercise, so an
+  `implements` relation to one is confirmed by judgement, with a note saying what was
+  compared, and dangles when the type changes. The scanner marks such items (`shape`);
+  code with behaviour is still never confirmed by hand, and a judgement on it doesn't
+  validate.
+- **Models of the relation log** (§22). Exhaustive extla models drive the real recording
+  code and check the real status in every state they reach. Across two branches and main,
+  merged by git's union merge: order doesn't matter, a conflict is a disagreement between
+  tips, resolving ends it, and every entry reads back. Through versions and validation,
+  on the evidence path and the review path: a current relation's ends are at their
+  versions, a current `implements` rests on evidence or a review, every entry on evidence
+  is borne out by runs, and every review rests on a green run. Through moves: every claim,
+  retirement and red→green survives a rename. And liveness: whatever changes, a dangling
+  relation whose test passes comes back to current. They run in a Mix environment of
+  their own (`MIX_ENV=model`) and their own CI job.
+
+### Changed
+
+- **A review records only what isn't validated already** (#138). `validate` re-recorded
+  the test's `verifies` on every call, and replaced one on its failing run (a claim CI
+  checks) with a review (which it doesn't). Now that `verifies` keeps its basis, and a
+  review with nothing left to record is refused. Found by the model of the log.
+- **The README installs surfex from Hex** (`~> 0.6.0`) rather than from GitHub, and
+  points to the docs on hexdocs.
+- **The README drops "Upgrading from the v0.2 trace"**: the trace went in 0.4.0, and
+  spec §9 and the 0.4.0 entry below keep the record.
+- **Tips that agree are not a conflict** (§13.1). Two branches that record the same
+  judgement without seeing each other (the same operation, ends at the same versions, and
+  basis) no longer leave a conflict to resolve, as when both re-run `confirm --evidence`
+  after merging main. Who recorded it, when and the note are context, so both entries
+  stay in the log and both tips are reported. A different operation, version or basis still
+  conflicts, and `resolve` refuses tips that agree. Found by the model of the log.
+
 ## [0.5.24] — 2026-10-02
 
 The first release on Hex. Its usage rules are one short page for an agent that points to

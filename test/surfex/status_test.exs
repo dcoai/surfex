@@ -77,15 +77,16 @@ defmodule Surfex.StatusTest do
       assert %{state: :retired} = only(Status.derive(scans("s9", "c9"), [first, retired]))
     end
 
-    test "conflicted: two entries sharing a parent, or two roots" do
+    # #133: tips that record the same judgement agree; these disagree on the code's version.
+    test "conflicted: two entries sharing a parent, or two roots, that disagree" do
       base = relate("s1", "c1")
       a = relate("s1", "c2", parents: [base.id], at: "2026-09-28T11:00:00Z", note: "a")
-      b = relate("s1", "c2", parents: [base.id], at: "2026-09-28T11:00:01Z", note: "b")
+      b = relate("s1", "c3", parents: [base.id], at: "2026-09-28T11:00:01Z", note: "b")
 
       assert %{state: :conflicted, tips: [^a, ^b]} =
                only(Status.derive(scans("s1", "c2"), [base, a, b]))
 
-      roots = [relate("s1", "c1", note: "one"), relate("s1", "c1", note: "two")]
+      roots = [relate("s1", "c1", note: "one"), relate("s1", "c0", note: "two")]
       assert %{state: :conflicted} = only(Status.derive(scans(), roots))
     end
 
@@ -491,7 +492,8 @@ defmodule Surfex.StatusTest do
     # Dangling, orphaned, conflicted and proposed fail.
     assert fails.(scans("s1", "c2"), [ok])
     assert fails.([scan(:spec, @spec_id, "s1")], [ok])
-    assert fails.(scans(), [relate("s1", "c1", note: "one"), relate("s1", "c1", note: "two")])
+    # A conflict: two roots that disagree (#133: agreeing roots are one judgement).
+    assert fails.(scans(), [relate("s1", "c1", note: "one"), relate("s1", "c0", note: "two")])
 
     proposed =
       Entry.new!(at: ok.at, op: :relate, type: :implements, ends: ok.ends, basis: :proposed)

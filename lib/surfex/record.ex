@@ -116,7 +116,9 @@ defmodule Surfex.Record do
   An `implements` relation is refused: code is validated by evidence
   (`confirm_by_evidence/4`) or a review (`validate/6`), never asserted. The judgement path
   is for what only a judgement can settle: a `verifies` relation after a spec rewording
-  that changes no behaviour, an `excuses` relation, a structural relation after a change.
+  that changes no behaviour, an `excuses` relation, a structural relation after a change,
+  and an `implements` relation to a shape (`Surfex.Scan` `:shape`, a type): no run
+  exercises one, so a reviewer reads it against the spec.
   Under `require_red: true` (`opts`, with `evidence:`), a `tests` relation is refused until
   its test's current version has discriminated.
   """
@@ -126,7 +128,7 @@ defmodule Surfex.Record do
     note = meta[:note]
 
     cond do
-      type == :implements ->
+      type == :implements and not shape_end?(scans, from, to) ->
         {:error,
          "implements is validated by evidence or a review, never by hand: " <>
            "`mix surfex.confirm --evidence` or `mix surfex.validate`"}
@@ -508,9 +510,11 @@ defmodule Surfex.Record do
 
   defp move_relations(groups, entries, target, old_id, meta) do
     Enum.reduce_while(groups, {:ok, []}, fn {relation, tips}, {:ok, acc} ->
-      with [tip] <- tips,
+      # Tips that agree are one judgement (§13.1): move it, retiring every one of them.
+      with %Entry{} = tip <- Status.representative(tips) || tips,
            ends = Enum.map(tip.ends, &moved_end(&1, target, old_id)),
-           {:ok, retired} <- entry(:retire, tip.type, tip.ends, [tip.id], with_basis(meta, nil)),
+           {:ok, retired} <-
+             entry(:retire, tip.type, tip.ends, Enum.map(tips, & &1.id), with_basis(meta, nil)),
            # A move changes where a relation points, not what validates it (§18).
            {:ok, moved} <-
              entry(
@@ -561,8 +565,8 @@ defmodule Surfex.Record do
     |> Enum.map(&Entry.relation/1)
     |> Enum.uniq()
     |> Enum.flat_map(fn relation ->
-      case Status.tips(entries, relation) do
-        [%Entry{op: :retire} = tip] -> [tip]
+      case Status.representative(Status.tips(entries, relation)) do
+        %Entry{op: :retire} = tip -> [tip]
         _ -> []
       end
     end)
@@ -576,7 +580,9 @@ defmodule Surfex.Record do
     |> Enum.filter(fn e -> Enum.any?(e.ends, &(&1.kind == kind and &1.id == old_id)) end)
     |> Enum.group_by(&Entry.relation/1)
     |> Enum.map(fn {relation, _} -> {relation, Status.tips(entries, relation)} end)
-    |> Enum.reject(fn {_relation, tips} -> match?([%Entry{op: :retire}], tips) end)
+    |> Enum.reject(fn {_relation, tips} ->
+      match?(%Entry{op: :retire}, Status.representative(tips))
+    end)
     |> Enum.sort()
   end
 
@@ -683,7 +689,7 @@ defmodule Surfex.Record do
   # nil), a relate at the current versions.
   defp by_evidence(status, type, why, meta) do
     Enum.reduce_while(status.relations, {:ok, []}, fn
-      %{type: ^type, state: state, tips: [tip]} = r, {:ok, acc}
+      %{type: ^type, state: state, tip: %Entry{} = tip} = r, {:ok, acc}
       when state in [:dangling, :proposed] ->
         case why.(r) do
           nil ->
@@ -699,7 +705,9 @@ defmodule Surfex.Record do
 
             ends = Enum.map(tip.ends, &end_(Map.fetch!(status.scans, {&1.kind, &1.id})))
 
-            case entry(:relate, type, ends, [tip.id], Keyword.put(meta, :note, note)) do
+            parents = Enum.map(r.tips, & &1.id)
+
+            case entry(:relate, type, ends, parents, Keyword.put(meta, :note, note)) do
               {:ok, e} -> {:cont, {:ok, acc ++ [e]}}
               error -> {:halt, error}
             end
@@ -825,9 +833,10 @@ defmodule Surfex.Record do
   gets validated, by doing the work rather than asserting it.
 
   It needs a live `verifies` relation from the test to the unit, and green evidence for
-  the test's current version (its latest run passed). It records that `verifies` relation,
-  and each live `implements` relation of the unit, not validated already, whose code the
-  test's latest run exercised at its current version, at the current hashes with basis `:review`. The note
+  the test's current version (its latest run passed). It records that `verifies` relation
+  and each live `implements` relation of the unit whose code the test's latest run
+  exercised at its current version, each only if it isn't validated already, at the
+  current hashes with basis `:review`; with nothing left to record it refuses. The note
   (`meta[:note]`) is required: it says which claim each assertion checks. One test and one
   unit per call.
 
@@ -874,7 +883,12 @@ defmodule Surfex.Record do
             exercised.(code),
             do: r
 
-      confirm_each(reviewed ++ implements, status, meta)
+      # What is validated already stays as it was: a verifies on its failing run keeps
+      # that basis, so CI goes on checking it (§17), and a review re-records nothing.
+      case Enum.reject(reviewed, &Status.validated?(status, &1)) ++ implements do
+        [] -> {:error, "already validated: nothing to record (#{test.id} and #{unit.id})"}
+        unvalidated -> confirm_each(unvalidated, status, meta)
+      end
     end
   end
 
@@ -945,10 +959,16 @@ defmodule Surfex.Record do
   def resolve(scans, entries, from, to, type, pick, meta) do
     with {:ok, tips} <- tips(scans, entries, from, to, type),
          :ok <-
-           if(length(tips) > 1,
-             do: :ok,
-             else: {:error, "the #{type} relation is not conflicted: nothing to resolve"}
-           ),
+           (cond do
+              length(tips) < 2 ->
+                {:error, "the #{type} relation is not conflicted: nothing to resolve"}
+
+              Status.representative(tips) != nil ->
+                {:error, "the tips of the #{type} relation agree: nothing to resolve (§13.1)"}
+
+              true ->
+                :ok
+            end),
          {:ok, chosen} <- choose(tips, pick),
          # Picking a side judges nothing new: the chosen tip keeps what validated it.
          meta = with_basis(meta, chosen.basis),
@@ -972,11 +992,9 @@ defmodule Surfex.Record do
 
   defp confirm_each(dangling, status, meta) do
     Enum.reduce_while(dangling, {:ok, []}, fn r, {:ok, acc} ->
-      [tip] = r.tips
+      ends = Enum.map(r.tip.ends, fn e -> end_(Map.fetch!(status.scans, {e.kind, e.id})) end)
 
-      ends = Enum.map(tip.ends, fn e -> end_(Map.fetch!(status.scans, {e.kind, e.id})) end)
-
-      case entry(:relate, r.type, ends, [tip.id], meta) do
+      case entry(:relate, r.type, ends, Enum.map(r.tips, & &1.id), meta) do
         {:ok, entry} -> {:cont, {:ok, [entry | acc]}}
         error -> {:halt, error}
       end
@@ -1120,6 +1138,14 @@ defmodule Surfex.Record do
              "#{id} is scanned as more than one kind; prefix it with spec:, code:, test: or class:"},
           else: {:error, "#{id} names #{length(several)} scanned records of one kind"}
     end
+  end
+
+  # An implements whose code end is a shape (a type) has no behaviour for a run to show:
+  # it is judged (§18).
+  defp shape_end?(scans, from, to) do
+    Enum.any?([from, to], fn id ->
+      match?({:ok, %Scan{kind: :code, shape: true}}, find(scans, id))
+    end)
   end
 
   defp split_kind("spec:" <> rest), do: {:spec, rest}

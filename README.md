@@ -45,15 +45,19 @@ writing specs and adopting an existing suite.
 
 ## Installation
 
-Surfex is a build-time tool with no dependencies of its own:
+Surfex is a build-time tool from [Hex](https://hex.pm/packages/surfex), with no runtime
+dependencies of its own:
 
 ```elixir
 def deps do
   [
-    {:surfex, github: "dcoai/surfex", tag: "v0.5.0", only: [:dev, :test], runtime: false}
+    {:surfex, "~> 0.6.0", only: [:dev, :test], runtime: false}
   ]
 end
 ```
+
+Then `mix deps.get`. The docs are at [hexdocs](https://hexdocs.pm/surfex), and `mix
+surfex.info` lists the topics and commands from the installed version.
 
 ## A worked example
 
@@ -155,16 +159,6 @@ the test against the spec unit, fixed it where it fell short, and it passes.
 the process and what each change needs, reading the status, recording and validating
 relations, marks, adoption, completeness, change drafts, goldens and every `.surfex.exs`
 key. Each topic is one command away (`mix surfex.info process`).
-
-## Upgrading from the v0.2 trace
-
-The trace (`mix surfex.trace`, `SPEC_TRACE.md`) was removed in 0.4.0; the relation log
-replaces it. Its checks all live on: citations become suggested `implements` relations,
-excusing classes become `excuses` relations, uncited code is **unmet** under `require:`,
-and a citation of something that doesn't exist fails `mix surfex.status`. To move a project
-over, delete the trace-only keys from `.surfex.exs` (Surfex names them), replace `:trace`
-in `goldens:` with `:status`, then run `mix surfex.log --init` and
-`mix surfex.suggest --accept`.
 
 ## Reference
 

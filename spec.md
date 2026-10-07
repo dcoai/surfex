@@ -188,6 +188,9 @@ function:
 Calls to other modules, and to the module's own public functions, are not followed:
 those have their own rows and their own versions.
 
+A public type's version, from `Surfex.SourceScan.types/1`, is the hash of its declaration
+alone: changing one type changes it and nothing else's.
+
 A module's version, from `Surfex.SourceScan.module_hash/1`, covers its **public surface**,
 not its whole body:
 - its `@moduledoc`
@@ -223,6 +226,7 @@ source of a code record (§11).
 | `type` | the key of the item a member is an instance of (a field holding a struct) |
 | `aliases` | other names that cite it (§6.4) |
 | `lines` | its first and last line in `file`, when the scanner knows them: never part of its key or its hash |
+| `shape` | `true` for an item with no behaviour of its own (a type): no test run exercises it, so an `implements` relation to it is validated by judgement (§18). The scanner says so; surfex never infers it from a kind |
 
 `Surfex.Item.key/1` is an item's identity: `parent.name` for a member, otherwise `name`.
 The hash is never part of the key, so an edit changes a row's version and not its
@@ -257,9 +261,16 @@ options) returns:
 | a module | `:module` | `MyApp.Cart` | none |
 | a public function (§3.2) | `:function` | `MyApp.Cart.add/2` | `MyApp.Cart.add` |
 | a public macro or guard | `:macro` | `MyApp.Cart.is_cart/1` | `MyApp.Cart.is_cart` |
+| a public type (`@type`, `@opaque`) | `:type` | `t:MyApp.Cart.t/0` | `MyApp.Cart.t` |
 
 - A module under `@moduledoc false` is skipped, with its functions. A module nested in it
   is not, since Elixir documents it separately.
+- A type is keyed as ExDoc writes it, `t:` first, so a function of the same name keeps its
+  own key; the alias it shares with that function cites both, as a family. A `@typep`,
+  and a type under `@typedoc false`, is not public. A type is an item like any other: a
+  project whose `require:` asks code for a relation relates its types, or excuses them
+  by a class (`classes: [{"type", reason}]`, `rules: [%{class: "type", kinds: [:type]}]`).
+  A type is a shape (§4): a spec section citing it relates to it by judgement (§18).
 - A nested module is keyed by its full name, as Elixir names it.
 - The `:paths` option (globs relative to the root) defaults to `lib/**/*.ex`: one
   project's own source. A poncho lists its members.
@@ -273,7 +284,8 @@ says what the project's names are (`Surfex.Status.Config.profile!/3`):
   root glued to more letters (`MyAppCollector`), a hyphen (`MyApp-Profile`) or a further
   segment that isn't a name is another word, not a citation of the root
 - a `normalise` rule that drops a call's arguments, so `MyApp.Cart.add(cart, item)` names
-  `MyApp.Cart.add`
+  `MyApp.Cart.add`, and one that reads ExDoc's `t:MyApp.Cart.t/0` as `MyApp.Cart.t`: a
+  type cited as `MyApp.Cart.t()` or `t:MyApp.Cart.t/0` resolves through its alias
 
 A well-formed name under any root that resolves to nothing is an unresolved citation
 (§6), so a stale name in the spec is reported rather than matched to a shorter one. A
@@ -287,8 +299,13 @@ under any root is unresolved rather than suggested against the root module
 ```
 
 ```test elixir-scanner-items
-the Elixir scanner reports every public module and definition under the paths it is
-given, with nested modules named in full, and profile defaults for a namespace
+the Elixir scanner reports every public module, definition and type under the paths it
+is given, with nested modules named in full, and profile defaults for a namespace
+```
+
+```test type-citations
+a public type is cited as `Mod.t()` or `t:Mod.t/0` and resolves when declared; one not
+declared, or private, is unresolved; a function of the same name keeps its own key
 ```
 
 ## 6. Citations {#citations}
@@ -783,7 +800,7 @@ only state surfex keeps. Scanners never read or write it (§11).
 
   | Type | Op | Ends | Basis |
   |---|---|---|---|
-  | `implements` | relate, retire | code ↔ spec | `proposed`, `evidence`, `review`, `baseline`; or none (legacy) |
+  | `implements` | relate, retire | code ↔ spec | `proposed`, `evidence`, `review`, `judgement`, `baseline`; or none (legacy) |
   | `verifies` | relate, retire | test → spec | `proposed`, `evidence`, `review`, `judgement`, `baseline`; or none (legacy) |
   | `tests` | relate, retire | test → code | none, `evidence`, `judgement`, `baseline` |
   | `refines` | relate, retire | spec → spec | none, `judgement` |
@@ -796,8 +813,9 @@ only state surfex keeps. Scanners never read or write it (§11).
   A `retire` has the ends of what it retires and never a basis. **None (legacy)** admits
   entries written before bases existed (0.4 and earlier): they decode, and status reports
   an `implements` or `verifies` among them unvalidated (§13.1). `Surfex.Record` never
-  writes one: every `implements` and `verifies` it records carries a basis. `implements`
-  never carries `judgement`, since code is validated by evidence or a review (§18). A
+  writes one: every `implements` and `verifies` it records carries a basis. An
+  `implements` on `judgement` is grammatical, but validates only a shape's relation (§18):
+  the grammar sees one entry, and whether its code has behaviour is the scan's to say. A
   violation names the rule ("implements ends must be code ↔ spec, got test, test"), and
   at decode the entry too. `mix surfex.log --verify` lists every violation with its file
   and line.
@@ -834,7 +852,7 @@ spec end and an observation one test end; there is no config kind
 
 ```test grammar-bases
 each type carries only its bases, with none admitted as legacy for implements, verifies
-and excuses; implements never carries judgement; a retire and a mark carry no basis; an
+and excuses; a tests relation is never reviewed; a retire and a mark carry no basis; an
 observation carries exactly its own
 ```
 
@@ -899,12 +917,19 @@ other entry of it names as a parent (`Surfex.Status.tips/2`).
 
 | State | When |
 |---|---|
-| **conflicted** | more than one tip: entries recorded without seeing each other (sharing a parent, or both with none) |
+| **conflicted** | tips that **disagree**: entries recorded without seeing each other (sharing a parent, or both with none) that record different judgements. A tip's judgement is its operation, type, ends at their versions, and basis; who recorded it, when, on which commit and with which note are context. Tips that agree are one judgement, represented by the one with the smallest id (`Surfex.Status.representative/1`): two branches confirming the same change identically make no conflict. A different basis at the same versions still disagrees: CI checks an `evidence` claim and not a review, so a person picks which record stands |
 | **retired** | the tip retires the relation |
 | **orphaned** | an end recorded at a hash is no longer scanned (removed or renamed) |
 | **planned** | an end was recorded without a hash, before it existed, and still isn't scanned. Once it is scanned, a planned `implements` relation is proposed until evidence or a review validates it (§18); a planned relation recorded without a basis is dangling on that end until it is confirmed. |
 | **dangling** | both ids are scanned, but at least one is at a different hash than the tip recorded; the report names which ends changed |
 | **current** | both ends are at the hashes the tip recorded |
+
+```test agreeing-tips
+tips that record the same judgement (operation, ends at their versions, basis) are one
+judgement: judged, validated, checked and reported as one tip, and re-recorded with every
+one as a parent; a different operation, version or basis is a conflict, and resolve refuses
+tips that agree
+```
 
 - **Impacted** is a flag, not a state. A relation is impacted when one of its ends has a
   `depends_on` relation to something that is not current. It doesn't fail the check:
@@ -1138,11 +1163,11 @@ time (context only), and when.
 |---|---|
 | `Surfex.Record.relate/6`, `Surfex.Record.relate/7` | a relation of a type between two ids at their current hashes, from → to for a directed type, superseding the relation's tips. `implements` is recorded as proposed; `verifies` too, unless the test's current version has failed in the evidence given (`evidence:`), when it is recorded on that evidence (§18) |
 | `Surfex.Record.plan/7` | a **planned** relation: one end is scanned and recorded at its hash, the other doesn't exist yet and is recorded without one. Its kind is its `spec:`/`code:` prefix, else `spec` when it has a `#`, else `code`. A plausibility check refuses an id the project couldn't have, so a typo doesn't become a permanent plan. `mix surfex.relate --planned` asks whether a spec id is in a file the scanner reads, and whether a code id has the scanner's shape (for Elixir, a name under one of the project's namespaces). Both ends scanned, or neither, is an error. |
-| `Surfex.Record.confirm/6`, `Surfex.Record.confirm/7` | one **dangling** or **proposed** relation, named by its ends and type, again at the current hashes, with a note (required) saying what was judged: basis `judgement`. `implements` is refused: code is validated by evidence or a review (§18), never asserted. Orphaned and conflicted relations aren't confirmed: they need re-pointing or resolving. Under `require_red:` (`opts`, §17) a `tests` relation isn't confirmed until its test's current version has discriminated |
-| `Surfex.Record.validate/6` | a review (§18): the `verifies` relation from a test to a spec unit, and each `implements` relation of that unit whose code the test exercises (by definition, so one arity covers a function's others, §11) and that isn't validated already, validated at the current versions, basis `review`. The unit may be a section whose block or hint the test verifies: that relation must already be current, and the review records the section's `implements` relations alone |
+| `Surfex.Record.confirm/6`, `Surfex.Record.confirm/7` | one **dangling** or **proposed** relation, named by its ends and type, again at the current hashes, with a note (required) saying what was judged: basis `judgement`. `implements` is refused, since code is validated by evidence or a review (§18), never asserted, unless its code end is a shape, which no run exercises. Orphaned and conflicted relations aren't confirmed: they need re-pointing or resolving. Under `require_red:` (`opts`, §17) a `tests` relation isn't confirmed until its test's current version has discriminated |
+| `Surfex.Record.validate/6` | a review (§18): the `verifies` relation from a test to a spec unit, and each `implements` relation of that unit whose code the test exercises (by definition, so one arity covers a function's others, §11), each only if it isn't validated already, validated at the current versions, basis `review`; with nothing left to record it is refused. The unit may be a section whose block or hint the test verifies: that relation must already be current, and the review records the section's `implements` relations alone |
 | `Surfex.Record.confirm_by_evidence/4` | every confirmation the test evidence justifies (§17, §18), basis `evidence`, with the evidence in the note: each dangling or proposed `verifies` relation whose test's current version has failed (unless only the spec changed, which is a judgement), then each dangling `tests` relation and each dangling or proposed `implements` relation whose test went red and then green. Nothing justified is `{:ok, []}`, not an error |
 | `Surfex.Record.retire/6` | that a relation no longer applies, naming every tip as a parent, with the ends as the tip recorded them. An end need not still be scanned: this is how an orphaned relation is put to rest. A pair **never related** is declined: a retire at both ends' current versions with no parent, recording the decision not to relate them, so `mix surfex.suggest` never proposes it. Both must be scanned, and the note is required, as the only record of why. A later relate revives it. |
-| `Surfex.Record.resolve/7` | the chosen tip of a **conflicted** relation, recorded again **with its basis** and every tip as a parent: picking a side judges nothing new. If the scans have moved since, the relation is then dangling, and confirming it is next. |
+| `Surfex.Record.resolve/7` | the chosen tip of a **conflicted** relation, recorded again **with its basis** and every tip as a parent: picking a side judges nothing new. Tips that agree are no conflict, and it refuses them. If the scans have moved since, the relation is then dangling, and confirming it is next. |
 
 `Surfex.Record.move/5` moves every live relation of an id onto a new one: a renamed
 heading, an anchor added, a section moved. For each relation whose tip names the old id
@@ -1513,7 +1538,7 @@ stays green is re-confirmed by evidence.
 |---|---|
 | `evidence` | test runs: a failing run for `verifies`; a red run and then a green one for `tests` and `implements` (`Surfex.Record.confirm_by_evidence/4`) |
 | `review` | a test examined against its spec unit and judged to validate it, then run green against the code (`Surfex.Record.validate/6`) |
-| `judgement` | a relation confirmed by name, with a note (`Surfex.Record.confirm/6`): for `verifies`, a spec reworded without a change of behaviour; for `excuses`, the item is what its class says |
+| `judgement` | a relation confirmed by name, with a note (`Surfex.Record.confirm/6`): for `verifies`, a spec reworded without a change of behaviour; for `excuses`, the item is what its class says; for `implements`, only to a shape (§4): a reviewer read the type against the spec |
 | `proposed` | a claim nothing has validated: a citation, a tag with no failing run, a pair named by hand (`Surfex.Record.relate/7`) |
 
 A move carries its tip's basis across (§14, `Surfex.Record.move/5`): a move changes where a relation points, not
@@ -1542,8 +1567,11 @@ already made validates nothing new.
   while its tests verify the hints inside it, so the unit may be that section: the review
   judges that the test validates the section's claims for the code it exercises, and
   needs the test's relation to the hint to be current already (validated first, against
-  the hint). Breaking the code to get a red run was rejected: a test that fails against a
-  mutant shows it is sensitive to the code, not that it reflects the spec.
+  the hint). A review records only what isn't validated already: a `verifies` on its
+  failing run keeps that basis, so CI goes on checking it (§17), and with nothing left to
+  record `validate` refuses rather than write the same judgement again. Breaking the code
+  to get a red run was rejected: a test that fails against a mutant shows it is sensitive
+  to the code, not that it reflects the spec.
 - **One relation at a time.** `confirm` (`Mix.Tasks.Surfex.Confirm`) names one relation, and
   `validate` (`Mix.Tasks.Surfex.Validate`) one test and one unit. There is no form that
   confirms or validates a list, and no form that confirms every relation touching an id.
@@ -1560,11 +1588,28 @@ current relation without a validating basis is unvalidated, and fails only under
 --validated; a move, and a resolve, keeps its basis
 ```
 
+**A shape is judged.** A type has no behaviour for a run to exercise: no test calls it,
+so neither evidence nor a review can show it. An `implements` relation to a shape (§4) is
+confirmed by judgement (`mix surfex.confirm SPEC TYPE --type implements --note N`): a
+reviewer reads the type against the section, and the note says what was compared. It
+dangles when the type changes. Code with behaviour is never judged: a judgement on its
+`implements`, even one written by hand, is unvalidated.
+
+```test shapes-by-judgement
+an implements to a shape is confirmed by judgement and validates; code with behaviour is
+still never confirmed by hand, and a judgement on its implements is unvalidated
+```
+
 ```test process-one-at-a-time
-confirm takes one relation and a note, refuses implements, and records a judgement;
-validate needs the verifies relation and green evidence, and records a review; against a
-section it needs the test's current relation to a hint inside it, and records the section's
-implements alone
+confirm takes one relation and a note, refuses implements unless its code is a shape, and
+records a judgement; validate needs the verifies relation and green evidence, and records
+a review; against a section it needs the test's current relation to a hint inside it, and
+records the section's implements alone
+```
+
+```test review-records-once
+a review records only what isn't validated already: a verifies on its failing run keeps
+that basis, and validate with nothing left to record refuses
 ```
 
 ### 18.1 Adopting an existing suite {#adoption}
@@ -1784,4 +1829,69 @@ usage-rules.md is the short agent page and points to mix surfex.info; the direct
 every other topic are pages under priv/info, listed as items; the package ships them and
 the docs carry them; hexdocs show the mix tasks and the formatter, scanner and item
 modules, and no other module
+```
+
+## 22. A model of the log {#model}
+
+Unit tests sample the relation log's behaviour; a model explores it. The log is checked
+by an exhaustive model in extla, the TLA+-style checker for Elixir: branches record,
+retire and resolve relations, main takes each branch by git's union merge, and a branch
+catches up with main the same way. Every entry is written by the real recording code and
+every judgement made by the real status derivation, called from the model, so the model is
+an oracle for the code rather than a second copy of it.
+
+In every state the bounded model reaches:
+- **The order of lines doesn't matter.** A log's status is the same for its lines in any
+  order, as a union merge writes them.
+- **A conflict is a disagreement.** A relation is conflicted exactly when the tips in force
+  record different judgements; tips that agree are one, so two resolutions that pick the
+  same side don't conflict again.
+- **Resolving ends a conflict.** Picking a side always leaves one tip.
+- **Every entry reads back.** Each entry written decodes under its own id.
+
+Two more models follow the log through versions and validation, on one log: a spec unit,
+its code and a test that verifies the unit and calls the code, each at one of two
+versions, with test runs that pass or fail against the code as it is. The **evidence
+path** changes the code and confirms by evidence; the **review path** changes the spec and
+the test and validates by a review or a judgement. In every state each reaches:
+- **Current means current.** A current relation's ends are at the versions scanned now.
+- **Shown, not asserted.** A current `implements` rests on evidence or a review.
+- **Evidence is borne out.** Every entry on evidence is backed by runs that happened: a
+  `verifies` by its test version's failing run, anything else by a red then a green.
+- **A review rests on a green run** of the test at the versions it records.
+
+Two more follow what a change asks of the log. **Moves:** a spec section and a test are
+renamed and moved (`mix surfex.move`, or suggest's move); a move keeps every claim with its
+basis, every retirement and every red→green record, under the new ids. **Recovery:** from a
+triangle established test-first, the spec, the code and the test change in any order, each
+test version runs once against each code version, and recording is done when it can be
+(`confirm --evidence`, `validate`, confirm by judgement, suggest's refresh). Under that
+fairness, a dangling relation whose test passes is brought back to current, unless the test
+stops passing: nothing is current on a red test. It is a liveness property, so nothing in
+the model is capped; a stranded relation would be a finding, not the bound.
+
+The models run in a Mix environment of their own (`MIX_ENV=model`), so the rest of the
+suite neither fetches nor compiles the checker, and CI runs it as a job of its own. A
+violation fails it with the shortest trace to the state that breaks the property.
+
+```test log-model
+in every state branches and merges reach, a log's status is the same for its lines in any
+order, a relation is conflicted exactly when the tips in force disagree, resolving ends
+the conflict, and every entry reads back under its id
+```
+
+```test log-model-validation
+with versions changing and tests run red or green, a current relation's ends are at the
+current versions, a current implements rests on evidence or a review, every entry on
+evidence is borne out by runs, and every review rests on a green run
+```
+
+```test log-model-moves
+renaming and moving a spec section and a test keeps every claim with its basis, every
+retirement and every red→green record, under the new ids
+```
+
+```test log-model-recovery
+whatever changes, a dangling relation whose test passes is brought back to current by the
+work surfex asks for, unless the test stops passing
 ```

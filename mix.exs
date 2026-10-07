@@ -1,7 +1,7 @@
 defmodule Surfex.MixProject do
   use Mix.Project
 
-  @version "0.5.24"
+  @version "0.6.0"
   @source_url "https://github.com/dcoai/surfex"
 
   @moduledoc """
@@ -11,8 +11,9 @@ defmodule Surfex.MixProject do
   gated so it cannot disagree with the code: CI regenerates it and byte-compares, and a
   difference fails the build.
 
-  `deps: []`, stdlib only, and that is a policy rather than a coincidence — three projects
-  take this as a dev/test dependency, and none of them should inherit a kernel with it.
+  No runtime dependencies, stdlib only, and that is a policy rather than a coincidence:
+  several projects take this as a dev/test dependency, and none of them should inherit a
+  kernel with it. The dev and test dependencies below are never fetched by a consumer.
   """
 
   def project do
@@ -26,7 +27,16 @@ defmodule Surfex.MixProject do
       # A true leaf at runtime. A runtime dependency is inherited by every project that scans
       # its own source, so the bar for one is: it cannot be done with the stdlib. Dev and
       # test dependencies aren't inherited: ex_doc builds the docs, and no consumer fetches it.
-      deps: [{:ex_doc, "~> 0.40", only: :dev, runtime: false}],
+      deps: [
+        {:ex_doc, "~> 0.40", only: :dev, runtime: false},
+        # The model of the relation log (#128), checked by extla in a Mix environment of its
+        # own (MIX_ENV=model), so the rest of CI neither fetches nor compiles it.
+        {:extla,
+         git: "git@gitlab.conet.yarina.org:dco-tek/extla.git",
+         tag: "v0.4.0",
+         only: :model,
+         runtime: false}
+      ],
       name: "Surfex",
       description:
         "Keep a specification, its tests and its code aligned: a log of which versions were confirmed to belong together, checked from source without compiling it",

@@ -8,6 +8,7 @@ defmodule Surfex.Scanner.Elixir do
   | a module | `:module` | `MyApp.Cart` | — |
   | a public function | `:function` | `MyApp.Cart.add/2` | `MyApp.Cart.add` |
   | a public macro or guard | `:macro` | `MyApp.Cart.is_cart/1` | `MyApp.Cart.is_cart` |
+  | a public type (`@type`, `@opaque`) | `:type` | `t:MyApp.Cart.t/0` | `MyApp.Cart.t` |
 
   What counts as public is `Surfex.SourceScan.defs/1`'s rule: `def`, `defmacro`,
   `defdelegate` and `defguard`, minus `@doc false` and undocumented `@impl` callbacks. A
@@ -80,7 +81,8 @@ defmodule Surfex.Scanner.Elixir do
       shape: Regex.compile!("^#{name}$"),
       # A name ends where a name ends: not glued to letters, a hyphen or a further segment.
       token: Regex.compile!("(?<![\\w.])(#{name})(?![\\w-]|\\.\\w)"),
-      normalise: [{~r/\(.*\)$/s, ""}]
+      # ExDoc's `t:Mod.t/0` names the type `Mod.t()` does; a call's arguments drop.
+      normalise: [{~r/^t:(.+)\/\d+$/s, "\\1"}, {~r/\(.*\)$/s, ""}]
     ]
   end
 
@@ -129,6 +131,18 @@ defmodule Surfex.Scanner.Elixir do
             hash: hash,
             aliases: ["#{module}.#{name}"],
             lines: lines
+          }
+        end ++
+        for %{name: name, arity: arity, hash: hash, lines: lines} <- SourceScan.types(node) do
+          # Keyed as ExDoc writes a type, so a function of the same name keeps its own key.
+          %Item{
+            kind: :type,
+            name: "t:#{module}.#{name}/#{arity}",
+            file: file,
+            hash: hash,
+            aliases: ["#{module}.#{name}"],
+            lines: lines,
+            shape: true
           }
         end
     end)

@@ -229,7 +229,7 @@ defmodule Surfex.Suggest do
     # no relation (§14).
     # A retired relation's gone end counts too: its retirement is a decision to carry (§14).
     orphaned =
-      for %{state: state, tips: [tip], changed: changed} <- status.relations,
+      for %{state: state, tip: %Entry{} = tip, changed: changed} <- status.relations,
           state in [:orphaned, :retired],
           end_ <- tip.ends,
           end_.kind in [:spec, :test],
@@ -311,9 +311,9 @@ defmodule Surfex.Suggest do
     entries
     |> Enum.group_by(&Entry.relation/1)
     |> Enum.flat_map(fn {relation, _} ->
-      case Surfex.Status.tips(entries, relation) do
-        [tip] -> [tip]
-        _ -> []
+      case Surfex.Status.representative(Surfex.Status.tips(entries, relation)) do
+        nil -> []
+        tip -> [tip]
       end
     end)
   end
