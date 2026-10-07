@@ -58,6 +58,8 @@ type the spec cites is related instead, by judgement (below).
   review with nothing left to record is refused. Found by the model of the log.
 - **The README installs surfex from Hex** (`~> 0.6.0`) rather than from GitHub, and
   points to the docs on hexdocs.
+- **The README drops "Upgrading from the v0.2 trace"**: the trace went in 0.4.0, and
+  spec §9 and the 0.4.0 entry below keep the record.
 - **Tips that agree are not a conflict** (§13.1). Two branches that record the same
   judgement without seeing each other (the same operation, ends at the same versions, and
   basis) no longer leave a conflict to resolve, as when both re-run `confirm --evidence`
