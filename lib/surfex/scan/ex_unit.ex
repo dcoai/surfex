@@ -1,7 +1,9 @@
 defmodule Surfex.Scan.ExUnit do
   @moduledoc """
-  The test scanner for ExUnit: one `Surfex.Scan` record of kind `:test` per `test`, read
-  from source without compiling it.
+  The test scanner for ExUnit: one `Surfex.Scan` record of kind `:test` per `test`, and per
+  ExUnitProperties `property`, read from source without compiling it. A property is a test
+  in every way below; its `check all` generators are part of its body, so weakening one
+  changes its version.
 
     * **id** — the module, the `describe` if any, and the test's name:
       `MyApp.CartTest: adding: rejects a closed cart`. A test defined in a comprehension
@@ -24,6 +26,10 @@ defmodule Surfex.Scan.ExUnit do
   """
 
   alias Surfex.{Scan, SourceScan}
+
+  # What defines a test: ExUnit's `test`, and ExUnitProperties' `property`, which ExUnit runs
+  # as a test named "property …" (#141).
+  @definers [:test, :property]
 
   @doc "Every test in every file matching `globs` under `root`, in file then source order."
   @spec records(String.t(), [String.t()]) :: [Scan.t()]
@@ -178,7 +184,7 @@ defmodule Surfex.Scan.ExUnit do
 
   # What a test or a definition runs: its body, not the `test` or `defp` around it, nor a
   # definition's head, whose patterns call nothing.
-  defp body({:test, _, args}) when is_list(args), do: List.last(args)
+  defp body({definer, _, args}) when definer in @definers and is_list(args), do: List.last(args)
   defp body({definer, _, [_head, body]}) when definer in [:def, :defp], do: body
   defp body(other), do: other
 
@@ -285,7 +291,7 @@ defmodule Surfex.Scan.ExUnit do
           {more, _} = walk(inner, describe, [])
           {found ++ more, []}
 
-        {:test, _, [name | _]} = node ->
+        {definer, _, [name | _]} = node when definer in @definers ->
           test = %{
             name: text(name),
             node: node,
