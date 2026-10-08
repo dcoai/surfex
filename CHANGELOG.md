@@ -28,6 +28,9 @@ release it merely follows.
   `f/2` from one `def f(x, y \\ 1)` each needed their own relation, so projects wrote a
   call or a citation per arity to clear "unmet". The triangle and `validate` already compared
   code by definition; now the policy does too.
+- **The library-API pin test no longer depends on test order** (#158).
+  `function_exported?/3` is false for a module not yet loaded, and tests load modules lazily,
+  so the test failed about one run in four. It loads the module first now.
 
 ## [0.6.1] — 2026-10-07
 
