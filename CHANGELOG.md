@@ -11,6 +11,10 @@ release it merely follows.
 
 ### Added
 
+- **`suggest` shows how to decline each judgement** (#148). Under each `implements` and
+  `excuses` candidate it prints the exact `retire` command that declines it, so the decision
+  lands in the log and the pair is never proposed again. Declined in a commit message, it
+  came back on every run.
 - **Batched `confirm` and `validate`** (#147). `--file PATH` records many relations in one
   run, one per line (tab-separated, each line ending with its own note), saving the project
   load per relation that made agents script loops with templated notes. **The notes must be

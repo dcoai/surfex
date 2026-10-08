@@ -75,12 +75,26 @@ defmodule Mix.Tasks.Surfex.Suggest do
     for u <- suggestions.undeclared,
         do: Mix.shell().info("retire      verifies #{u.test} → #{u.spec} (no longer declared)")
 
-    for x <- suggestions.excuses, do: Mix.shell().info("excuses     #{x.from.id} ↔ #{x.to.id}")
+    for x <- suggestions.excuses do
+      Mix.shell().info("excuses     #{x.from.id} ↔ #{x.to.id}")
+      Mix.shell().info("  decline: " <> Suggest.decline_command(:excuses, x.from.id, x.to.id))
+    end
 
     for c <- suggestions.implements do
       {file, line} = c.cited_at
       Mix.shell().info("implements  #{c.spec.id} ↔ #{c.code.id}  (cited at #{file}:#{line})")
+
+      Mix.shell().info(
+        "  decline: " <> Suggest.decline_command(:implements, c.spec.id, c.code.id)
+      )
     end
+
+    if suggestions.implements != [] or suggestions.excuses != [],
+      do:
+        Mix.shell().info(
+          "a decline is recorded and permanent: the pair is never suggested again " <>
+            "(a later relate revives it)"
+        )
 
     count = suggestions |> Map.values() |> Enum.map(&length/1) |> Enum.sum()
 

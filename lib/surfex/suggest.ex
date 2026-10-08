@@ -51,6 +51,27 @@ defmodule Surfex.Suggest do
   end
 
   @doc """
+  The command that declines a judgement suggestion (§14, §15): a `retire` of the
+  never-related pair, with a note the reviewer replaces, so the decision is recorded and
+  never proposed again. `implements` and `excuses` are judgements; a structural suggestion
+  (`tests`, `refines`, a refresh) states what the source says, and has none (`nil`).
+  """
+  @spec decline_command(atom, String.t(), String.t()) :: String.t() | nil
+  def decline_command(:implements, spec, code),
+    do: retire_command(:implements, "spec:" <> spec, "code:" <> code)
+
+  def decline_command(:excuses, class, code),
+    do: retire_command(:excuses, "class:" <> class, "code:" <> code)
+
+  def decline_command(_structural, _from, _to), do: nil
+
+  defp retire_command(type, from, to),
+    do:
+      ~s(mix surfex.retire #{quoted(from)} #{quoted(to)} --type #{type} --note "why it isn't one")
+
+  defp quoted(id), do: ~s(") <> String.replace(id, ~s("), ~s(\\")) <> ~s(")
+
+  @doc """
   One `relate` entry per candidate, at the current hashes. It only ever creates relations
   that don't exist; it never confirms a dangling one.
   """
