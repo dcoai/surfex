@@ -381,6 +381,34 @@ defmodule Surfex.SuggestTest do
     end
   end
 
+  # #148: declining is a `retire` of a never-related pair. `suggest` shows the exact command
+  # beside each judgement it proposes, so a decline lands in the log, not a commit message.
+  describe "declining" do
+    @describetag verifies: "decline-shown"
+
+    test "the command for a judgement candidate, ids kind-prefixed and quoted" do
+      assert Suggest.decline_command(
+               :implements,
+               "spec.md#Carts/Adding items",
+               "MyApp.Cart.add/2"
+             ) ==
+               ~s(mix surfex.retire "spec:spec.md#Carts/Adding items" "code:MyApp.Cart.add/2" --type implements --note "why it isn't one")
+
+      assert Suggest.decline_command(:excuses, "plumbing", "MyApp.Repo.config/0") ==
+               ~s(mix surfex.retire "class:plumbing" "code:MyApp.Repo.config/0" --type excuses --note "why it isn't one")
+    end
+
+    test "a double quote in an id is escaped" do
+      assert Suggest.decline_command(:implements, ~s(spec.md#The "fast" path), "M.f/0") =~
+               ~s("spec:spec.md#The \\"fast\\" path")
+    end
+
+    test "only judgements are declined; a structural suggestion has no decline" do
+      assert Suggest.decline_command(:tests, "T: a", "M.f/0") == nil
+      assert Suggest.decline_command(:refines, "spec.md#a", "spec.md#b") == nil
+    end
+  end
+
   describe "all/5: verifies and tests" do
     @moduletag :tmp_dir
 

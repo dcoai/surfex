@@ -1317,6 +1317,20 @@ repeats another:
   [:implements, :excuses]]`, every public item is then either described or deliberately
   excused, and both are on record. An excuse dangles when its item or its class changes.
 
+**A judgement suggestion shows how to decline it.** Under each `implements` and `excuses`
+candidate, `mix surfex.suggest` prints the exact command that declines it
+(`Surfex.Suggest.decline_command/3`): a `retire` of the never-related pair, ids
+kind-prefixed and quoted, with a note to replace. That records the decision, so the pair
+is never proposed again (§14). Declining in a commit message or an MR leaves the log
+without it, and the suggestion comes back. Structural suggestions (`tests`, `refines`, a
+refresh) state what the source says, so they have no decline; a wrong `verifies` is fixed
+in the test's tag.
+
+```test decline-shown
+a judgement suggestion's decline command retires the pair with ids kind-prefixed and
+quoted, and a quote in an id escaped; a structural suggestion has none
+```
+
 The others are computed as if the moves were already recorded, so a moved
 section's relations are not suggested again under its new id.
 `Surfex.Suggest.accept_all/5` records them (its options carry the test evidence): each
