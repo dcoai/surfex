@@ -994,6 +994,61 @@ defmodule Surfex.RecordTest do
     end
   end
 
+  # #147: a batch is many single judgements in one project load, each with its own note.
+  # Notes must be distinct: one note copied across many relations is a template, not a
+  # judgement of each.
+  describe "batches" do
+    @describetag verifies: "batch-distinct-notes"
+
+    defp relate_line(entries, %{from: from, to: to, note: note}),
+      do: Record.relate(scans(), entries, from, to, :depends_on, Keyword.put(@meta, :note, note))
+
+    test "records each line in order, each seeing the ones before it" do
+      lines = [
+        %{line: 1, from: @code_id, to: "M.helper/1", note: "add/2 calls helper/1 for the total"},
+        %{line: 2, from: "M.helper/1", to: @code_id, note: "helper/1 reads add/2's result"}
+      ]
+
+      assert {:ok, [a, b]} = Record.batch([], lines, &relate_line/2)
+
+      assert {a.note, b.note} ==
+               {"add/2 calls helper/1 for the total", "helper/1 reads add/2's result"}
+
+      # A later line sees the earlier ones: line 2 is recorded against line 1's entry.
+      seen = fn so_far, line ->
+        send(self(), {:saw, line.line, length(so_far)})
+        relate_line(so_far, line)
+      end
+
+      assert {:ok, [_, _]} = Record.batch([], lines, seen)
+      assert_received {:saw, 1, 0}
+      assert_received {:saw, 2, 1}
+    end
+
+    test "refuses notes that aren't distinct, naming the lines, and records nothing" do
+      same = "reviewed"
+
+      lines = [
+        %{line: 1, from: @code_id, to: "M.helper/1", note: same},
+        %{line: 4, from: "M.helper/1", to: @code_id, note: " reviewed "}
+      ]
+
+      assert {:error, message} = Record.batch([], lines, &relate_line/2)
+      assert message =~ "lines 1 and 4"
+      assert message =~ "distinct"
+    end
+
+    test "a line its own rule refuses fails the batch, naming the line" do
+      lines = [
+        %{line: 1, from: @code_id, to: "M.helper/1", note: "add/2 calls helper/1"},
+        %{line: 2, from: "M.gone/0", to: @code_id, note: "a function that isn't there"}
+      ]
+
+      assert {:error, "line 2: " <> why} = Record.batch([], lines, &relate_line/2)
+      assert why =~ "M.gone/0"
+    end
+  end
+
   describe "validation by process" do
     defp with_basis(entry, basis),
       do:

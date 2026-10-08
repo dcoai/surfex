@@ -1583,9 +1583,22 @@ already made validates nothing new.
   to get a red run was rejected: a test that fails against a mutant shows it is sensitive
   to the code, not that it reflects the spec.
 - **One relation at a time.** `confirm` (`Mix.Tasks.Surfex.Confirm`) names one relation, and
-  `validate` (`Mix.Tasks.Surfex.Validate`) one test and one unit. There is no form that
-  confirms or validates a list, and no form that confirms every relation touching an id.
-  The note is required, and records what was checked.
+  `validate` (`Mix.Tasks.Surfex.Validate`) one test and one unit. The note is required, and
+  records what was checked. There is no form that confirms every relation touching an id.
+- **A batch is many single judgements** (`Surfex.Record.batch/3`). `--file PATH` on
+  `confirm` and `validate` reads one relation per line (tab-separated: `FROM`, `TO`,
+  `TYPE`, `NOTE` for `confirm`; `TEST`, `UNIT`, `NOTE` for `validate`), and records them
+  in one run, which saves the project load per relation that made agents script loops. Each
+  line is still one relation, judged as the single form judges it, with its own note.
+  **The notes must be distinct**: one note copied across many relations is a template,
+  not a judgement of each, and such a batch is refused before anything is recorded. A
+  line its own rule refuses fails the whole batch, naming the line; nothing is recorded.
+
+```test batch-distinct-notes
+a batch records each line in order, each seeing the ones before it; notes that aren't
+distinct are refused, naming the lines; a line its rule refuses fails the batch, naming
+it; the file is tab-separated with numbered lines, and an empty one is refused
+```
 
 ```test process-proposed
 a citation, a tag with no failing run, or a pair named by hand is proposed and fails the

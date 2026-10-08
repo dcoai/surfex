@@ -11,6 +11,11 @@ release it merely follows.
 
 ### Added
 
+- **Batched `confirm` and `validate`** (#147). `--file PATH` records many relations in one
+  run, one per line (tab-separated, each line ending with its own note), saving the project
+  load per relation that made agents script loops with templated notes. **The notes must be
+  distinct**, or the batch is refused; each line is judged as the single form judges it, and
+  a refused line fails the whole batch.
 - **`Surfex.Golden` and `Surfex.SourceScan` are supported library API** (#150). Projects
   that render surface goldens without a relation log call them, and their CI gates rest on
   them, yet since 0.5.16 they weren't on hexdocs.
