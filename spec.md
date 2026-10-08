@@ -1826,6 +1826,10 @@ agent how the tool works from the installed version itself:
   project writes code against: the evidence formatter (§17, in `test_helper.exs`), and the
   scanner behaviour with its item (§5, for a project scanner). Every other module keeps its
   documentation in the code, for `h` in iex, without being presented as the package's.
+- **Two modules are supported library API** (§23), so they are on hexdocs too.
+- **Using isn't adopting.** A project that renders goldens with surfex but keeps no
+  relation log (`.surfex/`) hasn't adopted it. The directory says so when run there
+  (`Surfex.Info.adoption_note/1`), and points to the adoption topic.
 
 ```test info-directory
 the directory is under 100 lines, names every topic and every mix surfex.* command; each
@@ -1835,8 +1839,14 @@ topic prints its page; an unknown topic is refused, naming the topics
 ```test usage-rules-shipped
 usage-rules.md is the short agent page and points to mix surfex.info; the directory and
 every other topic are pages under priv/info, listed as items; the package ships them and
-the docs carry them; hexdocs show the mix tasks and the formatter, scanner and item
-modules, and no other module
+the docs carry them; hexdocs show the mix tasks, the formatter, scanner and item modules,
+and the golden and source-scan library modules, and no other module
+```
+
+
+```test info-without-log
+the directory notes when the project has no relation log, pointing to adoption, and says
+nothing once the log exists
 ```
 
 ## 22. A model of the log {#model}
@@ -1902,4 +1912,27 @@ retirement and every red→green record, under the new ids
 ```test log-model-recovery
 whatever changes, a dangling relation whose test passes is brought back to current by the
 work surfex asks for, unless the test stops passing
+```
+
+## 23. The library API {#library-api}
+
+Some projects use surfex for one thing: a surface golden, a committed document generated
+from a source scan, which CI regenerates and byte-compares, keeping no relation log. They
+call two modules directly, and their gates rest on them, so both are **supported library
+API**: `Surfex.SourceScan`, which reads Elixir source without compiling it, and
+`Surfex.Golden`, which renders a golden from a plain data spec. Both are on hexdocs, with a
+guide (`guides/using-surfex-as-a-library.md`). They carry a promise:
+- **Their documented functions and types keep their names, arities and shapes**, as they
+  have since v0.1.0.
+- **`Surfex.SourceScan.definition_hash/1` gives the same version for the same code**,
+  release to release, so a golden doesn't churn on an upgrade.
+- **A change to either never comes in a patch release.** It comes in a minor release,
+  listed under "Changed" in the CHANGELOG and marked for library users.
+
+A test pins the documented surface of both, so a change is always deliberate.
+
+```test library-api-stable
+the documented functions and types of Surfex.Golden and Surfex.SourceScan are exactly the
+pinned ones, the one-argument project_root stays callable, and definition_hash gives the
+same version for the same code
 ```

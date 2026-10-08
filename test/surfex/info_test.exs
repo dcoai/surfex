@@ -71,11 +71,12 @@ defmodule Surfex.InfoTest do
     assert "priv/info/index.md" in extras
     for topic <- topics -- ["agent"], do: assert("priv/info/#{topic}.md" in extras)
 
-    # hexdocs present the mix tasks and the three modules users write code against.
+    # hexdocs present the mix tasks, the three modules users write code against, and the
+    # two a project renders surface goldens with (#150).
     shown = &Regex.match?(config[:docs][:filter_modules], "Elixir." <> &1)
 
     for name <-
-          ~w(Mix.Tasks.Surfex.Status Mix.Tasks.Surfex.Info Surfex.ExUnitFormatter Surfex.Scanner Surfex.Item),
+          ~w(Mix.Tasks.Surfex.Status Mix.Tasks.Surfex.Info Surfex.ExUnitFormatter Surfex.Scanner Surfex.Item Surfex.Golden Surfex.SourceScan),
         do: assert(shown.(name), "#{name} isn't on hexdocs")
 
     for name <- ~w(Surfex.Record Surfex.Status Surfex.Log.Entry),
@@ -92,6 +93,18 @@ defmodule Surfex.InfoTest do
     assert {:error, message} = Info.page("nonsense")
     assert message =~ "no topic nonsense"
     assert message =~ "process"
+  end
+
+  # #150: a project that renders goldens with surfex but keeps no relation log hasn't
+  # adopted it, and the directory says so (extc found this the expensive way).
+  @tag verifies: "info-without-log"
+  @tag :tmp_dir
+  test "the directory notes when the project has no relation log", %{tmp_dir: root} do
+    assert Info.adoption_note(root) =~ "no relation log"
+    assert Info.adoption_note(root) =~ "mix surfex.log --init"
+
+    File.mkdir_p!(Path.join(root, ".surfex"))
+    assert Info.adoption_note(root) == nil
   end
 
   test "mix surfex.info prints the directory, or a topic's page" do

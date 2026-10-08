@@ -31,6 +31,20 @@ defmodule Surfex.Info do
   @spec directory() :: String.t()
   def directory, do: @directory
 
+  @doc """
+  A note for a project at `root` that keeps no relation log (`.surfex/`), or `nil`. Rendering
+  surface goldens with `Surfex.Golden` is a use of surfex, not an adoption of it (§21).
+  """
+  @spec adoption_note(String.t()) :: String.t() | nil
+  def adoption_note(root) do
+    if File.dir?(Path.join(root, ".surfex")),
+      do: nil,
+      else:
+        "This project has no relation log (.surfex/). Rendering goldens with Surfex.Golden " <>
+          "is a use of surfex, not adoption: `mix surfex.info adoption`, then " <>
+          "`mix surfex.log --init`."
+  end
+
   @doc "Each topic with its one-line summary, in the directory's order."
   @spec topics() :: [{String.t(), String.t()}]
   def topics, do: @topics
