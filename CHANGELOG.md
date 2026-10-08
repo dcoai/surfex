@@ -33,6 +33,8 @@ release it merely follows.
 
 ### Fixed
 
+- **`confirm --file` no longer crashes** (#162). Its option guard used `or` on an absent
+  switch (`nil`). Both tasks' `--file` paths are now tested end to end.
 - **A function's default-argument arities are one item to `require:`** (#146). `f/1` and
   `f/2` from one `def f(x, y \\ 1)` each needed their own relation, so projects wrote a
   call or a citation per arity to clear "unmet". The triangle and `validate` already compared

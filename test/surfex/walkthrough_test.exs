@@ -184,6 +184,68 @@ defmodule Surfex.WalkthroughTest do
     assert text =~ "relation log verified: 5 entries"
   end
 
+  # #162: --file on the tasks themselves, end to end (#147's batches).
+  @tag verifies: "batch-distinct-notes"
+  test "confirm --file records a batch; --file refuses named ids and --note", %{root: root} do
+    task(root, Mix.Tasks.Surfex.Relate, [
+      @function,
+      @other,
+      "--type",
+      "depends_on",
+      "--note",
+      "total sums the lines add/2 adds"
+    ])
+
+    commit(root, "relate")
+
+    # add/2's body changes: the relation dangles on it.
+    path = Path.join(root, "lib/my_app/cart.ex")
+    old = "def add(cart, item, qty), do: {:ok, [{item, qty} | cart]}"
+    new = "def add(cart, item, qty), do: {:ok, cart ++ [{item, qty}]}"
+    source = File.read!(path)
+    assert source =~ old
+    File.write!(path, String.replace(source, old, new))
+    commit(root, "edit add/2")
+    drain()
+
+    batch = Path.join(root, "batch.tsv")
+
+    File.write!(
+      batch,
+      "#{@function}\t#{@other}\tdepends_on\ttotal still sums what add/2 adds; the edit is a comment\n"
+    )
+
+    task(root, Mix.Tasks.Surfex.Confirm, ["--file", batch])
+    assert Enum.any?(drain(), &(&1 =~ "recorded relate depends_on"))
+    assert %{"state" => "current", "type" => "depends_on"} = status(root)
+
+    for {module, extra} <- [
+          {Mix.Tasks.Surfex.Confirm, [@function, @other]},
+          {Mix.Tasks.Surfex.Confirm, ["--note", "one note for all"]},
+          {Mix.Tasks.Surfex.Validate, ["--note", "one note for all"]}
+        ] do
+      error = assert_raise Mix.Error, fn -> task(root, module, ["--file", batch | extra]) end
+      assert error.message =~ "--file reads every relation and its note from the file"
+    end
+  end
+
+  @tag verifies: "batch-distinct-notes"
+  test "validate --file runs each line through the review, naming a line it refuses", %{
+    root: root
+  } do
+    batch = Path.join(root, "batch.tsv")
+
+    File.write!(
+      batch,
+      "# one review\nMyApp.CartTest: nothing here\t#{@section}\tthe test checks the total\n"
+    )
+
+    error =
+      assert_raise Mix.Error, fn -> task(root, Mix.Tasks.Surfex.Validate, ["--file", batch]) end
+
+    assert error.message =~ "line 2:"
+  end
+
   # #36: the spec is written first, the relation planned, and the code follows.
   @tag verifies: ["recording-by-name", "process-proposed", "process-one-at-a-time"]
   test "plan → planned → write the code → proposed until validated", %{root: root} do
