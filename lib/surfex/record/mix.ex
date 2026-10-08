@@ -66,6 +66,19 @@ defmodule Surfex.Record.Mix do
     end
   end
 
+  # A batch file's lines (`Surfex.Record.parse_batch/2`), or stops naming the file.
+  def batch_lines!(path, fields) do
+    case Surfex.Record.parse_batch(File.read!(path), fields) do
+      {:ok, lines} -> lines
+      {:error, why} -> Mix.raise("#{path}: #{why}")
+    end
+  end
+
+  def type_named!(text) do
+    Enum.find(Entry.types(), &(Atom.to_string(&1) == text)) ||
+      Mix.raise("type must be one of #{Enum.join(Entry.types(), ", ")}, got #{text}")
+  end
+
   def type!(opts) do
     case opts[:type] do
       nil ->

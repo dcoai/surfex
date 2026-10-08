@@ -13,7 +13,8 @@ one. Both come from the installed version, so they are always current.
 
 **Rules.**
 - One relation at a time. Read both ends, judge the relation, record it with a note that
-  says what you checked. `confirm` and `validate` take one relation on purpose.
+  says what you checked. `confirm` and `validate` take one relation on purpose; `--file`
+  takes many, one per line, each with its own distinct note.
 - Never script confirmations, loop over the work list, or bulk-accept to go green. A
   passing status reached that way is false.
 - Never confirm `implements` by hand; it needs evidence or a review.
