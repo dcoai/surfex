@@ -9,6 +9,19 @@ All notable changes to Surfex are recorded here, following
 `mix.exs` reads `0.6.2-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
 release it merely follows.
 
+### Added
+
+- **`Surfex.Golden` and `Surfex.SourceScan` are supported library API** (#150). Projects
+  that render surface goldens without a relation log call them, and their CI gates rest on
+  them, yet since 0.5.16 they weren't on hexdocs.
+  - They are documented now, with a guide, "Using surfex as a library", and a promise:
+    their documented functions and types keep their shapes (as they have since v0.1.0), and
+    `definition_hash/1` gives the same version for the same code.
+  - A change to either comes only in a minor release, marked here for library users. A
+    test pins their documented surface.
+- **`mix surfex.info` notes a project with no relation log:** rendering goldens is a use of
+  surfex, not adoption.
+
 ## [0.6.1] — 2026-10-07
 
 An ExUnitProperties `property` is now a test, so a suite's generative tests can verify
