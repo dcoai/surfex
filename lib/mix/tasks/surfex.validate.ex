@@ -49,7 +49,7 @@ defmodule Mix.Tasks.Surfex.Validate do
         R.record(root, Surfex.Record.validate(scans, entries, test, unit, evidence, meta))
 
       path ->
-        if ids != [] or opts[:note],
+        if ids != [] or opts[:note] != nil,
           do:
             Mix.raise(
               "--file reads every relation and its note from the file: name none, and no --note"

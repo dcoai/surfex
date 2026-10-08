@@ -41,7 +41,7 @@ defmodule Mix.Tasks.Surfex.Confirm do
     evidence = Evidence.load(Evidence.path(root))
 
     cond do
-      opts[:file] != nil and (ids != [] or opts[:evidence] or opts[:note]) ->
+      opts[:file] != nil and (ids != [] or opts[:evidence] == true or opts[:note] != nil) ->
         Mix.raise(
           "--file reads every relation and its note from the file: name none, and no --note or --evidence"
         )
