@@ -952,7 +952,9 @@ tips that agree
   kind (every scan of that kind) or a spec role (`section`, `block`, `test_hint`: every
   spec unit in that role). For example, `require: [code: [:implements], test_hint:
   [:verifies]]` means every code item implements something and every test hint is
-  verified. An id that fails several rules is unmet once per rule.
+  verified. An id that fails several rules is unmet once per rule. Code is one item per
+  definition to the policy, as it is to the triangle (§11): a function's default-argument
+  arities (`f/1`, `f/2` from one `def f(x, y \\ 1)`) are met by a relation to either.
 - **Broken:** a test's declaration (§11) that names no spec unit, or a bare id more
   than one file has.
 - **Broken citation:** a name the spec cites (§6) that resolves to nothing the code has,

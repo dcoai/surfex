@@ -585,6 +585,22 @@ defmodule Surfex.Status do
           reduce: %{},
           do: (acc -> Map.update(acc, end_, MapSet.new([type]), &MapSet.put(&1, type)))
 
+    # Code is one item per definition to the policy, as it is to the triangle: a
+    # function's default-argument arities share one, so a relation to either meets the
+    # rule for both (#146).
+    by_definition =
+      for %Scan{kind: :code} = scan <- scans,
+          types = Map.get(live, {:code, scan.id}),
+          types != nil,
+          reduce: %{} do
+        acc -> Map.update(acc, Scan.definition(scan), types, &MapSet.union(&1, types))
+      end
+
+    met = fn
+      %Scan{kind: :code} = scan -> Map.get(by_definition, Scan.definition(scan), MapSet.new())
+      scan -> Map.get(live, {scan.kind, scan.id}, MapSet.new())
+    end
+
     # A kind's rule applies to every scan of that kind; a spec role's rule (`test_hint:`)
     # to every spec unit in that role. Each rule that isn't met is its own entry.
     for scan <- Enum.sort_by(scans, &{&1.kind, &1.id}),
@@ -592,10 +608,7 @@ defmodule Surfex.Status do
         key != nil,
         requires = Keyword.get(require, key, []),
         requires != [],
-        not Enum.any?(
-          requires,
-          &MapSet.member?(Map.get(live, {scan.kind, scan.id}, MapSet.new()), &1)
-        ),
+        not Enum.any?(requires, &MapSet.member?(met.(scan), &1)),
         do: %{scan: scan, requires: requires}
   end
 

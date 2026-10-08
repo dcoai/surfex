@@ -22,6 +22,13 @@ release it merely follows.
 - **`mix surfex.info` notes a project with no relation log:** rendering goldens is a use of
   surfex, not adoption.
 
+### Fixed
+
+- **A function's default-argument arities are one item to `require:`** (#146). `f/1` and
+  `f/2` from one `def f(x, y \\ 1)` each needed their own relation, so projects wrote a
+  call or a citation per arity to clear "unmet". The triangle and `validate` already compared
+  code by definition; now the policy does too.
+
 ## [0.6.1] — 2026-10-07
 
 An ExUnitProperties `property` is now a test, so a suite's generative tests can verify
