@@ -26,7 +26,10 @@ defmodule Surfex.LibraryApiTest do
     assert Enum.sort(documented(Surfex.SourceScan, [:function, :macro])) == @scan_functions
     assert Enum.sort(documented(Surfex.SourceScan, [:type])) == @scan_types
 
-    # project_root/2's default keeps the one-argument form library users call.
+    # project_root/2's default keeps the one-argument form library users call. Loaded
+    # first: function_exported?/3 is false for a module not loaded yet, and tests load
+    # modules lazily, so without it the answer depended on test order (#158).
+    Code.ensure_loaded!(Surfex.SourceScan)
     assert function_exported?(Surfex.SourceScan, :project_root, 1)
   end
 
