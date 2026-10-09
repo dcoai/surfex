@@ -4,10 +4,14 @@ All notable changes to Surfex are recorded here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.2] — 2026-10-09
 
-`mix.exs` reads `0.6.2-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
-release it merely follows.
+Making the honest path cheap, from the users' RFC on #145: batched `confirm` and
+`validate` with a distinct note per relation, `annotate` for a current relation, declining
+shown beside each suggestion, code moves suggested when a function's arity changes, CI's
+evidence readable by the recording commands, and `suggest` about fifteen times faster on a
+large log. `Surfex.Golden` and `Surfex.SourceScan` are now documented, supported library
+API. No upgrade step.
 
 ### Added
 
