@@ -18,6 +18,10 @@ defmodule Mix.Tasks.Surfex.Confirm do
   per line, tab-separated `FROM`, `TO`, `TYPE`, `NOTE`, each judged as the single form
   judges it. The notes must be distinct, and a refused line fails the whole batch.
 
+  `--merge PATH` (once per file) also reads other runs' evidence, such as CI artifacts,
+  with the local run as one history (`Surfex.Evidence.combined/1`), so a test excluded
+  locally counts from the run that had its environment. A missing file fails.
+
   With `--evidence` it confirms instead what the test evidence justifies
   (`Surfex.Record.confirm_by_evidence/4`): each test relation on its test's failing run,
   each `tests` and `implements` relation on a red run and then a green one:
@@ -30,15 +34,14 @@ defmodule Mix.Tasks.Surfex.Confirm do
 
   use Mix.Task
 
-  alias Surfex.Evidence
   alias Surfex.Record.Mix, as: R
   alias Surfex.Status.Config
 
   @impl Mix.Task
   def run(args) do
-    {opts, ids} = R.parse(args, evidence: :boolean, file: :string)
+    {opts, ids} = R.parse(args, evidence: :boolean, file: :string, merge: :keep)
     {root, scans, entries, meta} = R.context(opts)
-    evidence = Evidence.load(Evidence.path(root))
+    evidence = R.evidence!(root, opts)
 
     cond do
       opts[:file] != nil and (ids != [] or opts[:evidence] == true or opts[:note] != nil) ->

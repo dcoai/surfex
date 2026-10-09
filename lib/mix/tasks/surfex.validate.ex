@@ -22,6 +22,10 @@ defmodule Mix.Tasks.Surfex.Validate do
   tab-separated `TEST`, `UNIT`, `NOTE`, each reviewed as the single form reviews it, with
   distinct notes (`Surfex.Record.batch/3`).
 
+  `--merge PATH` (once per file) also reads other runs' evidence, such as CI artifacts,
+  with the local run as one history (`Surfex.Evidence.combined/1`), so a test excluded
+  locally counts from the run that had its environment. A missing file fails.
+
   Code usually implements a section while its tests verify the hints inside it. Review
   the test against its hint first, then against the section, judging that it validates
   the section's claims for the code it exercises:
@@ -34,14 +38,13 @@ defmodule Mix.Tasks.Surfex.Validate do
 
   use Mix.Task
 
-  alias Surfex.Evidence
   alias Surfex.Record.Mix, as: R
 
   @impl Mix.Task
   def run(args) do
-    {opts, ids} = R.parse(args, file: :string)
+    {opts, ids} = R.parse(args, file: :string, merge: :keep)
     {root, scans, entries, meta} = R.context(opts)
-    evidence = Evidence.load(Evidence.path(root))
+    evidence = R.evidence!(root, opts)
 
     case opts[:file] do
       nil ->
