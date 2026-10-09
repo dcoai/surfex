@@ -379,12 +379,14 @@ defmodule Surfex.Suggest do
         do: %{from: class_scan, to: scan}
   end
 
-  # The judgement in force for each relation, when there is exactly one.
+  # The judgement in force for each relation, when there is exactly one. Each relation's
+  # tips come from its own entries: re-filtering the whole log per relation made suggest
+  # quadratic in the log (#168).
   defp live_tips(entries) do
     entries
     |> Enum.group_by(&Entry.relation/1)
-    |> Enum.flat_map(fn {relation, _} ->
-      case Surfex.Status.representative(Surfex.Status.tips(entries, relation)) do
+    |> Enum.flat_map(fn {relation, group} ->
+      case Surfex.Status.representative(Surfex.Status.tips(group, relation)) do
         nil -> []
         tip -> [tip]
       end

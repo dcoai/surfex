@@ -1357,6 +1357,14 @@ without it, and the suggestion comes back. Structural suggestions (`tests`, `ref
 refresh) state what the source says, so they have no decline; a wrong `verifies` is fixed
 in the test's tag.
 
+**Suggesting grows with the log in proportion.** An agent runs it on every work item, so
+its work over a log twice as large is about twice, not four times: each relation's
+judgement in force is read from that relation's own entries.
+
+```test suggest-linear
+suggest's work over twice the relations is about twice the work, counted in reductions
+```
+
 ```test decline-shown
 a judgement suggestion's decline command retires the pair with ids kind-prefixed and
 quoted, and a quote in an id escaped; a structural suggestion has none
