@@ -293,12 +293,48 @@ defmodule Surfex.Suggest do
           news != [],
           do: {Enum.sort(olds), Enum.sort_by(news, & &1.id)}
 
+    matches = matches ++ code_matches(status, scanned, recorded)
+
     {for({[old], [new]} <- matches, do: %{from: old, to: new}),
      for(
        {olds, news} <- matches,
        length(olds) > 1 or length(news) > 1,
        do: %{from: olds, to: Enum.map(news, & &1.id)}
      )}
+  end
+
+  # A function whose arity changed (#153): a code id with live or retired relations is no
+  # longer scanned, and a new code item of the same module and name, with another arity,
+  # has no records. Its version changed with it, so the version rule above can't see it.
+  defp code_matches(status, scanned, recorded) do
+    name = fn id ->
+      case Regex.run(~r{^(.+)/\d+$}, id) do
+        [_, name] -> name
+        nil -> nil
+      end
+    end
+
+    gone =
+      for %{state: state, tip: %Entry{} = tip} <- status.relations,
+          state in [:orphaned, :retired],
+          %{kind: :code, id: id} <- tip.ends,
+          not MapSet.member?(scanned, {:code, id}),
+          name.(id) != nil,
+          uniq: true,
+          do: id
+
+    fresh =
+      for %Scan{kind: :code} = s <- status.new,
+          not MapSet.member?(recorded, {:code, s.id}),
+          name.(s.id) != nil,
+          do: s
+
+    fresh_by_name = Enum.group_by(fresh, &name.(&1.id))
+
+    for {key, olds} <- Enum.group_by(gone, name),
+        news = Map.get(fresh_by_name, key, []),
+        news != [],
+        do: {Enum.sort(olds), Enum.sort_by(news, & &1.id)}
   end
 
   defp excusals(profile, items, scans, entries, implements) do

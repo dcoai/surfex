@@ -11,6 +11,10 @@ release it merely follows.
 
 ### Added
 
+- **`suggest` proposes code moves** (#153). When a function's arity changes
+  (`render/2` → `render/3`), its relations used to orphan, and each was retired and
+  re-validated. Now suggest proposes the move, which carries them across to be judged once
+  more. `mix surfex.move` already worked for code ids; its docs now say so.
 - **`mix surfex.annotate`** (#152): a current relation takes a new note, re-recorded at its
   own versions and basis. A re-review that changes nothing, such as fixing a batch of
   templated notes, now lands in the log rather than a commit message.

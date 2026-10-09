@@ -1312,6 +1312,13 @@ repeats another:
   surfex.move` does it by hand). A section renamed and reworded at once is not
   recognised, and neither is a renamed test, whose name is part of its version: their old
   relations stay orphaned for review.
+- **code moves**: a code id with relations that is no longer scanned, and a new code item
+  of the **same module and name with another arity**, with no records of its own: a
+  function whose arity changed (`render/2` became `render/3`). Its version changed with
+  it, so the version rule above can't see it. One to one only; several candidates are
+  ambiguous. A code move carries the old end's recorded version like any move, so the
+  moved relations aren't current until judged again (`mix surfex.move` works for any id,
+  code included).
 - **refines**: each marked block and test hint `refines` the unit it sits in
   (`within`, §11), unless that relation exists in any state.
 - **implements**: the candidates above.
@@ -1362,6 +1369,11 @@ evidence.
 ```test suggest-never-confirms
 a pair already related, in any state, is never suggested again,
 so accepting suggestions never confirms a dangling relation
+```
+
+```test suggest-code-moves
+a function whose arity changed is suggested as a move, and the moved relation isn't
+current until judged again; two candidates of one name are ambiguous
 ```
 
 ```test suggest-test-moves

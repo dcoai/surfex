@@ -184,6 +184,44 @@ defmodule Surfex.SuggestTest do
         implements: pairs(s.implements)
       }
 
+    # #153: a function whose arity changed is the commonest code move, and its version
+    # changes with it, so the version rule can't see it. Same module, same name, another
+    # arity, one to one: suggested; the moved relations dangle, to be judged again.
+    @tag verifies: "suggest-code-moves"
+    test "a function whose arity changed is suggested as a move; two candidates are ambiguous", %{
+      tmp_dir: root
+    } do
+      entries = adopted(root)
+      max_len = Enum.find(@wren, &(&1.name == "max_len/0"))
+
+      arity = fn name, hash ->
+        %Item{kind: :function, name: name, parent: "Wren", file: "lib/w.ex", hash: hash}
+      end
+
+      profile = Config.profile!([sources: ["spec.md"]], "Wren")
+
+      run = fn items ->
+        scans = Markdown.records(root, ["spec.md"]) ++ Scan.code(items)
+        {Suggest.all(profile, items, scans, entries, root), scans}
+      end
+
+      {s, scans} = run.([arity.("send/4", "00000009"), max_len])
+      assert Enum.map(s.moves, &{&1.from, &1.to.id}) == [{"Wren.send/3", "Wren.send/4"}]
+
+      {:ok, moved} = Suggest.accept_all(%{s | implements: [], excuses: []}, scans, entries, @meta)
+
+      states =
+        Status.derive(scans, entries ++ moved).relations
+        |> Enum.filter(&match?({_, {:code, "Wren.send/4"}, _}, &1.relation))
+
+      # It carries its basis (proposed here) and isn't current: its code end changed.
+      assert [%{state: :proposed, changed: [code: "Wren.send/4"]}] = states
+
+      {s, _scans} = run.([arity.("send/4", "00000009"), arity.("send/5", "0000000a"), max_len])
+      assert s.moves == []
+      assert [%{from: ["Wren.send/3"], to: ["Wren.send/4", "Wren.send/5"]}] = s.ambiguous
+    end
+
     @tag verifies: "suggest-moves"
     test "an added anchor is a move, and nothing is suggested twice", %{tmp_dir: root} do
       entries = adopted(root)
