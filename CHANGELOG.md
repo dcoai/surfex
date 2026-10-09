@@ -44,6 +44,10 @@ release it merely follows.
 
 ### Fixed
 
+- **`suggest` is linear in the log** (#168). It re-filtered the whole log once per
+  relation, so on surfex's own log (~10k entries) it took ~32 s, ~30 of them in that one
+  helper; it now takes ~2 s. A test counts its work (reductions, not seconds) over N and
+  2N relations.
 - **Suggestions no longer follow the order of the scans or the log's lines** (#151). A
   shuffled input reordered `suggest`'s lists (the `tests` suggestions showed it). Every
   list is now sorted by the ids it names, and a test renders every report, golden and

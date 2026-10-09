@@ -140,6 +140,54 @@ defmodule Surfex.SuggestTest do
            ]
   end
 
+  # #168: suggest's work grows with the log in proportion, not quadratically. Counted in
+  # reductions, not seconds: work done is the same on any machine under any load, where a
+  # time bound only catches a regression large enough to beat the noise.
+  @tag verifies: "suggest-linear"
+  test "suggest's work over twice the relations is about twice, not four times" do
+    {config, _} = Code.eval_file(Path.join(@fixture, "surfex.exs"))
+    profile = Config.profile!(config, nil)
+
+    # Enough functions that the relations between them, not the fixed costs, dominate.
+    items =
+      for i <- 1..80,
+          do: %Item{
+            kind: :function,
+            name: "f#{i}/0",
+            parent: "Gen",
+            file: "lib/gen.ex",
+            hash: "h#{i}"
+          }
+
+    scans = Markdown.records(@root, ["spec/**/*.md", "notes/**/*.md"]) ++ Scan.code(items)
+    ids = for %Scan{kind: :code, id: id, hash: hash} <- scans, do: {id, hash}
+    pairs = for {a, ha} <- ids, {b, hb} <- ids, a < b, do: {a, ha, b, hb}
+
+    log = fn n ->
+      for {a, ha, b, hb} <- Enum.take(pairs, n) do
+        Entry.new!(
+          at: "2026-10-09T10:00:00Z",
+          op: :relate,
+          type: :depends_on,
+          ends: [%{kind: :code, id: a, hash: ha}, %{kind: :code, id: b, hash: hb}]
+        )
+      end
+    end
+
+    work = fn n ->
+      entries = log.(n)
+      {:reductions, before} = Process.info(self(), :reductions)
+      Suggest.all(profile, items, scans, entries, @root)
+      {:reductions, later} = Process.info(self(), :reductions)
+      later - before
+    end
+
+    n = 1000
+    assert length(pairs) >= 2 * n
+    ratio = work.(2 * n) / work.(n)
+    assert ratio < 3, "twice the relations took #{Float.round(ratio, 2)}× the work"
+  end
+
   describe "all/5: moves, refines and implements together" do
     @moduletag :tmp_dir
 
