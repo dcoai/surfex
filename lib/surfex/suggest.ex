@@ -145,6 +145,7 @@ defmodule Surfex.Suggest do
   @spec all(Profile.t(), [Surfex.Item.t()], [Scan.t()], [Entry.t()], String.t()) :: suggestions
   def all(profile, items, scans, entries, root) do
     {moves, ambiguous} = moves(scans, entries)
+    {moves, ambiguous} = {ordered(moves), ordered(ambiguous)}
 
     {:ok, moved} =
       Enum.reduce(moves, {:ok, entries}, fn m, {:ok, acc} ->
@@ -159,14 +160,29 @@ defmodule Surfex.Suggest do
     %{
       moves: moves,
       ambiguous: ambiguous,
-      refines: refinements(scans, moved),
-      implements: implements,
-      excuses: excusals(profile, items, scans, moved, implements),
-      verifies: verifications(scans, moved),
-      undeclared: Surfex.Status.derive(scans, moved).undeclared,
-      refresh: refreshed(scans, moved),
-      tests: exercised(scans, moved)
+      refines: ordered(refinements(scans, moved)),
+      implements: ordered(implements),
+      excuses: ordered(excusals(profile, items, scans, moved, implements)),
+      verifies: ordered(verifications(scans, moved)),
+      undeclared: ordered(Surfex.Status.derive(scans, moved).undeclared),
+      refresh: ordered(refreshed(scans, moved)),
+      tests: ordered(exercised(scans, moved))
     }
+  end
+
+  # Suggestions in one canonical order, by the ids they name, so they never follow the
+  # order the scans or the log's lines came in (#151): a union merge reorders lines, and a
+  # file system lists files as it likes.
+  defp ordered(suggestions), do: Enum.sort_by(suggestions, &order_key/1)
+
+  defp order_key(suggestion) do
+    id = fn
+      %Scan{id: id} -> id
+      list when is_list(list) -> Enum.map(list, &if(is_struct(&1, Scan), do: &1.id, else: &1))
+      other -> other
+    end
+
+    for key <- [:from, :to, :spec, :code, :test, :type], do: id.(Map.get(suggestion, key))
   end
 
   @doc """

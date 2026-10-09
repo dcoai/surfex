@@ -43,6 +43,11 @@ How precisely Surfex can relate a spec depends on how the spec is written.
   projects is data: `.surfex.exs`, read as a `Surfex.Profile` and the log's own keys.
 - **Goldens are a pure function of source.** No timestamps, dates or VCS data ever
   appear in one. A date makes a golden drift against itself on a quiet day.
+- **Output never follows input order.** Every report, golden and suggestion is ordered
+  by what it reports, not by the order its inputs came in: the log's lines arrive in
+  whatever order a union merge left them, and a file system lists files as it likes. A
+  golden that reordered with them would churn, and churn teaches people to regenerate
+  without reading.
 - **Loud over silent.** Configuration that cannot be right (an unknown key, a pattern
   that matches nothing, a scan that found nothing) raises before anything renders. A
   misconfigured check must never pass.
@@ -51,6 +56,11 @@ How precisely Surfex can relate a spec depends on how the spec is written.
   caught by the tests, not by a reader (#83).
 - **The test suite can't race itself.** The working directory belongs to the whole VM, so
   a test module that changes it doesn't run async.
+
+```test deterministic-output
+the status report, the completeness report, a history and the suggestions are the same
+whether the scans and the log's lines come in one order or another
+```
 
 ## 2. Surface goldens {#goldens}
 

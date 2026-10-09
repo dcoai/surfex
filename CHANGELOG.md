@@ -44,6 +44,10 @@ release it merely follows.
 
 ### Fixed
 
+- **Suggestions no longer follow the order of the scans or the log's lines** (#151). A
+  shuffled input reordered `suggest`'s lists (the `tests` suggestions showed it). Every
+  list is now sorted by the ids it names, and a test renders every report, golden and
+  suggestion list from surfex's own log in two orders and requires them identical.
 - **`confirm --file` no longer crashes** (#162). Its option guard used `or` on an absent
   switch (`nil`). Both tasks' `--file` paths are now tested end to end.
 - **A function's default-argument arities are one item to `require:`** (#146). `f/1` and
