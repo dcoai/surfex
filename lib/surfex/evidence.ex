@@ -51,6 +51,14 @@ defmodule Surfex.Evidence do
   @spec path(String.t()) :: String.t()
   def path(root), do: Path.join([root, "_build", "surfex", "evidence.jsonl"])
 
+  @doc """
+  Several runs' evidence as one history, ordered by time (§17): the local run and other
+  runs' files, such as CI jobs' artifacts. A test excluded in one run and run in another
+  reads as run; whichever run is latest is the latest, wherever it was recorded.
+  """
+  @spec combined([[t]]) :: [t]
+  def combined(runs), do: runs |> Enum.concat() |> Enum.sort_by(&{&1.at, &1.run, &1.seq})
+
   @doc "Appends records to the evidence file at `path`, creating it."
   @spec append(String.t(), [t]) :: :ok
   def append(path, records) do

@@ -49,6 +49,7 @@ Validate relations:
 - `mix surfex.confirm --evidence`: every relation the recorded test runs validate
 - `mix surfex.validate TEST SPEC_UNIT --note N`: a review: this test validates this unit
 - `mix surfex.confirm FROM TO --type T --note N`: a judgement (never for implements)
+- `mix surfex.annotate FROM TO --type T --note N`: a new note on a current relation
 - `mix surfex.baseline --note N`: adopt a trusted suite, once (`adoption: :trust`)
 
 Spec problems and found work:

@@ -143,6 +143,33 @@ defmodule Surfex.StatusTest do
       assert Status.failing?(status)
     end
 
+    # #146: `def f(x, y \\ 1)` is two items, f/1 and f/2, but one definition. A relation to
+    # either meets the policy for both, as the triangle and validate already compare code.
+    test "a definition's default-argument arities are one item to the policy" do
+      at = fn id, lines, hash ->
+        %{scan(:code, id, hash) | location: %{file: "lib/m.ex", lines: lines}}
+      end
+
+      one_def = [at.("M.f/1", {3, 5}, "f"), at.("M.f/2", {3, 5}, "f")]
+      two_defs = [at.("M.g/1", {7, 8}, "g1"), at.("M.g/2", {9, 10}, "g2")]
+
+      related =
+        for {id, hash} <- [{"M.f/2", "f"}, {"M.g/2", "g2"}] do
+          Entry.new!(
+            at: "2026-09-28T10:00:00Z",
+            op: :relate,
+            type: :implements,
+            ends: [%{kind: :spec, id: @spec_id, hash: "s1"}, %{kind: :code, id: id, hash: hash}]
+          )
+        end
+
+      status = Status.derive(one_def ++ two_defs ++ scans(), related, code: [:implements])
+      unmet = for %{scan: %{id: id}} <- status.unmet, do: id
+
+      refute "M.f/1" in unmet
+      assert "M.g/1" in unmet
+    end
+
     test "a retired relation doesn't meet it" do
       first = relate("s1", "c1")
       retired = relate("s1", "c1", op: :retire, parents: [first.id], at: "2026-09-28T11:00:00Z")

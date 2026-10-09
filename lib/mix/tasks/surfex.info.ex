@@ -15,7 +15,12 @@ defmodule Mix.Tasks.Surfex.Info do
   use Mix.Task
 
   @impl Mix.Task
-  def run([]), do: Mix.shell().info(Surfex.Info.directory())
+  def run([]) do
+    Mix.shell().info(Surfex.Info.directory())
+
+    with note when is_binary(note) <- Surfex.Info.adoption_note(File.cwd!()),
+         do: Mix.shell().info("\n" <> note)
+  end
 
   def run([topic]) do
     case Surfex.Info.page(topic) do

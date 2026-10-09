@@ -71,6 +71,29 @@ defmodule Surfex.EvidenceTest do
     end
   end
 
+  # #154: recording reads the local run and other runs' evidence (CI's artifacts) as one
+  # history, ordered by time: a test that needs an environment the local host lacks is
+  # excluded here and passed there, and recording takes CI's word for it.
+  describe "combined/1" do
+    @describetag verifies: "evidence-merged-recording"
+
+    test "a test excluded here and passed in another run reads as passed" do
+      here = [record(:excluded, nil, 2, code: %{})]
+      ci = [record(:failed, "c0", 1), record(:passed, "c1", 3)]
+
+      combined = Evidence.combined([here, ci])
+      assert Enum.map(combined, & &1.result) == [:failed, :excluded, :passed]
+      assert %{result: :passed} = Evidence.latest(combined, "T: a", "t1")
+      assert Evidence.discriminating?(combined, "T: a", "t1")
+    end
+
+    test "a later failure in any run is the latest" do
+      here = [record(:passed, "c1", 1)]
+      ci = [record(:failed, "c1", 2)]
+      assert %{result: :failed} = Evidence.latest(Evidence.combined([here, ci]), "T: a", "t1")
+    end
+  end
+
   describe "the formatter" do
     @project Path.expand("../fixtures/elixir_project", __DIR__)
 

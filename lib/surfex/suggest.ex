@@ -51,6 +51,27 @@ defmodule Surfex.Suggest do
   end
 
   @doc """
+  The command that declines a judgement suggestion (§14, §15): a `retire` of the
+  never-related pair, with a note the reviewer replaces, so the decision is recorded and
+  never proposed again. `implements` and `excuses` are judgements; a structural suggestion
+  (`tests`, `refines`, a refresh) states what the source says, and has none (`nil`).
+  """
+  @spec decline_command(atom, String.t(), String.t()) :: String.t() | nil
+  def decline_command(:implements, spec, code),
+    do: retire_command(:implements, "spec:" <> spec, "code:" <> code)
+
+  def decline_command(:excuses, class, code),
+    do: retire_command(:excuses, "class:" <> class, "code:" <> code)
+
+  def decline_command(_structural, _from, _to), do: nil
+
+  defp retire_command(type, from, to),
+    do:
+      ~s(mix surfex.retire #{quoted(from)} #{quoted(to)} --type #{type} --note "why it isn't one")
+
+  defp quoted(id), do: ~s(") <> String.replace(id, ~s("), ~s(\\")) <> ~s(")
+
+  @doc """
   One `relate` entry per candidate, at the current hashes. It only ever creates relations
   that don't exist; it never confirms a dangling one.
   """
@@ -124,6 +145,7 @@ defmodule Surfex.Suggest do
   @spec all(Profile.t(), [Surfex.Item.t()], [Scan.t()], [Entry.t()], String.t()) :: suggestions
   def all(profile, items, scans, entries, root) do
     {moves, ambiguous} = moves(scans, entries)
+    {moves, ambiguous} = {ordered(moves), ordered(ambiguous)}
 
     {:ok, moved} =
       Enum.reduce(moves, {:ok, entries}, fn m, {:ok, acc} ->
@@ -138,14 +160,29 @@ defmodule Surfex.Suggest do
     %{
       moves: moves,
       ambiguous: ambiguous,
-      refines: refinements(scans, moved),
-      implements: implements,
-      excuses: excusals(profile, items, scans, moved, implements),
-      verifies: verifications(scans, moved),
-      undeclared: Surfex.Status.derive(scans, moved).undeclared,
-      refresh: refreshed(scans, moved),
-      tests: exercised(scans, moved)
+      refines: ordered(refinements(scans, moved)),
+      implements: ordered(implements),
+      excuses: ordered(excusals(profile, items, scans, moved, implements)),
+      verifies: ordered(verifications(scans, moved)),
+      undeclared: ordered(Surfex.Status.derive(scans, moved).undeclared),
+      refresh: ordered(refreshed(scans, moved)),
+      tests: ordered(exercised(scans, moved))
     }
+  end
+
+  # Suggestions in one canonical order, by the ids they name, so they never follow the
+  # order the scans or the log's lines came in (#151): a union merge reorders lines, and a
+  # file system lists files as it likes.
+  defp ordered(suggestions), do: Enum.sort_by(suggestions, &order_key/1)
+
+  defp order_key(suggestion) do
+    id = fn
+      %Scan{id: id} -> id
+      list when is_list(list) -> Enum.map(list, &if(is_struct(&1, Scan), do: &1.id, else: &1))
+      other -> other
+    end
+
+    for key <- [:from, :to, :spec, :code, :test, :type], do: id.(Map.get(suggestion, key))
   end
 
   @doc """
@@ -272,12 +309,48 @@ defmodule Surfex.Suggest do
           news != [],
           do: {Enum.sort(olds), Enum.sort_by(news, & &1.id)}
 
+    matches = matches ++ code_matches(status, scanned, recorded)
+
     {for({[old], [new]} <- matches, do: %{from: old, to: new}),
      for(
        {olds, news} <- matches,
        length(olds) > 1 or length(news) > 1,
        do: %{from: olds, to: Enum.map(news, & &1.id)}
      )}
+  end
+
+  # A function whose arity changed (#153): a code id with live or retired relations is no
+  # longer scanned, and a new code item of the same module and name, with another arity,
+  # has no records. Its version changed with it, so the version rule above can't see it.
+  defp code_matches(status, scanned, recorded) do
+    name = fn id ->
+      case Regex.run(~r{^(.+)/\d+$}, id) do
+        [_, name] -> name
+        nil -> nil
+      end
+    end
+
+    gone =
+      for %{state: state, tip: %Entry{} = tip} <- status.relations,
+          state in [:orphaned, :retired],
+          %{kind: :code, id: id} <- tip.ends,
+          not MapSet.member?(scanned, {:code, id}),
+          name.(id) != nil,
+          uniq: true,
+          do: id
+
+    fresh =
+      for %Scan{kind: :code} = s <- status.new,
+          not MapSet.member?(recorded, {:code, s.id}),
+          name.(s.id) != nil,
+          do: s
+
+    fresh_by_name = Enum.group_by(fresh, &name.(&1.id))
+
+    for {key, olds} <- Enum.group_by(gone, name),
+        news = Map.get(fresh_by_name, key, []),
+        news != [],
+        do: {Enum.sort(olds), Enum.sort_by(news, & &1.id)}
   end
 
   defp excusals(profile, items, scans, entries, implements) do
@@ -306,12 +379,14 @@ defmodule Surfex.Suggest do
         do: %{from: class_scan, to: scan}
   end
 
-  # The judgement in force for each relation, when there is exactly one.
+  # The judgement in force for each relation, when there is exactly one. Each relation's
+  # tips come from its own entries: re-filtering the whole log per relation made suggest
+  # quadratic in the log (#168).
   defp live_tips(entries) do
     entries
     |> Enum.group_by(&Entry.relation/1)
-    |> Enum.flat_map(fn {relation, _} ->
-      case Surfex.Status.representative(Surfex.Status.tips(entries, relation)) do
+    |> Enum.flat_map(fn {relation, group} ->
+      case Surfex.Status.representative(Surfex.Status.tips(group, relation)) do
         nil -> []
         tip -> [tip]
       end

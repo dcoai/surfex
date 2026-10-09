@@ -1,7 +1,7 @@
 defmodule Surfex.MixProject do
   use Mix.Project
 
-  @version "0.6.1"
+  @version "0.6.2"
   @source_url "https://github.com/dcoai/surfex"
 
   @moduledoc """
@@ -62,18 +62,21 @@ defmodule Surfex.MixProject do
             [
               "guides/writing-specs.md",
               "guides/adopting-an-existing-suite.md",
+              "guides/using-surfex-as-a-library.md",
               "spec.md",
               "CHANGELOG.md"
             ],
         groups_for_extras: [
           "Using surfex": ["usage-rules.md" | Path.wildcard("priv/info/*.md")],
-          Guides: ~w(guides/writing-specs.md guides/adopting-an-existing-suite.md),
+          Guides:
+            ~w(guides/writing-specs.md guides/adopting-an-existing-suite.md guides/using-surfex-as-a-library.md),
           Reference: ~w(spec.md CHANGELOG.md)
         ],
-        # The mix tasks, and the three modules a project writes code against. Every other
+        # The mix tasks, the three modules a project writes code against, and the two a
+        # project renders surface goldens with (supported library API, #150). Every other
         # module keeps its docs in the code (`h` in iex) without being the package's docs.
         filter_modules:
-          ~r/^Elixir\.(Mix\.Tasks\.Surfex(\.|$)|Surfex\.(ExUnitFormatter|Scanner|Item)$)/,
+          ~r/^Elixir\.(Mix\.Tasks\.Surfex(\.|$)|Surfex\.(ExUnitFormatter|Scanner|Item|Golden|SourceScan)$)/,
         # Names of modules not on hexdocs render as code, not as links that go nowhere.
         skip_code_autolink_to: &skip_autolink?/1,
         # The changelog names functions earlier versions removed: history, not dead links.
@@ -84,7 +87,7 @@ defmodule Surfex.MixProject do
 
   def application, do: [extra_applications: [:logger]]
 
-  @shown ~w(Surfex.ExUnitFormatter Surfex.Scanner Surfex.Item)
+  @shown ~w(Surfex.ExUnitFormatter Surfex.Scanner Surfex.Item Surfex.Golden Surfex.SourceScan)
 
   # A reference's module is its capitalised segments: `Surfex.Item.key/1` is `Surfex.Item`.
   defp skip_autolink?(ref) do

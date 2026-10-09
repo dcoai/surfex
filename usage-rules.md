@@ -13,13 +13,15 @@ one. Both come from the installed version, so they are always current.
 
 **Rules.**
 - One relation at a time. Read both ends, judge the relation, record it with a note that
-  says what you checked. `confirm` and `validate` take one relation on purpose.
+  says what you checked. `confirm` and `validate` take one relation on purpose; `--file`
+  takes many, one per line, each with its own distinct note.
 - Never script confirmations, loop over the work list, or bulk-accept to go green. A
   passing status reached that way is false.
 - Never confirm `implements` by hand; it needs evidence or a review.
 - A failing test comes before the code. Record `verifies` on the failing run.
 - To change a test, make the new version fail first, or review it.
 - If the spec is what's wrong, mark it (`mix surfex.mark`); don't bend the test.
+- Surfex doesn't read `@doc`: a docstring stating a contract isn't checked against the spec.
 - Found work beyond the task goes to the project's process: `mix surfex.draft`.
 - Don't hand-edit `.surfex/`. On a merge conflict in a golden, regenerate it
   (`mix surfex.goldens --write`).

@@ -140,6 +140,54 @@ defmodule Surfex.SuggestTest do
            ]
   end
 
+  # #168: suggest's work grows with the log in proportion, not quadratically. Counted in
+  # reductions, not seconds: work done is the same on any machine under any load, where a
+  # time bound only catches a regression large enough to beat the noise.
+  @tag verifies: "suggest-linear"
+  test "suggest's work over twice the relations is about twice, not four times" do
+    {config, _} = Code.eval_file(Path.join(@fixture, "surfex.exs"))
+    profile = Config.profile!(config, nil)
+
+    # Enough functions that the relations between them, not the fixed costs, dominate.
+    items =
+      for i <- 1..80,
+          do: %Item{
+            kind: :function,
+            name: "f#{i}/0",
+            parent: "Gen",
+            file: "lib/gen.ex",
+            hash: "h#{i}"
+          }
+
+    scans = Markdown.records(@root, ["spec/**/*.md", "notes/**/*.md"]) ++ Scan.code(items)
+    ids = for %Scan{kind: :code, id: id, hash: hash} <- scans, do: {id, hash}
+    pairs = for {a, ha} <- ids, {b, hb} <- ids, a < b, do: {a, ha, b, hb}
+
+    log = fn n ->
+      for {a, ha, b, hb} <- Enum.take(pairs, n) do
+        Entry.new!(
+          at: "2026-10-09T10:00:00Z",
+          op: :relate,
+          type: :depends_on,
+          ends: [%{kind: :code, id: a, hash: ha}, %{kind: :code, id: b, hash: hb}]
+        )
+      end
+    end
+
+    work = fn n ->
+      entries = log.(n)
+      {:reductions, before} = Process.info(self(), :reductions)
+      Suggest.all(profile, items, scans, entries, @root)
+      {:reductions, later} = Process.info(self(), :reductions)
+      later - before
+    end
+
+    n = 1000
+    assert length(pairs) >= 2 * n
+    ratio = work.(2 * n) / work.(n)
+    assert ratio < 3, "twice the relations took #{Float.round(ratio, 2)}× the work"
+  end
+
   describe "all/5: moves, refines and implements together" do
     @moduletag :tmp_dir
 
@@ -183,6 +231,44 @@ defmodule Surfex.SuggestTest do
         refines: Enum.map(s.refines, &{&1.from.id, &1.to.id}),
         implements: pairs(s.implements)
       }
+
+    # #153: a function whose arity changed is the commonest code move, and its version
+    # changes with it, so the version rule can't see it. Same module, same name, another
+    # arity, one to one: suggested; the moved relations dangle, to be judged again.
+    @tag verifies: "suggest-code-moves"
+    test "a function whose arity changed is suggested as a move; two candidates are ambiguous", %{
+      tmp_dir: root
+    } do
+      entries = adopted(root)
+      max_len = Enum.find(@wren, &(&1.name == "max_len/0"))
+
+      arity = fn name, hash ->
+        %Item{kind: :function, name: name, parent: "Wren", file: "lib/w.ex", hash: hash}
+      end
+
+      profile = Config.profile!([sources: ["spec.md"]], "Wren")
+
+      run = fn items ->
+        scans = Markdown.records(root, ["spec.md"]) ++ Scan.code(items)
+        {Suggest.all(profile, items, scans, entries, root), scans}
+      end
+
+      {s, scans} = run.([arity.("send/4", "00000009"), max_len])
+      assert Enum.map(s.moves, &{&1.from, &1.to.id}) == [{"Wren.send/3", "Wren.send/4"}]
+
+      {:ok, moved} = Suggest.accept_all(%{s | implements: [], excuses: []}, scans, entries, @meta)
+
+      states =
+        Status.derive(scans, entries ++ moved).relations
+        |> Enum.filter(&match?({_, {:code, "Wren.send/4"}, _}, &1.relation))
+
+      # It carries its basis (proposed here) and isn't current: its code end changed.
+      assert [%{state: :proposed, changed: [code: "Wren.send/4"]}] = states
+
+      {s, _scans} = run.([arity.("send/4", "00000009"), arity.("send/5", "0000000a"), max_len])
+      assert s.moves == []
+      assert [%{from: ["Wren.send/3"], to: ["Wren.send/4", "Wren.send/5"]}] = s.ambiguous
+    end
 
     @tag verifies: "suggest-moves"
     test "an added anchor is a move, and nothing is suggested twice", %{tmp_dir: root} do
@@ -378,6 +464,34 @@ defmodule Surfex.SuggestTest do
                ],
                implements: [{"spec.md#max-len", "Wren.max_len/0"}]
              }
+    end
+  end
+
+  # #148: declining is a `retire` of a never-related pair. `suggest` shows the exact command
+  # beside each judgement it proposes, so a decline lands in the log, not a commit message.
+  describe "declining" do
+    @describetag verifies: "decline-shown"
+
+    test "the command for a judgement candidate, ids kind-prefixed and quoted" do
+      assert Suggest.decline_command(
+               :implements,
+               "spec.md#Carts/Adding items",
+               "MyApp.Cart.add/2"
+             ) ==
+               ~s(mix surfex.retire "spec:spec.md#Carts/Adding items" "code:MyApp.Cart.add/2" --type implements --note "why it isn't one")
+
+      assert Suggest.decline_command(:excuses, "plumbing", "MyApp.Repo.config/0") ==
+               ~s(mix surfex.retire "class:plumbing" "code:MyApp.Repo.config/0" --type excuses --note "why it isn't one")
+    end
+
+    test "a double quote in an id is escaped" do
+      assert Suggest.decline_command(:implements, ~s(spec.md#The "fast" path), "M.f/0") =~
+               ~s("spec:spec.md#The \\"fast\\" path")
+    end
+
+    test "only judgements are declined; a structural suggestion has no decline" do
+      assert Suggest.decline_command(:tests, "T: a", "M.f/0") == nil
+      assert Suggest.decline_command(:refines, "spec.md#a", "spec.md#b") == nil
     end
   end
 

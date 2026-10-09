@@ -109,6 +109,133 @@ defmodule Surfex.Record do
   end
 
   @doc """
+  The lines of a batch file's `text` (§18): tab-separated, one relation per line, `fields`
+  fields with the note last (a note may hold anything but a tab). Blank lines and lines
+  starting with `#` are skipped; each line keeps its number in the file. A line with
+  another number of fields, or a batch with no relations, is refused, naming the line.
+  """
+  @spec parse_batch(String.t(), pos_integer) ::
+          {:ok, [%{line: pos_integer, fields: [String.t()], note: String.t()}]}
+          | {:error, String.t()}
+  def parse_batch(text, fields) do
+    text
+    |> String.split("\n")
+    |> Enum.with_index(1)
+    |> Enum.reject(fn {line, _} -> String.trim(line) == "" or String.starts_with?(line, "#") end)
+    |> Enum.reduce_while({:ok, []}, fn {line, n}, {:ok, acc} ->
+      case String.split(String.trim_trailing(line), "\t") do
+        parts when length(parts) == fields ->
+          {head, [note]} = Enum.split(parts, -1)
+          {:cont, {:ok, acc ++ [%{line: n, fields: head, note: note}]}}
+
+        parts ->
+          {:halt,
+           {:error, "line #{n}: expected #{fields} tab-separated fields, got #{length(parts)}"}}
+      end
+    end)
+    |> case do
+      {:ok, []} -> {:error, "no relations in the batch"}
+      result -> result
+    end
+  end
+
+  @doc """
+  Records a **batch** (§14, §18): many relations in one project load, each judged and noted
+  on its own. `lines` are `%{line: n, note: text, …}` in order; `record` records one line as
+  the single command would, given the entries so far, so each line sees the ones before it.
+
+  All or nothing: a line its own rule refuses fails the batch, naming the line, and nothing
+  is recorded. The notes must be **distinct** (compared trimmed): one note copied across
+  many relations is a template, not a judgement of each, so such a batch is refused before
+  anything is checked.
+  """
+  @spec batch([Entry.t()], [%{required(:line) => pos_integer, required(:note) => String.t()}], ([
+                                                                                                  Entry.t()
+                                                                                                ],
+                                                                                                map ->
+                                                                                                  {:ok,
+                                                                                                   [
+                                                                                                     Entry.t()
+                                                                                                   ]}
+                                                                                                  | {:error,
+                                                                                                     String.t()})) ::
+          {:ok, [Entry.t()]} | {:error, String.t()}
+  def batch(entries, lines, record) do
+    with :ok <- distinct_notes(lines) do
+      Enum.reduce_while(lines, {:ok, []}, fn line, {:ok, acc} ->
+        case record.(entries ++ acc, line) do
+          {:ok, recorded} -> {:cont, {:ok, acc ++ recorded}}
+          {:error, why} -> {:halt, {:error, "line #{line.line}: #{why}"}}
+        end
+      end)
+    end
+  end
+
+  defp distinct_notes(lines) do
+    lines
+    |> Enum.group_by(&String.trim(&1.note), & &1.line)
+    |> Enum.filter(fn {_note, at} -> length(at) > 1 end)
+    |> Enum.sort_by(fn {_note, at} -> hd(at) end)
+    |> case do
+      [] ->
+        :ok
+
+      [{_note, at} | _] ->
+        {:error,
+         "lines #{Enum.join(at, " and ")} share a note: each relation in a batch is judged " <>
+           "on its own, so its notes are distinct"}
+    end
+  end
+
+  @doc """
+  Gives a **current** relation a new note (§14): a re-review that changes nothing about the
+  relation still has somewhere to go besides a commit message. It re-records the relation
+  as it stands: a `relate` at the tip's own ends and versions, with the tip's basis,
+  parented on every tip, and the new note. The relation stays current, on the same basis;
+  only the reviewer's words are added.
+
+  A relation that isn't current is refused (`confirm` settles a dangling or proposed one),
+  and so is a missing note.
+  """
+  @spec annotate([Scan.t()], [Entry.t()], String.t(), String.t(), atom, meta) ::
+          {:ok, [Entry.t()]} | {:error, String.t()}
+  def annotate(scans, entries, from, to, type, meta) do
+    note = meta[:note]
+
+    with :ok <-
+           if(is_binary(note) and String.trim(note) != "",
+             do: :ok,
+             else: {:error, "a note is required: say what the re-review found"}
+           ),
+         {:ok, a} <- find_or_recorded(scans, entries, from),
+         {:ok, b} <- find_or_recorded(scans, entries, to) do
+      status = Status.derive(scans, entries)
+      relation = Entry.relation(type, a, b)
+
+      case Enum.find(status.relations, &(&1.relation == relation)) do
+        %{state: :current, tip: %Entry{} = tip, tips: tips} ->
+          with {:ok, entry} <-
+                 entry(
+                   :relate,
+                   type,
+                   tip.ends,
+                   Enum.map(tips, & &1.id),
+                   with_basis(meta, tip.basis)
+                 ),
+               do: {:ok, [entry]}
+
+        %{state: state} ->
+          {:error,
+           "the #{type} relation between #{from} and #{to} is #{state}: annotate takes a " <>
+             "current relation; confirm settles a dangling or proposed one"}
+
+        nil ->
+          {:error, "no #{type} relation between #{from} and #{to}"}
+      end
+    end
+  end
+
+  @doc """
   Confirms one relation, named by its ends and `type`, that is **dangling** or
   **proposed**: a `relate` at the current hashes, superseding its tip, with basis
   `:judgement` (§18). The note (`meta[:note]`) is required: it records what was judged.

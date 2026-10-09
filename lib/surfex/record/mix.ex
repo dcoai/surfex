@@ -66,6 +66,31 @@ defmodule Surfex.Record.Mix do
     end
   end
 
+  # A batch file's lines (`Surfex.Record.parse_batch/2`), or stops naming the file.
+  def batch_lines!(path, fields) do
+    case Surfex.Record.parse_batch(File.read!(path), fields) do
+      {:ok, lines} -> lines
+      {:error, why} -> Mix.raise("#{path}: #{why}")
+    end
+  end
+
+  def type_named!(text) do
+    Enum.find(Entry.types(), &(Atom.to_string(&1) == text)) ||
+      Mix.raise("type must be one of #{Enum.join(Entry.types(), ", ")}, got #{text}")
+  end
+
+  # The evidence a recording command reads (§17): this run's, and each `--merge PATH`
+  # file's, as one history. A named file that isn't there is an error, not an empty run.
+  def evidence!(root, opts) do
+    merged =
+      for path <- Keyword.get_values(opts, :merge) do
+        unless File.exists?(path), do: Mix.raise("--merge: no evidence file at #{path}")
+        Surfex.Evidence.load(path)
+      end
+
+    Surfex.Evidence.combined([Surfex.Evidence.load(Surfex.Evidence.path(root)) | merged])
+  end
+
   def type!(opts) do
     case opts[:type] do
       nil ->

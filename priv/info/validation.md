@@ -21,6 +21,18 @@ current test and code versions. The unit may be a section whose hint the test al
 verifies: the review then records the section's `implements` for the code the test
 exercises. The note says which assertion checks which claim.
 
+**Many at once**: `--file PATH` on `confirm` or `validate` records a file of relations in one
+run, one per line, tab-separated, each line ending with its own note (`FROM TO TYPE NOTE`,
+or `TEST UNIT NOTE`). The notes must be distinct; write each line after judging that
+relation.
+
+**Evidence from CI**: `--merge PATH` (once per file) on `confirm --evidence`, `validate`,
+`relate` and `suggest --accept` reads CI jobs' evidence files beside the local run, so a
+test excluded locally (it needs a service you don't run) counts from CI's run.
+
+**Docstrings aren't covered.** A function's version leaves out its `@doc`, so a docstring
+that states a contract can drift from the spec unnoticed. Read them together.
+
 **Judgement**: `mix surfex.confirm FROM TO --type T --note N`. For a spec reworded with
 no change in behaviour (`verifies`), or an excuse. It refuses `implements`.
 

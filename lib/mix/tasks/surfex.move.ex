@@ -7,8 +7,10 @@ defmodule Mix.Tasks.Surfex.Move do
 
       mix surfex.move "spec.md#Carts/Adding items" "spec.md#cart-add"
       mix surfex.move "spec.md#Totals" "spec.md#Carts/Totals" --note "moved under Carts"
+      mix surfex.move code:MyApp.Design.render/2 code:MyApp.Design.render/3
 
-  Use it when a heading is renamed, an anchor added, or a section moved. The moved end
+  Use it when a heading is renamed, an anchor added, a section moved, or a function
+  renamed or its arity changed. The moved end
   keeps the version recorded for `OLD`, so a move never confirms anything: if the text
   changed as it moved, the relation dangles until you confirm it. `mix surfex.suggest`
   proposes moves it can see (the same version under a new id).

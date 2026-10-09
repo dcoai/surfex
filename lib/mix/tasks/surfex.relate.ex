@@ -32,7 +32,7 @@ defmodule Mix.Tasks.Surfex.Relate do
 
   @impl Mix.Task
   def run(args) do
-    {opts, ids} = R.parse(args, planned: :boolean)
+    {opts, ids} = R.parse(args, planned: :boolean, merge: :keep)
     {from, to} = R.two!(ids)
     type = R.type!(opts)
     {root, scans, entries, meta} = R.context(opts)
@@ -42,7 +42,7 @@ defmodule Mix.Tasks.Surfex.Relate do
         do: Surfex.Record.plan(scans, entries, from, to, type, R.plausible(opts, scans), meta),
         else:
           Surfex.Record.relate(scans, entries, from, to, type, meta,
-            evidence: Surfex.Evidence.load(Surfex.Evidence.path(root))
+            evidence: R.evidence!(root, opts)
           )
 
     R.record(root, result)

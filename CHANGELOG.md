@@ -4,6 +4,72 @@ All notable changes to Surfex are recorded here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] — 2026-10-09
+
+Making the honest path cheap, from the users' RFC on #145: batched `confirm` and
+`validate` with a distinct note per relation, `annotate` for a current relation, declining
+shown beside each suggestion, code moves suggested when a function's arity changes, CI's
+evidence readable by the recording commands, and `suggest` about fifteen times faster on a
+large log. `Surfex.Golden` and `Surfex.SourceScan` are now documented, supported library
+API. No upgrade step.
+
+### Added
+
+- **Recording reads CI's evidence** (#154). `--merge PATH` on `confirm --evidence`,
+  `validate`, `relate` and `suggest --accept` reads other runs' evidence files (CI
+  artifacts) with the local run as one history, so a test excluded locally because it
+  needs a service you don't run counts from CI's run. A missing file fails.
+- **`suggest` proposes code moves** (#153). When a function's arity changes
+  (`render/2` → `render/3`), its relations used to orphan, and each was retired and
+  re-validated. Now suggest proposes the move, which carries them across to be judged once
+  more. `mix surfex.move` already worked for code ids; its docs now say so.
+- **`mix surfex.annotate`** (#152): a current relation takes a new note, re-recorded at its
+  own versions and basis. A re-review that changes nothing, such as fixing a batch of
+  templated notes, now lands in the log rather than a commit message.
+- **The docs say plainly that `@doc` isn't covered** (#155). A function's or type's
+  version leaves out its docstring, so a `@doc` stating a contract can drift from the spec
+  unnoticed. A test pins this, so covering docstrings (planned with claim-level relations)
+  will change it deliberately.
+- **`suggest` shows how to decline each judgement** (#148). Under each `implements` and
+  `excuses` candidate it prints the exact `retire` command that declines it, so the decision
+  lands in the log and the pair is never proposed again. Declined in a commit message, it
+  came back on every run.
+- **Batched `confirm` and `validate`** (#147). `--file PATH` records many relations in one
+  run, one per line (tab-separated, each line ending with its own note), saving the project
+  load per relation that made agents script loops with templated notes. **The notes must be
+  distinct**, or the batch is refused; each line is judged as the single form judges it, and
+  a refused line fails the whole batch.
+- **`Surfex.Golden` and `Surfex.SourceScan` are supported library API** (#150). Projects
+  that render surface goldens without a relation log call them, and their CI gates rest on
+  them, yet since 0.5.16 they weren't on hexdocs.
+  - They are documented now, with a guide, "Using surfex as a library", and a promise:
+    their documented functions and types keep their shapes (as they have since v0.1.0), and
+    `definition_hash/1` gives the same version for the same code.
+  - A change to either comes only in a minor release, marked here for library users. A
+    test pins their documented surface.
+- **`mix surfex.info` notes a project with no relation log:** rendering goldens is a use of
+  surfex, not adoption.
+
+### Fixed
+
+- **`suggest` is linear in the log** (#168). It re-filtered the whole log once per
+  relation, so on surfex's own log (~10k entries) it took ~32 s, ~30 of them in that one
+  helper; it now takes ~2 s. A test counts its work (reductions, not seconds) over N and
+  2N relations.
+- **Suggestions no longer follow the order of the scans or the log's lines** (#151). A
+  shuffled input reordered `suggest`'s lists (the `tests` suggestions showed it). Every
+  list is now sorted by the ids it names, and a test renders every report, golden and
+  suggestion list from surfex's own log in two orders and requires them identical.
+- **`confirm --file` no longer crashes** (#162). Its option guard used `or` on an absent
+  switch (`nil`). Both tasks' `--file` paths are now tested end to end.
+- **A function's default-argument arities are one item to `require:`** (#146). `f/1` and
+  `f/2` from one `def f(x, y \\ 1)` each needed their own relation, so projects wrote a
+  call or a citation per arity to clear "unmet". The triangle and `validate` already compared
+  code by definition; now the policy does too.
+- **The library-API pin test no longer depends on test order** (#158).
+  `function_exported?/3` is false for a module not yet loaded, and tests load modules lazily,
+  so the test failed about one run in four. It loads the module first now.
+
 ## [0.6.1] — 2026-10-07
 
 An ExUnitProperties `property` is now a test, so a suite's generative tests can verify
