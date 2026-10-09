@@ -188,6 +188,54 @@ defmodule Surfex.Record do
   end
 
   @doc """
+  Gives a **current** relation a new note (§14): a re-review that changes nothing about the
+  relation still has somewhere to go besides a commit message. It re-records the relation
+  as it stands: a `relate` at the tip's own ends and versions, with the tip's basis,
+  parented on every tip, and the new note. The relation stays current, on the same basis;
+  only the reviewer's words are added.
+
+  A relation that isn't current is refused (`confirm` settles a dangling or proposed one),
+  and so is a missing note.
+  """
+  @spec annotate([Scan.t()], [Entry.t()], String.t(), String.t(), atom, meta) ::
+          {:ok, [Entry.t()]} | {:error, String.t()}
+  def annotate(scans, entries, from, to, type, meta) do
+    note = meta[:note]
+
+    with :ok <-
+           if(is_binary(note) and String.trim(note) != "",
+             do: :ok,
+             else: {:error, "a note is required: say what the re-review found"}
+           ),
+         {:ok, a} <- find_or_recorded(scans, entries, from),
+         {:ok, b} <- find_or_recorded(scans, entries, to) do
+      status = Status.derive(scans, entries)
+      relation = Entry.relation(type, a, b)
+
+      case Enum.find(status.relations, &(&1.relation == relation)) do
+        %{state: :current, tip: %Entry{} = tip, tips: tips} ->
+          with {:ok, entry} <-
+                 entry(
+                   :relate,
+                   type,
+                   tip.ends,
+                   Enum.map(tips, & &1.id),
+                   with_basis(meta, tip.basis)
+                 ),
+               do: {:ok, [entry]}
+
+        %{state: state} ->
+          {:error,
+           "the #{type} relation between #{from} and #{to} is #{state}: annotate takes a " <>
+             "current relation; confirm settles a dangling or proposed one"}
+
+        nil ->
+          {:error, "no #{type} relation between #{from} and #{to}"}
+      end
+    end
+  end
+
+  @doc """
   Confirms one relation, named by its ends and `type`, that is **dangling** or
   **proposed**: a `relate` at the current hashes, superseding its tip, with basis
   `:judgement` (§18). The note (`meta[:note]`) is required: it records what was judged.

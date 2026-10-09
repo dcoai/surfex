@@ -994,6 +994,45 @@ defmodule Surfex.RecordTest do
     end
   end
 
+  # #152: a re-review of a current relation needs somewhere to go besides a commit message.
+  describe "annotate" do
+    @describetag verifies: "annotate-current"
+
+    test "a current relation takes a new note, keeping its versions, basis and state" do
+      tip = validated()
+
+      why =
+        Keyword.put(
+          later(@meta, 1),
+          :note,
+          "re-read: add/2 rejects a closed cart, as the section says"
+        )
+
+      assert {:ok, [note]} = Record.annotate(scans(), [tip], @spec_id, @code_id, :implements, why)
+      assert %Entry{op: :relate, type: :implements, basis: :review, parents: [parent]} = note
+      assert parent == tip.id
+      assert Enum.sort(note.ends) == Enum.sort(tip.ends)
+      assert note.note =~ "re-read"
+
+      status = Status.derive(scans(), [tip, note])
+      assert [%{state: :current, tip: ^note} = r] = status.relations
+      assert Status.validated?(status, r)
+    end
+
+    test "a relation that isn't current, or no note, is refused" do
+      tip = validated()
+      why = Keyword.put(later(@meta, 1), :note, "re-read")
+
+      assert {:error, "the implements relation between" <> rest} =
+               Record.annotate(scans("c2"), [tip], @spec_id, @code_id, :implements, why)
+
+      assert rest =~ "dangling" and rest =~ "confirm"
+
+      assert {:error, "a note is required" <> _} =
+               Record.annotate(scans(), [tip], @spec_id, @code_id, :implements, later(@meta, 1))
+    end
+  end
+
   # #147: a batch is many single judgements in one project load, each with its own note.
   # Notes must be distinct: one note copied across many relations is a template, not a
   # judgement of each.

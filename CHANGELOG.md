@@ -11,6 +11,9 @@ release it merely follows.
 
 ### Added
 
+- **`mix surfex.annotate`** (#152): a current relation takes a new note, re-recorded at its
+  own versions and basis. A re-review that changes nothing, such as fixing a batch of
+  templated notes, now lands in the log rather than a commit message.
 - **The docs say plainly that `@doc` isn't covered** (#155). A function's or type's
   version leaves out its docstring, so a `@doc` stating a contract can drift from the spec
   unnoticed. A test pins this, so covering docstrings (planned with claim-level relations)
