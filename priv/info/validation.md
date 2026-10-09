@@ -26,6 +26,9 @@ run, one per line, tab-separated, each line ending with its own note (`FROM TO T
 or `TEST UNIT NOTE`). The notes must be distinct; write each line after judging that
 relation.
 
+**Docstrings aren't covered.** A function's version leaves out its `@doc`, so a docstring
+that states a contract can drift from the spec unnoticed. Read them together.
+
 **Judgement**: `mix surfex.confirm FROM TO --type T --note N`. For a spec reworded with
 no change in behaviour (`verifies`), or an excuse. It refuses `implements`.
 
