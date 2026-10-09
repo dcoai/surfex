@@ -184,6 +184,37 @@ defmodule Surfex.WalkthroughTest do
     assert text =~ "relation log verified: 5 entries"
   end
 
+  # #152: a re-review of a current relation lands in the log, read back by history.
+  @tag verifies: "annotate-current"
+  test "annotate gives a current relation a new note that history shows", %{root: root} do
+    task(root, Mix.Tasks.Surfex.Relate, [
+      @function,
+      @other,
+      "--type",
+      "depends_on",
+      "--note",
+      "total sums the lines add/2 adds"
+    ])
+
+    commit(root, "relate")
+    drain()
+
+    task(root, Mix.Tasks.Surfex.Annotate, [
+      @function,
+      @other,
+      "--type",
+      "depends_on",
+      "--note",
+      "re-read: total still sums what add/2 adds"
+    ])
+
+    assert Enum.any?(drain(), &(&1 =~ "recorded relate depends_on"))
+    assert %{"state" => "current"} = status(root)
+
+    task(root, Mix.Tasks.Surfex.History, [@function])
+    assert Enum.any?(drain(), &(&1 =~ "re-read: total still sums what add/2 adds"))
+  end
+
   # #162: --file on the tasks themselves, end to end (#147's batches).
   @tag verifies: "batch-distinct-notes"
   test "confirm --file records a batch; --file refuses named ids and --note", %{root: root} do

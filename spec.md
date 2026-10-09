@@ -1183,6 +1183,7 @@ time (context only), and when.
 | `Surfex.Record.confirm/6`, `Surfex.Record.confirm/7` | one **dangling** or **proposed** relation, named by its ends and type, again at the current hashes, with a note (required) saying what was judged: basis `judgement`. `implements` is refused, since code is validated by evidence or a review (§18), never asserted, unless its code end is a shape, which no run exercises. Orphaned and conflicted relations aren't confirmed: they need re-pointing or resolving. Under `require_red:` (`opts`, §17) a `tests` relation isn't confirmed until its test's current version has discriminated |
 | `Surfex.Record.validate/6` | a review (§18): the `verifies` relation from a test to a spec unit, and each `implements` relation of that unit whose code the test exercises (by definition, so one arity covers a function's others, §11), each only if it isn't validated already, validated at the current versions, basis `review`; with nothing left to record it is refused. The unit may be a section whose block or hint the test verifies: that relation must already be current, and the review records the section's `implements` relations alone |
 | `Surfex.Record.confirm_by_evidence/4` | every confirmation the test evidence justifies (§17, §18), basis `evidence`, with the evidence in the note: each dangling or proposed `verifies` relation whose test's current version has failed (unless only the spec changed, which is a judgement), then each dangling `tests` relation and each dangling or proposed `implements` relation whose test went red and then green. Nothing justified is `{:ok, []}`, not an error |
+| `Surfex.Record.annotate/6` | a new note on one **current** relation: a re-recording at the tip's own versions, with its basis, parented on every tip, so a re-review that changes nothing still lands in the log rather than a commit message. A dangling or proposed relation is refused (confirm settles it), and the note is required |
 | `Surfex.Record.retire/6` | that a relation no longer applies, naming every tip as a parent, with the ends as the tip recorded them. An end need not still be scanned: this is how an orphaned relation is put to rest. A pair **never related** is declined: a retire at both ends' current versions with no parent, recording the decision not to relate them, so `mix surfex.suggest` never proposes it. Both must be scanned, and the note is required, as the only record of why. A later relate revives it. |
 | `Surfex.Record.resolve/7` | the chosen tip of a **conflicted** relation, recorded again **with its basis** and every tip as a parent: picking a side judges nothing new. Tips that agree are no conflict, and it refuses them. If the scans have moved since, the relation is then dangling, and confirming it is next. |
 
@@ -1227,6 +1228,7 @@ The tasks:
 - `Mix.Tasks.Surfex.Confirm`: `mix surfex.confirm FROM TO --type T --note N`, or
   `mix surfex.confirm --evidence`
 - `Mix.Tasks.Surfex.Validate`: `mix surfex.validate TEST SPEC_UNIT --note N`
+- `Mix.Tasks.Surfex.Annotate`: `mix surfex.annotate FROM TO --type T --note N`
 - `Mix.Tasks.Surfex.Retire`: `mix surfex.retire FROM TO --type T [--note N]`
 - `Mix.Tasks.Surfex.Resolve`: `mix surfex.resolve FROM TO --type T --pick ID_PREFIX`
 - `Mix.Tasks.Surfex.Move`: `mix surfex.move OLD NEW [--note N]`
@@ -1273,6 +1275,11 @@ isn't a scanned spec unit, and history shows them
 ```test recording-by-name
 relate, confirm, validate, retire, resolve, move and history each record or read entries by
 name, and never edit or remove one
+```
+
+```test annotate-current
+annotate gives a current relation a new note at its own versions and basis, keeping it
+current; a relation that isn't current, or a missing note, is refused
 ```
 
 ## 15. Suggesting relations {#suggesting}
