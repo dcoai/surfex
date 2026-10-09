@@ -191,6 +191,13 @@ those have their own rows and their own versions.
 A public type's version, from `Surfex.SourceScan.types/1`, is the hash of its declaration
 alone: changing one type changes it and nothing else's.
 
+**A version covers definitions, not their documentation.** A function's or type's
+version leaves out its `@doc` or `@typedoc`, so rewriting a docstring dangles nothing, and
+surfex doesn't hold a published docstring to the spec: a `@doc` that states a contract
+(its return values, its errors) can drift from the spec without any relation noticing.
+Read the two together when either changes. A module's version does cover its
+`@moduledoc` (above). Holding docstrings to the spec is planned with claim-level relations.
+
 A module's version, from `Surfex.SourceScan.module_hash/1`, covers its **public surface**,
 not its whole body:
 - its `@moduledoc`

@@ -78,6 +78,47 @@ defmodule Surfex.SourceScanTest do
     end
   end
 
+  # #155: a function's or type's version is its definition, not its docs. A published
+  # docstring is not held to the spec (yet); a module's own @moduledoc is in its version.
+  describe "docs and versions" do
+    @describetag verifies: "structure-versions"
+
+    @documented ~S'''
+    defmodule M do
+      @moduledoc "M."
+      @doc "Returns its argument."
+      def f(x), do: x
+      @typedoc "A number."
+      @type t :: integer
+    end
+    '''
+
+    test "a @doc or @typedoc edit leaves the version unchanged; a @moduledoc edit doesn't" do
+      versions = fn source ->
+        [mod] = source |> Code.string_to_quoted!() |> SourceScan.defmodules()
+        [f] = SourceScan.defs(mod)
+        [t] = SourceScan.types(mod)
+        {f.hash, t.hash, SourceScan.module_hash(mod)}
+      end
+
+      {f, t, m} = versions.(@documented)
+
+      redoc =
+        @documented
+        |> String.replace("Returns its argument.", "Returns x, unchanged.")
+        |> String.replace("A number.", "An integer.")
+
+      assert {^f, ^t, ^m} = versions.(redoc)
+
+      refute elem(
+               versions.(
+                 String.replace(@documented, ~s(@moduledoc "M."), ~s(@moduledoc "The M module."))
+               ),
+               2
+             ) == m
+    end
+  end
+
   describe "definition_hash/1's shape" do
     @describetag verifies: "structure-versions"
 

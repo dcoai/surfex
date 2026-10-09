@@ -21,6 +21,7 @@ one. Both come from the installed version, so they are always current.
 - A failing test comes before the code. Record `verifies` on the failing run.
 - To change a test, make the new version fail first, or review it.
 - If the spec is what's wrong, mark it (`mix surfex.mark`); don't bend the test.
+- Surfex doesn't read `@doc`: a docstring stating a contract isn't checked against the spec.
 - Found work beyond the task goes to the project's process: `mix surfex.draft`.
 - Don't hand-edit `.surfex/`. On a merge conflict in a golden, regenerate it
   (`mix surfex.goldens --write`).

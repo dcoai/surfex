@@ -11,6 +11,10 @@ release it merely follows.
 
 ### Added
 
+- **The docs say plainly that `@doc` isn't covered** (#155). A function's or type's
+  version leaves out its docstring, so a `@doc` stating a contract can drift from the spec
+  unnoticed. A test pins this, so covering docstrings (planned with claim-level relations)
+  will change it deliberately.
 - **`suggest` shows how to decline each judgement** (#148). Under each `implements` and
   `excuses` candidate it prints the exact `retire` command that declines it, so the decision
   lands in the log and the pair is never proposed again. Declined in a commit message, it
