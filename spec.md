@@ -1564,6 +1564,19 @@ merged evidence passes a claim one job bears out, fails one any job disproves, a
 one no job ran; only the named files are read, and a missing one fails
 ```
 
+**Recording reads other runs too.** A test that needs an environment the local host lacks
+(a directory server, a filesystem watcher) is excluded locally and run in CI. The commands
+that record from evidence (`confirm --evidence`, `validate`, `relate`, `suggest --accept`)
+take `--merge PATH`, once per file, typically CI jobs' artifacts, and read the local run
+and those files as one history ordered by time (`Surfex.Evidence.combined/1`). A test
+excluded here and run there reads as run; a later failure in any run is the latest. A
+named file that isn't there fails, as for the check.
+
+```test evidence-merged-recording
+a test excluded here and passed in another run reads as passed in the combined history,
+and a later failure in any run is the latest; --merge refuses a file that isn't there
+```
+
 ```test evidence-excluded
 an excluded or skipped test is recorded at its version as such, neither red nor green;
 a claim whose test this run excluded or skipped is not checked here, listed and not

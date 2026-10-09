@@ -184,6 +184,22 @@ defmodule Surfex.WalkthroughTest do
     assert text =~ "relation log verified: 5 entries"
   end
 
+  # #154: --merge names other runs' evidence; one that isn't there is an error, not an
+  # empty run.
+  @tag verifies: "evidence-merged-recording"
+  test "a recording command's --merge refuses a file that isn't there", %{root: root} do
+    missing = Path.join(root, "ci/evidence.jsonl")
+
+    for {module, args} <- [
+          {Mix.Tasks.Surfex.Confirm, ["--evidence"]},
+          {Mix.Tasks.Surfex.Validate, ["T: a", @section, "--note", "n"]},
+          {Mix.Tasks.Surfex.Suggest, ["--accept"]}
+        ] do
+      error = assert_raise Mix.Error, fn -> task(root, module, args ++ ["--merge", missing]) end
+      assert error.message =~ "--merge: no evidence file at #{missing}"
+    end
+  end
+
   # #152: a re-review of a current relation lands in the log, read back by history.
   @tag verifies: "annotate-current"
   test "annotate gives a current relation a new note that history shows", %{root: root} do

@@ -11,6 +11,10 @@ release it merely follows.
 
 ### Added
 
+- **Recording reads CI's evidence** (#154). `--merge PATH` on `confirm --evidence`,
+  `validate`, `relate` and `suggest --accept` reads other runs' evidence files (CI
+  artifacts) with the local run as one history, so a test excluded locally because it
+  needs a service you don't run counts from CI's run. A missing file fails.
 - **`suggest` proposes code moves** (#153). When a function's arity changes
   (`render/2` → `render/3`), its relations used to orphan, and each was retired and
   re-validated. Now suggest proposes the move, which carries them across to be judged once

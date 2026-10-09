@@ -39,9 +39,13 @@ defmodule Mix.Tasks.Surfex.Suggest do
   @impl Mix.Task
   def run(args) do
     {opts, _rest} =
-      OptionParser.parse!(args, strict: [accept: :boolean, note: :string, config: :string])
+      OptionParser.parse!(args,
+        strict: [accept: :boolean, note: :string, config: :string, merge: :keep]
+      )
 
     root = File.cwd!()
+    # Read first: a --merge file that isn't there fails whether or not there's work to do.
+    evidence = R.evidence!(root, opts)
     config = Config.read!(Path.join(root, opts[:config] || ".surfex.exs"))
     namespace = Mix.Project.config()[:app] |> to_string() |> Macro.camelize()
     if Keyword.get(config, :scanner, :elixir) != :elixir, do: Mix.Task.run("compile")
@@ -104,7 +108,6 @@ defmodule Mix.Tasks.Surfex.Suggest do
 
       opts[:accept] ->
         {^root, scans, entries, meta} = R.context(Keyword.take(opts, [:note, :config]))
-        evidence = Surfex.Evidence.load(Surfex.Evidence.path(root))
         R.record(root, Suggest.accept_all(suggestions, scans, entries, meta, evidence: evidence))
 
       true ->

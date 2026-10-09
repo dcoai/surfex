@@ -79,6 +79,18 @@ defmodule Surfex.Record.Mix do
       Mix.raise("type must be one of #{Enum.join(Entry.types(), ", ")}, got #{text}")
   end
 
+  # The evidence a recording command reads (§17): this run's, and each `--merge PATH`
+  # file's, as one history. A named file that isn't there is an error, not an empty run.
+  def evidence!(root, opts) do
+    merged =
+      for path <- Keyword.get_values(opts, :merge) do
+        unless File.exists?(path), do: Mix.raise("--merge: no evidence file at #{path}")
+        Surfex.Evidence.load(path)
+      end
+
+    Surfex.Evidence.combined([Surfex.Evidence.load(Surfex.Evidence.path(root)) | merged])
+  end
+
   def type!(opts) do
     case opts[:type] do
       nil ->
