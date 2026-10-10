@@ -176,3 +176,21 @@ nothing, and a function's hash covers the private helpers it calls. Goldens neve
 dates, and any misconfiguration fails loudly before anything is written.
 
 MIT licensed.
+
+## History
+
+Surfex began inside another project and was then made its own. Its earliest commits held
+material from that project, so until 0.6.2 its GitHub repository carried release snapshots
+only. We have since recut the project to make it cleaner and let the full history be
+shared: the history now starts at v0.2.8, the first release after the separation, and
+every commit after that cut is published here.
+
+If you cloned or fetched from GitHub before the recut, `main` and the tags from v0.3.0 to
+v0.6.2 were replaced (v0.2.8 is unchanged), so a pull is rejected. To update a clone:
+
+```sh
+git fetch origin --force --tags
+git checkout main && git reset --hard origin/main
+```
+
+Hex packages are unaffected.
