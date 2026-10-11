@@ -6,8 +6,9 @@ All notable changes to Surfex are recorded here, following
 
 ## [0.6.3] — 2026-10-11
 
-`mix.exs` reads `0.6.3-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
-release it merely follows.
+The first release published to GitHub with its full history, from the v0.2.8 cut. No change
+to surfex itself and no upgrade step; a clone made from GitHub before the recut needs the
+README's "History" steps.
 
 ### Changed
 
