@@ -4,6 +4,11 @@ All notable changes to Surfex are recorded here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+`mix.exs` reads `0.6.4-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
+release it merely follows.
+
 ## [0.6.3] — 2026-10-11
 
 The first release published to GitHub with its full history, from the v0.2.8 cut. No change
