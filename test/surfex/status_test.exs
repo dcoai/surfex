@@ -648,13 +648,20 @@ defmodule Surfex.StatusTest do
       section = %{scan(:spec, @spec_id, "s1") | role: :section}
       status = Status.derive([section, block, scan(:code, @code_id, "c1")], [])
 
-      assert Status.units(status) == %{section: 1, block: 1, test_hint: 0}
+      assert Status.units(status) == %{section: 1, block: 1, test_hint: 0, table: 0, row: 0}
       text = Report.text(status)
       assert text =~ "  spec units: sections 1 · blocks 1 · test hints 0\n"
       assert text =~ "spec spec.md#rule (block in #{@spec_id}) (f:1-2)"
 
       {json, :ok, _} = status |> Report.json() |> :json.decode(:ok, %{null: nil})
-      assert json["units"] == %{"section" => 1, "block" => 1, "test_hint" => 0}
+
+      assert json["units"] == %{
+               "section" => 1,
+               "block" => 1,
+               "test_hint" => 0,
+               "table" => 0,
+               "row" => 0
+             }
 
       assert %{"role" => "block", "within" => @spec_id} =
                Enum.find(json["new"], &(&1["id"] == "spec.md#rule"))
@@ -662,6 +669,16 @@ defmodule Surfex.StatusTest do
       assert %{"role" => nil, "within" => nil} = Enum.find(json["new"], &(&1["kind"] == "code"))
 
       assert status |> Report.golden() |> Surfex.Golden.render() =~ "2 spec units"
+
+      # Tables and rows are counted, and shown, once a spec marks a table (§11).
+      table = %{scan(:spec, "spec.md#modes", "t1") | role: :table, within: @spec_id}
+      row = %{scan(:spec, "spec.md#modes/:word", "r1") | role: :row, within: "spec.md#modes"}
+      with_table = Status.derive([section, block, table, row], [])
+
+      assert Report.text(with_table) =~
+               "  spec units: sections 1 · blocks 1 · test hints 0 · tables 1 · rows 1\n"
+
+      assert with_table |> Report.golden() |> Surfex.Golden.render() =~ "4 spec units"
     end
 
     @tag verifies: ["status-failing", "status-report-forms"]

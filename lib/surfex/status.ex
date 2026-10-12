@@ -291,12 +291,15 @@ defmodule Surfex.Status do
   end
 
   @doc """
-  How many spec units were scanned, by role: sections, marked blocks and test hints.
+  How many spec units were scanned, by role: sections, marked blocks, test hints, and marked
+  tables and their rows.
   """
   @spec units(t) :: %{
           section: non_neg_integer,
           block: non_neg_integer,
-          test_hint: non_neg_integer
+          test_hint: non_neg_integer,
+          table: non_neg_integer,
+          row: non_neg_integer
         }
   def units(status) do
     counts =
@@ -307,7 +310,9 @@ defmodule Surfex.Status do
     %{
       section: Map.get(counts, :section, 0),
       block: Map.get(counts, :block, 0),
-      test_hint: Map.get(counts, :test_hint, 0)
+      test_hint: Map.get(counts, :test_hint, 0),
+      table: Map.get(counts, :table, 0),
+      row: Map.get(counts, :row, 0)
     }
   end
 

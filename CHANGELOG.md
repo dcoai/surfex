@@ -27,6 +27,13 @@ which tests declare what.
   `heading_ids:` re-ids the matching sections with their versions unchanged, so
   `mix surfex.suggest --accept` carries each relation across as a move.
 
+- **A marked table's rows are units** (#179, #181). `<!-- surfex: table ID -->` on the line
+  before a table makes the table a unit (role `:table`, its header) and each row one (role
+  `:row`), with id `file#ID/KEY`. KEY is the row's first cell, or the column named by
+  `key: Header` in the marker, without code or emphasis marks: `` `:word` `` is `:word`.
+  Editing a row changes only that row's version. A table without the marker is body, as
+  before. The reports count tables and rows only where a spec marks one.
+
 ### Changed
 
 - **`verifies` tags combine as ExUnit merges them** (#149, #171). The most specific level

@@ -98,8 +98,11 @@ defmodule Surfex.Status.Report do
 
     u = Status.units(status)
 
+    # Tables and rows only where a spec marks tables (§11), so other reports read as before.
+    tables = if u.table > 0, do: " · tables #{u.table} · rows #{u.row}", else: ""
+
     units =
-      "  spec units: sections #{u.section} · blocks #{u.block} · test hints #{u.test_hint}\n"
+      "  spec units: sections #{u.section} · blocks #{u.block} · test hints #{u.test_hint}#{tables}\n"
 
     unvalidated =
       case length(status.unvalidated) do
@@ -423,11 +426,11 @@ defmodule Surfex.Status.Report do
 
   defp units_stat(u),
     do:
-      Surfex.Golden.stat("#{u.section + u.block + u.test_hint} spec units", [
-        {"sections", u.section},
-        {"blocks", u.block},
-        {"test hints", u.test_hint}
-      ])
+      Surfex.Golden.stat(
+        "#{u.section + u.block + u.test_hint + u.table + u.row} spec units",
+        [{"sections", u.section}, {"blocks", u.block}, {"test hints", u.test_hint}] ++
+          if(u.table > 0, do: [{"tables", u.table}, {"rows", u.row}], else: [])
+      )
 
   # A block or hint says what it sits in, so a list of them reads under their sections.
   defp unit_text(%{kind: kind, id: id, role: role, within: within} = scan) when within != nil,

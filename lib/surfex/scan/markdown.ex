@@ -47,6 +47,9 @@ defmodule Surfex.Scan.Markdown do
   @open_block ~r/^ {0,3}<!--\s*surfex:\s*(\S+)\s*-->\s*$/
   @close_block ~r/^ {0,3}<!--\s*\/surfex\s*-->\s*$/
   @hint ~r/^test\s+(\S+)$/
+  @table_marker ~r/^ {0,3}<!--\s*surfex:\s*table\s+(\S+)(?:\s+key:\s*(.*?))?\s*-->\s*$/
+  @table_line ~r/^ {0,3}\|/
+  @separator ~r/^ {0,3}\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/
 
   @doc """
   Every unit of every markdown file of the spec under `root`, in order: the files
@@ -118,6 +121,7 @@ defmodule Surfex.Scan.Markdown do
           case u.within do
             {:section, n} -> Map.fetch!(ids, n)
             {:block, id} -> "#{file}##{id}"
+            {:table, id} -> "#{file}##{id}"
           end
 
         record(file, "#{file}##{u.id}", u.body, {u.first, u.last}, u.role, within)
@@ -152,10 +156,23 @@ defmodule Surfex.Scan.Markdown do
       fence: nil,
       block: nil,
       hint: nil,
+      table: nil,
       units: []
     }
 
     st = Enum.reduce(lines, start, &step/2)
+
+    st =
+      cond do
+        st.table == nil ->
+          st
+
+        st.table.lines == [] ->
+          fail(st, st.table.first, "table #{st.table.id} has no table after its marker")
+
+        true ->
+          close_table(st)
+      end
 
     if st.hint, do: fail(st, st.hint.first, "test hint #{st.hint.id} is never closed")
     if st.block, do: fail(st, st.block.first, "block #{st.block.id} is never closed")
@@ -181,6 +198,8 @@ defmodule Surfex.Scan.Markdown do
       else: %{st | hint: %{hint | body: [line | hint.body]}}
   end
 
+  defp step(line, %{table: table} = st) when table != nil, do: table_step(line, st)
+
   defp step({line, no}, st) do
     {prose?, fence} = Fence.step(line, st.fence)
     opened? = st.fence == nil and fence != nil
@@ -196,6 +215,13 @@ defmodule Surfex.Scan.Markdown do
           do: fail(st, no, "block #{st.block.id} (line #{st.block.first}) spans a heading")
 
         new_section(st, heading(line), no)
+
+      prose? and Regex.match?(@table_marker, line) ->
+        [id | key] = Regex.run(@table_marker, line, capture: :all_but_first)
+        id = checked_id!(st, no, id, "table")
+        key = with [k] when k != "" <- key, do: k, else: (_ -> nil)
+        table = %{id: id, key: key, first: no, lines: [], within: within(st)}
+        %{st | table: table, cur: extend(st.cur, line, no)}
 
       prose? and Regex.match?(@open_block, line) ->
         [id] = Regex.run(@open_block, line, capture: :all_but_first)
@@ -293,6 +319,103 @@ defmodule Surfex.Scan.Markdown do
         ArgumentError,
         "heading_ids: must be :section_sign, :section_number or a regex with (?<id>…), got #{inspect(other)}"
       )
+
+  # ── Tables ──────────────────────────────────────────────────────────────
+
+  # Inside a marked table: its lines are its own, until the first line that isn't one.
+  # Blank lines may sit between the marker and the table; nothing else may.
+  defp table_step({line, no}, st) do
+    table = st.table
+
+    cond do
+      Regex.match?(@table_line, line) ->
+        %{st | table: %{table | lines: [{line, no} | table.lines]}, cur: extend(st.cur, line, no)}
+
+      table.lines == [] and String.trim(line) == "" ->
+        st
+
+      table.lines == [] ->
+        fail(st, table.first, "table #{table.id} has no table after its marker")
+
+      true ->
+        step({line, no}, close_table(st))
+    end
+  end
+
+  # The table's unit (its header and separator) and one unit per row, keyed by its key cell.
+  defp close_table(%{table: table} = st) do
+    lines = Enum.reverse(table.lines)
+
+    case lines do
+      [{header, _}, {separator, sep_no} | rows] ->
+        unless Regex.match?(@separator, separator),
+          do: fail(st, sep_no, "table #{table.id} has no separator row under its header")
+
+        column = key_column(st, table, cells(header))
+        {_, last} = List.last(lines)
+
+        table_unit = %{
+          role: :table,
+          id: table.id,
+          first: table.first,
+          last: last,
+          body: [header, separator],
+          within: table.within
+        }
+
+        row_units =
+          for {row, no} <- rows do
+            key = row |> cells() |> Enum.at(column, "") |> key_text()
+            if key == "", do: fail(st, no, "a row of table #{table.id} has an empty key")
+
+            %{
+              role: :row,
+              id: "#{table.id}/#{key}",
+              first: no,
+              last: no,
+              body: [row],
+              within: {:table, table.id}
+            }
+          end
+
+        %{st | table: nil, units: Enum.reverse(row_units) ++ [table_unit | st.units]}
+
+      _ ->
+        fail(st, table.first, "table #{table.id} has no separator row under its header")
+    end
+  end
+
+  defp key_column(_st, %{key: nil}, _header), do: 0
+
+  defp key_column(st, table, header) do
+    Enum.find_index(header, &(key_text(&1) == key_text(table.key))) ||
+      fail(st, table.first, "table #{table.id} has no column #{inspect(table.key)}")
+  end
+
+  # A row's cells: split on `|` outside code spans and not escaped, without the outer pipes.
+  defp cells(line) do
+    line
+    |> String.trim()
+    |> String.replace_prefix("|", "")
+    |> String.replace_suffix("|", "")
+    |> String.graphemes()
+    |> Enum.reduce({[""], false, false}, fn
+      c, {[cell | done], code, true} -> {[cell <> c | done], code, false}
+      "\\", {[cell | done], code, false} -> {[cell <> "\\" | done], code, true}
+      "`", {[cell | done], code, false} -> {[cell <> "`" | done], not code, false}
+      "|", {cells, false, false} -> {["" | cells], false, false}
+      c, {[cell | done], code, false} -> {[cell <> c | done], code, false}
+    end)
+    |> elem(0)
+    |> Enum.reverse()
+  end
+
+  # A key as written, without its code and emphasis marks: `` `:normal` `` is `:normal`.
+  defp key_text(cell) do
+    text = cell |> String.replace("`", "") |> String.replace("\\|", "|") |> String.trim()
+    stripped = Regex.replace(~r/^(\*\*|__|\*|_)(.+)\1$/, text, "\\2")
+    if stripped == text, do: text |> String.split() |> Enum.join(" "), else: key_text(stripped)
+  end
 
   # What a block or hint opened now sits in.
   defp within(%{block: %{id: id}}), do: {:block, id}

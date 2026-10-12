@@ -740,7 +740,7 @@ order they start.
   as long, with nothing after it but whitespace, so a longer fence can quote a shorter
   one. A fence that never closes runs to the end of the file.
 
-Two finer units sit inside a section. Each is a record of its own, with its own version,
+Finer units sit inside a section. Each is a record of its own, with its own version,
 and is **left out of the version of what it sits in**, so editing one changes only its
 own:
 - **A marked block** is one requirement: the lines between an opening marker, the HTML
@@ -753,16 +753,38 @@ own:
   block or section around it. Its version covers the fence's content. It renders, since
   readers should see test guidance. A `test` fence without an id is an ordinary code
   block.
+- **A marked table** holds one claim per row. The line `<!-- surfex: table ID -->`, on its
+  own line before a table (blank lines between are fine), makes the table a unit, with id
+  `file#ID` and role `:table`. Its version covers the header and the separator row only.
+  Each row is a unit too, with role `:row`, sitting in the table:
+  - its id is `file#ID/KEY`, where KEY is the row's key cell: the first column, or the
+    column `key: Header` names in the marker (`<!-- surfex: table modes key: Mode -->`);
+  - KEY is the cell as written, without its code and emphasis marks and with whitespace
+    collapsed, so `` `:word` `` is `:word`, and it may hold spaces;
+  - its version covers the row's cells, so editing one row changes only that row.
 
-Written ids, block ids and hint ids share one namespace per file with the section ids,
-and are letters, digits and `.` `_` `-` `:`, starting with a letter or digit. Markers
-and hint fences inside a fenced code block are text. A spec that uses none of these scans exactly
-as it did before they existed. Every problem raises, naming the file and line:
+  The table ends at the first line that isn't a table line. A table without the marker is
+  body, as before.
+
+Written ids, block, hint and table ids, and row ids share one namespace per file with the
+section ids. All but a row's KEY are letters, digits and `.` `_` `-` `:`, starting with a
+letter or digit. Markers and hint fences inside a fenced code block are text. A spec that
+uses none of these scans exactly as it did before they existed. Every problem raises,
+naming the file and line:
 - an unclosed block or hint;
+- a table marker with no table after it, a table with no separator row, a `key:` naming
+  no column, or a row with an empty key;
 - a block that nests or spans a heading;
 - a close marker with no block;
 - a malformed id;
 - a duplicate id, naming both lines.
+
+```test table-rows
+a marked table is a unit, and each row one keyed file#TABLE/KEY by its key cell (the first
+column, or key: Header), without code or emphasis marks; editing a row changes only that
+row's version; a marker with no table, no separator row, an unknown key column, an empty
+or repeated key is an error naming the line
+```
 
 ```test heading-ids
 a heading's id is its id comment, else its anchor, else what the project's heading grammar
@@ -1068,7 +1090,8 @@ status's `triangle`. They are reported, and fail the check only when
 derived with `triangle: :fail`. Without scanned tests there is no triangle, since
 every unit would otherwise report a missing test for a project that doesn't scan them.
 `Surfex.Status.summary/1` counts relations per type and state. `Surfex.Status.units/1`
-counts the spec units scanned, by role: sections, blocks and test hints.
+counts the spec units scanned, by role: sections, blocks, test hints, tables and rows. The
+reports show tables and rows only when a spec marks a table.
 
 ```test dangling-side
 a relation whose end changed since it was confirmed is dangling,
@@ -1101,7 +1124,8 @@ relations, and validated: true unvalidated ones
 ```
 
 ```test units-by-role
-the spec units scanned are counted by role: sections, blocks and test hints
+the spec units scanned are counted by role: sections, blocks, test hints, tables and rows,
+and the reports show tables and rows once a spec marks a table
 ```
 
 ```test undeclared-verifies
