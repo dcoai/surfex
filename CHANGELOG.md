@@ -6,9 +6,13 @@ All notable changes to Surfex are recorded here, following
 
 ## [0.7.0] — 2026-10-12
 
-`mix.exs` reads `0.7.0-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
-release it merely follows. The next release is 0.7.0, since the change below can change
-which tests declare what.
+Finer units and honest credit, the first part of claim grain (#145). Headings keep the ids
+their authors write, a marked table's rows are units, and a test is credited for the code
+it reaches through an entry point. Completeness counts a function once whatever its
+default arguments, and the triangle reads what a test calls from the source. One upgrade
+step: `verifies` tags now combine as ExUnit merges them, so a test inherits a requirement
+only where it doesn't set its own (see Upgrading). Claim forms, the rest of #145's plan,
+come in a later release.
 
 ### Added
 
