@@ -86,7 +86,7 @@ defmodule Surfex.Scanner.ElixirTest do
     end
 
     # #69: a name ends where a name ends; a root glued to more letters is another word.
-    @tag verifies: "name-boundary"
+    @tag verifies: ["name-boundary", "elixir-scanner-items"]
     test "a token ends at a name's end: a glued or hyphenated suffix is no name" do
       d = Scanner.profile_defaults("MyApp")
 
@@ -102,7 +102,7 @@ defmodule Surfex.Scanner.ElixirTest do
                [["MyApp.Units.convert/3"]]
     end
 
-    @tag verifies: "name-boundary"
+    @tag verifies: ["name-boundary", "elixir-scanner-items"]
     test "several roots: every top-level module the code has is a root" do
       d = Scanner.profile_defaults(["MyApp", "MyAppWeb"])
       assert Regex.match?(d[:shape], "MyAppWeb.DomainLive.Show")

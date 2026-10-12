@@ -6,8 +6,30 @@ All notable changes to Surfex are recorded here, following
 
 ## [Unreleased]
 
-`mix.exs` reads `0.6.4-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
-release it merely follows.
+`mix.exs` reads `0.7.0-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
+release it merely follows. The next release is 0.7.0, since the change below can change
+which tests declare what.
+
+### Changed
+
+- **`verifies` tags combine as ExUnit merges them** (#149, #171). The most specific level
+  that sets `verifies` replaces the others: a test's own `@tag` over its describe's
+  `@describetag` over its module's `@moduletag`. Until now surfex took their union, so
+  surfex disagreed with `mix test --only verifies:id`, and a test could be recorded as
+  verifying its module's requirement without anyone having judged it. §11 states the rule.
+
+### Upgrading
+
+- `mix surfex.status` lists the relations a test no longer declares under
+  "Undeclared". For each, judge whether the test really verifies the inherited
+  requirement:
+  - if it does, name it in the test's own list: `@tag verifies: ["own-id", "module-id"]`;
+  - if it doesn't, retire the relation with a note:
+    `mix surfex.retire "test:<test id>" "spec:<unit>" --type verifies --note "why"`.
+- Measured on six adopters before the change, the cost ranged from none (where tests
+  already name every id they verify) to about two hundred relations. Surfex settled its
+  own 133 this way, keeping 42 and retiring 91, and added two tests for
+  `recording-by-name` that the union had been standing in for.
 
 ## [0.6.3] — 2026-10-11
 

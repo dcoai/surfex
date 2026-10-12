@@ -80,7 +80,7 @@ defmodule Surfex.GoldensTest do
   describe "mix surfex.goldens" do
     @describetag verifies: "goldens-task"
 
-    @tag verifies: "purpose"
+    @tag verifies: ["purpose", "goldens-task"]
     test "--write writes every golden, and a check then passes", %{root: root} do
       task(root, ["--write"])
       assert File.read!(Path.join(root, "RELATIONS.md")) =~ "| `code MyApp.Cart` |"
@@ -224,7 +224,7 @@ defmodule Surfex.GoldensTest do
       assert Goldens.entries!(sources: ["spec.md"]) == [:status]
     end
 
-    @tag verifies: "traces"
+    @tag verifies: ["traces", "goldens-entries"]
     test "names a malformed entry, and the removed :trace with its reason" do
       assert_raise ArgumentError, ~r/goldens entry "API.md" is not :status/, fn ->
         Goldens.entries!(goldens: ["API.md"])

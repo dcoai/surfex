@@ -58,12 +58,12 @@ defmodule Surfex.ReferenceTest do
       assert {"spec/02-wire.md", "3. PING — 24 bytes"} in cited(c, "wren_ping_hdr")
     end
 
-    @tag verifies: "subject-sections"
+    @tag verifies: ["subject-sections", "citation-resolves"]
     test "a bare member in a subject section resolves to the subject's member", c do
       assert %{items: ["wren_hdr.kind"]} = citation(c, "spec/02-wire.md", "kind")
     end
 
-    @tag verifies: "subject-sections"
+    @tag verifies: ["subject-sections", "citation-resolves"]
     test "inside a subject section the member wins over a global of the same name", c do
       assert cited(c, "wren_ping_hdr.window") == [{"spec/02-wire.md", "3. PING — 24 bytes"}]
       assert cited(c, "window") == [{"spec/01-overview.md", "1. Sending and receiving"}]
@@ -76,7 +76,7 @@ defmodule Surfex.ReferenceTest do
       assert %{items: ["PING"]} = citation(c, "spec/02-wire.md", "PING")
     end
 
-    @tag verifies: "member-paths"
+    @tag verifies: ["member-paths", "citation-resolves"]
     test "a member path walks through the member's type and cites every step", c do
       assert %{status: :resolved, items: ["wren_ping_hdr.ack", "wren_ack.id"]} =
                citation(c, "spec/02-wire.md", "ack.id")
@@ -93,7 +93,12 @@ defmodule Surfex.ReferenceTest do
       assert {"spec/01-overview.md", "(code block)"} in cited(c, "wren_send")
     end
 
-    @tag verifies: ["citation-status-kinds", "citation-statuses", "citation-notation"]
+    @tag verifies: [
+           "citation-status-kinds",
+           "citation-statuses",
+           "citation-notation",
+           "citation-resolves"
+         ]
     test "every status is reached, and prose in backticks is not a citation", c do
       assert %{status: :unresolved} = citation(c, "spec/01-overview.md", "wren_send_all")
       assert %{status: :ambiguous} = citation(c, "spec/01-overview.md", "wren_twin")

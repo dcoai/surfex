@@ -41,6 +41,7 @@ defmodule Surfex.GoldenTest do
   describe "the header block" do
     @describetag verifies: "golden-stats"
 
+    @tag verifies: ["golden-stats", "golden-renders"]
     test "is title, purpose, attribution — in that order, contiguous" do
       [title, purpose, attribution | _] = Golden.render(spec()) |> String.split("\n")
 
@@ -52,7 +53,7 @@ defmodule Surfex.GoldenTest do
       assert attribution =~ "do not edit; a drift FAILS the gate"
     end
 
-    @tag verifies: "golden-shape"
+    @tag verifies: ["golden-shape", "golden-renders"]
     test "free prose follows the block" do
       rendered = Golden.render(spec(%{prose: "What the classes mean."}))
       [_title, _purpose, _attribution | rest] = String.split(rendered, "\n")
@@ -110,6 +111,7 @@ defmodule Surfex.GoldenTest do
       assert order.(Golden.render(spec(%{rows: rows, sort: by_length_desc}))) |> hd() == "item10"
     end
 
+    @tag verifies: ["golden-order", "golden-renders"]
     test "and rendering twice is rendering once" do
       assert Golden.render(spec()) == Golden.render(spec())
     end
@@ -141,6 +143,7 @@ defmodule Surfex.GoldenTest do
   describe "cell notation" do
     @describetag verifies: "golden-cells"
 
+    @tag verifies: ["golden-cells", "golden-renders"]
     test "each type renders to its documented form" do
       rendered =
         Golden.render(
@@ -235,6 +238,7 @@ defmodule Surfex.GoldenTest do
       assert line == "**3 things** · ok 2 · clean"
     end
 
+    @tag verifies: ["golden-stats", "golden-renders"]
     test "and stats reach the output" do
       rendered = Golden.render(spec(%{stats: [Golden.stat("2 items", [{"verified", 1}])]}))
 
@@ -266,7 +270,7 @@ defmodule Surfex.GoldenTest do
       assert String.split(rendered, "| Item |") |> length() == 3
     end
 
-    @tag verifies: "golden-shape"
+    @tag verifies: ["golden-shape", "golden-renders"]
     test "a group may have its own columns" do
       rendered =
         Golden.render(

@@ -49,7 +49,7 @@ defmodule Surfex.StatusTest do
       assert %{state: :current, changed: []} = only(Status.derive(scans(), [relate("s1", "c1")]))
     end
 
-    @tag verifies: "dangling-side"
+    @tag verifies: ["dangling-side", "status-states"]
     test "dangling, naming which end changed" do
       assert %{state: :dangling, changed: [{:code, @code_id}]} =
                only(Status.derive(scans("s1", "c2"), [relate("s1", "c1")]))
@@ -135,7 +135,7 @@ defmodule Surfex.StatusTest do
   describe "policy" do
     @describetag verifies: "status-states"
 
-    @tag verifies: ["status-failing"]
+    @tag verifies: ["status-failing", "status-states"]
     test "an id the policy requires to be related, and isn't, is unmet" do
       extra = scan(:code, "M.other/0", "o")
       status = Status.derive([extra | scans()], [relate("s1", "c1")], code: [:implements])
@@ -186,7 +186,7 @@ defmodule Surfex.StatusTest do
     defp hint(id), do: %{scan(:spec, "spec.md##{id}", "h1") | role: :test_hint, within: @spec_id}
     defp test_scan(declares), do: %{scan(:test, "T: a", "t1") | declares: declares}
 
-    @tag verifies: ["status-failing"]
+    @tag verifies: ["status-failing", "status-states"]
     test "a declaration naming no spec unit, or an ambiguous one, is broken and fails" do
       status = Status.derive([test_scan([{:verifies, "nothing"}]) | scans()], [])
       assert [%{type: :verifies, ref: "nothing", reason: :unknown}] = status.broken
@@ -205,7 +205,7 @@ defmodule Surfex.StatusTest do
     end
 
     # #66: a claim the test's source no longer makes must not stay current.
-    @tag verifies: "undeclared-verifies"
+    @tag verifies: ["undeclared-verifies", "status-states"]
     test "a verifies relation the test no longer declares is undeclared, and fails" do
       verified =
         Entry.new!(
@@ -313,7 +313,7 @@ defmodule Surfex.StatusTest do
       assert Status.derive([hint | tri_scans()], entries).triangle == []
     end
 
-    @tag verifies: ["status-failing"]
+    @tag verifies: ["status-failing", "triangle-gaps"]
     test "reported by default, failing with triangle: :fail, and silent without tests" do
       entries = [rel(:implements, @s, @c)]
       refute Status.failing?(Status.derive(tri_scans(), entries))
@@ -350,7 +350,7 @@ defmodule Surfex.StatusTest do
 
     defp spec_only, do: [scan(:spec, @spec_id, "s1")]
 
-    @tag verifies: ["status-failing"]
+    @tag verifies: ["status-failing", "planned-state"]
     test "planned while the end doesn't exist, not orphaned, and not failing" do
       status = Status.derive(spec_only(), [plan()])
       assert %{state: :planned, changed: [{:code, "M.later/1"}]} = only(status)
@@ -474,7 +474,7 @@ defmodule Surfex.StatusTest do
       end
     end
 
-    @tag verifies: "status-report-forms"
+    @tag verifies: ["status-report-forms", "mark-states"]
     test "all three reports show open marks" do
       status = Status.derive(scans(), [relate("s1", "c1"), mark("s1")])
 
@@ -619,7 +619,7 @@ defmodule Surfex.StatusTest do
       end
     end
 
-    @tag verifies: "units-by-role"
+    @tag verifies: ["units-by-role", "status-report-forms"]
     test "spec units are counted by role, and a block or hint says what it sits in" do
       block = %{scan(:spec, "spec.md#rule", "b1") | role: :block, within: @spec_id}
       section = %{scan(:spec, @spec_id, "s1") | role: :section}
@@ -641,7 +641,7 @@ defmodule Surfex.StatusTest do
       assert status |> Report.golden() |> Surfex.Golden.render() =~ "2 spec units"
     end
 
-    @tag verifies: ["status-failing"]
+    @tag verifies: ["status-failing", "status-report-forms"]
     test "broken citations fail, and all three reports show them" do
       citation = %{
         span: "M.gone/0",
@@ -665,7 +665,7 @@ defmodule Surfex.StatusTest do
 
     # #76: a proposed relation fails, so the report must say which; unvalidated ones are
     # counted, and listed where they fail.
-    @tag verifies: "status-pure"
+    @tag verifies: ["status-pure", "status-report-forms"]
     test "proposed relations are listed; unvalidated ones counted, and listed under validated: true" do
       proposed =
         Entry.new!(
@@ -712,7 +712,7 @@ defmodule Surfex.StatusTest do
       assert Report.text(Status.derive(scans(), [])) =~ "(no relations)"
     end
 
-    @tag verifies: "status-pure"
+    @tag verifies: ["status-pure", "status-report-forms"]
     test "the golden is the same whatever order the scans and the log's lines come in" do
       extra = scan(:code, "M.other/0", "o")
       first = relate("s1", "c1")
@@ -846,7 +846,7 @@ defmodule Surfex.StatusTest do
 
     alias Surfex.Status.Config
 
-    @tag verifies: "traces"
+    @tag verifies: ["traces", "status-config-read"]
     test "read!/1 refuses an unknown key, and a key of the removed trace with the reason",
          %{tmp_dir: root} do
       path = Path.join(root, ".surfex.exs")

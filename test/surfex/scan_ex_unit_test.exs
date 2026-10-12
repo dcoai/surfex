@@ -68,16 +68,16 @@ defmodule Surfex.ScanExUnitTest do
     assert by_id()[@closed].location == %{file: "test/cart_test.exs", lines: {23, 25}}
   end
 
+  # #149: as ExUnit merges tags, the most specific level that sets `verifies` wins: a
+  # test's own @tag replaces its describe's, which replaces its module's. A tag that doesn't
+  # set it (@tag :slow) leaves it alone.
   test "declarations come from @tag, @describetag and @moduletag" do
     assert by_id()[@closed].declares == [
-             {:verifies, "carts"},
-             {:verifies, "cart-add"},
              {:verifies, "cart-add-closed"},
              {:verifies, "spec.md#Carts/Adding items"}
            ]
 
-    assert by_id()["MyApp.CartTest: adding: adds one"].declares ==
-             [{:verifies, "carts"}, {:verifies, "cart-add"}]
+    assert by_id()["MyApp.CartTest: adding: adds one"].declares == [{:verifies, "cart-add"}]
 
     # A @tag applies to the next test only.
     assert by_id()["MyApp.CartTest: starts empty"].declares == [{:verifies, "carts"}]
@@ -125,15 +125,14 @@ defmodule Surfex.ScanExUnitTest do
   end
   '''
 
-  @tag verifies: "property-tests"
+  @tag verifies: ["property-tests", "scan-records-pure"]
   test "a property is a test: its id, declarations, calls, and a version over its generators" do
     by_id = Map.new(Tests.tests(@property_source, "test/p_test.exs"), &{&1.id, &1})
 
     assert %{kind: :test, declares: declares, calls: calls, location: %{lines: {9, 13}}} =
              by_id["MyApp.CartPropertyTest: totals: sum of the lines"]
 
-    assert {:verifies, "cart-totals"} in declares
-    assert {:verifies, "cart-total-sum"} in declares
+    assert declares == [{:verifies, "cart-total-sum"}]
     assert "MyApp.Cart.total/2" in calls
 
     # A test of the same name beside it is told apart, as two tests are.
