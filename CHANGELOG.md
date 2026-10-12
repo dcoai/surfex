@@ -10,6 +10,23 @@ All notable changes to Surfex are recorded here, following
 release it merely follows. The next release is 0.7.0, since the change below can change
 which tests declare what.
 
+### Added
+
+- **Headings keep the ids their authors write** (#179, #180). A section's id is, in order:
+  - an id comment at the end of the heading, `## Totals <!-- surfex: totals -->`, which
+    doesn't render, so it suits ex_doc extras where `{#id}` shows as text;
+  - an anchor, `{#totals}`;
+  - what the project's heading grammar reads, set by `heading_ids:` in `.surfex.exs`:
+    `:section_sign` for `## §Api.3.2 — Limits`, `:section_number` for `## 1.2 Totals`, or
+    a regex with a named capture `id`;
+  - otherwise its heading path, as before.
+
+  A written id survives renaming the heading, is never numbered `~2` (a repeat is an
+  error), and may be cited bare. A `§` id may keep its sign: `§Api.3.2`. Ids may now hold
+  letters of either case, digits and `. _ - :`; every existing id stays valid. Turning on
+  `heading_ids:` re-ids the matching sections with their versions unchanged, so
+  `mix surfex.suggest --accept` carries each relation across as a move.
+
 ### Changed
 
 - **`verifies` tags combine as ExUnit merges them** (#149, #171). The most specific level

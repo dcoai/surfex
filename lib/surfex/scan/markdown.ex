@@ -41,8 +41,9 @@ defmodule Surfex.Scan.Markdown do
   alias Surfex.Scan
   alias Surfex.Scan.Markdown.Fence
 
-  @id "[a-z0-9][a-z0-9-]*"
+  @id "[A-Za-z0-9][A-Za-z0-9._:-]*"
   @anchor ~r/^(.*?)\s*\{#([^}\s]*)\}$/
+  @heading_comment ~r/^(.*?)\s*<!--\s*surfex:\s*(\S+)\s*-->$/
   @open_block ~r/^ {0,3}<!--\s*surfex:\s*(\S+)\s*-->\s*$/
   @close_block ~r/^ {0,3}<!--\s*\/surfex\s*-->\s*$/
   @hint ~r/^test\s+(\S+)$/
@@ -51,11 +52,13 @@ defmodule Surfex.Scan.Markdown do
   Every unit of every markdown file of the spec under `root`, in order: the files
   `globs` match, less those under an `exclude` prefix (`files/3`).
   """
-  @spec records(String.t(), [String.t()], [String.t()]) :: [Scan.t()]
-  def records(root, globs, exclude \\ []) do
+  @spec records(String.t(), [String.t()], [String.t()], keyword) :: [Scan.t()]
+  def records(root, globs, exclude \\ [], opts \\ []) do
     root
     |> files(globs, exclude)
-    |> Enum.flat_map(fn file -> root |> Path.join(file) |> File.read!() |> sections(file) end)
+    |> Enum.flat_map(fn file ->
+      root |> Path.join(file) |> File.read!() |> sections(file, opts)
+    end)
   end
 
   @doc """
@@ -77,15 +80,18 @@ defmodule Surfex.Scan.Markdown do
 
   @doc """
   The units of one markdown text (sections, marked blocks and test hints), as records
-  located in `file`, in the order they start.
+  located in `file`, in the order they start. `heading_ids:` names the project's heading
+  grammar (`heading_grammar/1`).
   """
-  @spec sections(String.t(), String.t()) :: [Scan.t()]
-  def sections(text, file) do
+  @spec sections(String.t(), String.t(), keyword) :: [Scan.t()]
+  def sections(text, file, opts \\ []) do
+    grammar = heading_grammar(Keyword.get(opts, :heading_ids))
+
     {sections, units} =
       text
       |> String.split("\n")
       |> Enum.with_index(1)
-      |> split(file)
+      |> split(file, grammar)
 
     sections =
       sections
@@ -101,7 +107,10 @@ defmodule Surfex.Scan.Markdown do
 
     section_records =
       for s <- sections,
-          do: record(file, s.id, s.body, {s.first, s.last}, :section, nil)
+          do: %{
+            record(file, s.id, s.body, {s.first, s.last}, :section, nil)
+            | named: s.anchor != nil
+          }
 
     unit_records =
       for u <- units do
@@ -133,9 +142,10 @@ defmodule Surfex.Scan.Markdown do
   # hints (%{role, id, first, last, body, within}). A line belongs to exactly one body:
   # the open hint's, else the open block's, else the current section's. Markers and a
   # hint's fences belong to none.
-  defp split(lines, file) do
+  defp split(lines, file, grammar) do
     start = %{
       file: file,
+      grammar: grammar,
       done: [],
       cur: section(0, nil, nil, "(preamble)", 1),
       stack: [],
@@ -223,17 +233,66 @@ defmodule Surfex.Scan.Markdown do
   end
 
   defp new_section(st, {level, text}, no) do
-    {text, anchor} =
-      case Regex.run(@anchor, text, capture: :all_but_first) do
-        [text, anchor] -> {text, checked_id!(st, no, anchor, "anchor")}
-        nil -> {text, nil}
-      end
+    # An id the author wrote wins: a comment at the end of the heading, or a {#anchor}. Then
+    # the project's heading grammar (heading_ids:). Neither: the heading path.
+    {text, explicit} = explicit_id(st, text, no)
+    anchor = explicit || grammar_id(st, text, no)
 
     stack = [{level, text} | Enum.drop_while(st.stack, fn {l, _} -> l >= level end)]
     path = stack |> Enum.reverse() |> Enum.map_join("/", &elem(&1, 1))
     next = section(st.cur.n + 1, text, anchor, path, no)
     %{st | done: [st.cur | st.done], cur: next, stack: stack}
   end
+
+  defp explicit_id(st, text, no) do
+    cond do
+      match = Regex.run(@heading_comment, text, capture: :all_but_first) ->
+        [text, id] = match
+        {text, checked_id!(st, no, id, "heading")}
+
+      match = Regex.run(@anchor, text, capture: :all_but_first) ->
+        [text, id] = match
+        {text, checked_id!(st, no, id, "anchor")}
+
+      true ->
+        {text, nil}
+    end
+  end
+
+  defp grammar_id(%{grammar: nil}, _text, _no), do: nil
+
+  defp grammar_id(%{grammar: grammar} = st, text, no) do
+    case Regex.named_captures(grammar, text) do
+      %{"id" => id} -> checked_id!(st, no, id, "heading")
+      nil -> nil
+    end
+  end
+
+  @doc """
+  The regex a `heading_ids:` setting names, with a named capture `id`: `:section_sign` for
+  a leading `§ID` (`§Api.3.2`), `:section_number` for a leading `1.`, `1.2`, `1.2.3`, or
+  the project's own regex. Raises on anything else, or a regex with no `id` capture.
+  """
+  @spec heading_grammar(atom | Regex.t() | nil) :: Regex.t() | nil
+  def heading_grammar(nil), do: nil
+
+  def heading_grammar(:section_sign),
+    do: ~r/^§\s*(?<id>[A-Za-z0-9][A-Za-z0-9._:-]*?)[.:]?(?=\s|$)/u
+
+  def heading_grammar(:section_number), do: ~r/^(?<id>\d+(?:\.\d+)*)\.?(?=\s|$)/
+
+  def heading_grammar(%Regex{} = regex) do
+    if "id" in Regex.names(regex),
+      do: regex,
+      else: raise(ArgumentError, "heading_ids: #{inspect(regex)} needs a named capture (?<id>…)")
+  end
+
+  def heading_grammar(other),
+    do:
+      raise(
+        ArgumentError,
+        "heading_ids: must be :section_sign, :section_number or a regex with (?<id>…), got #{inspect(other)}"
+      )
 
   # What a block or hint opened now sits in.
   defp within(%{block: %{id: id}}), do: {:block, id}
@@ -263,7 +322,12 @@ defmodule Surfex.Scan.Markdown do
   defp checked_id!(st, no, id, what) do
     if Regex.match?(~r/^#{@id}$/, id),
       do: id,
-      else: fail(st, no, "#{what} id #{inspect(id)} must be lowercase letters, digits and -")
+      else:
+        fail(
+          st,
+          no,
+          "#{what} id #{inspect(id)} must be letters, digits and . _ - :, starting with a letter or digit"
+        )
   end
 
   defp heading(line) do

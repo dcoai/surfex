@@ -4,6 +4,9 @@ defmodule Surfex.Status.Config do
   code, how to read citations (the `Surfex.Profile` keys), and the policies.
 
     * `:sources` — globs of the markdown spec files (required)
+    * `:heading_ids` — the ids the spec's authors write into headings: `:section_sign`
+      (`## §Api.3.2 — Limits`), `:section_number` (`## 1.2 Totals`), or a regex with a
+      named capture `id` (`Surfex.Scan.Markdown.heading_grammar/1`)
     * `:scanner`, `:scanner_opts` — the code scanner (`:elixir` by default)
     * `:require` — `[key: [type, …]]`: a key is a kind (`:spec`, `:code`, `:test`, …) or
       a spec role (`:section`, `:block`, `:test_hint`), validated with the types
@@ -22,6 +25,7 @@ defmodule Surfex.Status.Config do
 
   # The keys a `.surfex.exs` may hold, besides the profile's (`Surfex.Profile.keys/0`).
   @own [
+    :heading_ids,
     :scanner,
     :scanner_opts,
     :namespace,
@@ -346,7 +350,10 @@ defmodule Surfex.Status.Config do
       Keyword.get(config, :sources) ||
         raise(ArgumentError, ".surfex.exs needs sources: (the spec's globs)")
 
-    spec = Scan.Markdown.records(root, sources, Keyword.get(config, :exclude, []))
+    spec =
+      Scan.Markdown.records(root, sources, Keyword.get(config, :exclude, []),
+        heading_ids: Keyword.get(config, :heading_ids)
+      )
 
     if spec == [],
       do: raise(ArgumentError, "no spec sections found in #{inspect(sources)} under #{root}")
