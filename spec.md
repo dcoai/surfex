@@ -697,22 +697,37 @@ records when `classes:` is present.
 A declaration is a claim in the source, not a relation. `Surfex.Scan.resolve/2` finds
 the spec unit it names: a full id (`spec.md#cart-add`, `spec.md#Carts/Adding items`), or
 a bare anchor, block or hint id (`cart-add`) looked up across every spec file. A bare
-id never names a heading path. It gives `{:error, :unknown}` when nothing has the id,
+id never names a heading path. A `§`-id may be cited with its sign: `§Api.3.2` finds
+`Api.3.2`. It gives `{:error, :unknown}` when nothing has the id,
 and `{:error, {:ambiguous, ids}}` when more than one file does.
 
 `Surfex.Scan.Markdown` is the spec scanner for markdown. `Surfex.Scan.Markdown.records/2`
-reads every file matching a list of globs under a root (`Surfex.Scan.Markdown.records/3`
-leaves out those under an `exclude:` prefix, §8); `Surfex.Scan.Markdown.sections/2`
-scans one text. Both give every unit (sections, marked blocks and test hints) in the
+reads every file matching a list of globs under a root (`Surfex.Scan.Markdown.records/4`
+leaves out those under an `exclude:` prefix, §8, and reads headings by `heading_ids:`);
+`Surfex.Scan.Markdown.sections/2` scans one text. Both give every unit (sections, marked blocks and test hints) in the
 order they start.
 - **A section** is a heading and the lines under it, up to the next heading of any
   level. Subsections are sections of their own, so editing one changes only its own
   version. Text before the first heading is the section `(preamble)`, when it has any.
-- **Its id** is the file and the path of headings down to it. Two sections with the
-  same path in one file are told apart as `~2`, `~3`, in order. A heading **anchor**,
-  `{#cart-add}` at the end of the heading, makes the id `spec.md#cart-add` instead: it
-  survives renaming the heading or any heading above it. The anchor is not part of the
-  heading text, so subsections' paths don't include it.
+- **Its id** is the one its author wrote, when there is one, and never comes from where
+  the section stands. The first of these that the heading has:
+  1. **An id comment** at the end of the heading, `## Adding items <!-- surfex: cart-add -->`:
+     the id is `spec.md#cart-add`. Comments don't render, so it reads cleanly in ex_doc and
+     on any forge.
+  2. **An anchor**, `{#cart-add}` at the end of the heading, does the same. ex_doc renders
+     it as text, so it suits specs that aren't ex_doc extras.
+  3. **The project's heading grammar**, `heading_ids:` in `.surfex.exs`, for ids the authors
+     already write into their headings: `:section_sign` reads a leading `§ID`
+     (`## §Api.3.2 — Limits` is `spec.md#Api.3.2`), `:section_number` a leading
+     `1.`, `1.2` or `1.2.3`, and a regex with a named capture `id` anything else. A heading
+     it doesn't match falls through.
+  4. **The path of headings** down to it, `spec.md#Carts/Adding items`. Two sections with
+     the same path in one file are told apart as `~2`, `~3`, in order. Only a path is ever
+     numbered: a written id that repeats is an error.
+
+  An id that was written survives renaming the heading or any heading above it. The comment
+  and the anchor are not part of the heading's text, so subsections' paths don't include
+  them; a grammar's id is, since it is the text the author wrote.
 - **Its hash** covers its own body, **not its heading**, with runs of whitespace
   collapsed. Rewording the body changes it. Renaming the heading, reflowing a
   paragraph or adding blank lines doesn't, so a renamed section keeps its version
@@ -739,15 +754,21 @@ own:
   readers should see test guidance. A `test` fence without an id is an ordinary code
   block.
 
-Anchors, block ids and hint ids share one namespace per file with the section ids, and
-are lowercase letters, digits and `-`, starting with a letter or digit. Markers and hint
-fences inside a fenced code block are text. A spec that uses none of these scans exactly
+Written ids, block ids and hint ids share one namespace per file with the section ids,
+and are letters, digits and `.` `_` `-` `:`, starting with a letter or digit. Markers
+and hint fences inside a fenced code block are text. A spec that uses none of these scans exactly
 as it did before they existed. Every problem raises, naming the file and line:
 - an unclosed block or hint;
 - a block that nests or spans a heading;
 - a close marker with no block;
 - a malformed id;
 - a duplicate id, naming both lines.
+
+```test heading-ids
+a heading's id is its id comment, else its anchor, else what the project's heading grammar
+reads from it (§ids, section numbers, a regex), else its path; a written id survives a
+renamed heading, is never numbered ~2, and a repeat is an error naming both lines
+```
 
 ```test section-versions
 given a section
@@ -1091,17 +1112,19 @@ suggest --accept retires it
 ### 13.2 Configuration {#status-config}
 
 `Surfex.Status.Config` reads `.surfex.exs`. It holds the profile keys (§8) and the
-log's own: `scanner`, `scanner_opts`, `namespace`, `goldens` (§10.3), `require`, `tests`,
-`triangle`, `require_red` (§17), `adoption` (§18.1), `process` (§19) and `completeness` (§20).
+log's own: `heading_ids` (§11), `scanner`, `scanner_opts`, `namespace`, `goldens` (§10.3),
+`require`, `tests`, `triangle`, `require_red` (§17), `adoption` (§18.1), `process` (§19) and
+`completeness` (§20).
 - `Surfex.Status.Config.read!/1` reads and validates it. It raises on an unknown key, and
   on a key of the removed trace, saying so (§9). Every task reads its config through
   it, so a misspelt key is never silently ignored.
 - `Surfex.Status.Config.items/2` runs the code scanner: the built-in Elixir scanner, or
   the project's `scanner:` module (`Surfex.Scanner`) with its `scanner_opts:`.
-- `Surfex.Status.Config.scans/2` scans each markdown unit of `sources`, each item the
-  code scanner (`scanner`, `scanner_opts`) finds, and, when `tests:` names globs of
-  test files, each test in them (`Surfex.Scan.ExUnit`). A missing `sources`, or one
-  that matches no section, raises. So does a `tests:` that matches no file.
+- `Surfex.Status.Config.scans/2` scans each markdown unit of `sources`, reading headings
+  by `heading_ids:` (§11), each item the code scanner (`scanner`, `scanner_opts`) finds,
+  and, when `tests:` names globs of test files, each test in them (`Surfex.Scan.ExUnit`).
+  A missing `sources`, or one that matches no section, raises. So does a `tests:` that
+  matches no file.
 - `Surfex.Status.Config.options!/1` reads `triangle: :report | :fail` (`:report` by
   default) for `Surfex.Status.derive/4`, and raises on any other value. When `classes:`
   is present it also gives the class rules as `coverage:`, for judging stale excuses. It is the

@@ -38,7 +38,18 @@ defmodule Surfex.Scan do
   alias Surfex.Item
 
   @enforce_keys [:kind, :id, :hash, :location]
-  defstruct [:kind, :id, :hash, :location, :role, :within, declares: [], calls: [], shape: false]
+  defstruct [
+    :kind,
+    :id,
+    :hash,
+    :location,
+    :role,
+    :within,
+    declares: [],
+    calls: [],
+    shape: false,
+    named: false
+  ]
 
   @type location :: %{file: String.t(), lines: {pos_integer, pos_integer} | nil}
   @type role :: atom | nil
@@ -52,18 +63,31 @@ defmodule Surfex.Scan do
           declares: [{atom, String.t()}],
           calls: [String.t()],
           # A code record of a shape (`Surfex.Item` `:shape`): judged, never exercised.
-          shape: boolean
+          shape: boolean,
+          # A spec section whose id the author wrote (an anchor, a heading comment or the
+          # project's heading grammar), not its heading path (§11).
+          named: boolean
         }
 
   @doc """
   The spec unit a declaration names: a full id (`spec.md#Carts/Adding items`,
   `spec.md#cart-add`), or a bare anchor, block or hint id (`cart-add`) looked up across
-  every spec file. `{:error, :unknown}` when nothing has it, `{:error, {:ambiguous, ids}}`
-  when a bare id is in more than one file.
+  every spec file. A `§`-id may carry its sign (`§Api.3.2`). `{:error, :unknown}` when
+  nothing has it, `{:error, {:ambiguous, ids}}` when a bare id is in more than one file.
   """
   @spec resolve([t], String.t()) ::
           {:ok, t} | {:error, :unknown | {:ambiguous, [String.t()]}}
-  def resolve(scans, ref) do
+  def resolve(scans, "§" <> ref) do
+    # A `§`-id is cited with its sign (`§Api.3.2`); the id is what follows it (§11).
+    case resolve(scans, ref) do
+      {:error, :unknown} -> resolve_exact(scans, "§" <> ref)
+      found -> found
+    end
+  end
+
+  def resolve(scans, ref), do: resolve_exact(scans, ref)
+
+  defp resolve_exact(scans, ref) do
     spec = Enum.filter(scans, &(&1.kind == :spec))
 
     matches =
@@ -111,8 +135,10 @@ defmodule Surfex.Scan do
 
   defp bare(id), do: id |> String.split("#", parts: 2) |> List.last()
 
-  # A section's id is an anchor when it isn't a heading path: no `/`, and it has the
-  # anchor form. A bare reference names anchors, blocks and hints, never a heading.
+  # A section's id is an anchor when the author wrote it (`named`), or, for a record built
+  # by hand, when it has the lowercase anchor form. A bare reference names anchors, blocks
+  # and hints, never a heading path.
+  defp anchored?(%__MODULE__{named: true}), do: true
   defp anchored?(%__MODULE__{id: id}), do: Regex.match?(~r/#[a-z0-9][a-z0-9-]*$/, id)
 
   @doc """

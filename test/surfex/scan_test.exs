@@ -342,7 +342,7 @@ defmodule Surfex.ScanTest do
       {"a close with no block", "# A\n<!-- /surfex -->\n",
        "spec.md:2: <!-- /surfex --> closes no block"},
       {"an unclosed hint", "# A\n```test h\nx\n", "spec.md:2: test hint h is never closed"},
-      {"a bad id", "# A {#Not_Ok}\n", "spec.md:1: anchor id \"Not_Ok\" must be"},
+      {"a bad id", "# A {#a/b}\n", "spec.md:1: anchor id \"a/b\" must be"},
       {"a duplicate id", "# A {#x}\n\n```test x\ny\n```\n",
        "spec.md:3: spec.md#x is already the id of line 1"},
       {"an anchor colliding with a heading path", "# x\n\n# B {#x}\n",
@@ -354,6 +354,108 @@ defmodule Surfex.ScanTest do
         error = assert_raise ArgumentError, fn -> units(unquote(text)) end
         assert error.message =~ unquote(message)
       end
+    end
+  end
+
+  # #179 (B.0): a heading's id is the one its author wrote, never where it stands.
+  describe "written heading ids" do
+    @describetag verifies: ["heading-ids"]
+
+    defp written_ids(text, opts \\ []),
+      do: text |> Markdown.sections("spec.md", opts) |> Enum.map(& &1.id)
+
+    test "an id comment at the end of a heading names the section, and isn't in its text" do
+      text =
+        "# Carts\n\n## Adding items <!-- surfex: cart-add -->\n\nAdd one.\n\n### Notes\n\nn\n"
+
+      assert written_ids(text) == [
+               "spec.md#Carts",
+               "spec.md#cart-add",
+               "spec.md#Carts/Adding items/Notes"
+             ]
+
+      [_, section, _] = Markdown.sections(text, "spec.md")
+      assert section.named
+
+      renamed = String.replace(text, "Adding items", "Adding lines")
+      [_, again, _] = Markdown.sections(renamed, "spec.md")
+      assert {again.id, again.hash} == {section.id, section.hash}
+    end
+
+    test "heading_ids: reads § ids, section numbers, or the project's regex; others keep their path" do
+      signs = "## §Api.3.2 — Limits\n\ns\n\n## §Doc.4: Rules\n\nr\n\n## Notes\n\nn\n"
+
+      assert written_ids(signs, heading_ids: :section_sign) ==
+               ["spec.md#Api.3.2", "spec.md#Doc.4", "spec.md#Notes"]
+
+      numbers = "## 1. Carts\n\nh\n\n### 1.1 Properties\n\np\n\n## Conventions\n\nc\n"
+
+      assert written_ids(numbers, heading_ids: :section_number) ==
+               ["spec.md#1", "spec.md#1.1", "spec.md#Conventions"]
+
+      own = "## [R-7] Retries\n\nr\n"
+      assert written_ids(own, heading_ids: ~r/^\[(?<id>R-\d+)\]/) == ["spec.md#R-7"]
+
+      # Without the setting, the same headings are paths, exactly as before.
+      assert written_ids(numbers) == [
+               "spec.md#1. Carts",
+               "spec.md#1. Carts/1.1 Properties",
+               "spec.md#Conventions"
+             ]
+    end
+
+    test "a written id is never numbered: a repeat is an error naming both lines" do
+      assert_raise ArgumentError, ~r/spec.md:5: spec.md#1 is already the id of line 1/, fn ->
+        written_ids("## 1. A\n\na\n\n## 1. B\n\nb\n", heading_ids: :section_number)
+      end
+
+      # A path still is, for compatibility.
+      assert written_ids("## A\n\na\n\n## A\n\nb\n") == ["spec.md#A", "spec.md#A~2"]
+    end
+
+    test "a heading grammar must be one of the presets or a regex with an id capture" do
+      assert_raise ArgumentError, ~r/needs a named capture/, fn ->
+        written_ids("# A\n", heading_ids: ~r/^(\d+)/)
+      end
+
+      assert_raise ArgumentError, ~r/must be :section_sign/, fn ->
+        written_ids("# A\n", heading_ids: :roman)
+      end
+
+      # The presets are regexes with the capture; no setting is no grammar.
+      for preset <- [:section_sign, :section_number],
+          do: assert("id" in Regex.names(Markdown.heading_grammar(preset)))
+
+      assert Markdown.heading_grammar(nil) == nil
+      assert_raise ArgumentError, fn -> Markdown.heading_grammar("§") end
+    end
+
+    test "a bare reference finds a written id, and a § id with its sign; never a path" do
+      scans =
+        Markdown.sections("## §Api.3.2 — Limits\n\ns\n\n## Notes\n\nn\n", "spec.md",
+          heading_ids: :section_sign
+        )
+
+      assert {:ok, %{id: "spec.md#Api.3.2"}} = Surfex.Scan.resolve(scans, "Api.3.2")
+      assert {:ok, %{id: "spec.md#Api.3.2"}} = Surfex.Scan.resolve(scans, "§Api.3.2")
+      assert {:error, :unknown} = Surfex.Scan.resolve(scans, "Notes")
+    end
+
+    @tag :tmp_dir
+    test ".surfex.exs's heading_ids: reaches the scanner", %{tmp_dir: root} do
+      File.write!(Path.join(root, "spec.md"), "## §Core.00.1 — Scope\n\nw\n")
+
+      dotfile = Path.join(root, ".surfex.exs")
+      File.write!(dotfile, ~s|[sources: ["spec.md"], heading_ids: :section_sign]|)
+      config = Surfex.Status.Config.read!(dotfile)
+
+      ids = for %{kind: :spec, id: id} <- Surfex.Status.Config.scans(config, root), do: id
+
+      assert ids == ["spec.md#Core.00.1"]
+
+      # The same units the scanner gives with the setting passed straight to it.
+      direct = Markdown.records(root, ["spec.md"], [], heading_ids: :section_sign)
+      assert ids == Enum.map(direct, & &1.id)
     end
   end
 end
