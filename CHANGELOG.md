@@ -9,6 +9,17 @@ All notable changes to Surfex are recorded here, following
 `mix.exs` reads `0.7.1-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
 release it merely follows.
 
+### Added
+
+- **Several heading grammars, and lettered section numbers** (#187, #188). `heading_ids:`
+  takes a list of grammars, tried in order, for a spec that writes ids in more than one
+  form: `[~r/^(?<id>ADR-\d+[a-z]?)\b/, :section_number]`. A single grammar stays valid,
+  and two grammars reading one id is the repeat error it would be from one.
+  `:section_number` reads a lowercase letter on a number's last part when its dot follows:
+  `## 2a. Model checking` is `#2a`, while `## 3d rendering` is still a path. A spec using
+  `:section_number` with such headings sees them re-id'd with their versions unchanged, so
+  `mix surfex.suggest --accept` carries their relations across as moves.
+
 ## [0.7.0] — 2026-10-12
 
 Finer units and honest credit, the first part of claim grain (#145). Headings keep the ids

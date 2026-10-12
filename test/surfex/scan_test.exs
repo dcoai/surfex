@@ -448,6 +448,102 @@ defmodule Surfex.ScanTest do
              ]
     end
 
+    # #188: a spec that writes ids in more than one form, and lettered section numbers.
+    test "a list of grammars is tried in order, the first that matches reading the id" do
+      text = """
+      ## 1. Principles
+
+      p
+
+      ### P1 — Idioms
+
+      i
+
+      ## ADR-008b — Later amendment
+
+      b
+
+      ## ADR-008 — Ports
+
+      a
+
+      ## 156. D-156 — Scales
+
+      d
+
+      ## Reading order
+
+      r
+      """
+
+      grammars = [
+        ~r/^(?<id>P\d+)\b/,
+        ~r/^(?<id>ADR-\d+[a-z]?)\b/,
+        ~r/^\d+\. (?<id>D-\d+)\b/,
+        :section_number
+      ]
+
+      assert written_ids(text, heading_ids: grammars) == [
+               "spec.md#1",
+               "spec.md#P1",
+               "spec.md#ADR-008b",
+               "spec.md#ADR-008",
+               "spec.md#D-156",
+               "spec.md#Reading order"
+             ]
+
+      # A single grammar is still a grammar; a list of one reads the same.
+      assert written_ids(text, heading_ids: [:section_number]) ==
+               written_ids(text, heading_ids: :section_number)
+
+      # Two grammars reading one id is the repeat it would be from one.
+      assert_raise ArgumentError, ~r/spec.md:5: spec.md#7 is already the id of line 1/, fn ->
+        written_ids("## 7. A\n\na\n\n## R7 B\n\nb\n",
+          heading_ids: [:section_number, ~r/^R(?<id>\d+)/]
+        )
+      end
+
+      assert_raise ArgumentError, ~r/must be :section_sign/, fn ->
+        written_ids("# A\n", heading_ids: [:section_number, :roman])
+      end
+
+      assert_raise ArgumentError, ~r/needs a named capture/, fn ->
+        written_ids("# A\n", heading_ids: [~r/^(\d+)/])
+      end
+    end
+
+    test "a section number's last part may end in a letter, when its dot follows" do
+      text = """
+      ## 2. Checks
+
+      c
+
+      ## 2a. Model checking
+
+      m
+
+      ### 4.3b. Raw backend
+
+      r
+
+      ## 3d rendering
+
+      d
+
+      ## 2b Without its dot
+
+      w
+      """
+
+      assert written_ids(text, heading_ids: :section_number) == [
+               "spec.md#2",
+               "spec.md#2a",
+               "spec.md#4.3b",
+               "spec.md#3d rendering",
+               "spec.md#2b Without its dot"
+             ]
+    end
+
     test "a written id is never numbered: a repeat is an error naming both lines" do
       assert_raise ArgumentError, ~r/spec.md:5: spec.md#1 is already the id of line 1/, fn ->
         written_ids("## 1. A\n\na\n\n## 1. B\n\nb\n", heading_ids: :section_number)

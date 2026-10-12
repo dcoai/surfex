@@ -732,8 +732,12 @@ order they start.
   3. **The project's heading grammar**, `heading_ids:` in `.surfex.exs`, for ids the authors
      already write into their headings: `:section_sign` reads a leading `§ID`
      (`## §Api.3.2 — Limits` is `spec.md#Api.3.2`), `:section_number` a leading
-     `1.`, `1.2` or `1.2.3`, and a regex with a named capture `id` anything else. A heading
-     it doesn't match falls through.
+     `1.`, `1.2` or `1.2.3`, and a regex with a named capture `id` anything else. A
+     section number's last part may carry a lowercase letter when its dot follows:
+     `## 2a. Model checking` is `spec.md#2a`, while `## 3d rendering` is no number. A spec
+     that writes ids in more than one form lists its grammars,
+     `heading_ids: [~r/^\d+\. (?<id>D-\d+)/, :section_number]`, and the first that matches
+     a heading reads it. A heading none matches falls through.
   4. **The path of headings** down to it, `spec.md#Carts/Adding items`. Two sections with
      the same path in one file are told apart as `~2`, `~3`, in order. Only a path is ever
      numbered: a written id that repeats is an error.
@@ -801,8 +805,10 @@ or repeated key is an error naming the line
 
 ```test heading-ids
 a heading's id is its id comment, else its anchor, else what the project's heading grammar
-reads from it (§ids, section numbers, a regex), else its path; a written id survives a
-renamed heading, is never numbered ~2, and a repeat is an error naming both lines
+reads from it (§ids, section numbers, a regex, or the first of a list that matches), else
+its path; a section number may end in a letter before its dot (2a.); a written id survives
+a renamed heading, is never numbered ~2, and a repeat is an error naming both lines, even
+when two grammars read it
 ```
 
 ```test section-versions

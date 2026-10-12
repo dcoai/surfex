@@ -7,18 +7,20 @@ defmodule Surfex.Scan.Markdown do
   Its subsections are sections of their own, so an edit to §3.2 changes §3.2's version and
   not §3's. Text before the first heading is the section `(preamble)`, when it has any.
 
-    * **id** — the file and the path of headings down to it:
-      `spec.md#Carts/Adding items`. Two sections with the same path in one file are told
-      apart by a suffix, `~2`, `~3`, in order. A heading **anchor**,
-      `## Adding items {#cart-add}`, gives the section the id `spec.md#cart-add` instead,
-      which survives renaming the heading or any heading above it.
+    * **id** — the one its author wrote, when there is one: an id comment
+      (`## Adding items <!-- surfex: cart-add -->`), an anchor (`{#cart-add}`), or what the
+      project's heading grammars read (`heading_ids:`, `heading_grammar/1`), giving
+      `spec.md#cart-add`. A written id survives renaming the heading or any heading above
+      it. Otherwise the file and the path of headings down to it,
+      `spec.md#Carts/Adding items`; two sections with the same path in one file are told
+      apart by a suffix, `~2`, `~3`, in order.
     * **hash** — over the section's own body, **not its heading** (nor its anchor), with
       runs of whitespace collapsed. Rewording the body changes it; renaming the heading,
       reflowing a paragraph or adding blank lines doesn't. A renamed heading keeps its
       version under a new id, which is what lets a tool recognise the move.
     * **location** — the file, from the heading's line to the section's last line.
 
-  Two finer units sit inside sections, each a record of its own with its own version, and
+  Finer units sit inside sections, each a record of its own with its own version, and
   each left out of the version of what it sits in, so editing one changes only its own:
 
     * A **marked block** is a requirement: the lines between `<!-- surfex: ID -->` and
@@ -27,9 +29,12 @@ defmodule Surfex.Scan.Markdown do
     * A **test hint** says how to test something: a fenced block whose info string is
       exactly `test ID`. Its id is `file#ID` and its version covers the fence's content.
       A `test` fence without an id is an ordinary code block.
+    * A **marked table** (`<!-- surfex: table ID -->` before a table) is a unit, and so is
+      each of its rows, `file#ID/KEY`.
 
-  Anchors, block ids and hint ids share one namespace per file with the section ids, and
-  are `[a-z0-9][a-z0-9-]*`. A duplicate is an error naming both lines. Every error raises
+  Written ids and block, hint and table ids share one namespace per file with the section
+  ids: letters, digits and `. _ - :`, starting with a letter or digit. A duplicate is an
+  error naming both lines. Every error raises
   `ArgumentError` naming the file and line: a spec that can't be read as written must not
   scan as something else.
 
@@ -88,7 +93,7 @@ defmodule Surfex.Scan.Markdown do
   """
   @spec sections(String.t(), String.t(), keyword) :: [Scan.t()]
   def sections(text, file, opts \\ []) do
-    grammar = heading_grammar(Keyword.get(opts, :heading_ids))
+    grammar = heading_grammars(Keyword.get(opts, :heading_ids))
 
     {sections, units} =
       text
@@ -285,19 +290,30 @@ defmodule Surfex.Scan.Markdown do
     end
   end
 
-  defp grammar_id(%{grammar: nil}, _text, _no), do: nil
-
-  defp grammar_id(%{grammar: grammar} = st, text, no) do
-    case Regex.named_captures(grammar, text) do
-      %{"id" => id} -> checked_id!(st, no, id, "heading")
-      nil -> nil
-    end
+  # The first grammar that matches the heading reads its id.
+  defp grammar_id(%{grammar: grammars} = st, text, no) do
+    Enum.find_value(grammars, fn grammar ->
+      case Regex.named_captures(grammar, text) do
+        %{"id" => id} -> checked_id!(st, no, id, "heading")
+        nil -> nil
+      end
+    end)
   end
+
+  # `heading_ids:` is one grammar or a list of them, tried in order.
+  defp heading_grammars(nil), do: []
+  defp heading_grammars(list) when is_list(list), do: Enum.map(list, &heading_grammar!/1)
+  defp heading_grammars(one), do: [heading_grammar!(one)]
+
+  defp heading_grammar!(grammar),
+    do: heading_grammar(grammar) || raise(ArgumentError, "heading_ids: a list can't hold nil")
 
   @doc """
   The regex a `heading_ids:` setting names, with a named capture `id`: `:section_sign` for
-  a leading `§ID` (`§Api.3.2`), `:section_number` for a leading `1.`, `1.2`, `1.2.3`, or
-  the project's own regex. Raises on anything else, or a regex with no `id` capture.
+  a leading `§ID` (`§Api.3.2`), `:section_number` for a leading `1.`, `1.2`, `1.2.3`, whose
+  last part may end in a letter before its dot (`2a.`), or the project's own regex. Raises
+  on anything else, or a regex with no `id` capture. The setting may also be a list of
+  these, tried in order.
   """
   @spec heading_grammar(atom | Regex.t() | nil) :: Regex.t() | nil
   def heading_grammar(nil), do: nil
@@ -305,7 +321,8 @@ defmodule Surfex.Scan.Markdown do
   def heading_grammar(:section_sign),
     do: ~r/^§\s*(?<id>[A-Za-z0-9][A-Za-z0-9._:-]*?)[.:]?(?=\s|$)/u
 
-  def heading_grammar(:section_number), do: ~r/^(?<id>\d+(?:\.\d+)*)\.?(?=\s|$)/
+  def heading_grammar(:section_number),
+    do: ~r/^(?<id>\d+(?:\.\d+)*(?:[a-z](?=\.))?)\.?(?=\s|$)/
 
   def heading_grammar(%Regex{} = regex) do
     if "id" in Regex.names(regex),
@@ -317,7 +334,7 @@ defmodule Surfex.Scan.Markdown do
     do:
       raise(
         ArgumentError,
-        "heading_ids: must be :section_sign, :section_number or a regex with (?<id>…), got #{inspect(other)}"
+        "heading_ids: must be :section_sign, :section_number, a regex with (?<id>…) or a list of them, got #{inspect(other)}"
       )
 
   # ── Tables ──────────────────────────────────────────────────────────────
