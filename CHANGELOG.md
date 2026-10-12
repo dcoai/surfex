@@ -4,6 +4,11 @@ All notable changes to Surfex are recorded here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+`mix.exs` reads `0.7.1-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
+release it merely follows.
+
 ## [0.7.0] — 2026-10-12
 
 Finer units and honest credit, the first part of claim grain (#145). Headings keep the ids
