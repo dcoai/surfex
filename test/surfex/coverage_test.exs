@@ -42,7 +42,7 @@ defmodule Surfex.CoverageTest do
   end
 
   # #71: scaffolding is plumbing because of the module it lives in, not its name.
-  @tag verifies: "rule-parent"
+  @tag verifies: ["rule-parent", "coverage-verdict"]
   test "parent: excuses a module family's members, composed with the rule's other keys" do
     scaffolding =
       Profile.new!(

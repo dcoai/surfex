@@ -327,7 +327,7 @@ defmodule Surfex.SuggestTest do
       assert summary(again) == %{moves: [], refines: [], implements: []}
     end
 
-    @tag verifies: "decline-recorded"
+    @tag verifies: ["decline-recorded", "suggest-proposes"]
     test "a declined suggestion is never suggested again", %{tmp_dir: root} do
       {s, scans} = suggest(root, @spec_md, [])
       assert {"spec.md#Limits", "Wren.max_len/0"} in summary(s).implements
@@ -559,7 +559,7 @@ defmodule Surfex.SuggestTest do
                []
     end
 
-    @tag verifies: "suggest-refresh"
+    @tag verifies: ["suggest-refresh", "suggest-proposes"]
     test "a structural relation the source still states is refreshed; a judgement is not", %{
       tmp_dir: root
     } do

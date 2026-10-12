@@ -213,7 +213,7 @@ defmodule Surfex.EvidenceTest do
     end
 
     # #98: a job that excludes a tag says so, so an excluded test isn't one that didn't run.
-    @tag verifies: "evidence-excluded"
+    @tag verifies: ["evidence-excluded", "evidence-recorded"]
     test "an excluded or skipped test is recorded as such at its version, with no code",
          %{cart_test: file, tmp_dir: root} do
       {:ok, pid} = GenServer.start_link(Surfex.ExUnitFormatter, surfex_root: root)

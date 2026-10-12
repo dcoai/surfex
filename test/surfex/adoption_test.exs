@@ -263,7 +263,7 @@ defmodule Surfex.AdoptionTest do
     end
 
     # #123: a move keeps the basis but not the note; the check must follow the basis.
-    @tag verifies: "evidence-claims-by-basis"
+    @tag verifies: ["evidence-claims-by-basis", "baseline-shrinks"]
     test "a moved baseline relation stays in the --evidence check", %{tmp_dir: root} do
       {log, trust} = trusted(root)
 

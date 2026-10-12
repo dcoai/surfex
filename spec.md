@@ -657,9 +657,13 @@ changes its version.
 - **What it declares**: a test says what it verifies with ExUnit's own tags.
   `@tag verifies: "id"` (or a list) applies to the next test, `@describetag` to a
   `describe`, and `@moduletag` to a module. Each becomes `{:verifies, id}` in the
-  record's `declares`. Since a tag is ordinary ExUnit, `mix test --only verifies:id`
-  runs exactly the tests of one requirement. A `verifies` value that isn't a literal
-  string or list of strings raises, naming the file and line.
+  record's `declares`. They combine as ExUnit merges tags: the most specific level that
+  sets `verifies` replaces the others, a test's own `@tag` over its `describe`'s over its
+  module's, and a tag that doesn't set `verifies` leaves it as it was. A test that also
+  verifies its module's requirement names it again in its own list. Since a tag is
+  ordinary ExUnit, `mix test --only verifies:id` runs exactly the tests of one
+  requirement, and they are the tests surfex records as declaring it. A `verifies` value
+  that isn't a literal string or list of strings raises, naming the file and line.
 - **What it calls**: the record's `calls` lists the functions the test's body and the
   private helpers it reaches call, as `Module.fun/arity`, and every module it calls or
   names as a value (a module handed to a helper is exercised through it). Aliases are resolved

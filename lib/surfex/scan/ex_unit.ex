@@ -64,13 +64,24 @@ defmodule Surfex.Scan.ExUnit do
     # is inside it (`scopes`, for the helpers defined there); a body's, to that body.
     names = %{names(flatten(exprs(body))) | aliases: aliases(exprs(body))}
     scopes = scopes(exprs(body), names.aliases)
-    ctx = %{file: file, describe: nil, tags: [], setups: [], wrappers: [], aliases: names.aliases}
-    {found, _pending} = walk(exprs(body), ctx, [])
+
+    ctx = %{
+      file: file,
+      describe: nil,
+      tags: nil,
+      setups: [],
+      wrappers: [],
+      aliases: names.aliases
+    }
+
+    {found, _pending} = walk(exprs(body), ctx, nil)
     module = %{tags: module_tags(exprs(body), file), setups: setups(exprs(body))}
 
     for t <- found do
       nodes = t.wrappers ++ module.setups ++ t.setups ++ [t.node]
-      declares = Enum.uniq(module.tags ++ t.tags)
+      # As ExUnit merges tags (#149): the most specific level that sets `verifies` wins,
+      # the test's own over its describe's over its module's.
+      declares = Enum.uniq(t.tags || module.tags || [])
       describe = if t.describe, do: "#{t.describe}: ", else: ""
 
       %Scan{
@@ -275,7 +286,8 @@ defmodule Surfex.Scan.ExUnit do
     Enum.reduce(exprs, {[], pending}, fn expr, {found, pending} ->
       case expr do
         {:@, _, [{:tag, _, [value]}]} ->
-          {found, pending ++ verifies(value, expr, ctx.file)}
+          # A later `@tag verifies:` replaces an earlier one; a tag without it leaves it.
+          {found, verifies(value, expr, ctx.file) || pending}
 
         {:describe, _, [name, [do: block]]} ->
           inner = exprs(block)
@@ -284,25 +296,25 @@ defmodule Surfex.Scan.ExUnit do
             ctx
             | describe: text(name),
               aliases: Map.merge(ctx.aliases, aliases(inner)),
-              tags: ctx.tags ++ describe_tags(inner, ctx.file),
+              tags: describe_tags(inner, ctx.file),
               setups: ctx.setups ++ setups(inner)
           }
 
-          {more, _} = walk(inner, describe, [])
-          {found ++ more, []}
+          {more, _} = walk(inner, describe, nil)
+          {found ++ more, nil}
 
         {definer, _, [name | _]} = node when definer in @definers ->
           test = %{
             name: text(name),
             node: node,
             describe: ctx.describe,
-            tags: ctx.tags ++ pending,
+            tags: pending || ctx.tags,
             setups: ctx.setups,
             wrappers: ctx.wrappers,
             aliases: ctx.aliases
           }
 
-          {found ++ [test], []}
+          {found ++ [test], nil}
 
         {:for, _, args} when is_list(args) ->
           {generators, [[do: block]]} = Enum.split(args, -1)
@@ -318,11 +330,19 @@ defmodule Surfex.Scan.ExUnit do
     end)
   end
 
-  defp module_tags(exprs, file),
-    do: for({:@, _, [{:moduletag, _, [v]}]} = e <- exprs, id <- verifies(v, e, file), do: id)
+  # A level's `verifies`: the last `@moduletag` or `@describetag` that sets it, or nil when
+  # none does (the level then leaves it to the one above, as ExUnit does).
+  defp module_tags(exprs, file), do: last_set(exprs, :moduletag, file)
+  defp describe_tags(exprs, file), do: last_set(exprs, :describetag, file)
 
-  defp describe_tags(exprs, file),
-    do: for({:@, _, [{:describetag, _, [v]}]} = e <- exprs, id <- verifies(v, e, file), do: id)
+  defp last_set(exprs, attribute, file) do
+    for {:@, _, [{^attribute, _, [v]}]} = e <- exprs,
+        ids = verifies(v, e, file),
+        ids != nil,
+        reduce: nil do
+      _earlier -> ids
+    end
+  end
 
   # The setups at one level: a block is itself; a named callback (`setup :name`, or a list
   # of names) is a call, so its private definition is followed into.
@@ -346,13 +366,14 @@ defmodule Surfex.Scan.ExUnit do
   defp verifies(value, expr, file) do
     case value do
       list when is_list(list) ->
-        if Keyword.keyword?(list), do: ids(list[:verifies], expr, file), else: []
+        if Keyword.keyword?(list) and Keyword.has_key?(list, :verifies),
+          do: ids(list[:verifies], expr, file)
 
       {:%{}, _, pairs} ->
-        ids(Keyword.get(pairs, :verifies), expr, file)
+        if Keyword.has_key?(pairs, :verifies), do: ids(Keyword.get(pairs, :verifies), expr, file)
 
       _ ->
-        []
+        nil
     end
   end
 

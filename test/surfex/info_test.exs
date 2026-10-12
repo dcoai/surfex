@@ -25,7 +25,7 @@ defmodule Surfex.InfoTest do
 
   # #117, #126: the pages live with the code; the package's usage rules are one short page
   # (the agent topic) that points to them, so a project's AGENTS.md stays small and current.
-  @tag verifies: "usage-rules-shipped"
+  @tag verifies: ["usage-rules-shipped", "info-directory"]
   test "usage-rules.md is the short agent page pointing to mix surfex.info; the rest stay in priv/info" do
     root = Path.expand("../..", __DIR__)
     rules = File.read!(Path.join(root, "usage-rules.md"))

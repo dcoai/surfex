@@ -91,7 +91,7 @@ defmodule Surfex.RecordTest do
       assert state(scans("c2"), [c.first, e]) == [:current]
     end
 
-    @tag verifies: "confirm-named"
+    @tag verifies: ["confirm-named", "recording-by-name"]
     test "confirming a relation with nothing to confirm is an error, not a no-op", c do
       assert {:error, msg} =
                Record.confirm(scans(), [c.first], @code_id, "M.helper/1", :depends_on, c.note)
@@ -124,6 +124,7 @@ defmodule Surfex.RecordTest do
   describe "declining a pair never related" do
     @describetag verifies: "decline-recorded"
 
+    @tag verifies: ["decline-recorded", "recording-by-name"]
     test "retire records the decision not to relate, at both ends' versions, with its reason" do
       why = Keyword.put(@meta, :note, "add/2 is described by the wire format, not this section")
       {:ok, [declined]} = Record.retire(scans(), [], @spec_id, @code_id, :implements, why)
@@ -139,6 +140,7 @@ defmodule Surfex.RecordTest do
       assert revived.parents == [declined.id]
     end
 
+    @tag verifies: ["decline-recorded", "recording-by-name"]
     test "it needs a reason, and both ends scanned" do
       assert {:error, msg} = Record.retire(scans(), [], @spec_id, @code_id, :implements, @meta)
       assert msg =~ "note"
@@ -156,6 +158,7 @@ defmodule Surfex.RecordTest do
 
     @note [note: "adding is too slow in use"]
 
+    @tag verifies: ["mark-recorded", "recording-by-name"]
     test "mark records one needs_update mark at the unit's current version, with a note" do
       {:ok, [m]} = Record.mark(scans(), [], @spec_id, :needs_update, @meta ++ @note)
 
@@ -627,6 +630,25 @@ defmodule Surfex.RecordTest do
       assert state(world("s1", "c2"), confirmed() ++ recorded) |> Enum.all?(&(&1 == :current))
     end
 
+    # #171: what recording-by-name asks of confirm_by_evidence: it re-records, never edits.
+    @tag verifies: "recording-by-name"
+    test "confirming by evidence appends entries on the relations' tips, leaving them as they were" do
+      tips = confirmed()
+      ids = MapSet.new(tips, & &1.id)
+      evidence = [ev(:failed, "c1", 1), ev(:passed, "c2", 2)]
+      {:ok, recorded} = Record.confirm_by_evidence(world("s1", "c2"), tips, evidence, @meta)
+
+      relations = Enum.filter(recorded, &Entry.relation?/1)
+      assert relations != []
+
+      assert Enum.all?(
+               relations,
+               &(&1.parents != [] and Enum.all?(&1.parents, fn p -> p in ids end))
+             )
+
+      refute Enum.any?(recorded, &MapSet.member?(ids, &1.id))
+    end
+
     test "evidence for one arity of a function carries the arity the spec names" do
       located = &%{scan(:code, &1, &2) | location: %{file: "lib/m.ex", lines: {3, 5}}}
 
@@ -871,7 +893,7 @@ defmodule Surfex.RecordTest do
     end
 
     # #98: a test this job excluded wasn't checked here; that isn't a disproof.
-    @tag verifies: "evidence-excluded"
+    @tag verifies: ["evidence-excluded", "evidence-checked"]
     test "a test excluded or skipped in this run leaves its claims not checked here, not failing" do
       for reason <- [:excluded, :skipped] do
         status = Status.derive(world("s1", "c2"), claimed(), [], evidence: [ev(reason, nil, 5)])
@@ -893,7 +915,7 @@ defmodule Surfex.RecordTest do
     end
 
     # #98: each CI job's evidence, read together in a final job.
-    @tag verifies: "evidence-merged"
+    @tag verifies: ["evidence-merged", "evidence-checked"]
     test "merged jobs: one bearing a claim out passes it, a disproof anywhere fails, and none checking it fails" do
       merged = fn files ->
         Status.derive(world("s1", "c2"), claimed(), [], evidence: {:merged, files})
@@ -1265,6 +1287,30 @@ defmodule Surfex.RecordTest do
              ]
 
       assert Status.derive(world(), [impl, tests, ver | recorded]).unvalidated == []
+    end
+
+    # #171: what recording-by-name asks of validate, now that a test's own tag no longer
+    # inherits it: both ends named by id, an unscanned one refused, and nothing edited.
+    @tag verifies: "recording-by-name"
+    test "validate names its test and unit by id, refuses an unscanned one, and only appends" do
+      impl = rel(:implements, {:spec, @hint, "h1"}, {:code, @code_id, "c1"})
+      tests = rel(:tests, {:test, @t, "t1"}, {:code, @code_id, "c1"})
+      ver = rel(:verifies, {:test, @t, "t1"}, {:spec, @hint, "h1"})
+      note = Keyword.put(@meta, :note, "asserts a closed cart is refused")
+      green = [ev(:passed, "c1", 1)]
+      log = [impl, tests, ver]
+
+      assert {:error, msg} = Record.validate(world(), log, "T: nowhere", @hint, green, note)
+      assert msg =~ "T: nowhere" and msg =~ "not scanned"
+
+      assert {:error, msg} = Record.validate(world(), log, @t, "spec.md#nowhere", green, note)
+      assert msg =~ "spec.md#nowhere" and msg =~ "not scanned"
+
+      {:ok, recorded} = Record.validate(world(), log, @t, @hint, green, note)
+
+      # Each review is a new entry on its relation's tip; the tips stay as they were.
+      assert Enum.sort(Enum.map(recorded, & &1.parents)) == Enum.sort([[impl.id], [ver.id]])
+      refute Enum.any?(recorded, &(&1.id in [impl.id, ver.id]))
     end
 
     # #138: a review records what isn't validated already. A verifies on its failing run

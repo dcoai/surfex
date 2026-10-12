@@ -166,7 +166,7 @@ defmodule Surfex.LogTest do
     end
 
     # #73: a mark says the spec unit itself needs to change. It has one end.
-    @tag verifies: "mark-entry"
+    @tag verifies: ["mark-entry", "entry-canonical"]
     test "a mark is one spec end, op mark, type needs_update; relations keep their ids" do
       unit = %{kind: :spec, id: "spec.md#S1", hash: "s1"}
       base = [at: "2026-09-28T10:00:01Z", op: :mark, type: :needs_update, note: "too slow"]
@@ -213,7 +213,7 @@ defmodule Surfex.LogTest do
       assert entry(1).id == "3b1ab3f7ab2d842901c79e8a11f9d92d0bbd9be370123640ed59a1587adcf6b8"
     end
 
-    @tag verifies: "log-entries"
+    @tag verifies: ["log-entries", "entry-canonical"]
     test "decode says why a line isn't an entry; text that isn't JSON raises" do
       line = Entry.encode(entry(1))
       map = Entry.json(line)
@@ -230,7 +230,7 @@ defmodule Surfex.LogTest do
       assert_raise ErlangError, fn -> Entry.decode("{not json") end
     end
 
-    @tag verifies: "entry-tamper"
+    @tag verifies: ["entry-tamper", "entry-canonical"]
     test "an edited line no longer decodes as its id" do
       line = entry(1) |> Entry.encode() |> String.replace(~s("hash":"c1"), ~s("hash":"cX"))
       assert {:error, msg} = Entry.decode(line)
