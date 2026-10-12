@@ -31,6 +31,7 @@ defmodule Surfex.Scanner.Elixir do
   @behaviour Surfex.Scanner
 
   alias Surfex.{Item, SourceScan}
+  alias Surfex.SourceScan.Calls
 
   @doc """
   Every module and public definition under `root`, sorted by key. See the moduledoc for
@@ -111,6 +112,7 @@ defmodule Surfex.Scanner.Elixir do
     |> Enum.reject(fn {_name, node} -> SourceScan.hidden_module?(node) end)
     |> Enum.flat_map(fn {parts, node} ->
       module = Enum.map_join(parts, ".", &Atom.to_string/1)
+      calls = definition_calls(node, module)
 
       [
         %Item{
@@ -130,7 +132,8 @@ defmodule Surfex.Scanner.Elixir do
             file: file,
             hash: hash,
             aliases: ["#{module}.#{name}"],
-            lines: lines
+            lines: lines,
+            calls: Map.fetch!(calls, {name, arity})
           }
         end ++
         for %{name: name, arity: arity, hash: hash, lines: lines} <- SourceScan.types(node) do
@@ -147,4 +150,57 @@ defmodule Surfex.Scanner.Elixir do
         end
     end)
   end
+
+  # What each public definition calls (§5.2), by `{name, arity}`: what its clauses and the
+  # private helpers they reach call (`Surfex.SourceScan.Calls`). A local call to one of the
+  # module's public definitions is a call to it; to anything the module doesn't define,
+  # a call under each module it imports. A `defdelegate` calls its target.
+  defp definition_calls({:defmodule, _, [_aliases, [do: body]]} = node, module) do
+    names = Calls.names(exprs(body), module)
+    public = node |> SourceScan.defs() |> MapSet.new(&{&1.name, &1.arity})
+
+    local = fn {fun, arity} = call ->
+      cond do
+        MapSet.member?(public, call) -> [Calls.call(module, fun, arity)]
+        call in names.defined -> []
+        true -> Enum.map(names.imports, &Calls.call(&1, fun, arity))
+      end
+    end
+
+    Map.new(SourceScan.definition_nodes(node), fn {key, nodes} ->
+      {delegates, clauses} = Enum.split_with(nodes, &match?({:defdelegate, _, _}, &1))
+      bodies = for n <- SourceScan.closure_nodes(node, clauses), do: {n, names.aliases}
+
+      {key,
+       Enum.sort(
+         Enum.uniq(
+           Calls.of(bodies, local) ++ Enum.flat_map(delegates, &delegated(&1, names.aliases))
+         )
+       )}
+    end)
+  end
+
+  # `defdelegate fun(args), to: Mod` (`as: :other`) calls `Mod.fun/arity` and names `Mod`.
+  defp delegated({:defdelegate, _, [head, opts]}, aliases) when is_list(opts) do
+    {name, args} =
+      case head do
+        {:when, _, [{name, _, args} | _]} -> {name, args}
+        {name, _, args} -> {name, args}
+      end
+
+    case Keyword.get(opts, :to) do
+      {:__aliases__, _, parts} ->
+        target = Calls.expand(parts, aliases)
+        [target, Calls.call(target, Keyword.get(opts, :as, name), length(List.wrap(args)))]
+
+      _other ->
+        []
+    end
+  end
+
+  defp delegated(_node, _aliases), do: []
+
+  defp exprs({:__block__, _, list}), do: list
+  defp exprs(nil), do: []
+  defp exprs(one), do: [one]
 end

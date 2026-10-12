@@ -24,7 +24,8 @@ defmodule Surfex.Item do
     :detail,
     :lines,
     aliases: [],
-    shape: false
+    shape: false,
+    calls: []
   ]
 
   @type t :: %__MODULE__{
@@ -52,7 +53,10 @@ defmodule Surfex.Item do
           lines: {pos_integer, pos_integer} | nil,
           # A shape has no behaviour of its own (a type): no test run exercises it, so an
           # `implements` relation to it is validated by judgement (§18). The scanner says so.
-          shape: boolean
+          shape: boolean,
+          # The keys of the code it calls, as far as its source says: a fact, never part of its
+          # key or version. Empty when the scanner doesn't know (§4).
+          calls: [String.t()]
         }
 
   @doc """

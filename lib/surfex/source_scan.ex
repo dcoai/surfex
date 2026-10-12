@@ -192,6 +192,20 @@ defmodule Surfex.SourceScan do
     Surfex.SourceScan.Closure.reach(nodes, groups)
   end
 
+  @doc false
+  # The clauses of each public definition `defs/1` reports, by `{name, arity}`: every
+  # arity a default argument generates has the function's one set of clauses.
+  @spec definition_nodes(Macro.t()) :: %{{atom, non_neg_integer} => [Macro.t()]}
+  def definition_nodes({:defmodule, _, [_aliases, [do: body]]}) do
+    {grouped, groups, _attributes} = definitions(body)
+
+    for {{name, arity} = key, [first | _]} <- grouped,
+        first.kind != :private and first.visible,
+        a <- (arity - groups[key].defaults)..arity//1,
+        into: %{},
+        do: {{name, a}, groups[key].nodes}
+  end
+
   # The module's definitions grouped by name and arity (each clause kept), the same as
   # hashing needs them (%{nodes, defaults, private}), and its attributes' values.
   defp definitions(body) do
