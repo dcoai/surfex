@@ -212,6 +212,58 @@ defmodule Surfex.EvidenceTest do
              ] = Evidence.load(Evidence.path(root))
     end
 
+    # #183: the run records the versions of what a test reaches, not only what it calls.
+    @tag verifies: ["evidence-reach", "evidence-recorded"]
+    test "a run records the versions of the code a test reaches through an entry point", %{
+      tmp_dir: root
+    } do
+      File.write!(Path.join(root, "lib/my_app/checkout.ex"), """
+      defmodule MyApp.Checkout do
+        @moduledoc "Checkout."
+        def run(item), do: MyApp.Cart.Line.new(item)
+      end
+      """)
+
+      file = Path.join(root, "test/checkout_test.exs")
+
+      File.write!(file, """
+      defmodule MyApp.CheckoutTest do
+        use ExUnit.Case
+
+        test "a line per item" do
+          assert MyApp.Checkout.run(:apple) == {:apple, 1}
+        end
+      end
+      """)
+
+      {:ok, pid} = GenServer.start_link(Surfex.ExUnitFormatter, surfex_root: root)
+      GenServer.cast(pid, {:suite_started, []})
+
+      GenServer.cast(
+        pid,
+        {:test_finished,
+         %ExUnit.Test{
+           name: :t,
+           module: MyApp.CheckoutTest,
+           state: nil,
+           tags: %{file: file, line: 4}
+         }}
+      )
+
+      GenServer.cast(pid, {:suite_finished, %{}})
+      GenServer.stop(pid)
+
+      assert [%{test: "MyApp.CheckoutTest: a line per item", code: code}] =
+               Evidence.load(Evidence.path(root))
+
+      assert Map.keys(code) == [
+               "MyApp.Cart.Line",
+               "MyApp.Cart.Line.new/1",
+               "MyApp.Checkout",
+               "MyApp.Checkout.run/1"
+             ]
+    end
+
     # #98: a job that excludes a tag says so, so an excluded test isn't one that didn't run.
     @tag verifies: ["evidence-excluded", "evidence-recorded"]
     test "an excluded or skipped test is recorded as such at its version, with no code",

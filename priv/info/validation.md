@@ -21,6 +21,13 @@ current test and code versions. The unit may be a section whose hint the test al
 verifies: the review then records the section's `implements` for the code the test
 exercises. The note says which assertion checks which claim.
 
+**Code behind an entry point**: a test reaches what it calls and, transitively, what that
+code calls, as the source states it. So a unit may cite the function doing the work while
+its test drives the public entry point: evidence and a review credit the cited function's
+`implements`, and the triangle counts it exercised. Reach never makes a relation: `tests`
+names what the test calls itself. Code reached only at run time (messages, dispatch by
+name) isn't reached by reading the source.
+
 **Many at once**: `--file PATH` on `confirm` or `validate` records a file of relations in one
 run, one per line, tab-separated, each line ending with its own note (`FROM TO TYPE NOTE`,
 or `TEST UNIT NOTE`). The notes must be distinct; write each line after judging that
