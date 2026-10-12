@@ -50,6 +50,12 @@ which tests declare what.
   `suggest`) no longer sees the code its tests call reported as untested. A call to code not
   written yet still shows the code missing. Gaps can only shrink.
 
+- **Completeness counts a function once, whatever its default arguments** (#182). A
+  function's default-argument arities (`f/2`, `f/3`) are one code item, as they already
+  were to `require:`, the triangle and `validate`. They're judged together, counted once,
+  and listed under the first id. A relation per arity is no longer needed to score 100%,
+  and the code total now counts definitions, so it may drop.
+
 ### Upgrading
 
 - `mix surfex.status` lists the relations a test no longer declares under

@@ -133,6 +133,24 @@ defmodule Surfex.CompletenessTest do
              }
     end
 
+    # #182: a function's default-argument arities are one code item, as they are to require:,
+    # the triangle and validate.
+    test "code: a definition's default-argument arities are one item, judged together" do
+      two = code("M.f/2", 9)
+      three = %{two | id: "M.f/3"}
+      s = Markdown.sections(@spec_md, "spec.md") ++ [two, three, test_scan("T: one", 1)]
+
+      entries = [
+        rel(s, :implements, {:spec, "spec.md#a"}, {:code, "M.f/2"}, :review),
+        rel(s, :verifies, {:test, "T: one"}, {:spec, "spec.md#h"}, :evidence),
+        rel(s, :tests, {:test, "T: one"}, {:code, "M.f/3"}, nil)
+      ]
+
+      report = Completeness.report(Status.derive(s, entries))
+      assert report.scores.code == %{complete: 1, total: 1, percent: 100.0}
+      assert missing(report, :code) == %{}
+    end
+
     test "each incomplete item says where it is" do
       assert %{location: %{file: "lib/m.ex", lines: {3, 3}}} =
                Enum.find(Completeness.report(status()).incomplete, &(&1.id == "M.c/0"))
