@@ -49,6 +49,9 @@ test:
     # This run's evidence only: _build is cached between pipelines, and CI must judge the
     # log's claims by what it sees now.
     - rm -f _build/surfex/evidence.jsonl
+    # This commit's code only: the _build cache is shared by every pipeline, so an
+    # incremental compile can run beams another commit built (#172). Deps stay cached.
+    - mix compile --force
     - mix test
     # Every relation in .surfex/ still holds, every public item implements a spec section
     # and every test hint is verified (require: in .surfex.exs), the log verifies, and every
@@ -62,6 +65,7 @@ goldens:
   stage: check
   script:
     # Every golden in .surfex.exs: RELATIONS.md, where a stale committed record fails.
+    - mix compile --force
     - mix surfex.goldens
 
 docs:
@@ -93,5 +97,22 @@ model:
     - git config --global url."https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/".insteadOf "https://${CI_SERVER_HOST}/"
     - git config --global --add url."https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/".insteadOf "git@${CI_SERVER_HOST}:"
     - mix deps.get --only model
+    - mix compile --force
     # Every invariant in every state the bounded model reaches (spec §22).
     - mix test test/surfex/relation_log_model_test.exs
+
+# The recurrence guard for #172: the model several times in one job, from a fresh compile,
+# reporting how many runs failed. Manual, so it costs nothing until someone asks the rate.
+model:repeat:
+  extends: model
+  when: manual
+  allow_failure: true
+  variables:
+    MODEL_RUNS: "10"
+  script:
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends git ca-certificates > /dev/null
+    - git config --global url."https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/".insteadOf "https://${CI_SERVER_HOST}/"
+    - git config --global --add url."https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/".insteadOf "git@${CI_SERVER_HOST}:"
+    - mix deps.get --only model
+    - mix compile --force
+    - failed=0; for i in $(seq 1 "$MODEL_RUNS"); do mix test test/surfex/relation_log_model_test.exs > "run_$i.log" 2>&1 || { failed=$((failed + 1)); echo "run $i failed"; grep -m1 -A2 "VIOLATION" "run_$i.log"; }; done; echo "model runs failed $failed of $MODEL_RUNS"; test "$failed" -eq 0
