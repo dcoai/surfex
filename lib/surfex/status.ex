@@ -685,8 +685,8 @@ defmodule Surfex.Status do
   # A current relation confirmed by evidence (`Surfex.Evidence.claimed?/1`) whose claim the
   # given evidence (this run's) doesn't bear out: its test, at the version the relation
   # holds, must have passed against the code's version. For `implements`, some test with
-  # a current `verifies` to the spec unit (or inside it) and a current `tests` to the code
-  # must. `nil` evidence means no check; `{:merged, runs}` is several CI jobs' runs (§17).
+  # a current `verifies` to the spec unit (or inside it) that has a current `tests` to the
+  # code, or reaches it (§13.1), must. `nil` evidence means no check; `{:merged, runs}` is several CI jobs' runs (§17).
   defp unproven(_scans, _relations, nil), do: []
 
   defp unproven(scans, relations, evidence) do
@@ -694,7 +694,8 @@ defmodule Surfex.Status do
     within = for %Scan{kind: :spec, within: w} = s <- scans, w != nil, into: %{}, do: {s.id, w}
     current = for %{state: :current, tip: %Entry{} = tip} = r <- relations, do: {r, tip}
     pairs = fn type -> for {%{type: ^type, relation: {_, a, b}}, _} <- current, do: {a, b} end
-    tests = pairs.(:tests)
+    reached = for {t, ids} <- Scan.reach(scans), id <- ids, do: {{:test, t}, {:code, id}}
+    tests = pairs.(:tests) ++ reached
     verifies = pairs.(:verifies)
 
     judge = fn r, tip, run -> disproved(r, tip, run, tests, verifies, {within, definition}) end

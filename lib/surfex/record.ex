@@ -930,9 +930,16 @@ defmodule Surfex.Record do
 
     definition = definitions(status)
 
+    # A test exercises the code through a current tests relation, or by reaching it (§13.1):
+    # a test driving the entry point that hands the work to the cited function.
+    reached =
+      for {t, ids} <- Scan.reach(Map.values(status.scans)),
+          id <- ids,
+          do: {{:test, t}, {:code, id}}
+
     exercising =
       MapSet.new(
-        for {{:test, t}, {:code, other}} <- live.(:tests),
+        for {{:test, t}, {:code, other}} <- live.(:tests) ++ reached,
             definition.(other) == Scan.definition(code),
             do: t
       )

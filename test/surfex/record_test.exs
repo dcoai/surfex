@@ -965,6 +965,70 @@ defmodule Surfex.RecordTest do
 
   # #72: a current relation means validated, not asserted.
   # #137: a type has no behaviour for a run to exercise, so its implements is judged.
+  # #183: a section cites the function doing the work (M.add/2); its test drives the entry
+  # point (M.run/0) that calls it.
+  describe "code reached through an entry point" do
+    @describetag verifies: "evidence-reach"
+
+    @entry "M.run/0"
+    @driver "T: through the entry"
+
+    defp reach_world(code \\ "c2", calls \\ [@code_id]),
+      do: [
+        scan(:spec, @spec_id, "s1"),
+        %{scan(:spec, "spec.md#h", "h1") | role: :test_hint, within: @spec_id},
+        %{scan(:code, @entry, "e1") | calls: calls},
+        scan(:code, @code_id, code),
+        %{scan(:test, @driver, "t1") | declares: [{:verifies, "spec.md#h"}], calls: [@entry]}
+      ]
+
+    defp reach_ev(result, code_hash, n),
+      do: %{
+        test: @driver,
+        test_hash: "t1",
+        result: result,
+        at: "2026-09-28T1#{n}:00:00Z",
+        run: "r#{n}",
+        seq: 0,
+        code: %{@entry => "e1", @code_id => code_hash}
+      }
+
+    # The section implemented by M.add/2, the test verifying its hint and testing the entry
+    # point; no tests relation names M.add/2.
+    defp through_entry(code_hash),
+      do: [
+        on(rel(:implements, {:spec, @spec_id, "s1"}, {:code, @code_id, code_hash}), :evidence),
+        on(rel(:verifies, {:test, @driver, "t1"}, {:spec, "spec.md#h", "h1"}), :evidence),
+        rel(:tests, {:test, @driver, "t1"}, {:code, @entry, "e1"})
+      ]
+
+    test "red then green carries implements to the code the test reaches; with the path cut, nothing does" do
+      evidence = [reach_ev(:failed, "c1", 1), reach_ev(:passed, "c2", 2)]
+
+      {:ok, recorded} =
+        Record.confirm_by_evidence(reach_world(), through_entry("c1"), evidence, @meta)
+
+      assert [%Entry{type: :implements, basis: :evidence} = carried] =
+               Enum.filter(recorded, &Entry.relation?/1)
+
+      assert carried.note =~ "#{@driver} verifies #{@spec_id}"
+      assert state(reach_world(), through_entry("c1") ++ recorded) |> Enum.all?(&(&1 == :current))
+
+      # The entry point no longer calls it: the test doesn't reach it, and carries nothing.
+      {:ok, none} =
+        Record.confirm_by_evidence(reach_world("c2", []), through_entry("c1"), evidence, @meta)
+
+      assert Enum.filter(none, &Entry.relation?/1) == []
+    end
+
+    test "the check bears a reached claim out against the code's version, or reports other code" do
+      check = &Status.derive(reach_world(), through_entry("c2"), [], evidence: &1).unproven
+
+      assert check.([reach_ev(:passed, "c2", 5)]) == []
+      assert [%{reason: :other_code, test: @driver}] = check.([reach_ev(:passed, "c9", 5)])
+    end
+  end
+
   describe "shapes" do
     @describetag verifies: "shapes-by-judgement"
 

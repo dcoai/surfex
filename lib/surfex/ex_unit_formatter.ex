@@ -1,7 +1,8 @@
 defmodule Surfex.ExUnitFormatter do
   @moduledoc """
   An ExUnit formatter that records test evidence (`Surfex.Evidence`): for each test that
-  ran, whether it passed, at its exact version, with the versions of the code it calls.
+  ran, whether it passed, at its exact version, with the versions of the code it reaches:
+  what it calls, and what that code calls (`Surfex.Scan.reach/1`).
 
   Add it beside the usual formatter, in `test/test_helper.exs`:
 
@@ -35,6 +36,7 @@ defmodule Surfex.ExUnitFormatter do
        path: Keyword.get(opts, :surfex_evidence, Evidence.path(root)),
        index: nil,
        code: %{},
+       reach: %{},
        finished: []
      }}
   end
@@ -49,9 +51,10 @@ defmodule Surfex.ExUnitFormatter do
               "Surfex.ExUnitFormatter needs tests: in .surfex.exs, to know the tests"
 
     tests = Scan.ExUnit.records(state.root, globs)
-    code = for s <- Scan.code(Config.items(config, state.root)), into: %{}, do: {s.id, s.hash}
+    scans = Scan.code(Config.items(config, state.root))
+    code = for s <- scans, into: %{}, do: {s.id, s.hash}
     index = Enum.group_by(tests, &Path.expand(&1.location.file, state.root))
-    {:noreply, %{state | index: index, code: code}}
+    {:noreply, %{state | index: index, code: code, reach: Scan.reach(tests ++ scans)}}
   end
 
   def handle_cast(
@@ -116,11 +119,11 @@ defmodule Surfex.ExUnitFormatter do
     |> Enum.map(fn {{scan, outcomes}, seq} ->
       result = result(outcomes)
 
-      # A test that didn't run was run against no code.
+      # A test that didn't run was run against no code; one that ran, against everything it
+      # reaches.
       code =
         if result in [:passed, :failed],
-          do:
-            for(id <- scan.calls, hash = state.code[id], hash != nil, into: %{}, do: {id, hash}),
+          do: for(id <- Map.get(state.reach, scan.id, []), into: %{}, do: {id, state.code[id]}),
           else: %{}
 
       %{
