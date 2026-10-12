@@ -9,7 +9,8 @@ defmodule Surfex.Status.Config do
       named capture `id` (`Surfex.Scan.Markdown.heading_grammar/1`)
     * `:scanner`, `:scanner_opts` — the code scanner (`:elixir` by default)
     * `:require` — `[key: [type, …]]`: a key is a kind (`:spec`, `:code`, `:test`, …) or
-      a spec role (`:section`, `:block`, `:test_hint`), validated with the types
+      a spec role (`:section`, `:block`, `:test_hint`, `:table`, `:row`), validated with the
+      types
     * `:tests` — globs of ExUnit test files, scanned for tests (`Surfex.Scan.ExUnit`)
       when present
     * `:triangle` — `:report` (the default) or `:fail`: whether gaps in the spec/test/code
@@ -21,7 +22,7 @@ defmodule Surfex.Status.Config do
   alias Surfex.Log.Entry
   alias Surfex.Scan
 
-  @roles [:section, :block, :test_hint]
+  @roles [:section, :block, :test_hint, :table, :row]
 
   # The keys a `.surfex.exs` may hold, besides the profile's (`Surfex.Profile.keys/0`).
   @own [

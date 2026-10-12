@@ -458,4 +458,113 @@ defmodule Surfex.ScanTest do
       assert ids == Enum.map(direct, & &1.id)
     end
   end
+
+  # #179 (B.0): a marked table's rows are units, keyed by what the row says.
+  describe "marked tables" do
+    @describetag verifies: ["table-rows"]
+
+    @modes """
+    # Selection
+
+    Prose before.
+
+    <!-- surfex: table modes -->
+
+    | Mode | Started by | Extent |
+    |---|---|---|
+    | `:normal` | drag | anchor to focus |
+    | **`:word`** | double-click | word boundaries |
+
+    Prose after.
+    """
+
+    defp table_units(text), do: Markdown.sections(text, "spec.md")
+    defp table_unit(text, id), do: Enum.find(table_units(text), &(&1.id == "spec.md#" <> id))
+
+    test "the table and each row are units, keyed by the first column without code or emphasis" do
+      assert [
+               %{id: "spec.md#Selection", role: :section},
+               %{id: "spec.md#modes", role: :table, within: "spec.md#Selection"},
+               %{id: "spec.md#modes/:normal", role: :row, within: "spec.md#modes"},
+               %{id: "spec.md#modes/:word", role: :row, within: "spec.md#modes"}
+             ] = table_units(@modes)
+
+      assert table_unit(@modes, "modes/:word").location.lines == {10, 10}
+
+      # Unmarked, the same table is body, as before.
+      assert [%{id: "spec.md#Selection"}] =
+               table_units(String.replace(@modes, "<!-- surfex: table modes -->\n", ""))
+    end
+
+    test "key: names the key column; a key may hold spaces, and a code span may hold a pipe" do
+      text = """
+      # S
+
+      <!-- surfex: table ops key: Started by -->
+      | Mode | Started by |
+      |:---|---:|
+      | a | double click |
+      | b | `x|y` |
+      """
+
+      ids = for %{role: :row, id: id} <- table_units(text), do: id
+      assert ids == ["spec.md#ops/double click", "spec.md#ops/x|y"]
+    end
+
+    test "editing a row changes only that row's version, not the table's or the section's" do
+      before = Map.new(table_units(@modes), &{&1.id, &1.hash})
+      edited = String.replace(@modes, "anchor to focus", "anchor to the focus")
+      after_edit = Map.new(table_units(edited), &{&1.id, &1.hash})
+
+      changed = for {id, hash} <- after_edit, before[id] != hash, do: id
+      assert changed == ["spec.md#modes/:normal"]
+
+      # The prose around the table is still the section's.
+      reworded = String.replace(@modes, "Prose after.", "Other prose.")
+      refute table_unit(reworded, "Selection").hash == before["spec.md#Selection"]
+    end
+
+    test "a table may sit in a block, and ends at the first line that isn't a table line" do
+      text = """
+      # S
+
+      <!-- surfex: rule -->
+      <!-- surfex: table t -->
+      | K | V |
+      |---|---|
+      | a | 1 |
+      Still the rule.
+      <!-- /surfex -->
+      """
+
+      assert %{within: "spec.md#rule"} = table_unit(text, "t")
+      assert %{within: "spec.md#t"} = table_unit(text, "t/a")
+      rule = table_unit(text, "rule")
+
+      refute rule.hash ==
+               table_unit(String.replace(text, "Still the rule.", "Changed."), "rule").hash
+    end
+
+    @table_errors [
+      {"a marker with no table", "# S\n\n<!-- surfex: table t -->\n\nprose\n",
+       "spec.md:3: table t has no table after its marker"},
+      {"a marker at the end", "# S\n<!-- surfex: table t -->\n",
+       "spec.md:2: table t has no table after its marker"},
+      {"no separator row", "# S\n<!-- surfex: table t -->\n| K |\n| a |\n",
+       "spec.md:4: table t has no separator row under its header"},
+      {"an unknown key column", "# S\n<!-- surfex: table t key: Nope -->\n| K |\n|---|\n| a |\n",
+       "spec.md:2: table t has no column \"Nope\""},
+      {"an empty key", "# S\n<!-- surfex: table t -->\n| K | V |\n|---|---|\n|  | 1 |\n",
+       "spec.md:5: a row of table t has an empty key"},
+      {"a repeated key", "# S\n<!-- surfex: table t -->\n| K |\n|---|\n| a |\n| `a` |\n",
+       "spec.md:6: spec.md#t/a is already the id of line 5"}
+    ]
+
+    for {name, text, message} <- @table_errors do
+      test "raises on #{name}" do
+        error = assert_raise ArgumentError, fn -> table_units(unquote(text)) end
+        assert error.message =~ unquote(message)
+      end
+    end
+  end
 end
