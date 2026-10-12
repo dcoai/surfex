@@ -11,6 +11,8 @@ defmodule Surfex.Completeness do
       exercises code; verifying only units no code implements, its `verifies` is enough.
     * **Code** is complete when it implements a unit by a current, validated relation, or
       is excused by a current one; and, when implemented, a verifying test exercises it.
+      Code is one item per definition: a function's default-argument arities are judged
+      together and counted once.
   """
 
   alias Surfex.{Golden, Scan}
@@ -37,11 +39,25 @@ defmodule Surfex.Completeness do
     within = for {{:spec, id}, %Scan{within: w}} <- status.scans, w != nil, into: %{}, do: {id, w}
     scans = status.scans |> Map.values() |> Enum.sort_by(&{&1.kind, &1.id})
 
-    judged =
+    units_and_tests =
       for %Scan{kind: kind} = scan <- scans,
-          kind in [:spec, :test, :code],
+          kind in [:spec, :test],
           kind != :spec or not Markdown.empty?(scan),
           do: {kind, scan, missing(kind, scan, live, within, status)}
+
+    # Code is one item per definition (`Scan.definition/1`), as it is to `require:`, the
+    # triangle and validate: a function's default-argument arities are judged together,
+    # counted once, and listed under the first of their ids.
+    code =
+      for group <-
+            scans
+            |> Enum.filter(&(&1.kind == :code))
+            |> Enum.group_by(&Scan.definition/1)
+            |> Map.values(),
+          group = Enum.sort_by(group, & &1.id),
+          do: {:code, hd(group), missing_code(group, live, status)}
+
+    judged = Enum.sort_by(units_and_tests ++ code, fn {kind, scan, _} -> {kind, scan.id} end)
 
     scores =
       for {kind, _label} <- @kinds, into: %{} do
@@ -103,7 +119,14 @@ defmodule Surfex.Completeness do
       if exercises or code_less, do: [], else: [:exercises_nothing]
   end
 
-  defp lacks(:code, scan, touching, _live, _within, status) do
+  defp missing_code(group, live, status) do
+    keys = for s <- group, do: {:code, s.id}
+    ids = for s <- group, do: s.id
+    touching = Enum.filter(live, fn r -> Enum.any?(ends(r), &(&1 in keys)) end)
+    if touching == [], do: [:no_relation], else: lacks_code(ids, touching, status)
+  end
+
+  defp lacks_code(ids, touching, status) do
     implements = for %{relation: {:implements, _, _}} = r <- touching, do: r
     excused = Enum.any?(touching, &match?(%{relation: {:excuses, _, _}, state: :current}, &1))
 
@@ -115,8 +138,7 @@ defmodule Surfex.Completeness do
         []
 
       true ->
-        untested =
-          Enum.any?(status.triangle, &(&1.gap == :code_untested and &1.code == scan.id))
+        untested = Enum.any?(status.triangle, &(&1.gap == :code_untested and &1.code in ids))
 
         if(Enum.all?(implements, &validated?(status, &1)), do: [], else: [:unvalidated]) ++
           if untested, do: [:untested], else: []

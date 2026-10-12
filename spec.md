@@ -1908,7 +1908,7 @@ complete means validated, not asserted.
 |---|---|---|
 | spec unit | a test verifies it, or a unit inside it, by a current, validated relation; and every `implements` relation to it is current and validated. A unit no code implements (a policy, say) is complete with its test alone: every unit needs a test, and code only where the spec describes code | `no_relation` (in none), `no_test`, `unvalidated` |
 | test | it verifies a spec unit by a current, validated relation, and exercises code (a current `tests` relation). A test verifying only units no code implements is complete with its `verifies` alone | `no_relation`, `verifies_nothing`, `exercises_nothing` |
-| code | it implements a unit by a current, validated relation, or is excused by a current `excuses` relation; and, when implemented, a test verifying the unit exercises it (no `code_untested` gap, §13.1) | `no_relation`, `not_described` (neither implemented nor excused), `unvalidated`, `untested` |
+| code | it implements a unit by a current, validated relation, or is excused by a current `excuses` relation; and, when implemented, a test verifying the unit exercises it (no `code_untested` gap, §13.1). Code is one item per definition (§11): a function's default-argument arities are judged together and counted once, listed under the first of their ids | `no_relation`, `not_described` (neither implemented nor excused), `unvalidated`, `untested` |
 
 **The score** is complete items over all items, per kind and overall (every item weighted
 the same), as a percentage to one decimal with the counts. With nothing to count, a kind
@@ -1933,7 +1933,8 @@ a spec unit is complete when a validated test verifies it (or a unit inside it) 
 implementing code is validated, with a test alone for a unit no code implements; a
 heading-only section isn't counted; a test is complete verifying and exercising code, or
 verifying only code-less units; code is complete when validated and exercised, or
-excused; each incomplete item names what it lacks
+excused, one item per definition whatever its default-argument arities; each incomplete
+item names what it lacks
 ```
 
 ```test completeness-score
