@@ -18,6 +18,14 @@ which tests declare what.
   surfex disagreed with `mix test --only verifies:id`, and a test could be recorded as
   verifying its module's requirement without anyone having judged it. §11 states the rule.
 
+### Fixed
+
+- **The triangle reads what a test calls from the source** (#173). A test counts as
+  exercising code when its scan record calls it, as well as when a `tests` relation records
+  it, compared by definition. A project that doesn't record `tests` relations (by running
+  `suggest`) no longer sees the code its tests call reported as untested. A call to code not
+  written yet still shows the code missing. Gaps can only shrink.
+
 ### Upgrading
 
 - `mix surfex.status` lists the relations a test no longer declares under

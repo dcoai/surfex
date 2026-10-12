@@ -301,6 +301,29 @@ defmodule Surfex.StatusTest do
       refute Scan.definition(two) == Scan.definition(%{three | hash: "c2"})
     end
 
+    # #173: a call the source states counts whether or not a `tests` relation records it,
+    # by definition, so a test calling `f/2` reaches the `f/3` a section names.
+    test "a test's scanned calls reach the code, with no tests relation recorded" do
+      two = %{scan(:code, "M.add/2", "c1") | location: %{file: "lib/m.ex", lines: {3, 5}}}
+      three = %{two | id: "M.add/3"}
+      caller = %{scan(:test, "T: a", "t1") | calls: ["M.add/2"]}
+      scans = [caller, scan(:spec, @spec_id, "s1"), two, three]
+      entries = [rel(:implements, @s, {:code, "M.add/3", "c1"}), rel(:verifies, @t, @s)]
+
+      assert Status.derive(scans, entries).triangle == []
+
+      # Without the call, and with nothing recorded, both sides are open.
+      assert [%{gap: :test_misses_code}, %{gap: :code_untested, code: "M.add/3"}] =
+               Status.derive([%{caller | calls: []} | tl(scans)], entries).triangle
+
+      # A call to code not written yet exercises nothing: the code is still missing.
+      planned = [rel(:implements, @s, {:code, "M.sub/1", "c1"}), rel(:verifies, @t, @s)]
+      waiting = [%{caller | calls: ["M.sub/1"]}, scan(:spec, @spec_id, "s1")]
+
+      assert [%{gap: :test_misses_code}, %{gap: :code_untested}] =
+               Status.derive(waiting, planned).triangle
+    end
+
     test "a test verifying a block or hint inside the section counts for it" do
       hint = %{scan(:spec, "spec.md#h", "h1") | role: :test_hint, within: @spec_id}
 

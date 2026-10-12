@@ -1034,6 +1034,12 @@ missing:
 - `:code_untested`: code implements it that no verifying test exercises, naming the
   code.
 
+A test exercises code when a live `tests` relation says so, or when its scan record's
+`calls` (§11) name it. A call is a fact the source states, so the triangle doesn't wait
+for it to be recorded, and a project that doesn't record `tests` relations sees no false
+gaps. Only code that is scanned counts: a test calling a function not written yet still
+shows the code missing.
+
 Code is compared by its definition (§11), so a test calling `f/1` exercises the `f/2` a
 unit names when both are one function with a default argument. The same holds when
 evidence confirms `implements` (§17) and when CI checks the claim. The gaps are the

@@ -57,7 +57,8 @@ defmodule Surfex.Status do
 
   When tests are scanned, each spec unit that something `implements` should be verified
   by a test (`verifies`, to it or to a block or hint inside it), and that test should
-  exercise the implementing code (`tests`). The **triangle** lists each side missing:
+  exercise the implementing code: a `tests` relation, or a call its scan record lists. The
+  **triangle** lists each side missing:
   `:no_test`, `:test_misses_code` (a verifying test reaches none of the code), and
   `:code_untested` (implementing code no verifying test reaches). It is reported, and
   fails the check only when derived with `triangle: :fail`.
@@ -491,7 +492,21 @@ defmodule Surfex.Status do
       # Code is compared by its definition, so a test calling `f/1` exercises the `f/2`
       # that a spec unit names, when both are one function with a default argument.
       definition = definitions(scans)
-      exercises = pairs(live, :tests, fn {{:test, t}, {:code, c}} -> {t, definition.(c)} end)
+      recorded = pairs(live, :tests, fn {{:test, t}, {:code, c}} -> {t, definition.(c)} end)
+
+      # What a test calls is a fact of the source (§11): it counts whether or not a `tests`
+      # relation records it, so a project that doesn't record them sees no false gaps. Only
+      # a call to code that is scanned: one to code not written yet exercises nothing.
+      code = for %Scan{kind: :code, id: id} <- scans, into: MapSet.new(), do: id
+
+      called =
+        for %Scan{kind: :test, id: t, calls: calls} <- scans,
+            into: %{},
+            do:
+              {t,
+               for(c <- calls, MapSet.member?(code, c), into: MapSet.new(), do: definition.(c))}
+
+      exercises = Map.merge(called, recorded, fn _test, a, b -> MapSet.union(a, b) end)
       within = for %Scan{kind: :spec, within: w} = s <- scans, w != nil, into: %{}, do: {s.id, w}
 
       for {spec, codes} <- Enum.sort(implements),
