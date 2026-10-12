@@ -193,6 +193,63 @@ defmodule Surfex.Scanner.ElixirTest do
     end
   end
 
+  # #183: a definition lists the code it calls, so a test reaches what an entry point hands
+  # its work to.
+  describe "what a definition calls" do
+    @describetag verifies: "code-calls"
+    @describetag :tmp_dir
+
+    @checkout """
+    defmodule Shop.Checkout do
+      @moduledoc "Checkout."
+      alias Shop.{Cart, Tax}
+      alias Shop.Ledger, as: L
+
+      def run(cart, rate \\\\ 1) do
+        cart |> Cart.total() |> charge(rate)
+      end
+
+      def apply_all(carts), do: Enum.map(carts, &Tax.on/1)
+
+      def book(entry), do: L.post(entry) && run(entry)
+
+      defdelegate refund(payment), to: Shop.Payments
+      defdelegate void(payment), to: Shop.Payments, as: :cancel
+
+      defp charge(amount, rate), do: Shop.Payments.charge(amount * rate)
+    end
+    """
+
+    test "remote, aliased, piped, captured, through private helpers, local and delegated", %{
+      tmp_dir: root
+    } do
+      File.mkdir_p!(Path.join(root, "lib"))
+      File.write!(Path.join(root, "lib/checkout.ex"), @checkout)
+      calls = Map.new(Scanner.items(root), &{Item.key(&1), &1.calls})
+
+      run = ["Shop.Cart", "Shop.Cart.total/1", "Shop.Payments", "Shop.Payments.charge/1"]
+      assert calls["Shop.Checkout.run/1"] == run
+      assert calls["Shop.Checkout.run/2"] == run
+
+      assert calls["Shop.Checkout.apply_all/1"] == [
+               "Enum",
+               "Enum.map/2",
+               "Shop.Tax",
+               "Shop.Tax.on/1"
+             ]
+
+      assert calls["Shop.Checkout.book/1"] == [
+               "Shop.Checkout.run/1",
+               "Shop.Ledger",
+               "Shop.Ledger.post/1"
+             ]
+
+      assert calls["Shop.Checkout.refund/1"] == ["Shop.Payments", "Shop.Payments.refund/1"]
+      assert calls["Shop.Checkout.void/1"] == ["Shop.Payments", "Shop.Payments.cancel/1"]
+      assert calls["Shop.Checkout"] == []
+    end
+  end
+
   # #137: a public type is an item, keyed as ExDoc writes it, so a spec may cite it.
   describe "types" do
     @shapes """

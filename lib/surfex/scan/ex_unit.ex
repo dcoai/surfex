@@ -26,6 +26,7 @@ defmodule Surfex.Scan.ExUnit do
   """
 
   alias Surfex.{Scan, SourceScan}
+  alias Surfex.SourceScan.Calls
 
   # What defines a test: ExUnit's `test`, and ExUnitProperties' `property`, which ExUnit runs
   # as a test named "property …" (#141).
@@ -62,7 +63,7 @@ defmodule Surfex.Scan.ExUnit do
     name = parts |> Enum.filter(&is_atom/1) |> Enum.map_join(".", &Atom.to_string/1)
     # Aliases are lexical (§11): the module's own apply throughout; a describe's, to what
     # is inside it (`scopes`, for the helpers defined there); a body's, to that body.
-    names = %{names(flatten(exprs(body))) | aliases: aliases(exprs(body))}
+    names = %{Calls.names(flatten(exprs(body)), name) | aliases: aliases(exprs(body), name)}
     scopes = scopes(exprs(body), names.aliases)
 
     ctx = %{
@@ -99,185 +100,40 @@ defmodule Surfex.Scan.ExUnit do
 
   # ── What a test calls ───────────────────────────────────────────────────
 
-  # What a test exercises, from its body and the private helpers it reaches: each function
-  # it calls, as `Module.fun/arity` with the module's aliases resolved, and each module it
-  # names. A local call that the module doesn't define may come from an `import`: it is
-  # listed under each imported module, and whichever one the code scanner knows is the one
-  # that counts. Setups are left out: they prepare a test, and what a test tests is what it
-  # calls itself.
+  # What a test exercises, from its body and the private helpers it reaches
+  # (`Surfex.SourceScan.Calls`). A local call that the module doesn't define may come from
+  # an `import`: it is listed under each imported module, and whichever one the code
+  # scanner knows is the one that counts. Setups are left out: they prepare a test, and
+  # what a test tests is what it calls itself.
   defp calls(mod, test, names, scopes) do
     # Each body with the aliases in scope where it is defined.
     bodies =
-      for node <- SourceScan.closure_nodes(mod, [test.node]) do
-        scope = if node == test.node, do: test.aliases, else: Map.get(scopes, node, names.aliases)
-        body = body(node)
-        {body, scope, local_aliases(body)}
-      end
+      for node <- SourceScan.closure_nodes(mod, [test.node]),
+          do:
+            {node,
+             if(node == test.node, do: test.aliases, else: Map.get(scopes, node, names.aliases))}
 
-    functions =
-      Enum.flat_map(bodies, fn {body, scope, local} ->
-        body
-        |> remote_calls()
-        |> Enum.flat_map(fn
-          {:remote, parts, fun, arity, line} ->
-            [call(expand(parts, visible(scope, local, line)), fun, arity)]
-
-          {:local, fun, arity} ->
-            if {fun, arity} in names.defined,
-              do: [],
-              else: Enum.map(names.imports, &call(&1, fun, arity))
-        end)
-      end)
-
-    # Every module the test names, as a call's target or as a value (a module handed to a
-    # helper that calls it): naming a module is how a test reaches it.
-    modules =
-      for {body, scope, local} <- bodies,
-          {parts, line} <- aliases_in(body),
-          do: expand(parts, visible(scope, local, line))
-
-    (functions ++ modules) |> Enum.uniq() |> Enum.sort()
+    Calls.of(bodies, fn {fun, arity} = local ->
+      if local in names.defined,
+        do: [],
+        else: Enum.map(names.imports, &Calls.call(&1, fun, arity))
+    end)
   end
 
-  # The aliases a body sees at `line`: its scope's, and its own declared on or before it.
-  defp visible(scope, local, line) do
-    for {short, full, at} <- local, at <= line, into: scope, do: {short, full}
-  end
-
-  # The aliases a body declares, with their lines, in order.
-  defp local_aliases(body) do
-    {_, found} =
-      Macro.prewalk(body, [], fn
-        {:alias, meta, args} = node, acc when is_list(args) ->
-          {node, acc ++ for({short, full} <- alias_pairs(args), do: {short, full, line(meta)})}
-
-        node, acc ->
-          {node, acc}
-      end)
-
-    found
-  end
-
-  defp line(meta), do: Keyword.get(meta, :line, 0)
-
-  # The module-level aliases at one level of expressions.
-  defp aliases(exprs),
-    do: for({:alias, _, args} <- exprs, pair <- alias_pairs(args), into: %{}, do: pair)
+  # The module's own aliases, and `__MODULE__` as the module.
+  defp aliases(exprs, module), do: Map.put(Calls.aliases(exprs), :__MODULE__, module)
 
   # Each helper defined inside a describe, with the aliases in scope there: the module's
   # and the describe's own.
   defp scopes(exprs, module_aliases) do
     for {:describe, _, [_name, [do: block]]} <- exprs,
         inner = exprs(block),
-        scope = Map.merge(module_aliases, aliases(inner)),
+        scope = Map.merge(module_aliases, Calls.aliases(inner)),
         {definer, _, _} = node <- inner,
         definer in [:def, :defp],
         into: %{},
         do: {node, scope}
   end
-
-  defp aliases_in(ast) do
-    {_, found} =
-      Macro.prewalk(ast, [], fn
-        {:__aliases__, meta, parts} = node, acc when is_list(parts) ->
-          if Enum.all?(parts, &is_atom/1),
-            do: {node, [{parts, line(meta)} | acc]},
-            else: {node, acc}
-
-        node, acc ->
-          {node, acc}
-      end)
-
-    found
-  end
-
-  defp call(module, fun, arity), do: "#{module}.#{fun}/#{arity}"
-
-  # What a test or a definition runs: its body, not the `test` or `defp` around it, nor a
-  # definition's head, whose patterns call nothing.
-  defp body({definer, _, args}) when definer in @definers and is_list(args), do: List.last(args)
-  defp body({definer, _, [_head, body]}) when definer in [:def, :defp], do: body
-  defp body(other), do: other
-
-  # Every call in `ast`: `{:remote, alias_parts, fun, arity, line}` or `{:local, fun, arity}`. A
-  # piped call's arity counts the piped value, and a capture (`&Mod.fun/2`) is a call.
-  defp remote_calls({:|>, _, [lhs, rhs]}), do: remote_calls(lhs) ++ piped(rhs)
-
-  defp remote_calls(
-         {:&, meta, [{:/, _, [{{:., _, [{:__aliases__, _, parts}, fun]}, _, []}, arity]}]}
-       )
-       when is_atom(fun) and is_integer(arity),
-       do: [{:remote, parts, fun, arity, line(meta)}]
-
-  defp remote_calls({{:., _, [{:__aliases__, _, parts}, fun]}, meta, args})
-       when is_atom(fun) and is_list(args),
-       do: [{:remote, parts, fun, length(args), line(meta)} | remote_calls(args)]
-
-  defp remote_calls({fun, _, args}) when is_atom(fun) and is_list(args) do
-    n = length(args)
-
-    if Macro.special_form?(fun, n) or Macro.operator?(fun, n),
-      do: remote_calls(args),
-      else: [{:local, fun, n} | remote_calls(args)]
-  end
-
-  defp remote_calls({form, _, args}) when is_list(args),
-    do: remote_calls(form) ++ remote_calls(args)
-
-  defp remote_calls({a, b}), do: remote_calls(a) ++ remote_calls(b)
-  defp remote_calls(list) when is_list(list), do: Enum.flat_map(list, &remote_calls/1)
-  defp remote_calls(_leaf), do: []
-
-  defp piped({{:., _, [{:__aliases__, _, parts}, fun]}, meta, args})
-       when is_atom(fun) and is_list(args),
-       do: [{:remote, parts, fun, length(args) + 1, line(meta)} | remote_calls(args)]
-
-  defp piped({fun, _, args}) when is_atom(fun) and is_list(args),
-    do: [{:local, fun, length(args) + 1} | remote_calls(args)]
-
-  defp piped(other), do: remote_calls(other)
-
-  # The module's aliases (short name → full name), its imports, and the functions it
-  # defines itself.
-  defp names(exprs) do
-    aliases = aliases(exprs)
-    imports = for {:import, _, [{:__aliases__, _, parts} | _]} <- exprs, do: join(parts)
-
-    defined =
-      for {definer, _, [head | _]} <- exprs,
-          definer in [:def, :defp, :defmacro, :defmacrop],
-          {name, args} = signature(head),
-          do: {name, length(args)}
-
-    %{aliases: aliases, imports: imports, defined: defined}
-  end
-
-  defp alias_pairs([{:__aliases__, _, parts}]), do: [{List.last(parts), join(parts)}]
-
-  defp alias_pairs([{:__aliases__, _, parts}, [as: {:__aliases__, _, [as]}]]),
-    do: [{as, join(parts)}]
-
-  defp alias_pairs([{{:., _, [{:__aliases__, _, base}, :{}]}, _, members}]) do
-    for {:__aliases__, _, parts} <- members, do: {List.last(parts), join(base ++ parts)}
-  end
-
-  defp alias_pairs(_other), do: []
-
-  defp expand([first | rest] = parts, aliases) when is_atom(first) do
-    case Map.fetch(aliases, first) do
-      {:ok, full} -> Enum.join([full | Enum.map(rest, &Atom.to_string/1)], ".")
-      :error -> join(parts)
-    end
-  end
-
-  defp expand(parts, _aliases), do: join(parts)
-
-  defp join(parts), do: parts |> Enum.filter(&is_atom/1) |> Enum.map_join(".", &Atom.to_string/1)
-
-  defp signature({:when, _, [call | _]}), do: signature(call)
-  defp signature({name, _, args}) when is_atom(name) and is_list(args), do: {name, args}
-  defp signature({name, _, ctx}) when is_atom(name) and is_atom(ctx), do: {name, []}
-  defp signature(_), do: {nil, []}
 
   # Tests in order, each with the tags and setups that apply from its describe, its own
   # `@tag`s, and the comprehension generators around it. `pending` is the `@tag`s waiting
@@ -295,7 +151,7 @@ defmodule Surfex.Scan.ExUnit do
           describe = %{
             ctx
             | describe: text(name),
-              aliases: Map.merge(ctx.aliases, aliases(inner)),
+              aliases: Map.merge(ctx.aliases, Calls.aliases(inner)),
               tags: describe_tags(inner, ctx.file),
               setups: ctx.setups ++ setups(inner)
           }

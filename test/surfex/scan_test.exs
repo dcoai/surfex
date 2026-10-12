@@ -197,6 +197,22 @@ defmodule Surfex.ScanTest do
       assert Scan.definition(f1) == {:code, "m.ex", {2, 4}, "9"}
     end
 
+    # #183: a code record lists what its item calls, so a test can be followed through it.
+    @tag verifies: ["scan-records-pure"]
+    test "a code record carries its item's calls" do
+      item =
+        struct!(Item,
+          kind: :function,
+          name: "a/0",
+          parent: "A",
+          file: "a.ex",
+          hash: "h",
+          calls: ["B.b/0"]
+        )
+
+      assert [%Scan{id: "A.a/0", calls: ["B.b/0"]}] = Scan.code([item])
+    end
+
     @tag verifies: ["scan-records-pure"]
     test "status refuses two records with one kind and id, naming where they are" do
       twin = %Scan{kind: :code, id: "twin", hash: "1", location: %{file: "a.c", lines: {1, 2}}}
@@ -224,6 +240,34 @@ defmodule Surfex.ScanTest do
       assert SourceScan.line_range(:atom) == nil
       {:ok, ast} = Code.string_to_quoted("def f do\n  1\nend", token_metadata: true)
       assert SourceScan.line_range(ast) == {1, 3}
+    end
+  end
+
+  # #183: a test reaches the code its calls name and, transitively, what that code calls.
+  describe "reach" do
+    @describetag verifies: "test-reach"
+
+    defp code(id, calls),
+      do: struct!(Item, kind: :function, name: id, file: "lib/x.ex", hash: "h", calls: calls)
+
+    defp tester(calls),
+      do: %Scan{kind: :test, id: "T", hash: "t", location: %{file: "t", lines: nil}, calls: calls}
+
+    test "a test reaches what its calls reach, transitively; a cycle ends, unscanned code is passed over" do
+      code =
+        Scan.code([
+          code("A.a/0", ["A", "B.b/0", "Dep.x/0"]),
+          code("B.b/0", ["C.c/0", "A.a/0"]),
+          code("C.c/0", []),
+          code("D.d/0", ["A.a/0"])
+        ])
+
+      assert Scan.reach([tester(["A.a/0", "Enum.map/2"]) | code]) == %{
+               "T" => ["A.a/0", "B.b/0", "C.c/0"]
+             }
+
+      assert Scan.reach([tester(["C.c/0"]) | code]) == %{"T" => ["C.c/0"]}
+      assert Scan.reach([tester([]) | code]) == %{"T" => []}
     end
   end
 

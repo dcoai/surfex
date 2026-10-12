@@ -499,19 +499,14 @@ defmodule Surfex.Status do
       definition = definitions(scans)
       recorded = pairs(live, :tests, fn {{:test, t}, {:code, c}} -> {t, definition.(c)} end)
 
-      # What a test calls is a fact of the source (§11): it counts whether or not a `tests`
-      # relation records it, so a project that doesn't record them sees no false gaps. Only
-      # a call to code that is scanned: one to code not written yet exercises nothing.
-      code = for %Scan{kind: :code, id: id} <- scans, into: MapSet.new(), do: id
+      # What a test reaches is a fact of the source (§11, §13.1): the scanned code it calls,
+      # and what that code calls, transitively. It counts whether or not a `tests` relation
+      # records it, so a project that doesn't record them sees no false gaps; code not
+      # written yet is reached by nothing.
+      reached =
+        for {t, ids} <- Scan.reach(scans), into: %{}, do: {t, MapSet.new(ids, definition)}
 
-      called =
-        for %Scan{kind: :test, id: t, calls: calls} <- scans,
-            into: %{},
-            do:
-              {t,
-               for(c <- calls, MapSet.member?(code, c), into: MapSet.new(), do: definition.(c))}
-
-      exercises = Map.merge(called, recorded, fn _test, a, b -> MapSet.union(a, b) end)
+      exercises = Map.merge(reached, recorded, fn _test, a, b -> MapSet.union(a, b) end)
       within = for %Scan{kind: :spec, within: w} = s <- scans, w != nil, into: %{}, do: {s.id, w}
 
       for {spec, codes} <- Enum.sort(implements),

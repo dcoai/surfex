@@ -244,6 +244,7 @@ source of a code record (§11).
 | `aliases` | other names that cite it (§6.4) |
 | `lines` | its first and last line in `file`, when the scanner knows them: never part of its key or its hash |
 | `shape` | `true` for an item with no behaviour of its own (a type): no test run exercises it, so an `implements` relation to it is validated by judgement (§18). The scanner says so; surfex never infers it from a kind |
+| `calls` | the keys of the code it calls, as far as its source says (§5.2). A fact about the source, never part of its key or its hash. Empty when the scanner doesn't know: the item is then reached only by a test calling it (§13.1) |
 
 `Surfex.Item.key/1` is an item's identity: `parent.name` for a member, otherwise `name`.
 The hash is never part of the key, so an edit changes a row's version and not its
@@ -289,6 +290,11 @@ options) returns:
   by a class (`classes: [{"type", reason}]`, `rules: [%{class: "type", kinds: [:type]}]`).
   A type is a shape (§4): a spec section citing it relates to it by judgement (§18).
 - A nested module is keyed by its full name, as Elixir names it.
+- **A function or macro lists what it calls** (`calls`): the functions its clauses and the
+  private helpers they reach call, as `Module.fun/arity`, and every module they name, as
+  a test's calls are read (§11). A local call to one of the module's own public
+  definitions is `Module.fun/arity`, and a `defdelegate` calls its target. Every arity of
+  a function with default arguments lists the same calls. A module and a type list none.
 - The `:paths` option (globs relative to the root) defaults to `lib/**/*.ex`: one
   project's own source. A poncho lists its members.
 
@@ -318,6 +324,12 @@ under any root is unresolved rather than suggested against the root module
 ```test elixir-scanner-items
 the Elixir scanner reports every public module, definition and type under the paths it
 is given, with nested modules named in full, and profile defaults for a namespace
+```
+
+```test code-calls
+a function lists the code it calls: remote, aliased, piped and captured calls, through
+its private helpers, a local call to the module's public function, and a delegate's
+target; every default arity lists the same calls; a module lists none
 ```
 
 ```test type-citations
@@ -626,7 +638,8 @@ record is a pure function of the source. Location is never part of a relation: m
 code, or adding text above a section, changes where something is and not what it is.
 
 `Surfex.Scan.code/1` makes code records from any scanner's items (§5), with the item's
-key, version (§3.3) and line range, its kind as `role` and its parent as `within`.
+key, version (§3.3) and line range, its kind as `role`, its parent as `within` and its
+`calls`.
 The id is the item's key. When two items share a key (a C function and a constant both
 called `twin`), each id carries its kind, `twin (function)` and `twin (const)`, so each is
 a relation end of its own. `Surfex.Scan.for_item/2` finds an item's record whatever its
@@ -1077,11 +1090,18 @@ missing:
 - `:code_untested`: code implements it that no verifying test exercises, naming the
   code.
 
-A test exercises code when a live `tests` relation says so, or when its scan record's
-`calls` (§11) name it. A call is a fact the source states, so the triangle doesn't wait
-for it to be recorded, and a project that doesn't record `tests` relations sees no false
-gaps. Only code that is scanned counts: a test calling a function not written yet still
-shows the code missing.
+A test exercises code when a live `tests` relation says so, or when the test **reaches**
+it. A call is a fact the source states, so the triangle doesn't wait for it to be
+recorded, and a project that doesn't record `tests` relations sees no false gaps. Only
+code that is scanned counts: a test calling a function not written yet still shows the
+code missing.
+
+**What a test reaches** (`Surfex.Scan.reach/1`) is the scanned code its `calls` (§11)
+name, and the scanned code that code calls (§4 `calls`), transitively: a test calling a
+public entry point reaches the functions it hands the work to. It is a pure function of
+the scans. A spec unit can then cite the function that does the work while its test
+drives the entry point that users call. Reach credits only relations someone recorded.
+It never makes one, and a `tests` relation still names what the test calls itself (§15).
 
 Code is compared by its definition (§11), so a test calling `f/1` exercises the `f/2` a
 unit names when both are one function with a default argument. The same holds when
@@ -1106,8 +1126,15 @@ validated or confirmed it is current
 
 ```test triangle-gaps
 given a spec unit something implements:
-no verifying test, a verifying test that calls none of its code, and implementing
-code no verifying test calls are each reported, naming the test or the code
+no verifying test, a verifying test that reaches none of its code, and implementing
+code no verifying test reaches are each reported, naming the test or the code
+```
+
+```test test-reach
+a test reaches the scanned code it calls and, transitively, the scanned code that code
+calls;
+a cycle ends, unscanned code is passed over, and code reached only through an entry point
+closes the triangle without suggesting a tests relation to it
 ```
 
 ```test mark-states

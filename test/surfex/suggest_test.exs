@@ -559,6 +559,51 @@ defmodule Surfex.SuggestTest do
                []
     end
 
+    # #183: reach credits relations someone recorded; a tests relation names only what the
+    # test calls itself.
+    @tag verifies: ["test-reach"]
+    test "code reached only through an entry point is not proposed a tests relation", %{
+      tmp_dir: root
+    } do
+      File.write!(Path.join(root, "spec.md"), "# Limits {#limits}\n\nThe limit is 512.\n")
+
+      items = [
+        struct!(Item,
+          kind: :function,
+          name: "run/0",
+          parent: "Wren",
+          file: "lib/w.ex",
+          hash: "1",
+          calls: ["Wren.max_len/0"]
+        ),
+        struct!(Item,
+          kind: :function,
+          name: "max_len/0",
+          parent: "Wren",
+          file: "lib/w.ex",
+          hash: "2"
+        )
+      ]
+
+      test_scan = %Scan{
+        kind: :test,
+        id: "WrenTest: the limit",
+        hash: "t1",
+        location: %{file: "test/w_test.exs", lines: {3, 5}},
+        calls: ["Wren.run/0"]
+      }
+
+      scans = Markdown.records(root, ["spec.md"]) ++ Scan.code(items) ++ [test_scan]
+      s = Suggest.all(Config.profile!([sources: ["spec.md"]], "Wren"), items, scans, [], root)
+
+      assert Enum.map(s.tests, &{&1.from.id, &1.to.id}) == [{"WrenTest: the limit", "Wren.run/0"}]
+
+      assert Map.fetch!(Scan.reach(scans), "WrenTest: the limit") == [
+               "Wren.max_len/0",
+               "Wren.run/0"
+             ]
+    end
+
     @tag verifies: ["suggest-refresh", "suggest-proposes"]
     test "a structural relation the source still states is refreshed; a judgement is not", %{
       tmp_dir: root

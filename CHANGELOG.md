@@ -34,6 +34,17 @@ which tests declare what.
   Editing a row changes only that row's version. A table without the marker is body, as
   before. The reports count tables and rows only where a spec marks one.
 
+- **A test reaches what the code it calls calls** (#183, #185). Each function and macro the
+  Elixir scanner reports now lists the code it calls (`Surfex.Item` and code records'
+  `calls`): through its private helpers, a local call to its module's public functions,
+  and a `defdelegate`'s target. `Surfex.Scan.reach/1` follows a test through them. The
+  triangle counts code as exercised when a verifying test reaches it, so a section may
+  cite the function that does the work while its test drives the public entry point.
+  Reach credits relations someone recorded and never suggests one: `tests` relations
+  still name what a test calls itself. Calls aren't part of any version, so nothing
+  dangles on upgrade. A scanner of your own may fill `calls`; one that doesn't is
+  unchanged.
+
 ### Changed
 
 - **`verifies` tags combine as ExUnit merges them** (#149, #171). The most specific level

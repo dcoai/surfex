@@ -29,7 +29,8 @@ defmodule Surfex.Scan do
   from `@tag verifies: "cart-add"`. A declaration is a claim in the source, not a
   relation; `resolve/2` finds the spec unit it names. A test record also lists what it
   `calls`: the functions its source calls (`MyApp.Cart.add/3`), as facts to suggest
-  `tests` relations from.
+  `tests` relations from. A code record lists what its item calls (`Surfex.Item`), so
+  `reach/1` can follow a test through the code it calls.
 
   `code/1` makes code records from any `Surfex.Scanner`'s items. `Surfex.Scan.Markdown`
   makes spec records and `Surfex.Scan.ExUnit` test records.
@@ -115,6 +116,34 @@ defmodule Surfex.Scan do
 
   def definition(%__MODULE__{kind: kind, id: id}), do: {kind, id}
 
+  @doc """
+  What each test reaches (§13.1): the scanned code its `calls` name and, transitively, the
+  scanned code that code calls, sorted by id. A call to code that isn't scanned (a
+  dependency, or code not written yet) reaches nothing. Pure: a function of the scans.
+  """
+  @spec reach([t]) :: %{String.t() => [String.t()]}
+  def reach(scans) do
+    code = for %__MODULE__{kind: :code, id: id, calls: calls} <- scans, into: %{}, do: {id, calls}
+
+    for %__MODULE__{kind: :test, id: id, calls: calls} <- scans, into: %{} do
+      {id, calls |> closure(code, MapSet.new()) |> Enum.sort()}
+    end
+  end
+
+  defp closure([], _code, seen), do: seen
+
+  defp closure([id | rest], code, seen) do
+    case Map.fetch(code, id) do
+      {:ok, calls} ->
+        if id in seen,
+          do: closure(rest, code, seen),
+          else: closure(calls ++ rest, code, MapSet.put(seen, id))
+
+      :error ->
+        closure(rest, code, seen)
+    end
+  end
+
   defp code_id(item, shared) do
     key = Item.key(item)
     if Map.has_key?(shared, key), do: "#{key} (#{item.kind})", else: key
@@ -162,7 +191,8 @@ defmodule Surfex.Scan do
         location: %{file: item.file, lines: item.lines},
         role: item.kind,
         within: item.parent,
-        shape: item.shape
+        shape: item.shape,
+        calls: item.calls
       }
     end)
     |> Enum.sort_by(& &1.id)

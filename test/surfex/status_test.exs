@@ -324,6 +324,26 @@ defmodule Surfex.StatusTest do
                Status.derive(waiting, planned).triangle
     end
 
+    # #183: a section cites the function doing the work; its test drives the entry point.
+    @tag verifies: ["test-reach", "triangle-gaps"]
+    test "code a verifying test reaches only through an entry point closes the triangle" do
+      entry = %{scan(:code, "M.run/0", "e1") | calls: ["M.work/0"]}
+      work = %{scan(:code, "M.work/0", "w1") | calls: ["M.step/0"]}
+      step = scan(:code, "M.step/0", "p1")
+      caller = %{scan(:test, "T: a", "t1") | calls: ["M.run/0"]}
+      entries = [rel(:implements, @s, {:code, "M.step/0", "p1"}), rel(:verifies, @t, @s)]
+
+      assert Status.derive([caller, scan(:spec, @spec_id, "s1"), entry, work, step], entries).triangle ==
+               []
+
+      # Cut the path, and both sides are open again.
+      assert [%{gap: :test_misses_code}, %{gap: :code_untested, code: "M.step/0"}] =
+               Status.derive(
+                 [caller, scan(:spec, @spec_id, "s1"), %{entry | calls: []}, work, step],
+                 entries
+               ).triangle
+    end
+
     test "a test verifying a block or hint inside the section counts for it" do
       hint = %{scan(:spec, "spec.md#h", "h1") | role: :test_hint, within: @spec_id}
 
