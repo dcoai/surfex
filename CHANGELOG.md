@@ -4,6 +4,11 @@ All notable changes to Surfex are recorded here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+`mix.exs` reads `0.8.1-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
+release it merely follows.
+
 ## [0.8.0] — 2026-10-13
 
 A planted bug now fails the gate. A failed test fails its relations whatever validated
