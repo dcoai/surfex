@@ -27,6 +27,16 @@ release it merely follows.
   refreshing it dangles nothing: `ignore: [Measured]`. It can't name a key column. The
   options read in either order, and a single `key: Header` is unchanged.
 
+- **Status says which tests `mix test --only` can't select** (#190, #196). ExUnit
+  compares a list tag as one string, its ids run together, so a test tagged
+  `verifies: ["a", "b"]` is selected by neither `--only verifies:a` nor `verifies:b`,
+  while surfex records it against both. A one-id list stays selectable. The test record's
+  `unselectable` lists those ids, `mix surfex.status` counts the tests in one line
+  (`unselectable by --only: N tests`), and `--format json` lists each with its ids. It
+  never fails: a list is the honest tag for a test that verifies several requirements,
+  and the count shows what it costs. §11 no longer says `--only` always runs exactly a
+  requirement's tests.
+
 ### Changed
 
 - **A table marker's text after its id must be its options** (#189). A misspelt option
@@ -121,7 +131,9 @@ come in a later release.
 - `mix surfex.status` lists the relations a test no longer declares under
   "Undeclared". For each, judge whether the test really verifies the inherited
   requirement:
-  - if it does, name it in the test's own list: `@tag verifies: ["own-id", "module-id"]`;
+  - if it does, name it in the test's own list: `@tag verifies: ["own-id", "module-id"]`.
+    `mix test --only` then selects that test by neither id, since ExUnit compares a list
+    as one string (#190; 0.7.1's status counts such tests);
   - if it doesn't, retire the relation with a note:
     `mix surfex.retire "test:<test id>" "spec:<unit>" --type verifies --note "why"`.
 - Measured on six adopters before the change, the cost ranged from none (where tests

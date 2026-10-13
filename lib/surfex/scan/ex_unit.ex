@@ -19,7 +19,11 @@ defmodule Surfex.Scan.ExUnit do
     * **declares** — what the test says it verifies, from ExUnit tags:
       `@tag verifies: "cart-add"` (or a list) before the test, `@describetag` in its
       `describe`, and `@moduletag` in its module. Each gives `{:verifies, id}`. A tag is
-      ordinary ExUnit, so `mix test --only verifies:cart-add` runs exactly those tests.
+      ordinary ExUnit, so `mix test --only verifies:cart-add` runs the tests tagged
+      `"cart-add"`.
+    * **unselectable** — the declared ids `mix test --only verifies:id` can't select the
+      test by. ExUnit compares a list tag as one string, its ids run together, so a test
+      tagged `["cart-add", "carts"]` is selected by neither, though it declares both.
 
   A `verifies` value that isn't a literal string or list of strings raises, naming the
   file and line: a declaration that can't be read must not be silently dropped.
@@ -82,7 +86,8 @@ defmodule Surfex.Scan.ExUnit do
       nodes = t.wrappers ++ module.setups ++ t.setups ++ [t.node]
       # As ExUnit merges tags (#149): the most specific level that sets `verifies` wins,
       # the test's own over its describe's over its module's.
-      declares = Enum.uniq(t.tags || module.tags || [])
+      tag = t.tags || module.tags || []
+      declares = tag |> List.wrap() |> Enum.uniq()
       describe = if t.describe, do: "#{t.describe}: ", else: ""
 
       %Scan{
@@ -91,6 +96,7 @@ defmodule Surfex.Scan.ExUnit do
         hash: SourceScan.closure_hash(mod, nodes),
         location: %{file: file, lines: SourceScan.line_range(t.node)},
         declares: Enum.map(declares, &{:verifies, &1}),
+        unselectable: unselectable(tag),
         calls: calls(mod, t, names, scopes)
       }
     end
@@ -218,7 +224,8 @@ defmodule Surfex.Scan.ExUnit do
     |> List.flatten()
   end
 
-  # The ids a tag value declares: its `verifies:` key, a string or a list of strings.
+  # A tag value's `verifies:` as written, a string or a list of strings, or nil when it
+  # doesn't set it. Its form matters to `unselectable/1`.
   defp verifies(value, expr, file) do
     case value do
       list when is_list(list) ->
@@ -234,13 +241,21 @@ defmodule Surfex.Scan.ExUnit do
   end
 
   defp ids(nil, _expr, _file), do: []
-  defp ids(id, _expr, _file) when is_binary(id), do: [id]
+  defp ids(id, _expr, _file) when is_binary(id), do: id
 
   defp ids(list, expr, file) when is_list(list) do
     if Enum.all?(list, &is_binary/1), do: list, else: bad(expr, file)
   end
 
   defp ids(_other, expr, file), do: bad(expr, file)
+
+  # The declared ids `mix test --only verifies:id` can't select the test by (#190). ExUnit
+  # compares a list tag as one string, its ids run together, so a list is selectable only
+  # by that: by its id when it has one, by none of several.
+  defp unselectable(ids) when is_list(ids),
+    do: ids |> Enum.uniq() |> Enum.reject(&(&1 == Enum.join(ids)))
+
+  defp unselectable(_id), do: []
 
   defp bad(expr, file) do
     {line, _} = SourceScan.line_range(expr) || {0, 0}

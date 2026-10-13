@@ -110,6 +110,14 @@ defmodule Surfex.Status.Report do
         n -> "  unvalidated: #{n}\n"
       end
 
+    # Counted, not listed: a project that tags with lists has many (§13.3). The JSON lists them.
+    unselectable =
+      case length(status.unselectable) do
+        0 -> []
+        1 -> "  unselectable by --only: 1 test\n"
+        n -> "  unselectable by --only: #{n} tests\n"
+      end
+
     # How much rests on trust rather than evidence or review (§18.1).
     baseline =
       case Status.baseline_count(status) do
@@ -121,6 +129,7 @@ defmodule Surfex.Status.Report do
       "relation status: #{verdict}\n",
       Enum.map(counts, &[&1, "\n"]),
       unvalidated,
+      unselectable,
       baseline,
       units,
       lists
@@ -163,6 +172,7 @@ defmodule Surfex.Status.Report do
       "unproven" => Enum.map(status.unproven, &claim_json/1),
       "unchecked" => Enum.map(status.unchecked, &claim_json/1),
       "undeclared" => Enum.map(status.undeclared, &%{"test" => &1.test, "spec" => &1.spec}),
+      "unselectable" => Enum.map(status.unselectable, &%{"test" => &1.test, "ids" => &1.ids}),
       "baseline" => %{
         "relations" => Status.baseline_count(status),
         "adoption" => inspect(status.adoption)

@@ -674,9 +674,21 @@ changes its version.
   sets `verifies` replaces the others, a test's own `@tag` over its `describe`'s over its
   module's, and a tag that doesn't set `verifies` leaves it as it was. A test that also
   verifies its module's requirement names it again in its own list. Since a tag is
-  ordinary ExUnit, `mix test --only verifies:id` runs exactly the tests of one
-  requirement, and they are the tests surfex records as declaring it. A `verifies` value
-  that isn't a literal string or list of strings raises, naming the file and line.
+  ordinary ExUnit, `mix test --only verifies:id` runs the tests whose tag is that id, and
+  surfex records each of them as declaring it. A list is where the two part. ExUnit
+  compares a list tag as one string, its ids run together, so `--only` selects a test
+  tagged `["a", "b"]` by neither `a` nor `b`, while surfex reads both. A test that
+  verifies two requirements is either recorded against both (a list) or selectable by
+  `--only` (one id), not both. The record's `unselectable` lists the declared ids its
+  runner can't select it by: for a list, each id that isn't the whole list run together
+  (so a one-id list is selectable by its id); for a string, none. Status reports them
+  (§13.1). A `verifies` value that isn't a literal string or list of strings raises,
+  naming the file and line.
+
+```test unselectable-ids
+a test's record lists the declared ids mix test --only can't select it by: every id of a
+list of several, none of a string or a one-id list, whichever level's tag it took
+```
 - **What it calls**: the record's `calls` lists the functions the test's body and the
   private helpers it reaches call, as `Module.fun/arity`, and every module it calls or
   names as a value (a module handed to a helper is exercised through it). Aliases are resolved
@@ -1076,6 +1088,16 @@ tips that agree
   this the relation would stay current, asserting a claim the source no longer makes. A
   `verifies` relation recorded by hand, with no declaration, is undeclared too: a test must
   say what it verifies.
+- **Unselectable:** a test that `mix test --only verifies:id` can't select by some of its
+  declared ids (§11), with those ids. A list of several ids is legitimate, the only honest
+  tag for a test that verifies several requirements, so this is information for choosing
+  between a list and one id per test, never a failure.
+
+```test unselectable-status
+status reports each test some declared id can't select, with its ids, without failing:
+the text counts them in one line and the JSON lists each test
+```
+
 - **Proposed:** the tip is recorded with basis `proposed`: a claim (a citation, a tag, a
   pair named by hand) that nothing has validated yet (§18). It fails the check, like a
   dangling relation, until evidence or a review validates it.
@@ -1100,7 +1122,8 @@ tips that agree
 `Surfex.Status.failing?/1` is true when any relation is dangling, orphaned, conflicted or
 proposed, any id is unmet, any `verifies` relation is undeclared, any declaration or
 citation is broken, any excuse is stale, or any confirmation by evidence is unproven. New,
-retired, impacted, planned, unimplemented and unvalidated don't fail on their own. A
+retired, impacted, planned, unimplemented, unselectable and unvalidated don't fail on
+their own. A
 status derived with `planned: :fail` (`Surfex.Status.derive/4`) fails on any planned
 relation too: the check that everything planned has been built, such as a release's. One
 derived with `validated: true` fails on any unvalidated relation: the check that every
@@ -1237,7 +1260,10 @@ the code is scanned once, and citations are read under the config's profile
   the undeclared relations, the stale excuses, the broken declarations, the triangle's
   gaps and the open and orphaned marks (with their notes, who and when), with locations. A block or hint in a list says what it sits in. Unvalidated
   relations (§18) are counted; they are listed only when the status is derived with
-  `validated: true`, where they fail, since a project moving over has many.
+  `validated: true`, where they fail, since a project moving over has many. Unselectable
+  tests are counted in one line, `unselectable by --only: N tests`, and listed only in the
+  JSON (`unselectable`, each test with its ids): a project that tags with lists has many,
+  and the count is the decision's input.
 - `Surfex.Status.Report.golden/2` (`Surfex.Status.Report.golden/1` writes `RELATIONS.md`):
   the status as a golden to commit. It has a table per relation type (end, other end,
   state, the ends that changed or are planned), then the unimplemented, new and unmet
@@ -1254,8 +1280,9 @@ the code is scanned once, and citations are read under the config's profile
   it changed, whether it is planned, and its location. Plus the spec units by role, the
   unimplemented, new and unmet ids (each with its role, what it sits in and what it
   declares), the broken citations, the unproven confirmations, the stale excuses, the
-  broken declarations, the triangle's gaps, the unvalidated relations and the open and
-  orphaned marks (unit, state, note, who, when, entry id, location). A value that
+  broken declarations, the triangle's gaps, the unvalidated relations, the unselectable
+  tests (each with its ids) and the open and orphaned marks (unit, state, note, who,
+  when, entry id, location). A value that
   doesn't exist (a planned end's recorded hash, a gone end's hash and location, or a
   conflicted relation's recorded hashes, since it has no one tip) is JSON `null`.
 
