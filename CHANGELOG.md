@@ -4,10 +4,14 @@ All notable changes to Surfex are recorded here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.8.0] — 2026-10-13
 
-`mix.exs` reads `0.7.3-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
-release it merely follows.
+A planted bug now fails the gate. A failed test fails its relations whatever validated
+them, so a project validated by review no longer passes while the tests behind its
+requirements fail (#211). And a version now covers the hidden code its item runs, so
+changing a GenServer's `handle_call/3` dangles the relations on its module and on the
+functions that call it (#210). A minor release because the second changes versions:
+**upgrade step** below, a one-time review of the hidden code no earlier review saw.
 
 ### Changed
 
