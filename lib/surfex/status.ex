@@ -698,7 +698,11 @@ defmodule Surfex.Status do
   # given evidence (this run's) doesn't bear out: its test, at the version the relation
   # holds, must have passed against the code's version. For `implements`, some test with
   # a current `verifies` to the spec unit (or inside it) that has a current `tests` to the
-  # code, or reaches it (§13.1), must. `nil` evidence means no check; `{:merged, runs}` is several CI jobs' runs (§17).
+  # code, or reaches it (§13.1), must. `nil` evidence means no check; `{:merged, runs}` is
+  # several CI jobs' runs (§17).
+  #
+  # It grows with the project in proportion (§17): what each claim looks up, its candidate
+  # tests and each test's latest record, is indexed once here, not scanned per claim.
   defp unproven(_scans, _relations, nil), do: []
 
   defp unproven(scans, relations, evidence) do
@@ -707,17 +711,91 @@ defmodule Surfex.Status do
     current = for %{state: :current, tip: %Entry{} = tip} = r <- relations, do: {r, tip}
     pairs = fn type -> for {%{type: ^type, relation: {_, a, b}}, _} <- current, do: {a, b} end
     reached = for {t, ids} <- Scan.reach(scans), id <- ids, do: {{:test, t}, {:code, id}}
-    tests = pairs.(:tests) ++ reached
-    verifies = pairs.(:verifies)
 
-    judge = fn r, tip, run -> disproved(r, tip, run, tests, verifies, {within, definition}) end
+    # A code definition => the tests that test or reach it.
+    testing =
+      Enum.reduce(pairs.(:tests) ++ reached, %{}, fn {{:test, t}, {:code, c}}, acc ->
+        Map.update(acc, definition.(c), MapSet.new([t]), &MapSet.put(&1, t))
+      end)
+
+    # A test => the spec units it verifies, each with its place among the verifies pairs,
+    # which orders the candidates as the pairs do.
+    verifying =
+      pairs.(:verifies)
+      |> Enum.with_index()
+      |> Enum.reduce(%{}, fn {{{:test, t}, {:spec, unit}}, place}, acc ->
+        Map.update(acc, t, [{place, unit}], &[{place, unit} | &1])
+      end)
+
+    index = {testing, verifying, within, definition}
+
+    runs =
+      case evidence do
+        {:merged, runs} -> {:merged, Enum.map(runs, &latest_records/1)}
+        run -> latest_records(run)
+      end
 
     for {%{relation: relation} = r, tip} <- current,
         Surfex.Evidence.claimed?(tip),
-        failure = against(evidence, &judge.(r, tip, &1)),
+        judge = claim_judge(r, tip, index),
+        failure = against(runs, judge),
         failure != nil,
         do: Map.put(failure, :relation, relation)
   end
+
+  # A run's latest record of each test, and of each test at each version: what `passes/5`
+  # reads, so a claim looks its test up instead of scanning the run.
+  defp latest_records(run) do
+    Enum.reduce(run, %{}, fn %{test: t, test_hash: h} = record, acc ->
+      acc |> Map.put({t, nil}, record) |> Map.put({t, h}, record)
+    end)
+  end
+
+  # A claim's verdict on one run (`against/2`). The candidate tests of an `implements`
+  # depend on the log and the scans, not the run, so they're found once per claim.
+  defp claim_judge(
+         %{type: :tests, relation: {_, {:test, t}, {:code, c}}},
+         tip,
+         {_, _, _, definition}
+       ) do
+    test_hash = hash_of(tip, :test, t)
+    code_hash = hash_of(tip, :code, c)
+    fn latest -> passes(latest, t, test_hash, c, code_hash, definition) end
+  end
+
+  defp claim_judge(
+         %{type: :implements, relation: {_, {:code, c}, {:spec, s}}},
+         tip,
+         {testing, verifying, within, definition}
+       ) do
+    code_hash = hash_of(tip, :code, c)
+
+    candidates =
+      for t <- Map.get(testing, definition.(c), []),
+          places = for({place, unit} <- verifying[t] || [], inside?(unit, s, within), do: place),
+          places != [] do
+        {Enum.min(places), t}
+      end
+      |> Enum.sort()
+      |> Enum.map(&elem(&1, 1))
+
+    fn latest ->
+      if candidates == [] do
+        %{test: nil, reason: :no_verifying_test}
+      else
+        failures =
+          for t <- candidates, f = passes(latest, t, nil, c, code_hash, definition), do: f
+
+        # Every candidate failed to bear it out: the strongest reason wins, so an exclusion
+        # never hides a disproof or a test that didn't run.
+        if length(failures) == length(candidates),
+          do: Enum.min_by(failures, &Enum.find_index(@reasons, fn r -> r == &1.reason end)),
+          else: nil
+      end
+    end
+  end
+
+  defp claim_judge(_other, _tip, _index), do: fn _latest -> nil end
 
   # One run's verdict on a claim; or, for several jobs' runs merged (§17), a disproof in
   # any run, else borne out by any, else no job ran it.
@@ -741,58 +819,11 @@ defmodule Surfex.Status do
 
   defp against(run, judge), do: judge.(run)
 
-  defp disproved(
-         %{type: :tests, relation: {_, {:test, t}, {:code, c}}},
-         tip,
-         evidence,
-         _,
-         _,
-         {_, definition}
-       ) do
-    passes(evidence, t, hash_of(tip, :test, t), [c], hash_of(tip, :code, c), definition)
-  end
-
-  defp disproved(
-         %{type: :implements, relation: {_, {:code, c}, {:spec, s}}},
-         tip,
-         evidence,
-         tests,
-         verifies,
-         {within, definition}
-       ) do
-    code_hash = hash_of(tip, :code, c)
-
-    candidates =
-      for {{:test, t}, {:spec, unit}} <- verifies,
-          {{:test, ^t}, {:code, other}} <- tests,
-          definition.(other) == definition.(c),
-          inside?(unit, s, within),
-          uniq: true,
-          do: t
-
-    if candidates == [] do
-      %{test: nil, reason: :no_verifying_test}
-    else
-      failures =
-        for t <- candidates, f = passes(evidence, t, nil, [c], code_hash, definition), do: f
-
-      # Every candidate failed to bear it out: the strongest reason wins, so an exclusion
-      # never hides a disproof or a test that didn't run.
-      if length(failures) == length(candidates),
-        do: Enum.min_by(failures, &Enum.find_index(@reasons, fn r -> r == &1.reason end)),
-        else: nil
-    end
-  end
-
-  defp disproved(_other, _tip, _evidence, _tests, _verifies, _within), do: nil
-
-  # nil when the evidence has `test` (at `test_hash`, or its latest version when nil)
-  # passing against the code (any id of its definition) at `code_hash`; otherwise why not.
-  defp passes(evidence, test, test_hash, [code], code_hash, definition) do
-    latest =
-      evidence
-      |> Enum.filter(&(&1.test == test and (test_hash == nil or &1.test_hash == test_hash)))
-      |> List.last()
+  # nil when the run's latest record of `test` (at `test_hash`, or at any version when nil;
+  # `latest_records/1`) passed against the code (any id of its definition) at `code_hash`;
+  # otherwise why not.
+  defp passes(latest_records, test, test_hash, code, code_hash, definition) do
+    latest = Map.get(latest_records, {test, test_hash})
 
     cond do
       latest == nil ->

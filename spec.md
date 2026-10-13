@@ -1724,6 +1724,18 @@ that didn't run, failed, or ran against other code disproves them and fails the 
 without evidence nothing is checked, and relations confirmed by hand never are
 ```
 
+**The check grows with the project in proportion.** It runs on every merge request, over
+every claim, against a run's whole evidence file, which accumulates across work items.
+So its work over a project twice as large (twice the tests, code, claims and evidence
+records) is about twice, not four or eight times. Each claim finds its candidate tests,
+and each test its latest record, from indexes built once per check. It doesn't scan
+every relation, reached pair or record for each claim.
+
+```test evidence-check-linear
+the check's work over a project twice as large, in tests, code, claims and evidence
+records, is about twice the work, counted in reductions
+```
+
 **A suite split across jobs.** Projects often run some tests in a job of their own
 (mutation, integration, slow or external-service tests) and exclude them elsewhere. A
 claim whose deciding test this run excluded or skipped is **not checked here**

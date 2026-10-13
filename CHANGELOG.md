@@ -9,6 +9,17 @@ All notable changes to Surfex are recorded here, following
 `mix.exs` reads `0.7.2-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
 release it merely follows.
 
+### Fixed
+
+- **`mix surfex.status --evidence` grows with the project in proportion again** (#201,
+  #202). Since 0.7.0 every test's reached code joins the pairs an `implements` claim's
+  candidate tests are found among. The check scanned every `verifies` pair against all of
+  them for each claim, and then the whole run's evidence for each candidate test. On a
+  project with about 4,000 tests and 500,000 evidence records, that took 36 minutes,
+  where 0.6.2 took 5. The candidates and each test's latest record are now indexed once
+  per check. On that project, the check's derivation takes 10 seconds, with an identical
+  result. A test now holds the check's work over a project twice as large to about twice.
+
 ## [0.7.1] — 2026-10-13
 
 What 0.7.0's users asked for, and two corrections. Unit ids take several heading grammars
