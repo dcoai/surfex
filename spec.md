@@ -1303,7 +1303,7 @@ time (context only), and when.
 | `Surfex.Record.relate/6`, `Surfex.Record.relate/7` | a relation of a type between two ids at their current hashes, from → to for a directed type, superseding the relation's tips. `implements` is recorded as proposed; `verifies` too, unless the test's current version has failed in the evidence given (`evidence:`), when it is recorded on that evidence (§18) |
 | `Surfex.Record.plan/7` | a **planned** relation: one end is scanned and recorded at its hash, the other doesn't exist yet and is recorded without one. Its kind is its `spec:`/`code:` prefix, else `spec` when it has a `#`, else `code`. A plausibility check refuses an id the project couldn't have, so a typo doesn't become a permanent plan. `mix surfex.relate --planned` asks whether a spec id is in a file the scanner reads, and whether a code id has the scanner's shape (for Elixir, a name under one of the project's namespaces). Both ends scanned, or neither, is an error. |
 | `Surfex.Record.confirm/6`, `Surfex.Record.confirm/7` | one **dangling** or **proposed** relation, named by its ends and type, again at the current hashes, with a note (required) saying what was judged: basis `judgement`. `implements` is refused, since code is validated by evidence or a review (§18), never asserted, unless its code end is a shape, which no run exercises. Orphaned and conflicted relations aren't confirmed: they need re-pointing or resolving. Under `require_red:` (`opts`, §17) a `tests` relation isn't confirmed until its test's current version has discriminated |
-| `Surfex.Record.validate/6` | a review (§18): the `verifies` relation from a test to a spec unit, and each `implements` relation of that unit whose code the test's run exercised: what it reaches (§13.1), by definition, so one arity covers a function's others (§11), each only if it isn't validated already, validated at the current versions, basis `review`; with nothing left to record it is refused. The unit may be a section whose block or hint the test verifies: that relation must already be current, and the review records the section's `implements` relations alone |
+| `Surfex.Record.validate/6` | a review (§18): the `verifies` relation from a test to a spec unit, and each `implements` relation of that unit whose code the test calls (§11), or reaches (§13.1) and the review names (`meta[:code]`), and whose version the test's green run recorded, by definition, so one arity covers a function's others (§11), each only if it isn't validated already, validated at the current versions, basis `review`; with nothing left to record it is refused. The unit may be a section whose block or hint the test verifies: that relation must already be current, and the review records the section's `implements` relations alone |
 | `Surfex.Record.confirm_by_evidence/4` | every confirmation the test evidence justifies (§17, §18), basis `evidence`, with the evidence in the note: each dangling or proposed `verifies` relation whose test's current version has failed (unless only the spec changed, which is a judgement), then each dangling `tests` relation and each dangling or proposed `implements` relation whose test went red and then green. Nothing justified is `{:ok, []}`, not an error |
 | `Surfex.Record.annotate/6` | a new note on one **current** relation: a re-recording at the tip's own versions, with its basis, parented on every tip, so a re-review that changes nothing still lands in the log rather than a commit message. A dangling or proposed relation is refused (confirm settles it), and the note is required |
 | `Surfex.Record.retire/6` | that a relation no longer applies, naming every tip as a parent, with the ends as the tip recorded them. An end need not still be scanned: this is how an orphaned relation is put to rest. A pair **never related** is declined: a retire at both ends' current versions with no parent, recording the decision not to relate them, so `mix surfex.suggest` never proposes it. Both must be scanned, and the note is required, as the only record of why. A later relate revives it. |
@@ -1635,11 +1635,23 @@ recorded and never makes one. Code reached only at run time (a message to anothe
 process, a dispatch by name) isn't reached by reading the source, and a test reaching it
 that way is credited for what it calls.
 
+A review (§18) is narrower than evidence. Its note is a judgement about what was read, so
+it credits the code its test calls, and reached code only where the reviewer names it
+(`mix surfex.validate … --code ID`). Otherwise one note would stand for every function
+behind an entry point, including code nobody read. A named id the last green run didn't
+reach is an error.
+
 ```test evidence-reach
 a test calling an entry point that calls the cited code carries the implements relation
 by evidence, and the check bears it out against the code's version or reports it run
 against other code; with the path cut, nothing carries it; the run records the versions
 of what the test reaches
+```
+
+```test review-reach
+a review credits implements to the code the test calls; code the test only reaches is
+credited when the review names it, and not otherwise; naming code the green run didn't
+reach is an error
 ```
 
 **CI validates; it records nothing.** A CI job runs the tests with the formatter, from an
@@ -1773,7 +1785,8 @@ already made validates nothing new.
   against the code, and record it with `Surfex.Record.validate/6`
   (`mix surfex.validate TEST SPEC_UNIT --note N`). The note says which claim each
   assertion checks. It needs the `verifies` relation, and green evidence at the current
-  versions of the test and of the code it reaches (§13.1). Code usually implements a section
+  versions of the test and of the code it reaches (§13.1). It credits the code the test
+  calls, and reached code only when named (§17). Code usually implements a section
   while its tests verify the hints inside it, so the unit may be that section: the review
   judges that the test validates the section's claims for the code it exercises, and
   needs the test's relation to the hint to be current already (validated first, against
