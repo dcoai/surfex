@@ -37,6 +37,14 @@ release it merely follows.
   and the count shows what it costs. §11 no longer says `--only` always runs exactly a
   requirement's tests.
 
+- **`mix surfex.test UNIT` runs a requirement's tests, list tags included** (#198, #200).
+  It selects every test whose `verifies:` declarations resolve to the unit, as surfex reads
+  them, and runs `mix test FILE:LINE …`, which ExUnit's location filter selects exactly.
+  It exits with that run's status. `--within` adds the tests of the blocks, hints and rows
+  inside a unit, `--list` names the tests without running them, and arguments after `--` go
+  to `mix test`. A unit that is unknown, ambiguous or that no test declares is an error
+  rather than an empty, passing run. `Surfex.Select` makes the selection.
+
 ### Changed
 
 - **A table marker's text after its id must be its options** (#189). A misspelt option

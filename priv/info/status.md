@@ -29,7 +29,7 @@ checked here because this run excluded or skipped their test, and tests unselect
 `--only`. A test tagged `verifies: ["a", "b"]` is recorded against both ids, but
 `mix test --only verifies:a` selects it by neither (ExUnit compares the list as one
 string). The text counts them; the JSON's `unselectable` lists each test and its ids.
-Split a test into one id each where selecting it matters more than one test for both.
+`mix surfex.test ID` runs them by what they declare, so a list tag costs nothing there.
 
 JSON, per relation: `type`, `state`, `impacted`, `tips`, and `ends`, each with `kind`, `id`,
 `recorded` and `now` (hashes), `changed`, `planned` and `location`. Work it one relation
