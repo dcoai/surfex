@@ -65,6 +65,11 @@ defmodule Surfex.Status.Report do
         end
       ),
       items(
+        "Failed (its test failed in this run, whatever validated the relation)",
+        status.failed,
+        &failed_line/1
+      ),
+      items(
         "Unproven (a confirmation by evidence this run doesn't bear out)",
         status.unproven,
         &claim_line/1
@@ -169,6 +174,7 @@ defmodule Surfex.Status.Report do
             "items" => c.items
           }
         end),
+      "failed" => Enum.map(status.failed, &failed_json/1),
       "unproven" => Enum.map(status.unproven, &claim_json/1),
       "unchecked" => Enum.map(status.unchecked, &claim_json/1),
       "undeclared" => Enum.map(status.undeclared, &%{"test" => &1.test, "spec" => &1.spec}),
@@ -397,6 +403,21 @@ defmodule Surfex.Status.Report do
 
   defp citation_text(%{status: :ambiguous, items: items}),
     do: "names more than one item: #{Enum.join(items, ", ")}"
+
+  # A relation whose test failed in this run, whatever its basis.
+  defp failed_line(%{relation: {type, {ak, a}, {bk, b}}, test: test}),
+    do: "#{type}  #{ak} #{a} ↔ #{bk} #{b}: #{test} failed"
+
+  defp failed_json(%{relation: {type, {ak, a}, {bk, b}}, test: test}) do
+    %{
+      "type" => Atom.to_string(type),
+      "ends" => [
+        %{"kind" => Atom.to_string(ak), "id" => a},
+        %{"kind" => Atom.to_string(bk), "id" => b}
+      ],
+      "test" => test
+    }
+  end
 
   # A claim by evidence and why this run doesn't bear it out, or didn't check it.
   defp claim_line(u) do

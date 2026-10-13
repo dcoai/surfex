@@ -1097,12 +1097,18 @@ tips that agree
 - **Broken citation:** a name the spec cites (§6) that resolves to nothing the code has,
   or to more than one item. The spec can't name what doesn't exist. Names the profile
   declares external, and documented absences, are not broken.
+- **Failed:** a current `verifies` or `tests` relation whose test, at the version the
+  relation holds, failed in the evidence given as `evidence:` (§17), **whatever validated
+  it**: evidence, a review, a judgement or a baseline. A review judged that the test
+  covers the claim, and relied on the run to say whether it passes. The relation isn't
+  invalidated: once its test passes again it holds, with no new review.
 - **Unproven:** a current relation confirmed by evidence (§17) that the evidence given to
   `Surfex.Status.derive/4` as `evidence:` doesn't bear out: its test, at the version the
-  relation holds, didn't run, failed, or ran against another version of the code. For an
-  `implements` relation, some test with a current `verifies` relation to the unit (or
-  inside it) and a current `tests` relation to the code must pass. Without `evidence:`
-  nothing is checked, and a relation confirmed by hand never is.
+  relation holds, didn't run or ran against another version of the code (one that failed
+  is failed, above, and not also unproven). For an `implements` relation, some test with
+  a current `verifies` relation to the unit (or inside it) and a current `tests` relation
+  to the code must pass. Without `evidence:` nothing is checked, and a relation confirmed
+  by hand is never required to have run.
 - **Undeclared:** a live `verifies` relation whose test no longer declares its spec unit
   (§11): the tag was removed or changed. A tag isn't part of a test's version, so without
   this the relation would stay current, asserting a claim the source no longer makes. A
@@ -1141,7 +1147,8 @@ the text counts them in one line and the JSON lists each test
 
 `Surfex.Status.failing?/1` is true when any relation is dangling, orphaned, conflicted or
 proposed, any id is unmet, any `verifies` relation is undeclared, any declaration or
-citation is broken, any excuse is stale, or any confirmation by evidence is unproven. New,
+citation is broken, any excuse is stale, any relation's test failed, or any confirmation
+by evidence is unproven. New,
 retired, impacted, planned, unimplemented, unselectable and unvalidated don't fail on
 their own. A
 status derived with `planned: :fail` (`Surfex.Status.derive/4`) fails on any planned
@@ -1216,9 +1223,9 @@ marks are reported and fail only under marks: :fail
 
 ```test status-failing
 the check fails on a dangling, orphaned, conflicted or proposed relation, an unmet id, an
-undeclared verifies relation, a broken declaration or citation, a stale excuse, or an
-unproven confirmation, and on nothing else by default; planned: :fail adds planned
-relations, and validated: true unvalidated ones
+undeclared verifies relation, a broken declaration or citation, a stale excuse, a failed
+test's relation, or an unproven confirmation, and on nothing else by default; planned:
+:fail adds planned relations, and validated: true unvalidated ones
 ```
 
 ```test units-by-role
@@ -1276,8 +1283,9 @@ the code is scanned once, and citations are read under the config's profile
 `Surfex.Status.Report` presents a status:
 - `Surfex.Status.Report.text/1`: the verdict, the counts per type and the spec units by
   role. Then each dangling, orphaned, conflicted, proposed, impacted and planned relation,
-  the unimplemented, new and unmet ids, the broken citations, the unproven confirmations,
-  the undeclared relations, the stale excuses, the broken declarations, the triangle's
+  the unimplemented, new and unmet ids, the broken citations, the failed relations (each
+  with its test), the unproven confirmations, the undeclared relations, the stale excuses,
+  the broken declarations, the triangle's
   gaps and the open and orphaned marks (with their notes, who and when), with locations. A block or hint in a list says what it sits in. Unvalidated
   relations (§18) are counted; they are listed only when the status is derived with
   `validated: true`, where they fail, since a project moving over has many. Unselectable
@@ -1291,15 +1299,17 @@ the code is scanned once, and citations are read under the config's profile
   declarations, the triangle's gaps and the open and orphaned marks (unit, state, note), with
   the spec units by role among its stats. It holds no hashes and no times, so it changes when a relation's
   state changes, not on every confirmation. It's a pure function of the scans and the
-  log, so a merge conflict in it is resolved by regenerating. It leaves unproven
-  confirmations out, since they depend on the last test run, not on the source or the log,
+  log, so a merge conflict in it is resolved by regenerating. It leaves failed relations
+  and unproven confirmations out, since they depend on the last test run, not on the
+  source or the log,
   and validation too: it follows the relations' states, and a proposed relation shows as
   one.
 - `Surfex.Status.Report.json/1`: the work list for tools and agents. For each relation,
   its type, state and impact, and per end the recorded hash, the current hash, whether
   it changed, whether it is planned, and its location. Plus the spec units by role, the
   unimplemented, new and unmet ids (each with its role, what it sits in and what it
-  declares), the broken citations, the unproven confirmations, the stale excuses, the
+  declares), the broken citations, the failed relations (`failed`, each with its type,
+  ends and test), the unproven confirmations, the stale excuses, the
   broken declarations, the triangle's gaps, the unvalidated relations, the unselectable
   tests (each with its ids) and the open and orphaned marks (unit, state, note, who,
   when, entry id, location). A value that
@@ -1311,7 +1321,8 @@ the code is scanned once, and citations are read under the config's profile
 - `--verify` verifies the log (§12.2) **before** loading it, so a tampered log gets its
   report, not the first decode error
 - `--evidence` checks every confirmation by evidence against the evidence the last
-  `mix test` recorded (`evidence:`), and fails on any that is unproven. It only reads.
+  `mix test` recorded (`evidence:`), and fails on any that is unproven, and on any
+  relation whose test failed. It only reads.
 - `--no-planned` fails on any planned relation as well (`planned: :fail`). Which
   pipeline allows plans is the caller's decision, so it is a flag, not a setting
 - `--validated` fails on any unvalidated relation as well (`validated: true`, §18), and
@@ -1715,13 +1726,33 @@ evidence: the log's claims are made where the work is done, and CI only checks t
 ```test evidence-claims-by-basis
 a relation is checked against a run by its basis, evidence or baseline, so a moved one
 stays checked whatever its note; a note marks only an entry written before bases; a
-review or judgement is never checked against a run
+review or judgement is never required to have run
 ```
 
 ```test evidence-checked
 a run where the test passes against the code as confirmed bears the claims out; a test
 that didn't run, failed, or ran against other code disproves them and fails the check;
-without evidence nothing is checked, and relations confirmed by hand never are
+without evidence nothing is checked, and relations confirmed by hand are never required
+to have run
+```
+
+**A failed test fails its relations, whatever validated them.** The basis decides
+whether a run must bear a relation out, not whether a red run counts. A current
+`verifies` or `tests` relation whose test failed at the version the relation holds is
+**failed** (§13.1), whether it was validated by evidence, a review, a judgement or a
+baseline: a review judged that the test covers the claim, and relied on the run to say
+whether it passes. With several jobs' evidence, a failure in any job's file counts. A
+test excluded, skipped or absent from the run fails nothing here. The relation isn't
+invalidated, so once the test passes again it holds with no new review. A project
+validated entirely by review (`adoption: :reevaluate`) is therefore held to its run as
+well: its gate can't pass while the tests behind its requirements fail.
+
+```test evidence-failed
+a test that failed at the version its relations hold fails every current verifies and
+tests relation it is an end of, whatever their basis, and the check; a pass afterwards
+clears it with no new review; another version's failure, an excluded, skipped or absent
+test fails nothing; with several jobs, a failure in any fails it; a claim by evidence
+whose test failed is reported as failed, not also unproven
 ```
 
 **The check grows with the project in proportion.** It runs on every merge request, over
