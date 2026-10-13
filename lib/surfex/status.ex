@@ -43,6 +43,10 @@ defmodule Surfex.Status do
   A `verifies` relation whose test no longer declares its spec unit (the tag was removed or
   changed) is **undeclared**: a claim the source no longer makes.
 
+  A test that `mix test --only verifies:id` can't select by some of the ids it declares (a
+  list tag of several, §11) is **unselectable**, with those ids. A list is legitimate, so
+  this is information, never a failure.
+
   An `excuses` relation whose item its class no longer covers is **stale**: the item is
   now implemented, no rule matches it any more, or another class's rule matches it first.
   An excuse must stay true to its class's rules, not only to the versions it was confirmed
@@ -91,6 +95,7 @@ defmodule Surfex.Status do
           triangle: [gap],
           unvalidated: [%{relation: tuple}],
           undeclared: [%{test: String.t(), spec: String.t()}],
+          unselectable: [%{test: String.t(), ids: [String.t()]}],
           unproven: [%{relation: tuple, test: String.t() | nil, reason: atom}],
           unchecked: [%{relation: tuple, test: String.t(), reason: :excluded | :skipped}],
           citations: [Surfex.Cite.t()],
@@ -202,6 +207,13 @@ defmodule Surfex.Status do
       unmet: unmet(scans, relations, require),
       broken: broken(scans),
       undeclared: undeclared(scans, relations),
+      # Information, not a failure: a list of several ids is legitimate (§13.1).
+      unselectable:
+        for(
+          %Scan{kind: :test, unselectable: [_ | _] = ids} = t <- scans,
+          do: %{test: t.id, ids: ids}
+        )
+        |> Enum.sort_by(& &1.test),
       citations: Keyword.get(opts, :citations, []),
       stale: stale(scans, relations, Keyword.get(opts, :coverage)),
       unproven: unproven,

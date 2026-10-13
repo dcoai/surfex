@@ -227,6 +227,29 @@ defmodule Surfex.StatusTest do
       assert Report.text(dropped) =~ "Undeclared (a test no longer declares what it verifies)"
     end
 
+    # #190: a list of several ids is legitimate, so it's reported, never failed on: the
+    # text counts, the JSON lists.
+    @tag verifies: ["unselectable-status", "status-states", "status-reports"]
+    test "a test --only can't select by some declared ids is unselectable, and doesn't fail" do
+      listed = %{
+        test_scan([{:verifies, "h"}, {:verifies, "g"}])
+        | unselectable: ["h", "g"]
+      }
+
+      status = Status.derive([hint("h"), hint("g"), listed | scans()], [])
+      assert status.unselectable == [%{test: "T: a", ids: ["h", "g"]}]
+      refute Status.failing?(status)
+      assert Report.text(status) =~ "  unselectable by --only: 1 test\n"
+      refute Report.text(status) =~ "h, g"
+
+      {json, :ok, _} = status |> Report.json() |> :json.decode(:ok, %{null: nil})
+      assert json["unselectable"] == [%{"test" => "T: a", "ids" => ["h", "g"]}]
+
+      one = Status.derive([hint("h"), test_scan([{:verifies, "h"}]) | scans()], [])
+      assert one.unselectable == []
+      refute Report.text(one) =~ "unselectable"
+    end
+
     test "a role's rule applies to units in that role only, alongside the kind's" do
       require = [test_hint: [:verifies]]
       status = Status.derive([hint("h") | scans()], [], require)

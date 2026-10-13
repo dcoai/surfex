@@ -83,6 +83,67 @@ defmodule Surfex.ScanExUnitTest do
     assert by_id()["MyApp.CartTest: starts empty"].declares == [{:verifies, "carts"}]
   end
 
+  # #190: `mix test --only verifies:id` compares a list tag as one string, its ids run
+  # together, so it selects a test by none of a list's several ids. ExUnit's own filter is
+  # the judge here, so the record can't drift from what `--only` does.
+  @tag verifies: "unselectable-ids"
+  test "unselectable: the declared ids mix test --only can't select a test by" do
+    source = ~S'''
+    defmodule T do
+      use ExUnit.Case
+      @moduletag verifies: ["m1", "m2"]
+
+      @tag verifies: "one"
+      test "string", do: :ok
+      @tag verifies: ["only"]
+      test "one-id list", do: :ok
+      @tag verifies: ["a", "b"]
+      test "several", do: :ok
+      @tag verifies: ["a", "a"]
+      test "repeated", do: :ok
+      test "inherited", do: :ok
+
+      describe "d" do
+        @describetag verifies: ["d1", "d2"]
+        test "from the describe", do: :ok
+        @tag verifies: "own"
+        test "own over the describe", do: :ok
+      end
+    end
+    '''
+
+    tagged = %{
+      "T: string" => "one",
+      "T: one-id list" => ["only"],
+      "T: several" => ["a", "b"],
+      "T: repeated" => ["a", "a"],
+      "T: inherited" => ["m1", "m2"],
+      "T: d: from the describe" => ["d1", "d2"],
+      "T: d: own over the describe" => "own"
+    }
+
+    records = tests(source)
+    assert Enum.map(records, & &1.id) |> Enum.sort() == tagged |> Map.keys() |> Enum.sort()
+
+    for r <- records, {:verifies, id} <- r.declares do
+      selected? =
+        ExUnit.Filters.eval([verifies: id], [:test], %{test: true, verifies: tagged[r.id]}, []) ==
+          :ok
+
+      assert selected? == id not in r.unselectable, "#{r.id}: #{id}"
+    end
+
+    assert Map.new(records, &{&1.id, &1.unselectable}) == %{
+             "T: string" => [],
+             "T: one-id list" => [],
+             "T: several" => ["a", "b"],
+             "T: repeated" => ["a"],
+             "T: inherited" => ["m1", "m2"],
+             "T: d: from the describe" => ["d1", "d2"],
+             "T: d: own over the describe" => []
+           }
+  end
+
   @tag verifies: "test-versions"
   test "the version follows helpers, attributes, setups and a comprehension's generators" do
     assert changes?("length(cart) >= @limit", "length(cart) > @limit", @closed)

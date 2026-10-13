@@ -27,7 +27,9 @@ defmodule Surfex.Scan do
   A test record (`Surfex.Scan.ExUnit`) can also **declare** what it relates to, in its
   own source: `declares` is a list of `{type, id}`, such as `{:verifies, "cart-add"}`
   from `@tag verifies: "cart-add"`. A declaration is a claim in the source, not a
-  relation; `resolve/2` finds the spec unit it names. A test record also lists what it
+  relation; `resolve/2` finds the spec unit it names. `unselectable` lists the declared
+  ids the test's runner can't select it by (a list tag, to `mix test --only`). A test
+  record also lists what it
   `calls`: the functions its source calls (`MyApp.Cart.add/3`), as facts to suggest
   `tests` relations from. A code record lists what its item calls (`Surfex.Item`), so
   `reach/1` can follow a test through the code it calls.
@@ -47,6 +49,7 @@ defmodule Surfex.Scan do
     :role,
     :within,
     declares: [],
+    unselectable: [],
     calls: [],
     shape: false,
     named: false
@@ -62,6 +65,8 @@ defmodule Surfex.Scan do
           role: role,
           within: String.t() | nil,
           declares: [{atom, String.t()}],
+          # Declared ids the test's runner can't select it by (§11).
+          unselectable: [String.t()],
           calls: [String.t()],
           # A code record of a shape (`Surfex.Item` `:shape`): judged, never exercised.
           shape: boolean,
