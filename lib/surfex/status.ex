@@ -96,6 +96,7 @@ defmodule Surfex.Status do
           unvalidated: [%{relation: tuple}],
           undeclared: [%{test: String.t(), spec: String.t()}],
           unselectable: [%{test: String.t(), ids: [String.t()]}],
+          failed: [%{relation: tuple, test: String.t()}],
           unproven: [%{relation: tuple, test: String.t() | nil, reason: atom}],
           unchecked: [%{relation: tuple, test: String.t(), reason: :excluded | :skipped}],
           citations: [Surfex.Cite.t()],
@@ -189,10 +190,16 @@ defmodule Surfex.Status do
 
     relations = impacted(relations)
 
-    # A claim this run left its test out of is not checked here, not disproved (§17).
+    runs = latest_runs(Keyword.get(opts, :evidence))
+    failed = failed(relations, runs)
+    failed_relations = MapSet.new(failed, & &1.relation)
+
+    # A claim this run left its test out of is not checked here, not disproved (§17). One
+    # whose test failed is reported once, as failed, whatever its basis.
     {unchecked, unproven} =
       scans
-      |> unproven(relations, Keyword.get(opts, :evidence))
+      |> unproven(relations, runs)
+      |> Enum.reject(&MapSet.member?(failed_relations, &1.relation))
       |> Enum.split_with(&(&1.reason in [:excluded, :skipped]))
 
     related =
@@ -216,6 +223,7 @@ defmodule Surfex.Status do
         |> Enum.sort_by(& &1.test),
       citations: Keyword.get(opts, :citations, []),
       stale: stale(scans, relations, Keyword.get(opts, :coverage)),
+      failed: failed,
       unproven: unproven,
       unchecked: unchecked,
       triangle: triangle(scans, relations),
@@ -253,6 +261,7 @@ defmodule Surfex.Status do
     status.unmet != [] or status.broken != [] or status.stale != [] or status.citations != [] or
       (status.policy.validated == true and status.unvalidated != []) or
       status.undeclared != [] or
+      status.failed != [] or
       status.unproven != [] or
       (status.policy.triangle == :fail and status.triangle != []) or
       (status.policy.marks == :fail and status.marks != []) or
@@ -694,6 +703,36 @@ defmodule Surfex.Status do
   # Why a claim isn't borne out, strongest first (§17).
   @reasons [:failed, :other_code, :not_run, :excluded, :skipped]
 
+  # The evidence given to derive, each run reduced to its latest records
+  # (`latest_records/1`), which the checks below look tests up in; nil when none was given.
+  defp latest_runs(nil), do: nil
+  defp latest_runs({:merged, runs}), do: {:merged, Enum.map(runs, &latest_records/1)}
+  defp latest_runs(run), do: latest_records(run)
+
+  # Every current relation with a test end (`verifies`, `tests`) whose test failed at the
+  # version the relation holds, whatever its basis (§17): a review judged that the test
+  # covers the claim, and relied on the run to say whether it passes. With several jobs'
+  # runs, a failure in any of them. Excluded, skipped and unrun tests aren't failures.
+  defp failed(_relations, nil), do: []
+
+  defp failed(relations, runs) do
+    for %{
+          state: :current,
+          type: type,
+          relation: {_, {:test, t}, _} = relation,
+          tip: %Entry{} = tip
+        } <-
+          relations,
+        type in [:verifies, :tests],
+        test_hash = hash_of(tip, :test, t),
+        test_hash != nil,
+        failed?(runs, t, test_hash),
+        do: %{relation: relation, test: t}
+  end
+
+  defp failed?({:merged, runs}, test, hash), do: Enum.any?(runs, &failed?(&1, test, hash))
+  defp failed?(latest, test, hash), do: match?(%{result: :failed}, latest[{test, hash}])
+
   # A current relation confirmed by evidence (`Surfex.Evidence.claimed?/1`) whose claim the
   # given evidence (this run's) doesn't bear out: its test, at the version the relation
   # holds, must have passed against the code's version. For `implements`, some test with
@@ -705,7 +744,7 @@ defmodule Surfex.Status do
   # tests and each test's latest record, is indexed once here, not scanned per claim.
   defp unproven(_scans, _relations, nil), do: []
 
-  defp unproven(scans, relations, evidence) do
+  defp unproven(scans, relations, runs) do
     definition = definitions(scans)
     within = for %Scan{kind: :spec, within: w} = s <- scans, w != nil, into: %{}, do: {s.id, w}
     current = for %{state: :current, tip: %Entry{} = tip} = r <- relations, do: {r, tip}
@@ -728,12 +767,6 @@ defmodule Surfex.Status do
       end)
 
     index = {testing, verifying, within, definition}
-
-    runs =
-      case evidence do
-        {:merged, runs} -> {:merged, Enum.map(runs, &latest_records/1)}
-        run -> latest_records(run)
-      end
 
     for {%{relation: relation} = r, tip} <- current,
         Surfex.Evidence.claimed?(tip),

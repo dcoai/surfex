@@ -18,7 +18,9 @@ defmodule Mix.Tasks.Surfex.Status do
   problem with the log. With `--no-planned` it fails on any planned relation as well, for
   a check that everything planned has been built (a release, say). With `--evidence` it
   fails when a relation confirmed by evidence isn't borne out by the evidence the last
-  `mix test` recorded: its test didn't run, failed, or ran against other code. With
+  `mix test` recorded: its test didn't run, failed, or ran against other code. It also
+  fails on any `verifies` or `tests` relation whose test failed, whatever validated it: a
+  review relies on the run to say whether its test passes. With
   `--merge PATH` (once per file, implying `--evidence`) it checks the claims against several
   CI jobs' evidence files together: a disproof in any fails, and so does a claim no job
   ran. It only

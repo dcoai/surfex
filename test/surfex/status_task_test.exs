@@ -218,4 +218,81 @@ defmodule Surfex.StatusTaskTest do
 
     assert error.message =~ "no evidence file at"
   end
+
+  # #211: nftables_port's planted bug. Every relation validated by review, the gate run
+  # with --verify --validated over a job's evidence where the verifying test failed.
+  @tag verifies: ["evidence-failed", "status-report-forms"]
+  test "--merge over a red run fails relations validated by review, naming the test and unit",
+       %{root: root} do
+    File.write!(
+      Path.join(root, "spec.md"),
+      "# Totals\n\nA cart's total.\n\n```test totals-test\nan empty cart totals zero\n```\n"
+    )
+
+    File.mkdir_p!(Path.join(root, "test"))
+
+    File.write!(Path.join(root, "test/cart_test.exs"), """
+    defmodule MyApp.CartTest do
+      use ExUnit.Case
+      @tag verifies: "totals-test"
+      test "an empty cart" do
+        assert MyApp.Cart.total() == 0
+      end
+    end
+    """)
+
+    config = [sources: ["spec.md"], namespace: "MyApp", tests: ["test/**/*_test.exs"]]
+    File.write!(Path.join(root, ".surfex.exs"), inspect(config))
+    File.rm_rf!(Path.join(root, ".surfex"))
+    Log.init(root)
+
+    scans = Config.scans(config, root) |> Map.new(&{&1.id, &1})
+    test = scans["MyApp.CartTest: an empty cart"]
+    end_ = fn %Scan{} = s -> %{kind: s.kind, id: s.id, hash: s.hash} end
+
+    reviewed = fn type, a, b ->
+      Entry.new!(
+        at: "2026-09-28T10:00:00Z",
+        op: :relate,
+        type: type,
+        ends: [end_.(a), end_.(b)],
+        basis: :review,
+        note: "reviewed"
+      )
+    end
+
+    Log.append(root, [
+      reviewed.(:verifies, test, scans["spec.md#totals-test"]),
+      reviewed.(:implements, scans["spec.md#Totals"], scans["MyApp.Cart.total/0"])
+    ])
+
+    run = fn result ->
+      path = Path.join(root, "#{result}.jsonl")
+
+      Surfex.Evidence.append(path, [
+        %{
+          test: test.id,
+          test_hash: test.hash,
+          result: result,
+          at: "2026-09-28T11:00:00Z",
+          run: "r",
+          seq: 0,
+          code: %{"MyApp.Cart.total/0" => scans["MyApp.Cart.total/0"].hash}
+        }
+      ])
+
+      path
+    end
+
+    task(root, ["--verify", "--validated", "--merge", run.(:passed)])
+    assert output() =~ "relation status: ok"
+
+    assert_raise Mix.Error, ~r/relations need attention/, fn ->
+      task(root, ["--verify", "--validated", "--merge", run.(:failed)])
+    end
+
+    assert output() =~
+             "verifies  test MyApp.CartTest: an empty cart ↔ spec spec.md#totals-test: " <>
+               "MyApp.CartTest: an empty cart failed"
+  end
 end

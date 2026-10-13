@@ -19,6 +19,7 @@ marks), `--no-baseline` (fail on relations resting on an adoption baseline).
 | Conflicted | `mix surfex.resolve FROM TO --type T --pick TIP` |
 | Unmet | relate it (`suggest`, the process), or excuse code with a class |
 | Broken / broken citation | fix the tag, or the name the spec cites |
+| Failed | its test failed in the run, whatever validated the relation: fix the code or the test |
 | Unproven | run the tests; a confirmation the evidence doesn't bear out |
 | Undeclared | the test dropped its tag: restore it, or retire the relation |
 | Triangle | the unit's verifying test must call the implementing code (`triangle: :fail`) |

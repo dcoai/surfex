@@ -963,6 +963,89 @@ defmodule Surfex.RecordTest do
     end
   end
 
+  # #211: nftables_port's planted bug turned four tests red, and a gate of reviewed
+  # relations passed. A red run fails every relation its test is an end of.
+  describe "a failed test fails its relations, whatever validated them" do
+    @describetag verifies: "evidence-failed"
+
+    # Every relation validated by review or judgement: nothing for a run to bear out.
+    defp reviewed,
+      do: [
+        on(rel(:implements, {:spec, @spec_id, "s1"}, {:code, @code_id, "c1"}), :review),
+        on(rel(:verifies, {:test, @t, "t1"}, {:spec, @hint, "h1"}), :review),
+        on(rel(:tests, {:test, @t, "t1"}, {:code, @code_id, "c1"}), :judgement)
+      ]
+
+    defp checked(entries, run, opts \\ []),
+      do: Status.derive(world("s1", "c1"), entries, [], [evidence: run] ++ opts)
+
+    @tag verifies: ["evidence-failed", "status-failing", "status-report-forms"]
+    test "a test that failed at the version its relations hold fails them, and the check" do
+      status = checked(reviewed(), [ev(:failed, "c1", 1)], validated: true)
+
+      assert [
+               %{relation: {:tests, {:test, @t}, {:code, @code_id}}, test: @t},
+               %{relation: {:verifies, {:test, @t}, {:spec, @hint}}, test: @t}
+             ] = Enum.sort_by(status.failed, & &1.relation)
+
+      assert status.unproven == [] and status.unvalidated == []
+      assert Status.failing?(status)
+
+      text = Surfex.Status.Report.text(status)
+      assert text =~ "Failed (its test failed in this run, whatever validated the relation)"
+      assert text =~ "verifies  test #{@t} ↔ spec #{@hint}: #{@t} failed"
+
+      {json, :ok, _} = status |> Surfex.Status.Report.json() |> :json.decode(:ok, %{null: nil})
+      assert json["failing"] == true
+      assert [%{"test" => @t, "type" => _} | _] = json["failed"]
+    end
+
+    test "once it passes again, the relations hold with no new review" do
+      status = checked(reviewed(), [ev(:failed, "c1", 1), ev(:passed, "c1", 2)])
+      assert status.failed == []
+      refute Status.failing?(status)
+    end
+
+    test "a failure of another version of the test, or a test left out of the run, fails nothing" do
+      for run <- [
+            [ev(:failed, "c1", 1, "t0")],
+            [ev(:excluded, nil, 1)],
+            [ev(:skipped, nil, 1)],
+            []
+          ] do
+        status = checked(reviewed(), run)
+        assert status.failed == []
+        refute Status.failing?(status)
+      end
+
+      # Without evidence nothing is checked.
+      assert Status.derive(world("s1", "c1"), reviewed(), []).failed == []
+    end
+
+    test "merged jobs: a failure in any job fails it" do
+      status = checked(reviewed(), {:merged, [[ev(:passed, "c1", 1)], [ev(:failed, "c1", 2)]]})
+      assert length(status.failed) == 2
+      assert Status.failing?(status)
+
+      refute Status.failing?(checked(reviewed(), {:merged, [[ev(:passed, "c1", 1)], []]}))
+    end
+
+    test "a claim by evidence whose test failed is failed, not also unproven" do
+      status =
+        Status.derive(world("s1", "c2"), claimed(), [],
+          evidence: [ev(:passed, "c2", 5), ev(:failed, "c2", 6)]
+        )
+
+      failed = MapSet.new(status.failed, & &1.relation)
+      assert MapSet.member?(failed, {:tests, {:test, @t}, {:code, @code_id}})
+      assert MapSet.member?(failed, {:verifies, {:test, @t}, {:spec, @hint}})
+      refute Enum.any?(status.unproven, &MapSet.member?(failed, &1.relation))
+
+      # The implements claim, judged over its candidate tests, stays unproven.
+      assert [%{relation: {:implements, _, _}, reason: :failed}] = status.unproven
+    end
+  end
+
   # #72: a current relation means validated, not asserted.
   # #137: a type has no behaviour for a run to exercise, so its implements is judged.
   # #183: a section cites the function doing the work (M.add/2); its test drives the entry

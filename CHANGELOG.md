@@ -9,6 +9,20 @@ All notable changes to Surfex are recorded here, following
 `mix.exs` reads `0.7.3-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
 release it merely follows.
 
+### Fixed
+
+- **A failed test fails its relations, whatever validated them** (#211, #212). With
+  `--evidence` or `--merge`, a current `verifies` or `tests` relation whose test failed at
+  the version the relation holds is now reported as **failed**, and fails the check. That
+  holds whether the relation was validated by evidence, a review, a judgement or a
+  baseline. Before, only claims by evidence or baseline were checked against a run, so a
+  project validated by review (`adoption: :reevaluate`) passed its surfex gate while the
+  tests behind its requirements failed. The relation isn't invalidated: once its test
+  passes again, it holds with no new review. A claim by evidence whose test failed now
+  appears under the new `Failed` heading (JSON `failed`), not under `Unproven`. An
+  `implements` claim judged over its candidate tests stays under `Unproven`. A gate whose
+  tests pass sees no change.
+
 ## [0.7.2] — 2026-10-13
 
 A fix for 0.7.0's slow evidence check. `mix surfex.status --verify --evidence` took 36
