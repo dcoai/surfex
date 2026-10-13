@@ -4,10 +4,11 @@ All notable changes to Surfex are recorded here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.7.2] — 2026-10-13
 
-`mix.exs` reads `0.7.2-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
-release it merely follows.
+A fix for 0.7.0's slow evidence check. `mix surfex.status --verify --evidence` took 36
+minutes on a project with about 4,000 tests and 500,000 evidence records, where 0.6.2
+took 5. It now takes seconds, with an identical result (#201). No upgrade step.
 
 ### Fixed
 
