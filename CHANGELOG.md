@@ -4,10 +4,15 @@ All notable changes to Surfex are recorded here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.7.1] — 2026-10-13
 
-`mix.exs` reads `0.7.1-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
-release it merely follows.
+What 0.7.0's users asked for, and two corrections. Unit ids take several heading grammars
+and lettered section numbers, and a marked table keys on several columns and can leave
+measured ones out of a row's version (#187). A review credits only the code its test
+calls, and reached code once you name it (#191). A test tagged with a list of ids, which
+`mix test --only` can't select, is counted by status (#190), and `mix surfex.test UNIT`
+runs it with the rest of a requirement's tests (#198). No upgrade step. A misspelt table
+marker option, which used to leave the table unmarked, is now an error.
 
 ### Added
 
