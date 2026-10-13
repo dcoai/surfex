@@ -983,4 +983,107 @@ defmodule Surfex.StatusTest do
     assert Status.tips([first, second], Entry.relation(first)) == [second]
     refute Status.failing?(status)
   end
+
+  # #201: the --evidence check grows with the project in proportion. On a project of
+  # exio's size it was cubic in the claims (each implements scanned every verifies against
+  # every reached pair) and quadratic in the evidence (each candidate scanned the whole
+  # run). Counted in reductions, not seconds, as suggest-linear is.
+  @tag verifies: "evidence-check-linear"
+  test "the evidence check's work over a project twice as large is about twice" do
+    project = fn n ->
+      scans =
+        for i <- 1..n,
+            scan <- [
+              %Scan{
+                kind: :spec,
+                id: "spec.md#s#{i}",
+                hash: "s#{i}",
+                role: :section,
+                location: %{file: "spec.md", lines: {i, i}}
+              },
+              # f1 calls f2, f3 calls f4, …: every test reaches one or two.
+              %Scan{
+                kind: :code,
+                id: "M.f#{i}/0",
+                hash: "c#{i}",
+                calls: if(rem(i, 2) == 1, do: ["M.f#{i + 1}/0"], else: []),
+                location: %{file: "lib/m.ex", lines: {i, i}}
+              },
+              %Scan{
+                kind: :test,
+                id: "test/m_test.exs#t#{i}",
+                hash: "t#{i}",
+                declares: [{:verifies, "spec.md#s#{i}"}],
+                calls: ["M.f#{i}/0"],
+                location: %{file: "test/m_test.exs", lines: {i, i}}
+              }
+            ],
+            do: scan
+
+      claim = fn type, a, b ->
+        Entry.new!(
+          at: "2026-10-13T10:00:00Z",
+          by: "gen",
+          note: "confirmed by evidence",
+          op: :relate,
+          type: type,
+          basis: :evidence,
+          ends: [a, b]
+        )
+      end
+
+      entries =
+        for i <- 1..n,
+            test = %{kind: :test, id: "test/m_test.exs#t#{i}", hash: "t#{i}"},
+            spec = %{kind: :spec, id: "spec.md#s#{i}", hash: "s#{i}"},
+            code = %{kind: :code, id: "M.f#{i}/0", hash: "c#{i}"},
+            entry <- [
+              claim.(:verifies, test, spec),
+              claim.(:tests, test, code),
+              claim.(:implements, code, spec)
+            ],
+            do: entry
+
+      # Ten runs, each with every test: red against other code, then green.
+      evidence =
+        for run <- 1..10,
+            i <- 1..n,
+            do: %{
+              test: "test/m_test.exs#t#{i}",
+              test_hash: "t#{i}",
+              result: if(run == 1, do: :failed, else: :passed),
+              at: "2026-10-13T1#{run - 1}:00:00Z",
+              run: "r#{run}",
+              seq: i,
+              code: %{"M.f#{i}/0" => if(run == 1, do: "old", else: "c#{i}")}
+            }
+
+      {scans, entries, evidence}
+    end
+
+    reductions = fn f ->
+      {:reductions, before} = Process.info(self(), :reductions)
+      result = f.()
+      {:reductions, later} = Process.info(self(), :reductions)
+      {result, later - before}
+    end
+
+    # The check's own work: deriving with the evidence, less deriving without it.
+    work = fn n ->
+      {scans, entries, evidence} = project.(n)
+      {_, without} = reductions.(fn -> Status.derive(scans, entries, []) end)
+
+      {status, with} =
+        reductions.(fn -> Status.derive(scans, entries, [], evidence: evidence) end)
+
+      # Every claim is borne out, so the check did the whole of its work.
+      assert status.unproven == [] and status.unchecked == []
+      assert length(status.relations) == 3 * n
+      with - without
+    end
+
+    n = 400
+    ratio = work.(2 * n) / work.(n)
+    assert ratio < 3, "twice the project took #{Float.round(ratio, 2)}× the work"
+  end
 end
