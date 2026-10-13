@@ -689,6 +689,26 @@ changes its version.
 a test's record lists the declared ids mix test --only can't select it by: every id of a
 list of several, none of a string or a one-id list, whichever level's tag it took
 ```
+
+`mix surfex.test UNIT…` runs a requirement's tests as surfex reads them, list members
+included. Each UNIT is any reference a declaration may use, resolved as a declaration is
+(`Surfex.Scan.resolve/2`). The tests are every test whose declarations resolve to one of
+them. With `--within`, they also include every test declaring a unit inside one: a block,
+hint or row whose `within` chain reaches it. The task runs `mix test` in a child process
+with each test's file and first line (`test/cart_test.exs:12`), which ExUnit's location
+filter selects exactly, then any arguments after `--`. It exits with that run's status,
+and the run's evidence is recorded as any run's is (§17). A test defined in a
+comprehension shares its line with its siblings, so they all run. A unit that is unknown
+or ambiguous, or that no test declares, is an error before anything runs: running nothing
+would pass in silence. `--list` prints each selected test's id and location, and runs
+nothing. `Surfex.Select.tests/3` makes the selection and `Surfex.Select.args/1` the
+locations, both pure functions of the scans.
+
+```test test-selection
+mix surfex.test selects the tests declaring a unit, a list's members included, and with
+--within the tests of the units inside it; it runs them by location, refuses an unknown,
+ambiguous or undeclared unit, and --list runs nothing
+```
 - **What it calls**: the record's `calls` lists the functions the test's body and the
   private helpers it reaches call, as `Module.fun/arity`, and every module it calls or
   names as a value (a module handed to a helper is exercised through it). Aliases are resolved

@@ -235,8 +235,9 @@ ExUnit.start(formatters: [ExUnit.CLIFormatter, Surfex.ExUnitFormatter])
 implemented by `Wren.send/3`, verified by the test, and the test exercises `Wren.send/3`.
 `mix test --only verifies:sending-queues` runs the tests tagged with that id. A test tagged
 with a list of several ids is one `--only` can't select by any of them, since ExUnit compares
-a list as one string. surfex still records it against each, and `mix surfex.status` counts
-such tests.
+a list as one string. surfex still records it against each, `mix surfex.status` counts such
+tests, and `mix surfex.test sending-queues` runs every test that declares the unit, lists
+included.
 
 **When the code changes and the tests stay green** (a refactor), the same
 `mix test && mix surfex.confirm --evidence` re-validates it. Nothing is redone by hand.
