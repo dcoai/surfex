@@ -166,6 +166,8 @@ defmodule Surfex.Status do
       do: raise(ArgumentError, "marks: must be :allow or :fail, got #{inspect(marks_policy)}")
 
     by_id = Map.new(scans, &{{&1.kind, &1.id}, &1})
+    # Every test's declarations resolve against one index, built once (§13).
+    resolver = Scan.resolver(scans)
 
     # Marks and observations aren't relations (§12.1): the relations are judged without them.
     {other_entries, entries} = Enum.split_with(entries, &(not Entry.relation?(&1)))
@@ -212,8 +214,8 @@ defmodule Surfex.Status do
         |> Enum.reject(&MapSet.member?(related, {&1.kind, &1.id}))
         |> Enum.sort_by(&{&1.kind, &1.id}),
       unmet: unmet(scans, relations, require),
-      broken: broken(scans),
-      undeclared: undeclared(scans, relations),
+      broken: broken(scans, resolver),
+      undeclared: undeclared(scans, relations, resolver),
       # Information, not a failure: a list of several ids is legitimate (§13.1).
       unselectable:
         for(
@@ -437,20 +439,27 @@ defmodule Surfex.Status do
     within = for %Scan{kind: :spec, within: w} = s <- scans, w != nil, into: %{}, do: {s.id, w}
     current = for %{state: :current, tip: %Entry{} = tip} = r <- relations, do: {r, tip}
     pairs = fn type -> for {%{type: ^type, relation: {_, a, b}}, _} <- current, do: {a, b} end
-    {verifies, tests} = {pairs.(:verifies), pairs.(:tests)}
+    tests = MapSet.new(pairs.(:tests))
+    trusted = MapSet.new(baselined, fn {t, _hash} -> t end)
 
-    trusted_test? = fn t ->
-      Enum.any?(baselined, &match?({^t, _}, &1))
-    end
+    # Each spec unit => the baselined tests that verify it or a unit inside it, each
+    # verifies unit's `within` chain walked once (§13).
+    trusted_verifying =
+      for {{:test, t}, {:spec, unit}} <- pairs.(:verifies),
+          MapSet.member?(trusted, t),
+          reduce: %{} do
+        acc -> Map.update(acc, unit, MapSet.new([t]), &MapSet.put(&1, t))
+      end
+      |> verifying(within)
 
     holds? = fn
       %{relation: {:verifies, {:test, t}, _}}, tip ->
         MapSet.member?(baselined, {t, Enum.find(tip.ends, &(&1.kind == :test)).hash})
 
       %{relation: {:implements, {:code, c}, {:spec, s}}}, _tip ->
-        Enum.any?(verifies, fn {{:test, t}, {:spec, unit}} ->
-          trusted_test?.(t) and inside?(unit, s, within) and {{:test, t}, {:code, c}} in tests
-        end)
+        trusted_verifying
+        |> Map.get(s, MapSet.new())
+        |> Enum.any?(&MapSet.member?(tests, {{:test, &1}, {:code, c}}))
     end
 
     shapes = for %Scan{kind: :code, shape: true, id: id} <- scans, into: MapSet.new(), do: id
@@ -530,8 +539,11 @@ defmodule Surfex.Status do
       exercises = Map.merge(reached, recorded, fn _test, a, b -> MapSet.union(a, b) end)
       within = for %Scan{kind: :spec, within: w} = s <- scans, w != nil, into: %{}, do: {s.id, w}
 
+      verifying = verifying(verifies, within)
+
       for {spec, codes} <- Enum.sort(implements),
-          gap <- gaps(spec, codes, verifying(spec, verifies, within), exercises, definition),
+          tests = Map.get(verifying, spec, MapSet.new()),
+          gap <- gaps(spec, codes, tests, exercises, definition),
           do: gap
     else
       []
@@ -546,13 +558,28 @@ defmodule Surfex.Status do
     end
   end
 
-  # The tests that verify `spec`, or any unit inside it.
-  defp verifying(spec, verifies, within) do
-    for {unit, tests} <- verifies,
-        inside?(unit, spec, within),
-        test <- tests,
-        into: MapSet.new(),
-        do: test
+  # Each spec unit => the tests that verify it, or any unit inside it. Each verifies unit's
+  # `within` chain is walked once, so a unit's verifying tests are a lookup, not a walk of
+  # every verifies unit's chain per spec unit (§13).
+  defp verifying(verifies, within) do
+    for {unit, tests} <- verifies, enclosing <- enclosing(unit, within), reduce: %{} do
+      acc -> Map.update(acc, enclosing, tests, &MapSet.union(&1, tests))
+    end
+  end
+
+  # `unit` and every unit it sits inside, innermost first: what `inside?/3` is true of.
+  defp enclosing(unit, within), do: enclosing(unit, within, [])
+
+  defp enclosing(unit, within, seen) do
+    # A cycle can't come from a scanner, but must end the walk rather than loop.
+    if unit in seen do
+      Enum.reverse(seen)
+    else
+      case Map.fetch(within, unit) do
+        {:ok, parent} -> enclosing(parent, within, [unit | seen])
+        :error -> Enum.reverse([unit | seen])
+      end
+    end
   end
 
   defp inside?(spec, spec, _within), do: true
@@ -885,27 +912,30 @@ defmodule Surfex.Status do
   # A live verifies relation whose test no longer declares its spec unit: the claim was
   # removed from the test's source, but the relation still asserts it. A tag is not part of
   # a test's version, so without this the relation would stay current.
-  defp undeclared(scans, relations) do
+  defp undeclared(scans, relations, resolver) do
     tests = for %Scan{kind: :test} = s <- scans, into: %{}, do: {s.id, s}
 
     for %{type: :verifies, state: state, relation: {_, {:test, t}, {:spec, unit}}} <- relations,
         state != :retired,
         test = Map.get(tests, t),
         test != nil,
-        unit not in declared(scans, test),
+        unit not in declared(resolver, test),
         do: %{test: t, spec: unit}
   end
 
   @doc false
-  # The spec units a test declares it verifies, resolved.
-  def declared(scans, %Scan{declares: declares}) do
-    for {:verifies, ref} <- declares, {:ok, unit} <- [Scan.resolve(scans, ref)], do: unit.id
+  # The spec units a test declares it verifies, resolved against the scans or a resolver
+  # built from them (`Surfex.Scan.resolve/2`).
+  def declared(scans_or_resolver, %Scan{declares: declares}) do
+    for {:verifies, ref} <- declares,
+        {:ok, unit} <- [Scan.resolve(scans_or_resolver, ref)],
+        do: unit.id
   end
 
-  defp broken(scans) do
+  defp broken(scans, resolver) do
     for scan <- Enum.sort_by(scans, &{&1.kind, &1.id}),
         {type, ref} <- scan.declares,
-        {:error, why} <- [Scan.resolve(scans, ref)],
+        {:error, why} <- [Scan.resolve(resolver, ref)],
         do: %{scan: scan, type: type, ref: ref, reason: why}
   end
 end

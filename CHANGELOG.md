@@ -9,6 +9,23 @@ All notable changes to Surfex are recorded here, following
 `mix.exs` reads `0.8.1-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
 release it merely follows.
 
+### Added
+
+- **`Surfex.Scan.resolver/1`** (#204, #220): the spec units indexed once, by full id and by
+  bare id. `Surfex.Scan.resolve/2` takes it in place of the scans and resolves exactly as
+  they do (unknown, ambiguous, `§`-ids), so code resolving many references builds it once.
+
+### Fixed
+
+- **`Surfex.Status.derive/4` grows with the project in proportion** (#204, #220). It was
+  quadratic in the spec units: each test declaration resolved by filtering every scan,
+  and the triangle walked every verified unit's `within` chain for each spec unit (the
+  baseline check, every verifies relation for each baselined `implements`). Both are now
+  indexed once per derive, and a `derive-linear` test guards the growth. On a project of
+  about 2,900 records and 27,500 log entries derive fell from about 3 s to 0.65 s, with an
+  identical status. `mix surfex.suggest`, `mix surfex.test` and the baseline resolve
+  declarations through one resolver too.
+
 ## [0.8.0] — 2026-10-13
 
 A planted bug now fails the gate. A failed test fails its relations whatever validated

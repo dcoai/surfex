@@ -39,6 +39,7 @@ defmodule Surfex.Scan do
   """
 
   alias Surfex.Item
+  alias Surfex.Scan.Resolver
 
   @enforce_keys [:kind, :id, :hash, :location]
   defstruct [
@@ -83,34 +84,21 @@ defmodule Surfex.Scan do
   `spec.md#cart-add`), or a bare anchor, block or hint id (`cart-add`) looked up across
   every spec file. A `§`-id may carry its sign (`§Api.3.2`). `{:error, :unknown}` when
   nothing has it, `{:error, {:ambiguous, ids}}` when a bare id is in more than one file.
+
+  It takes the scans, or a resolver built from them once (`resolver/1`), which resolves
+  the same way by lookup: what to pass when many references resolve against one scan.
   """
-  @spec resolve([t], String.t()) ::
+  @spec resolve([t] | Resolver.t(), String.t()) ::
           {:ok, t} | {:error, :unknown | {:ambiguous, [String.t()]}}
-  def resolve(scans, "§" <> ref) do
-    # A `§`-id is cited with its sign (`§Api.3.2`); the id is what follows it (§11).
-    case resolve(scans, ref) do
-      {:error, :unknown} -> resolve_exact(scans, "§" <> ref)
-      found -> found
-    end
-  end
+  def resolve(%Resolver{} = resolver, ref), do: Resolver.resolve(resolver, ref)
+  def resolve(scans, ref) when is_list(scans), do: scans |> resolver() |> resolve(ref)
 
-  def resolve(scans, ref), do: resolve_exact(scans, ref)
-
-  defp resolve_exact(scans, ref) do
-    spec = Enum.filter(scans, &(&1.kind == :spec))
-
-    matches =
-      if String.contains?(ref, "#"),
-        do: Enum.filter(spec, &(&1.id == ref)),
-        else:
-          Enum.filter(spec, fn s -> (s.role != :section or anchored?(s)) and bare(s.id) == ref end)
-
-    case matches do
-      [one] -> {:ok, one}
-      [] -> {:error, :unknown}
-      many -> {:error, {:ambiguous, many |> Enum.map(& &1.id) |> Enum.sort()}}
-    end
-  end
+  @doc """
+  The spec units of `scans`, indexed once by full id and by bare id (`Surfex.Scan.Resolver`),
+  for `resolve/2` to look references up in.
+  """
+  @spec resolver([t]) :: Resolver.t()
+  def resolver(scans), do: Resolver.new(scans)
 
   @doc """
   What a code record is a version of: its file, lines and version. A function with
@@ -184,14 +172,6 @@ defmodule Surfex.Scan do
       s.kind == :code and s.role == kind and (s.id == key or s.id == "#{key} (#{kind})")
     end)
   end
-
-  defp bare(id), do: id |> String.split("#", parts: 2) |> List.last()
-
-  # A section's id is an anchor when the author wrote it (`named`), or, for a record built
-  # by hand, when it has the lowercase anchor form. A bare reference names anchors, blocks
-  # and hints, never a heading path.
-  defp anchored?(%__MODULE__{named: true}), do: true
-  defp anchored?(%__MODULE__{id: id}), do: Regex.match?(~r/#[a-z0-9][a-z0-9-]*$/, id)
 
   @doc """
   Code records from a scanner's items: the item's key, version and place, with its kind as

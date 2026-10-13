@@ -367,6 +367,7 @@ defmodule Surfex.Record do
         meta |> Keyword.delete(:adoption) |> Keyword.put(:note, note) |> with_basis(:baseline)
 
       status = Status.derive(scans, entries)
+      resolver = Scan.resolver(scans)
 
       trusted
       |> Enum.flat_map(fn test ->
@@ -374,7 +375,7 @@ defmodule Surfex.Record do
 
         verifies =
           for {:verifies, ref} <- test.declares,
-              {:ok, unit} <- [Scan.resolve(scans, ref)],
+              {:ok, unit} <- [Scan.resolve(resolver, ref)],
               relation = Entry.relation(:verifies, end_(test), end_(unit)),
               do:
                 entry(
@@ -397,7 +398,8 @@ defmodule Surfex.Record do
   # The baseline adopts the verifies: tags already written, once: adopting none would spend
   # it on test versions alone, so that takes saying so (§18.1).
   defp tags!(scans, trusted, meta) do
-    tagged = Enum.any?(trusted, &(declared_units(scans, &1) != []))
+    resolver = Scan.resolver(scans)
+    tagged = Enum.any?(trusted, &(declared_units(resolver, &1) != []))
 
     if tagged or meta[:no_tags] == true,
       do: :ok,
@@ -409,9 +411,13 @@ defmodule Surfex.Record do
            "each tag then validated on its own"}
   end
 
-  defp declared_units(scans, test),
+  defp declared_units(resolver, test),
     do:
-      for({:verifies, ref} <- test.declares, {:ok, unit} <- [Scan.resolve(scans, ref)], do: unit)
+      for(
+        {:verifies, ref} <- test.declares,
+        {:ok, unit} <- [Scan.resolve(resolver, ref)],
+        do: unit
+      )
 
   @doc """
   What a baseline (`baseline/4`) adopted, from the entries it recorded: the trusted test

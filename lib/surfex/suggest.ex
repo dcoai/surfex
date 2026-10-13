@@ -414,10 +414,11 @@ defmodule Surfex.Suggest do
 
   defp verifications(scans, entries) do
     related = MapSet.new(entries, &Entry.relation/1)
+    resolver = Scan.resolver(scans)
 
     for %Scan{kind: :test, declares: declares} = test <- scans,
         {:verifies, ref} <- declares,
-        {:ok, spec} <- [Scan.resolve(scans, ref)],
+        {:ok, spec} <- [Scan.resolve(resolver, ref)],
         not MapSet.member?(related, Entry.relation(:verifies, test, spec)),
         uniq: true,
         do: %{from: test, to: spec}

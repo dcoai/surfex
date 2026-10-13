@@ -282,6 +282,41 @@ defmodule Surfex.ScanExUnitTest do
       assert {:error, {:ambiguous, ["other.md#closed", "spec.md#closed"]}} =
                Scan.resolve(@scans, "closed")
     end
+
+    # #204: derive resolves every declaration against one index, not a scan per ref.
+    @tag verifies: "declaration-resolver"
+    test "a resolver built once resolves every reference as the scans do" do
+      indexed = [
+        spec("spec.md#Api.3.2", :section) |> Map.put(:named, true),
+        spec("spec.md#§Raw", :block),
+        spec("spec.md#hint-1", :test_hint),
+        %Scan{kind: :code, id: "spec.md#hint-1", hash: "h", location: %{file: "f", lines: nil}}
+        | @scans
+      ]
+
+      resolver = Scan.resolver(indexed)
+
+      for ref <- [
+            "spec.md#Carts/Adding items",
+            "cart-add",
+            "closed",
+            "Carts/Adding items",
+            "nothing",
+            "Api.3.2",
+            "§Api.3.2",
+            "§Raw",
+            "hint-1",
+            "spec.md#hint-1"
+          ] do
+        assert Scan.resolve(resolver, ref) == Scan.resolve(indexed, ref), ref
+      end
+
+      assert {:ok, %{id: "spec.md#Api.3.2"}} = Scan.resolve(resolver, "§Api.3.2")
+      assert {:ok, %{id: "spec.md#§Raw"}} = Scan.resolve(resolver, "§Raw")
+      assert {:ok, %{kind: :spec, id: "spec.md#hint-1"}} = Scan.resolve(resolver, "hint-1")
+      assert {:error, {:ambiguous, [_, _]}} = Scan.resolve(resolver, "closed")
+      assert {:error, :unknown} = Scan.resolve(resolver, "Carts/Adding items")
+    end
   end
 
   test "calls: aliases, pipes, captures and imports resolved, helpers followed, modules named" do
