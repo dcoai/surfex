@@ -30,7 +30,9 @@ defmodule Surfex.Scan.Markdown do
       exactly `test ID`. Its id is `file#ID` and its version covers the fence's content.
       A `test` fence without an id is an ordinary code block.
     * A **marked table** (`<!-- surfex: table ID -->` before a table) is a unit, and so is
-      each of its rows, `file#ID/KEY`.
+      each of its rows, `file#ID/KEY`. The marker may name the key column, or several
+      (`key: [Function, Key]`, joined by `/`), and columns left out of a row's version
+      (`ignore: [Measured]`).
 
   Written ids and block, hint and table ids share one namespace per file with the section
   ids: letters, digits and `. _ - :`, starting with a letter or digit. A duplicate is an
@@ -52,7 +54,7 @@ defmodule Surfex.Scan.Markdown do
   @open_block ~r/^ {0,3}<!--\s*surfex:\s*(\S+)\s*-->\s*$/
   @close_block ~r/^ {0,3}<!--\s*\/surfex\s*-->\s*$/
   @hint ~r/^test\s+(\S+)$/
-  @table_marker ~r/^ {0,3}<!--\s*surfex:\s*table\s+(\S+)(?:\s+key:\s*(.*?))?\s*-->\s*$/
+  @table_marker ~r/^ {0,3}<!--\s*surfex:\s*table\s+(\S+)(.*?)\s*-->\s*$/
   @table_line ~r/^ {0,3}\|/
   @separator ~r/^ {0,3}\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/
 
@@ -222,10 +224,19 @@ defmodule Surfex.Scan.Markdown do
         new_section(st, heading(line), no)
 
       prose? and Regex.match?(@table_marker, line) ->
-        [id | key] = Regex.run(@table_marker, line, capture: :all_but_first)
+        [id, options] = Regex.run(@table_marker, line, capture: :all_but_first)
         id = checked_id!(st, no, id, "table")
-        key = with [k] when k != "" <- key, do: k, else: (_ -> nil)
-        table = %{id: id, key: key, first: no, lines: [], within: within(st)}
+        options = table_options(st, no, id, options)
+
+        table = %{
+          id: id,
+          key: options[:key],
+          ignore: Map.get(options, :ignore, []),
+          first: no,
+          lines: [],
+          within: within(st)
+        }
+
         %{st | table: table, cur: extend(st.cur, line, no)}
 
       prose? and Regex.match?(@open_block, line) ->
@@ -368,7 +379,19 @@ defmodule Surfex.Scan.Markdown do
         unless Regex.match?(@separator, separator),
           do: fail(st, sep_no, "table #{table.id} has no separator row under its header")
 
-        column = key_column(st, table, cells(header))
+        header = cells(header)
+        keys = if table.key, do: Enum.map(table.key, &column!(st, table, header, &1)), else: [0]
+        ignored = Enum.map(table.ignore, &column!(st, table, header, &1))
+
+        for {name, c} <- Enum.zip(table.ignore, ignored),
+            c in keys,
+            do:
+              fail(
+                st,
+                table.first,
+                "table #{table.id} can't ignore its key column #{inspect(name)}"
+              )
+
         {_, last} = List.last(lines)
 
         table_unit = %{
@@ -382,15 +405,16 @@ defmodule Surfex.Scan.Markdown do
 
         row_units =
           for {row, no} <- rows do
-            key = row |> cells() |> Enum.at(column, "") |> key_text()
-            if key == "", do: fail(st, no, "a row of table #{table.id} has an empty key")
+            row_cells = cells(row)
+            parts = for c <- keys, do: row_cells |> Enum.at(c, "") |> key_text()
+            if "" in parts, do: fail(st, no, "a row of table #{table.id} has an empty key")
 
             %{
               role: :row,
-              id: "#{table.id}/#{key}",
+              id: "#{table.id}/#{Enum.join(parts, "/")}",
               first: no,
               last: no,
-              body: [row],
+              body: row_version(row, row_cells, ignored),
               within: {:table, table.id}
             }
           end
@@ -402,11 +426,53 @@ defmodule Surfex.Scan.Markdown do
     end
   end
 
-  defp key_column(_st, %{key: nil}, _header), do: 0
+  defp column!(st, table, header, name) do
+    Enum.find_index(header, &(key_text(&1) == key_text(name))) ||
+      fail(st, table.first, "table #{table.id} has no column #{inspect(name)}")
+  end
 
-  defp key_column(st, table, header) do
-    Enum.find_index(header, &(key_text(&1) == key_text(table.key))) ||
-      fail(st, table.first, "table #{table.id} has no column #{inspect(table.key)}")
+  # A row's version covers its cells, less the columns `ignore:` names.
+  defp row_version(row, _cells, []), do: [row]
+
+  defp row_version(_row, cells, ignored) do
+    kept = for {cell, c} <- Enum.with_index(cells), c not in ignored, do: cell
+    [Enum.join(kept, "|")]
+  end
+
+  # A marker's text after its id: `key:` and `ignore:`, in either order, each a column
+  # header or a bracketed list of them. Anything else is an error, never silently body.
+  defp table_options(st, no, id, text) do
+    text
+    |> String.trim()
+    |> case do
+      "" -> []
+      text -> Regex.split(~r/\s+(?=(?:key|ignore):)/, text)
+    end
+    |> Enum.reduce(%{}, fn option, acc ->
+      case Regex.run(~r/^(key|ignore):\s*(\S.*)$/, option, capture: :all_but_first) do
+        [name, value] ->
+          name = Map.fetch!(%{"key" => :key, "ignore" => :ignore}, name)
+
+          if Map.has_key?(acc, name),
+            do: fail(st, no, "table #{id}'s marker gives #{name}: twice")
+
+          Map.put(acc, name, columns(value))
+
+        nil ->
+          fail(
+            st,
+            no,
+            "table #{id}'s marker has text that isn't key: or ignore: (#{inspect(option)})"
+          )
+      end
+    end)
+  end
+
+  defp columns(value) do
+    case Regex.run(~r/^\[(.*)\]$/, value, capture: :all_but_first) do
+      [list] -> list |> String.split(",") |> Enum.map(&String.trim/1)
+      nil -> [value]
+    end
   end
 
   # A row's cells: split on `|` outside code spans and not escaped, without the outer pipes.

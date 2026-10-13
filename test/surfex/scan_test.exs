@@ -707,4 +707,92 @@ defmodule Surfex.ScanTest do
       end
     end
   end
+
+  # #189: a row identified by a pair of columns, and columns that record rather than claim.
+  describe "table columns" do
+    @describetag verifies: ["table-columns"]
+
+    defp row_ids(text),
+      do: for(%{role: :row, id: id} <- Markdown.sections(text, "spec.md"), do: id)
+
+    defp row_hashes(text),
+      do: Map.new(for %{role: :row} = r <- Markdown.sections(text, "spec.md"), do: {r.id, r.hash})
+
+    test "key: [A, B] keys each row on several columns, joined by /" do
+      text = """
+      # Options
+
+      <!-- surfex: table options key: [Function, Key] -->
+      | Function | Key | Default |
+      |---|---|---|
+      | `render/2` | `:width` | 80 |
+      | `render/2` | `:height` | 24 |
+      | **`draw/1`** | `:width` | 40 |
+      """
+
+      assert row_ids(text) == [
+               "spec.md#options/render/2/:width",
+               "spec.md#options/render/2/:height",
+               "spec.md#options/draw/1/:width"
+             ]
+
+      # A list of one is the single column; the options read in either order.
+      single = String.replace(text, "key: [Function, Key]", "key: [Key] ignore: [Default]")
+      assert_raise ArgumentError, ~r/is already the id of line 6/, fn -> row_ids(single) end
+    end
+
+    test "ignore: leaves a column out of each row's version, and only that column" do
+      text = """
+      # Benchmarks
+
+      <!-- surfex: table budgets ignore: [Measured] key: Benchmark -->
+      | Benchmark | Budget | Measured |
+      |---|---|---|
+      | plain | 4 MB/s | 7.7 |
+      | coloured | 0.9 MB/s | 0.79 |
+      """
+
+      before = row_hashes(text)
+      assert Map.keys(before) == ["spec.md#budgets/coloured", "spec.md#budgets/plain"]
+
+      remeasured = String.replace(text, "| 7.7 |", "| 9.6 |")
+      assert row_hashes(remeasured) == before
+
+      rebudgeted = String.replace(text, "| 4 MB/s |", "| 5 MB/s |")
+      changed = for {id, h} <- row_hashes(rebudgeted), before[id] != h, do: id
+      assert changed == ["spec.md#budgets/plain"]
+
+      # Without ignore:, a re-measurement is an edit like any other.
+      plain = String.replace(text, "ignore: [Measured] ", "")
+      refute row_hashes(String.replace(plain, "| 7.7 |", "| 9.6 |")) == row_hashes(plain)
+    end
+
+    @column_errors [
+      {"an empty part of a composite key",
+       "# S\n<!-- surfex: table t key: [A, B] -->\n| A | B |\n|---|---|\n| a |  |\n",
+       "spec.md:5: a row of table t has an empty key"},
+      {"a composite key naming no column",
+       "# S\n<!-- surfex: table t key: [A, Nope] -->\n| A | B |\n|---|---|\n| a | b |\n",
+       "spec.md:2: table t has no column \"Nope\""},
+      {"an ignored column that doesn't exist",
+       "# S\n<!-- surfex: table t ignore: [Nope] -->\n| A | B |\n|---|---|\n| a | b |\n",
+       "spec.md:2: table t has no column \"Nope\""},
+      {"an ignored key column",
+       "# S\n<!-- surfex: table t key: B ignore: [B] -->\n| A | B |\n|---|---|\n| a | b |\n",
+       "spec.md:2: table t can't ignore its key column \"B\""},
+      {"marker text that isn't an option",
+       "# S\n<!-- surfex: table t keys: A -->\n| A | B |\n|---|---|\n| a | b |\n",
+       "spec.md:2: table t's marker has text that isn't key: or ignore:"},
+      {"an option given twice",
+       "# S\n<!-- surfex: table t key: A key: B -->\n| A | B |\n|---|---|\n| a | b |\n",
+       "spec.md:2: table t's marker gives key: twice"}
+    ]
+
+    for {name, text, message} <- @column_errors do
+      test "raises on #{name}" do
+        error = assert_raise ArgumentError, fn -> row_ids(unquote(text)) end
+        assert error.message =~ unquote(message)
+      end
+    end
+  end
 end

@@ -20,6 +20,19 @@ release it merely follows.
   `:section_number` with such headings sees them re-id'd with their versions unchanged, so
   `mix surfex.suggest --accept` carries their relations across as moves.
 
+- **Composite table keys, and columns left out of a row's version** (#187, #189). A table
+  whose row is identified by a pair keys on both: `<!-- surfex: table options key:
+  [Function, Key] -->` gives `file#options/render/2/:width`. A column that records a
+  measurement rather than stating a claim can be left out of each row's version, so
+  refreshing it dangles nothing: `ignore: [Measured]`. It can't name a key column. The
+  options read in either order, and a single `key: Header` is unchanged.
+
+### Changed
+
+- **A table marker's text after its id must be its options** (#189). A misspelt option
+  (`keys: A`) or a repeated one used to leave the line as body, so the table quietly wasn't
+  marked. It's now an error naming the line.
+
 ## [0.7.0] — 2026-10-12
 
 Finer units and honest credit, the first part of claim grain (#145). Headings keep the ids

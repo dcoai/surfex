@@ -783,14 +783,29 @@ own:
   The table ends at the first line that isn't a table line. A table without the marker is
   body, as before.
 
+  The marker may name its columns further, with options in either order after the id, each
+  a header or a bracketed list of them:
+  - **`key: [Function, Key]`** keys a row on several columns, for a table whose row is
+    identified by a pair: KEY is their cells, each as above, joined by `/`
+    (`file#options/render/:width`). No part may be empty, and two rows with one KEY are the
+    duplicate-id error.
+  - **`ignore: [Measured]`** leaves columns out of each row's version, for cells that record
+    a measurement rather than state a claim, so refreshing them dangles nothing. Use it for
+    nothing else: an edit to an ignored cell is invisible to every relation. A key column
+    can't be ignored. The table's version, its header, still names every column.
+
+  A marker's text after its id must be these options, so a misspelt one is an error, not
+  silently body.
+
 Written ids, block, hint and table ids, and row ids share one namespace per file with the
 section ids. All but a row's KEY are letters, digits and `.` `_` `-` `:`, starting with a
 letter or digit. Markers and hint fences inside a fenced code block are text. A spec that
 uses none of these scans exactly as it did before they existed. Every problem raises,
 naming the file and line:
 - an unclosed block or hint;
-- a table marker with no table after it, a table with no separator row, a `key:` naming
-  no column, or a row with an empty key;
+- a table marker with no table after it or with text that isn't an option, a table with no
+  separator row, a `key:` or `ignore:` naming no column, an ignored key column, or a row
+  with an empty key;
 - a block that nests or spans a heading;
 - a close marker with no block;
 - a malformed id;
@@ -801,6 +816,13 @@ a marked table is a unit, and each row one keyed file#TABLE/KEY by its key cell 
 column, or key: Header), without code or emphasis marks; editing a row changes only that
 row's version; a marker with no table, no separator row, an unknown key column, an empty
 or repeated key is an error naming the line
+```
+
+```test table-columns
+key: [A, B] keys each row file#TABLE/a/b on several columns, and an empty part or a repeated
+pair is an error; ignore: [C] leaves C's cells out of each row's version, so editing one
+changes nothing, while editing any other cell still does; an ignored key column, an unknown
+column or marker text that isn't an option is an error naming the line
 ```
 
 ```test heading-ids
