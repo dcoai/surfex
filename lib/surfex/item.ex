@@ -25,7 +25,8 @@ defmodule Surfex.Item do
     :lines,
     aliases: [],
     shape: false,
-    calls: []
+    calls: [],
+    hidden: %{}
   ]
 
   @type t :: %__MODULE__{
@@ -56,7 +57,12 @@ defmodule Surfex.Item do
           shape: boolean,
           # The keys of the code it calls, as far as its source says: a fact, never part of its
           # key or version. Empty when the scanner doesn't know (§4).
-          calls: [String.t()]
+          calls: [String.t()],
+          # Code the item covers that isn't an item of its own (a module's hidden
+          # definitions), by the key a call names it with (`Mix.Tasks.Foo.run/1`), each with
+          # its calls. Its version is in this item's; a call naming it reaches this item and
+          # goes on through its calls (§4, §13.1). Empty for most items.
+          hidden: %{String.t() => [String.t()]}
         }
 
   @doc """

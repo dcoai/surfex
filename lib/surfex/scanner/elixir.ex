@@ -16,6 +16,14 @@ defmodule Surfex.Scanner.Elixir do
   not, since Elixir documents it separately. A nested module is keyed by its full name,
   as Elixir names it.
 
+  **Hidden definitions are covered, not listed** (spec §3.3). A `@doc false` definition
+  or an undocumented `@impl` callback is no item, so its version goes into its module's,
+  and into each public function's that runs it: one calling it locally, or one that
+  dispatches through the module's own behaviour (`GenServer.call/3` from a module that
+  `use`s `GenServer` runs its hidden callbacks). A call naming one reaches it through the
+  module's `Surfex.Item` `:hidden`. `Surfex.SourceScan.module_hash/1` and `defs/1` stay the
+  surface alone.
+
   **`Mod.fun` without an arity cites every arity.** A spec that says "`MyApp.Cart.add`
   rejects a closed cart" is about the function, not one of its arities, so every arity
   shares the alias and a citation of it cites them all (`Surfex.Item` `:aliases`). A
@@ -112,28 +120,32 @@ defmodule Surfex.Scanner.Elixir do
     |> Enum.reject(fn {_name, node} -> SourceScan.hidden_module?(node) end)
     |> Enum.flat_map(fn {parts, node} ->
       module = Enum.map_join(parts, ".", &Atom.to_string/1)
-      calls = definition_calls(node, module)
+      hidden = SourceScan.hidden_definitions(node)
+      calls = definition_calls(node, module, hidden)
 
       [
         %Item{
           kind: :module,
           name: module,
           file: file,
-          hash: SourceScan.module_hash(node),
-          lines: SourceScan.line_range(node)
+          hash: covering(node, SourceScan.module_hash(node), Map.keys(hidden), hidden),
+          lines: SourceScan.line_range(node),
+          hidden: Map.new(hidden, fn {key, _} -> {id(module, key), Map.fetch!(calls, key)} end)
         }
       ] ++
         for %{name: name, arity: arity, kind: kind, hash: hash, lines: lines} <-
               SourceScan.defs(node) do
+          key = {name, arity}
+
           %Item{
             kind: kind,
             name: "#{name}/#{arity}",
             parent: module,
             file: file,
-            hash: hash,
+            hash: covering(node, hash, runs(key, calls, module, hidden), hidden),
             aliases: ["#{module}.#{name}"],
             lines: lines,
-            calls: Map.fetch!(calls, {name, arity})
+            calls: Map.fetch!(calls, key)
           }
         end ++
         for %{name: name, arity: arity, hash: hash, lines: lines} <- SourceScan.types(node) do
@@ -151,34 +163,125 @@ defmodule Surfex.Scanner.Elixir do
     end)
   end
 
-  # What each public definition calls (§5.2), by `{name, arity}`: what its clauses and the
-  # private helpers they reach call (`Surfex.SourceScan.Calls`). A local call to one of the
-  # module's public definitions is a call to it; to anything the module doesn't define,
-  # a call under each module it imports. A `defdelegate` calls its target.
-  defp definition_calls({:defmodule, _, [_aliases, [do: body]]} = node, module) do
+  # What each public and hidden definition calls (§5.2), by `{name, arity}`: what its
+  # clauses and the private helpers they reach call (`Surfex.SourceScan.Calls`). A local
+  # call to one of the module's public or hidden definitions is a call to it; to anything
+  # the module doesn't define, a call under each module it imports. A `defdelegate` calls
+  # its target. A definition that calls a function of a module this one `use`s or declares
+  # as its `@behaviour` (`GenServer.call`, `:gen_statem.call`) dispatches through it, so it
+  # calls the module's hidden callbacks too.
+  defp definition_calls({:defmodule, _, [_aliases, [do: body]]} = node, module, hidden) do
     names = Calls.names(exprs(body), module)
     public = node |> SourceScan.defs() |> MapSet.new(&{&1.name, &1.arity})
+    behaviours = behaviours(exprs(body), names.aliases)
+    callbacks = for {key, %{impl: true}} <- hidden, do: id(module, key)
 
     local = fn {fun, arity} = call ->
       cond do
-        MapSet.member?(public, call) -> [Calls.call(module, fun, arity)]
-        call in names.defined -> []
-        true -> Enum.map(names.imports, &Calls.call(&1, fun, arity))
+        MapSet.member?(public, call) or Map.has_key?(hidden, call) ->
+          [Calls.call(module, fun, arity)]
+
+        call in names.defined ->
+          []
+
+        true ->
+          Enum.map(names.imports, &Calls.call(&1, fun, arity))
       end
     end
 
-    Map.new(SourceScan.definition_nodes(node), fn {key, nodes} ->
+    node
+    |> SourceScan.definition_nodes()
+    |> Map.merge(Map.new(hidden, fn {key, %{nodes: nodes}} -> {key, nodes} end))
+    |> Map.new(fn {key, nodes} ->
       {delegates, clauses} = Enum.split_with(nodes, &match?({:defdelegate, _, _}, &1))
-      bodies = for n <- SourceScan.closure_nodes(node, clauses), do: {n, names.aliases}
+      closure = SourceScan.closure_nodes(node, clauses)
+      bodies = for n <- closure, do: {n, names.aliases}
+
+      dispatched =
+        if Enum.any?(closure, &dispatches?(&1, behaviours, names.aliases)),
+          do: callbacks,
+          else: []
 
       {key,
        Enum.sort(
          Enum.uniq(
-           Calls.of(bodies, local) ++ Enum.flat_map(delegates, &delegated(&1, names.aliases))
+           Calls.of(bodies, local) ++
+             Enum.flat_map(delegates, &delegated(&1, names.aliases)) ++ dispatched
          )
        )}
     end)
   end
+
+  # The modules whose behaviour this module implements, by name: each it `use`s or declares
+  # as `@behaviour`, an Elixir alias or an Erlang module.
+  defp behaviours(exprs, aliases) do
+    for expr <- exprs, name <- behaviour(expr, aliases), into: MapSet.new(), do: name
+  end
+
+  defp behaviour({:use, _, [{:__aliases__, _, parts} | _]}, aliases),
+    do: [Calls.expand(parts, aliases)]
+
+  defp behaviour({:@, _, [{:behaviour, _, [{:__aliases__, _, parts}]}]}, aliases),
+    do: [Calls.expand(parts, aliases)]
+
+  defp behaviour({:@, _, [{:behaviour, _, [module]}]}, _aliases) when is_atom(module),
+    do: [Atom.to_string(module)]
+
+  defp behaviour(_expr, _aliases), do: []
+
+  # Whether `ast` calls a function of one of `behaviours`: the module dispatches through
+  # its own behaviour (`GenServer.call(server, …)` runs the module's `handle_call/3`). Read
+  # from source, so a call to another server through the same behaviour counts too; that
+  # errs towards a version covering more, never less.
+  defp dispatches?(ast, behaviours, aliases) do
+    {_, found} =
+      Macro.prewalk(ast, false, fn
+        {{:., _, [{:__aliases__, _, parts}, fun]}, _, args} = n, found
+        when is_atom(fun) and is_list(args) ->
+          {n, found or MapSet.member?(behaviours, Calls.expand(parts, aliases))}
+
+        {{:., _, [module, fun]}, _, args} = n, found
+        when is_atom(module) and is_atom(fun) and is_list(args) ->
+          {n, found or MapSet.member?(behaviours, Atom.to_string(module))}
+
+        n, found ->
+          {n, found}
+      end)
+
+    found
+  end
+
+  # The hidden definitions a definition runs, transitively: those its calls name, and those
+  # theirs name in turn.
+  defp runs(key, calls, module, hidden) do
+    by_id = Map.new(hidden, fn {k, _} -> {id(module, k), k} end)
+    follow(Map.fetch!(calls, key), calls, by_id, MapSet.new())
+  end
+
+  defp follow([], _calls, _by_id, found), do: Enum.sort(found)
+
+  defp follow([call | rest], calls, by_id, found) do
+    case Map.fetch(by_id, call) do
+      {:ok, key} ->
+        if MapSet.member?(found, key),
+          do: follow(rest, calls, by_id, found),
+          else: follow(Map.fetch!(calls, key) ++ rest, calls, by_id, MapSet.put(found, key))
+
+      :error ->
+        follow(rest, calls, by_id, found)
+    end
+  end
+
+  # A version that also covers the hidden definitions `keys`, which have no item of their
+  # own: unchanged when there are none.
+  defp covering(_node, hash, [], _hidden), do: hash
+
+  defp covering(node, hash, keys, hidden) do
+    nodes = keys |> Enum.sort() |> Enum.flat_map(&hidden[&1].nodes) |> Enum.uniq()
+    SourceScan.definition_hash([hash, SourceScan.closure_hash(node, nodes)])
+  end
+
+  defp id(module, {name, arity}), do: Calls.call(module, name, arity)
 
   # `defdelegate fun(args), to: Mod` (`as: :other`) calls `Mod.fun/arity` and names `Mod`.
   defp delegated({:defdelegate, _, [head, opts]}, aliases) when is_list(opts) do

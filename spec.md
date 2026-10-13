@@ -227,6 +227,38 @@ a function's version follows its private helpers and the attributes they read; a
 module's follows its public surface only
 ```
 
+**An item's version covers everything it runs that isn't an item of its own.** A module
+hides some of its public definitions from its docs, `@doc false` ones and `@impl`
+callbacks with no `@doc` (§3.2), so they aren't items and have no version of their own.
+The Elixir scanner (§5.2) folds them into the versions of what runs them, so changing one
+dangles the relations that depend on it:
+- **A module's version** covers its hidden definitions, with the private definitions they
+  reach and the attributes they read: a GenServer's `handle_call/3` is part of its
+  module's version. A module with no hidden definition keeps exactly the version
+  `Surfex.SourceScan.module_hash/1` gives.
+- **A public function's version** covers the hidden definitions it runs: those it calls
+  locally, and, when it **dispatches through its own behaviour**, the module's hidden
+  `@impl` callbacks. A function dispatches when it, or a private definition it reaches,
+  calls a function of a module this one `use`s or declares as its `@behaviour`, an Elixir
+  alias or an Erlang module (`GenServer.call/3`, `GenServer.start_link/3`,
+  `:gen_statem.call/2`). So a GenServer's `commit/3`, which calls `GenServer.call`, covers
+  its `handle_call/3`, and `start_link/1` covers its `init/1`. It is read from source and
+  errs towards covering more, never less: a call to *another* server through the same
+  behaviour counts too. Callbacks are known by their `@impl`.
+- A documented callback is an item with its own version, so it isn't folded into anything;
+  its own relations dangle when it changes.
+
+`Surfex.SourceScan.module_hash/1` and `Surfex.SourceScan.defs/1` are unchanged by this:
+they are library functions a project's own goldens use, and the scanner composes the item
+versions from them.
+
+```test hidden-versions
+changing a hidden callback, or a private helper it reaches, changes its module's version
+and that of each public function that dispatches through the module's behaviour or calls
+it, and no other function's; a @doc false definition is part of its module's version; a
+module with no hidden definition keeps its surface version
+```
+
 ## 4. Items {#items}
 
 `Surfex.Item` is one thing a scanner found: the unit a citation resolves to, and the
@@ -245,6 +277,7 @@ source of a code record (§11).
 | `lines` | its first and last line in `file`, when the scanner knows them: never part of its key or its hash |
 | `shape` | `true` for an item with no behaviour of its own (a type): no test run exercises it, so an `implements` relation to it is validated by judgement (§18). The scanner says so; surfex never infers it from a kind |
 | `calls` | the keys of the code it calls, as far as its source says (§5.2). A fact about the source, never part of its key or its hash. Empty when the scanner doesn't know: the item is then reached only by a test calling it (§13.1) |
+| `hidden` | code the item covers that isn't an item of its own (a module's hidden definitions, §3.3), keyed as a call names it (`Mix.Tasks.Foo.run/1`), each with its calls. Its version is in the item's; a call naming it reaches the item and goes on through its calls (§13.1). Empty for most items |
 
 `Surfex.Item.key/1` is an item's identity: `parent.name` for a member, otherwise `name`.
 The hash is never part of the key, so an edit changes a row's version and not its
@@ -295,6 +328,11 @@ options) returns:
   a test's calls are read (§11). A local call to one of the module's own public
   definitions is `Module.fun/arity`, and a `defdelegate` calls its target. Every arity of
   a function with default arguments lists the same calls. A module and a type list none.
+- **A hidden definition is listed where it is called and kept on its module** (§3.3). A
+  local call to one is `Module.fun/arity`, like a call to a public definition, and a
+  function dispatching through its own behaviour calls the module's hidden callbacks. The
+  module item's `hidden` (§4) lists each hidden definition, `Module.fun/arity`, with its
+  calls, so reach goes through it.
 - The `:paths` option (globs relative to the root) defaults to `lib/**/*.ex`: one
   project's own source. A poncho lists its members.
 
@@ -1176,7 +1214,10 @@ code missing.
 
 **What a test reaches** (`Surfex.Scan.reach/1`) is the scanned code its `calls` (§11)
 name, and the scanned code that code calls (§4 `calls`), transitively: a test calling a
-public entry point reaches the functions it hands the work to. It is a pure function of
+public entry point reaches the functions it hands the work to. A call naming code a
+record covers but that isn't a record (a module's hidden definition, §4 `hidden`), such
+as a Mix task's undocumented `@impl` `run/1`, reaches that record and goes on through the
+hidden code's calls; the hidden code itself is never a record. It is a pure function of
 the scans. A spec unit can then cite the function that does the work while its test
 drives the entry point that users call. Reach credits only relations someone recorded.
 It never makes one, and a `tests` relation still names what the test calls itself (§15).
@@ -1213,6 +1254,12 @@ a test reaches the scanned code it calls and, transitively, the scanned code tha
 calls;
 a cycle ends, unscanned code is passed over, and code reached only through an entry point
 closes the triangle without suggesting a tests relation to it
+```
+
+```test hidden-reach
+a call naming a module's hidden definition reaches the module and what that definition
+calls, never the definition as a record; a public function dispatching through its own
+behaviour reaches what the hidden callbacks call
 ```
 
 ```test mark-states

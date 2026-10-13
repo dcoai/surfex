@@ -250,6 +250,173 @@ defmodule Surfex.Scanner.ElixirTest do
     end
   end
 
+  # #210, #213: nftables_port's GenServer changed handle_call/3, and no version moved.
+  describe "hidden definitions" do
+    @describetag :tmp_dir
+
+    @port """
+    defmodule Shop.Port do
+      @moduledoc "A port."
+      use GenServer
+
+      def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+
+      def commit(server, batch, timeout \\\\ 5000),
+        do: GenServer.call(server, {:commit, batch}, timeout)
+
+      def version, do: "1"
+
+      def flush(state), do: drain(state)
+
+      @impl true
+      def init(opts), do: {:ok, %{queue: :queue.new(), opts: opts}}
+
+      @impl true
+      def handle_call({:commit, batch}, from, state),
+        do: {:noreply, enqueue(state, from, batch)}
+
+      @doc false
+      def drain(state), do: Shop.Wire.send(state.queue)
+
+      defp enqueue(state, from, batch), do: %{state | queue: :queue.in({from, batch}, state.queue)}
+    end
+    """
+
+    @plain """
+    defmodule Shop.Plain do
+      @moduledoc "Plain."
+      def one, do: 1
+    end
+    """
+
+    defp scan(root, sources) do
+      File.rm_rf!(Path.join(root, "lib"))
+      File.mkdir_p!(Path.join(root, "lib"))
+
+      for {name, source} <- sources,
+          do: File.write!(Path.join(root, "lib/#{name}.ex"), source)
+
+      Map.new(Scanner.items(root), &{Item.key(&1), &1})
+    end
+
+    defp versions(items), do: Map.new(items, fn {key, item} -> {key, item.hash} end)
+
+    defp changed(before, after_),
+      do: for({key, hash} <- before, after_[key] != hash, do: key) |> Enum.sort()
+
+    @tag verifies: "hidden-versions"
+    test "a hidden callback is in its module's version and in what dispatches through it",
+         %{tmp_dir: root} do
+      before = versions(scan(root, port: @port, plain: @plain))
+
+      callback =
+        String.replace(@port, "{:noreply, enqueue(state, from, batch)}", "{:reply, :ok, state}")
+
+      # Through the behaviour: commit/2, commit/3 (GenServer.call) and start_link/1
+      # (GenServer.start_link) run the callbacks; version/0 and flush/1 don't.
+      assert changed(before, versions(scan(root, port: callback, plain: @plain))) == [
+               "Shop.Port",
+               "Shop.Port.commit/2",
+               "Shop.Port.commit/3",
+               "Shop.Port.start_link/1"
+             ]
+
+      # A private helper the callback reaches is part of it.
+      helper = String.replace(@port, ":queue.in({from, batch}, state.queue)", "state.queue")
+      assert "Shop.Port.commit/3" in changed(before, versions(scan(root, port: helper)))
+
+      # A @doc false definition: its module, and flush/1 that calls it locally.
+      drain = String.replace(@port, "Shop.Wire.send(state.queue)", "Shop.Wire.send([])")
+
+      assert changed(before, versions(scan(root, port: drain, plain: @plain))) == [
+               "Shop.Port",
+               "Shop.Port.flush/1"
+             ]
+
+      # A module with no hidden definition keeps its surface version.
+      ast = Code.string_to_quoted!(@plain)
+      assert before["Shop.Plain"] == Surfex.SourceScan.module_hash(ast)
+      assert before["Shop.Port"] != Surfex.SourceScan.module_hash(Code.string_to_quoted!(@port))
+    end
+
+    @tag verifies: "hidden-versions"
+    test "an Erlang behaviour dispatches as an Elixir one does; a documented callback is its own item",
+         %{tmp_dir: root} do
+      machine = """
+      defmodule Shop.Machine do
+        @moduledoc "A machine."
+        @behaviour :gen_statem
+
+        def push(pid), do: :gen_statem.call(pid, :push)
+
+        @impl true
+        def callback_mode, do: :state_functions
+
+        @impl :gen_statem
+        def init(_), do: {:ok, :idle, nil}
+
+        @doc "Shown."
+        @impl true
+        def terminate(_reason, _state, _data), do: :ok
+      end
+      """
+
+      before = scan(root, machine: machine)
+      assert before["Shop.Machine.terminate/3"]
+
+      init = String.replace(machine, "{:ok, :idle, nil}", "{:ok, :busy, nil}")
+
+      assert changed(versions(before), versions(scan(root, machine: init))) == [
+               "Shop.Machine",
+               "Shop.Machine.push/1"
+             ]
+
+      terminate = String.replace(machine, "_data), do: :ok", "_data), do: :stop")
+
+      assert changed(versions(before), versions(scan(root, machine: terminate))) == [
+               "Shop.Machine.terminate/3"
+             ]
+    end
+
+    @tag verifies: ["hidden-reach", "code-calls"]
+    test "a hidden definition is named where it is called and listed with its calls on its module",
+         %{tmp_dir: root} do
+      items = scan(root, port: @port)
+
+      assert items["Shop.Port.commit/3"].calls == [
+               "GenServer",
+               "GenServer.call/3",
+               "Shop.Port.handle_call/3",
+               "Shop.Port.init/1"
+             ]
+
+      assert items["Shop.Port.flush/1"].calls == ["Shop.Port.drain/1"]
+      assert items["Shop.Port.version/0"].calls == []
+      assert items["Shop.Port"].calls == []
+
+      assert items["Shop.Port"].hidden == %{
+               "Shop.Port.drain/1" => ["Shop.Wire", "Shop.Wire.send/1"],
+               "Shop.Port.handle_call/3" => [],
+               "Shop.Port.init/1" => []
+             }
+
+      refute Map.has_key?(items, "Shop.Port.handle_call/3")
+
+      # Reach follows them: a local call and a dispatch both reach the module that covers
+      # the hidden code, and the hidden code is never a record.
+      code = Surfex.Scan.code(Map.values(items))
+
+      reach = fn calls ->
+        tester = %Surfex.Scan{kind: :test, id: "T", hash: "t", location: nil, calls: calls}
+        Surfex.Scan.reach([tester | code])["T"]
+      end
+
+      assert reach.(["Shop.Port.flush/1"]) == ["Shop.Port", "Shop.Port.flush/1"]
+
+      assert reach.(["Shop.Port.commit/3"]) == ["Shop.Port", "Shop.Port.commit/3"]
+    end
+  end
+
   # #137: a public type is an item, keyed as ExDoc writes it, so a spec may cite it.
   describe "types" do
     @shapes """
