@@ -33,6 +33,16 @@ release it merely follows.
   (`keys: A`) or a repeated one used to leave the line as body, so the table quietly wasn't
   marked. It's now an error naming the line.
 
+### Fixed
+
+- **A review credits the code its test calls, and reached code only when named** (#191,
+  #192). Since 0.7.0, `mix surfex.validate` credited every `implements` its test reached
+  under the one note, including code behind an entry point that the reviewer never read.
+  Now code the test reaches only through other code is credited when you name it:
+  `--code ID`, once per item. A named id the green run didn't reach is an error, and a
+  review with only reached code to record says which to name. Evidence still credits
+  reach without naming.
+
 ## [0.7.0] — 2026-10-12
 
 Finer units and honest credit, the first part of claim grain (#145). Headings keep the ids

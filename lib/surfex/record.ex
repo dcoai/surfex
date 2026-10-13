@@ -1008,21 +1008,88 @@ defmodule Surfex.Record do
       exercised = &MapSet.member?(ran, Scan.definition(&1))
       spec_id = unit.id
 
-      implements =
+      # A review credits what its note can speak for (§17): code the test only reaches
+      # through other code counts when the reviewer names it.
+      only_reached = only_reached(status, test)
+      named = Map.new(List.wrap(meta[:code]), &{&1, named_definition(status, &1)})
+
+      candidates =
         for %{type: :implements, state: state, relation: {_, {:code, c}, {:spec, ^spec_id}}} = r <-
               status.relations,
             state not in [:retired, :orphaned, :planned, :conflicted],
             not Status.validated?(status, r),
             code = Map.fetch!(status.scans, {:code, c}),
             exercised.(code),
-            do: r
+            do: {r, Scan.definition(code)}
+
+      {implements, unnamed} =
+        Enum.split_with(candidates, fn {_r, d} ->
+          not MapSet.member?(only_reached, d) or d in Map.values(named)
+        end)
+
+      unreached = for {id, d} <- named, d == nil or not MapSet.member?(ran, d), do: id
+
+      todo =
+        Enum.reject(reviewed, &Status.validated?(status, &1)) ++
+          Enum.map(implements, &elem(&1, 0))
 
       # What is validated already stays as it was: a verifies on its failing run keeps
       # that basis, so CI goes on checking it (§17), and a review re-records nothing.
-      case Enum.reject(reviewed, &Status.validated?(status, &1)) ++ implements do
-        [] -> {:error, "already validated: nothing to record (#{test.id} and #{unit.id})"}
-        unvalidated -> confirm_each(unvalidated, status, meta)
+      cond do
+        unreached != [] ->
+          {:error,
+           Enum.map_join(unreached, "; ", &"#{&1} isn't code the green run of #{test.id} reached")}
+
+        todo != [] ->
+          confirm_each(todo, status, meta)
+
+        unnamed != [] ->
+          {:error,
+           "nothing to record: #{test.id} reaches " <>
+             Enum.map_join(unnamed, ", ", fn {%{relation: {_, {:code, c}, _}}, _d} -> c end) <>
+             " only through other code; a review credits it when you name it (--code ID)"}
+
+        true ->
+          {:error, "already validated: nothing to record (#{test.id} and #{unit.id})"}
       end
+    end
+  end
+
+  # The definitions a test reaches only through other code: what it reaches (§13.1), less
+  # what it calls itself or a live tests relation names.
+  defp only_reached(status, test) do
+    scans = Map.values(status.scans)
+
+    definition = fn id ->
+      with %Scan{} = s <- status.scans[{:code, id}], do: Scan.definition(s)
+    end
+
+    direct =
+      MapSet.new(
+        for id <-
+              test.calls ++
+                for(
+                  %{type: :tests, state: s, relation: {_, {:test, t}, {:code, c}}} <-
+                    status.relations,
+                  t == test.id,
+                  s not in [:retired, :orphaned],
+                  do: c
+                ),
+            d = definition.(id),
+            d != nil,
+            do: d
+      )
+
+    reached =
+      for id <- Map.get(Scan.reach(scans), test.id, []), d = definition.(id), d != nil, do: d
+
+    MapSet.difference(MapSet.new(reached), direct)
+  end
+
+  defp named_definition(status, id) do
+    case status.scans[{:code, id}] do
+      %Scan{} = scan -> Scan.definition(scan)
+      nil -> nil
     end
   end
 

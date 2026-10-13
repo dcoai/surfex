@@ -34,6 +34,19 @@ defmodule Mix.Tasks.Surfex.Validate do
       mix surfex.validate "MyApp.CartTest: rejects a closed cart" spec.md#carts --note …
 
   The second records the section's `implements` relations alone.
+
+  The note speaks for what you read, so a review credits the code the test calls. Code the
+  test reaches only through other code (§13.1), such as the function a public entry point
+  hands the work to, is credited when you name it with `--code ID`, once per item, after
+  reading it against the unit:
+
+      mix surfex.validate "MyApp.CheckoutTest: totals" spec.md#totals \\
+        --code MyApp.Pricing.total/1 --note "…"
+
+  Naming code the test's green run didn't reach is an error, and a review with nothing to
+  record but reached code says which to name. A batch (`--file`) takes no `--code`: name
+  reached code in a single review. Evidence (`mix surfex.confirm --evidence`) credits
+  reached code without naming, since a red-then-green run backs it.
   """
 
   use Mix.Task
@@ -42,8 +55,9 @@ defmodule Mix.Tasks.Surfex.Validate do
 
   @impl Mix.Task
   def run(args) do
-    {opts, ids} = R.parse(args, file: :string, merge: :keep)
+    {opts, ids} = R.parse(args, file: :string, merge: :keep, code: :keep)
     {root, scans, entries, meta} = R.context(opts)
+    meta = Keyword.put(meta, :code, Keyword.get_values(opts, :code))
     evidence = R.evidence!(root, opts)
 
     case opts[:file] do
@@ -52,10 +66,10 @@ defmodule Mix.Tasks.Surfex.Validate do
         R.record(root, Surfex.Record.validate(scans, entries, test, unit, evidence, meta))
 
       path ->
-        if ids != [] or opts[:note] != nil,
+        if ids != [] or opts[:note] != nil or meta[:code] != [],
           do:
             Mix.raise(
-              "--file reads every relation and its note from the file: name none, and no --note"
+              "--file reads every relation and its note from the file: name none, no --note, and no --code (name reached code in a single review)"
             )
 
         lines =

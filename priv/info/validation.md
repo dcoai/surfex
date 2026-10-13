@@ -26,7 +26,8 @@ code calls, as the source states it. So a unit may cite the function doing the w
 its test drives the public entry point: evidence and a review credit the cited function's
 `implements`, and the triangle counts it exercised. Reach never makes a relation: `tests`
 names what the test calls itself. Code reached only at run time (messages, dispatch by
-name) isn't reached by reading the source.
+name) isn't reached by reading the source. A review's note speaks for what was read, so
+`validate` credits reached code only when you name it: `--code ID`, after reading it.
 
 **Many at once**: `--file PATH` on `confirm` or `validate` records a file of relations in one
 run, one per line, tab-separated, each line ending with its own note (`FROM TO TYPE NOTE`,

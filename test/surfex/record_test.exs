@@ -1029,6 +1029,56 @@ defmodule Surfex.RecordTest do
     end
   end
 
+  # #191: a review's note is a judgement about what was read, so it credits the code the test
+  # calls, and code the test only reaches when the reviewer names it.
+  describe "a review's scope" do
+    @describetag verifies: "review-reach"
+
+    defp review_log(with_entry_impl?) do
+      [
+        rel(:implements, {:spec, @spec_id, "s1"}, {:code, @code_id, "c2"}),
+        on(rel(:verifies, {:test, @driver, "t1"}, {:spec, "spec.md#h", "h1"}), :review),
+        rel(:tests, {:test, @driver, "t1"}, {:code, @entry, "e1"})
+      ] ++
+        if with_entry_impl?,
+          do: [rel(:implements, {:spec, @spec_id, "s1"}, {:code, @entry, "e1"})],
+          else: []
+    end
+
+    defp review(log, extra \\ []),
+      do:
+        Record.validate(
+          reach_world(),
+          log,
+          @driver,
+          @spec_id,
+          [reach_ev(:passed, "c2", 2)],
+          @meta ++ [note: "the entry point's run checks the section's claim"] ++ extra
+        )
+
+    test "a review credits the code the test calls, and reached code only when named" do
+      {:ok, called} = review(review_log(true))
+
+      assert [%Entry{type: :implements, basis: :review} = entry] = called
+      assert {:code, @entry} in Enum.map(entry.ends, &{&1.kind, &1.id})
+
+      {:ok, named} = review(review_log(true) ++ called, code: [@code_id])
+
+      assert [%Entry{type: :implements, basis: :review} = reached] = named
+      assert {:code, @code_id} in Enum.map(reached.ends, &{&1.kind, &1.id})
+      assert Status.derive(reach_world(), review_log(true) ++ called ++ named).unvalidated == []
+    end
+
+    test "an unnamed reach is pointed out, and naming code the run didn't reach is an error" do
+      assert {:error, message} = review(review_log(false))
+      assert message =~ "reaches #{@code_id}"
+      assert message =~ "--code"
+
+      assert {:error, message} = review(review_log(false), code: ["M.gone/1"])
+      assert message =~ "M.gone/1 isn't code the green run of #{@driver} reached"
+    end
+  end
+
   describe "shapes" do
     @describetag verifies: "shapes-by-judgement"
 
