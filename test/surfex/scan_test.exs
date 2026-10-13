@@ -269,6 +269,58 @@ defmodule Surfex.ScanTest do
       assert Scan.reach([tester(["C.c/0"]) | code]) == %{"T" => ["C.c/0"]}
       assert Scan.reach([tester([]) | code]) == %{"T" => []}
     end
+
+    # #193: a Mix task's undocumented @impl run/1 hands the work to another module.
+    @tag :tmp_dir
+    @tag verifies: ["hidden-reach", "test-reach"]
+    test "a call naming a hidden definition reaches its module and what it calls, never it",
+         %{tmp_dir: root} do
+      File.mkdir_p!(Path.join(root, "lib"))
+
+      File.write!(Path.join(root, "lib/task.ex"), """
+      defmodule Mix.Tasks.Shop.Report do
+        @moduledoc "Reports."
+        use Mix.Task
+
+        @impl Mix.Task
+        def run(args), do: Shop.Format.render(args)
+      end
+
+      defmodule Shop.Format do
+        @moduledoc "Formats."
+        def render(args), do: Shop.Format.Table.rows(args)
+      end
+
+      defmodule Shop.Format.Table do
+        @moduledoc "Tables."
+        def rows(args), do: args
+      end
+
+      defmodule Shop.Loop do
+        @moduledoc "A hidden definition calling itself through another."
+        @doc false
+        def ping(n), do: Shop.Loop.pong(n)
+        @doc false
+        def pong(n), do: Shop.Loop.ping(n)
+      end
+      """)
+
+      code = Scan.code(Surfex.Scanner.Elixir.items(root))
+
+      assert Scan.reach([tester(["Mix.Tasks.Shop.Report", "Mix.Tasks.Shop.Report.run/1"]) | code]) ==
+               %{
+                 "T" => [
+                   "Mix.Tasks.Shop.Report",
+                   "Shop.Format",
+                   "Shop.Format.Table",
+                   "Shop.Format.Table.rows/1",
+                   "Shop.Format.render/1"
+                 ]
+               }
+
+      # A cycle through hidden code ends; the hidden code is never reached as a record.
+      assert Scan.reach([tester(["Shop.Loop.ping/1"]) | code]) == %{"T" => ["Shop.Loop"]}
+    end
   end
 
   # #37: anchors, marked blocks and test hints.

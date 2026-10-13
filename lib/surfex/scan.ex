@@ -51,6 +51,7 @@ defmodule Surfex.Scan do
     declares: [],
     unselectable: [],
     calls: [],
+    hidden: %{},
     shape: false,
     named: false
   ]
@@ -68,6 +69,8 @@ defmodule Surfex.Scan do
           # Declared ids the test's runner can't select it by (§11).
           unselectable: [String.t()],
           calls: [String.t()],
+          # A code record's hidden code, by the key a call names it with (`Surfex.Item`).
+          hidden: %{String.t() => [String.t()]},
           # A code record of a shape (`Surfex.Item` `:shape`): judged, never exercised.
           shape: boolean,
           # A spec section whose id the author wrote (an anchor, a heading comment or the
@@ -123,29 +126,44 @@ defmodule Surfex.Scan do
 
   @doc """
   What each test reaches (§13.1): the scanned code its `calls` name and, transitively, the
-  scanned code that code calls, sorted by id. A call to code that isn't scanned (a
+  scanned code that code calls, sorted by id. A call naming code a record covers without
+  it being a record (a module's hidden definition, `Surfex.Item` `:hidden`) reaches that
+  record and goes on through the hidden code's calls. A call to code that isn't scanned (a
   dependency, or code not written yet) reaches nothing. Pure: a function of the scans.
   """
   @spec reach([t]) :: %{String.t() => [String.t()]}
   def reach(scans) do
     code = for %__MODULE__{kind: :code, id: id, calls: calls} <- scans, into: %{}, do: {id, calls}
 
+    hidden =
+      for %__MODULE__{kind: :code, id: id, hidden: hidden} <- scans,
+          {key, calls} <- hidden,
+          into: %{},
+          do: {key, {id, calls}}
+
     for %__MODULE__{kind: :test, id: id, calls: calls} <- scans, into: %{} do
-      {id, calls |> closure(code, MapSet.new()) |> Enum.sort()}
+      {id, calls |> closure({code, hidden}, {MapSet.new(), MapSet.new()}) |> Enum.sort()}
     end
   end
 
-  defp closure([], _code, seen), do: seen
+  # The records reached from `frontier`. Hidden code is passed through, never reached:
+  # `via` holds the hidden keys already followed, so a cycle through them ends.
+  defp closure([], _index, {seen, _via}), do: seen
 
-  defp closure([id | rest], code, seen) do
-    case Map.fetch(code, id) do
-      {:ok, calls} ->
+  defp closure([id | rest], {code, hidden} = index, {seen, via}) do
+    case {Map.fetch(code, id), Map.fetch(hidden, id)} do
+      {{:ok, calls}, _} ->
         if id in seen,
-          do: closure(rest, code, seen),
-          else: closure(calls ++ rest, code, MapSet.put(seen, id))
+          do: closure(rest, index, {seen, via}),
+          else: closure(calls ++ rest, index, {MapSet.put(seen, id), via})
 
-      :error ->
-        closure(rest, code, seen)
+      {:error, {:ok, {owner, calls}}} ->
+        if id in via,
+          do: closure(rest, index, {seen, via}),
+          else: closure([owner | calls] ++ rest, index, {seen, MapSet.put(via, id)})
+
+      {:error, :error} ->
+        closure(rest, index, {seen, via})
     end
   end
 
@@ -197,7 +215,8 @@ defmodule Surfex.Scan do
         role: item.kind,
         within: item.parent,
         shape: item.shape,
-        calls: item.calls
+        calls: item.calls,
+        hidden: item.hidden
       }
     end)
     |> Enum.sort_by(& &1.id)

@@ -9,6 +9,31 @@ All notable changes to Surfex are recorded here, following
 `mix.exs` reads `0.7.3-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
 release it merely follows.
 
+### Changed
+
+- **A version covers the hidden code its item runs** (#210, #193, #213). A `@doc false`
+  definition, or an `@impl` callback with no `@doc`, is no item, and until now no version
+  covered it, so changing a GenServer's `handle_call/3` dangled nothing. The Elixir
+  scanner now folds hidden definitions into versions. A module's version covers its
+  hidden definitions; a module with none keeps its version. A public function's version
+  covers the hidden definitions it runs: those it calls locally, and the module's hidden
+  callbacks when it dispatches through its own behaviour (`GenServer.call`,
+  `GenServer.start_link`, `:gen_statem.call` from a module that `use`s or declares that
+  behaviour). A call naming a hidden definition, such as a Mix task's `run/1`, now reaches
+  the module and goes on through what the definition calls, so evidence credits the code
+  a task hands its work to. `Surfex.Item` and code records gain `hidden`, and
+  `Surfex.SourceScan.module_hash/1` and `defs/1` are unchanged, so surface goldens built
+  on them don't move.
+
+  **Upgrade step.** Every module with a hidden definition, and every function running
+  one, gets a new version once, and its relations dangle. Measured on seven adopting
+  projects, 4 to 185 item versions change. Most of the relations that dangle are `tests`
+  relations, which `mix surfex.suggest --accept` re-records. After `mix test`, `mix
+  surfex.confirm --evidence` re-confirms the `implements` relations confirmed by
+  evidence. What remains, between 1 and 108 `implements` validated by review, is a
+  review, and reading the hidden code is the point of it: no earlier review saw it
+  versioned.
+
 ### Fixed
 
 - **A failed test fails its relations, whatever validated them** (#211, #212). With

@@ -206,6 +206,25 @@ defmodule Surfex.SourceScan do
         do: {{name, a}, groups[key].nodes}
   end
 
+  @doc false
+  # The public definitions `defs/1` leaves out because the module hides them from its docs
+  # (`@doc false`, or an `@impl` callback with no `@doc`), by `{name, arity}` as
+  # `definition_nodes/1` gives the shown ones: each arity a default argument generates, with
+  # the definition's clauses, and whether it is an `@impl` callback. They have no item of
+  # their own; `Surfex.Scanner.Elixir` folds them into the versions of what runs them.
+  @spec hidden_definitions(Macro.t()) :: %{
+          {atom, non_neg_integer} => %{nodes: [Macro.t()], impl: boolean}
+        }
+  def hidden_definitions({:defmodule, _, [_aliases, [do: body]]}) do
+    {grouped, groups, _attributes} = definitions(body)
+
+    for {{name, arity} = key, [first | _]} <- grouped,
+        first.kind != :private and not first.visible,
+        a <- (arity - groups[key].defaults)..arity//1,
+        into: %{},
+        do: {{name, a}, %{nodes: groups[key].nodes, impl: first.impl}}
+  end
+
   # The module's definitions grouped by name and arity (each clause kept), the same as
   # hashing needs them (%{nodes, defaults, private}), and its attributes' values.
   defp definitions(body) do
@@ -335,6 +354,7 @@ defmodule Surfex.SourceScan do
 
   defp clause({definer, _, [head | _]} = node, st) when definer in @definers do
     hidden = st.doc == :hidden or (st.doc == nil and st.impl)
+    impl = st.impl
     st = %{st | doc: nil, impl: false}
 
     case signature(head) do
@@ -351,6 +371,7 @@ defmodule Surfex.SourceScan do
           kind: Map.get(@public, definer, :private),
           defaults: Enum.count(args, &match?({:\\, _, _}, &1)),
           visible: visible,
+          impl: impl,
           node: node
         }
 
