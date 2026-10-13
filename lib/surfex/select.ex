@@ -23,15 +23,17 @@ defmodule Surfex.Select do
     parents =
       for %Scan{kind: :spec, id: id, within: w} <- scans, w != nil, into: %{}, do: {id, w}
 
+    resolver = Scan.resolver(scans)
+
     declared =
       for %Scan{kind: :test} = t <- scans,
           {:verifies, ref} <- t.declares,
-          {:ok, unit} <- [Scan.resolve(scans, ref)],
+          {:ok, unit} <- [Scan.resolve(resolver, ref)],
           do: {t, unit.id}
 
     results =
       for ref <- refs do
-        case Scan.resolve(scans, ref) do
+        case Scan.resolve(resolver, ref) do
           {:ok, unit} ->
             case for({t, u} <- declared, inside?(u, unit.id, within?, parents), do: t) do
               [] ->

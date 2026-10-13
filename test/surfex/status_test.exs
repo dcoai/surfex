@@ -1086,4 +1086,101 @@ defmodule Surfex.StatusTest do
     ratio = work.(2 * n) / work.(n)
     assert ratio < 3, "twice the project took #{Float.round(ratio, 2)}× the work"
   end
+
+  # #204: plain derive was quadratic in the spec units. Each declaration resolved by
+  # filtering every scan, and the triangle walked every verifies unit's `within` chain for
+  # each spec unit (and the baseline check every verifies pair for each implements).
+  # Counted in reductions, as suggest-linear and evidence-check-linear are.
+  @tag verifies: "derive-linear"
+  test "plain derive's work over a project twice as large is about twice" do
+    linear_project = fn n ->
+      unit = fn id, role, within, i ->
+        %Scan{
+          kind: :spec,
+          id: "spec.md##{id}",
+          hash: "#{id}h",
+          role: role,
+          within: within,
+          named: role == :section,
+          location: %{file: "spec.md", lines: {i, i}}
+        }
+      end
+
+      # A section holds a block, which holds a hint: the triangle walks two levels up.
+      scans =
+        for i <- 1..n,
+            scan <- [
+              unit.("s#{i}", :section, nil, i),
+              unit.("b#{i}", :block, "spec.md#s#{i}", i),
+              unit.("h#{i}", :test_hint, "spec.md#b#{i}", i),
+              %Scan{
+                kind: :code,
+                id: "M.f#{i}/0",
+                hash: "c#{i}",
+                location: %{file: "lib/m.ex", lines: {i, i}}
+              },
+              # One bare declaration and one full id, each resolved.
+              %Scan{
+                kind: :test,
+                id: "test/m_test.exs#t#{i}",
+                hash: "t#{i}",
+                declares: [{:verifies, "h#{i}"}, {:verifies, "spec.md#b#{i}"}],
+                calls: ["M.f#{i}/0"],
+                location: %{file: "test/m_test.exs", lines: {i, i}}
+              }
+            ],
+            do: scan
+
+      # Odd units rest on the baseline (§18.1), so its check runs over half the claims.
+      basis = fn i -> if rem(i, 2) == 1, do: :baseline, else: :evidence end
+
+      at = "2026-10-13T10:00:00Z"
+
+      entries =
+        for i <- 1..n,
+            test = %{kind: :test, id: "test/m_test.exs#t#{i}", hash: "t#{i}"},
+            hint = %{kind: :spec, id: "spec.md#h#{i}", hash: "h#{i}h"},
+            block = %{kind: :spec, id: "spec.md#b#{i}", hash: "b#{i}h"},
+            section = %{kind: :spec, id: "spec.md#s#{i}", hash: "s#{i}h"},
+            code = %{kind: :code, id: "M.f#{i}/0", hash: "c#{i}"},
+            {op, type, ends} <-
+              [
+                {:relate, :verifies, [test, hint]},
+                {:relate, :verifies, [test, block]},
+                {:relate, :tests, [test, code]},
+                {:relate, :implements, [code, section]}
+              ] ++ if(basis.(i) == :baseline, do: [{:observe, :baseline, [test]}], else: []),
+            do:
+              Entry.new!(
+                at: at,
+                by: "gen",
+                note: "generated",
+                op: op,
+                type: type,
+                basis: if(type == :tests, do: :evidence, else: basis.(i)),
+                ends: ends
+              )
+
+      {scans, entries}
+    end
+
+    derive_work = fn n ->
+      {scans, entries} = linear_project.(n)
+      adoption = %{setting: :reevaluate, trusted: :all}
+      {:reductions, before} = Process.info(self(), :reductions)
+      status = Status.derive(scans, entries, [], adoption: adoption)
+      {:reductions, later} = Process.info(self(), :reductions)
+
+      # Every declaration resolved, every unit verified through its hint and block, and
+      # every baselined implements held: derive did the whole of its work.
+      assert length(status.relations) == 4 * n
+      assert status.broken == [] and status.undeclared == [] and status.triangle == []
+      assert status.unvalidated == [] and MapSet.size(status.baselined) == div(n + 1, 2)
+      later - before
+    end
+
+    n = 400
+    ratio = derive_work.(2 * n) / derive_work.(n)
+    assert ratio < 3, "twice the project took #{Float.round(ratio, 2)}× the work"
+  end
 end

@@ -783,6 +783,18 @@ a bare anchor, block or hint id (`cart-add`) looked up across every spec file. A
 id never names a heading path. A `§`-id may be cited with its sign: `§Api.3.2` finds
 `Api.3.2`. It gives `{:error, :unknown}` when nothing has the id,
 and `{:error, {:ambiguous, ids}}` when more than one file does.
+Where many references resolve against one scan (every test's declarations, in a status),
+`Surfex.Scan.resolver/1` indexes the spec units once, by full id and by bare id (a
+`Surfex.Scan.Resolver`, built by `Surfex.Scan.Resolver.new/1`), and
+`Surfex.Scan.resolve/2` takes that resolver in place of the scans
+(`Surfex.Scan.Resolver.resolve/2`): each reference is then a lookup, not a pass over every
+record, and resolves exactly as it would against the scans.
+
+```test declaration-resolver
+a resolver built once from the scans resolves every reference as the scans do: full and
+bare ids, a §-id with its sign, unknown and ambiguous references, and never a heading path
+by its bare name
+```
 
 `Surfex.Scan.Markdown` is the spec scanner for markdown. `Surfex.Scan.Markdown.records/2`
 reads every file matching a list of globs under a root (`Surfex.Scan.Markdown.records/4`
@@ -1091,6 +1103,20 @@ pure: the same scans, log and options always give the same status.
 ```test status-pure
 the status is derived from the scans and the log alone: the same inputs always give the
 same status
+```
+
+**Deriving grows with the project in proportion.** Every status, report and check derives
+the whole status, so its work over a project twice as large (twice the spec units, code,
+tests and relations) is about twice, not four times. What derive looks up per item is
+indexed once per derive: each declaration resolves against one resolver (§11), and each
+spec unit finds the tests verifying it or a unit inside it from an index built by walking
+each verified unit's `within` chain once, for the triangle and for the baseline (§18.1)
+alike. It doesn't scan every record per declaration, nor every verifies relation per spec
+unit.
+
+```test derive-linear
+plain derive's work over a project twice as large, in spec units, code, tests and
+relations, is about twice the work, counted in reductions
 ```
 
 ### 13.1 States {#status-states}
