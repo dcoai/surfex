@@ -2805,7 +2805,8 @@ declined pair isn't proposed again; nothing without claim_implements: true
 precisely. It covers:
 
 - what the scanner sees
-- sizing sections to what changes together
+- sizing sections to what changes together, and that a section's prose is a claim (§13.4):
+  name its claims, class it, or verify it
 - keeping headings stable
 - naming the code in the section that describes it, and relating code to the claim it
   realises rather than to every section that mentions it, by hand where no citation

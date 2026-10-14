@@ -62,7 +62,8 @@ all name `spec/03-wire-format.md#4`.
 **Sub-headings as structure**: with `fold_paths: true`, a heading with no id inside one
 that has an id (`### run/2` under `## §Engine.13`) is part of that unit: its text counts in
 the id'd section's version, and its hints sit in that section. Give a sub-heading an id
-when it should be a unit of its own. Off by default until 0.8.
+when it should be a unit of its own. Off by default; under `claim_grain: true` it is the
+default wherever `heading_ids:` is set (`fold_paths: false` opts out).
 
 **One claim per row**: a table row whose key reads as a list (`1001, 1005`, `a / b`,
 `a and b`) is probably two claims in one row; the status lists it under "List-shaped keys"
@@ -74,6 +75,31 @@ A claim's version is its text and nested lines, without the list marker or id co
 renumbering a list changes nothing. A test verifies a claim by its id
 (`@tag verifies: "no-override"`), and `require: [rule: [:verifies]]` asks that every claim
 be verified. Spec §11.1 has the details.
+
+**What verified means** (spec §13.4). A unit's own text is its body without the claims
+inside it. A **claim** has some (a section or block with prose of its own, and every hint,
+rule, row and contract); a **container** has none (a heading over subsections, a section
+whose body is only named claims, a marked table). The status gives each unit a verdict:
+
+| Verdict | When | What it needs |
+|---|---|---|
+| verified | a claim with a current `verifies` of its own | nothing |
+| contained | a claim with none of its own, but a claim inside it is verified | its own evidence: its prose isn't verified |
+| unverified | a claim with no evidence, own or inside | its own evidence |
+| through claims | a container | nothing: its claims answer for themselves |
+
+No credit moves up (a section's tag says nothing of the claims inside it) or into a
+section's own prose (a verified hint says nothing of the paragraphs around it). The status
+lists **Contained** claims and each `verifies` **on a container** (it verifies nothing:
+move the tag to what it checks). Neither fails on its own. A contained section is settled
+by tagging it on a test that really checks its prose, by naming its prose's claims and
+migrating them (the guide "Migrating to claim grain"), or, once spec-unit classes land,
+by classing prose that asserts nothing.
+
+**Code earns through the claim that exercises it** (spec §13.5). An `implements` to a
+verified unit earns; one to a container or a contained section earns when a verified
+claim inside it has a test (or a check) that exercises the code. Otherwise it is
+unearned: `unverified`, `not_exercised` or `nothing_inside` (`Surfex.Status.earning/2`).
 
 **Code relates to the claim it realises.** With `claim_implements: true` in `.surfex.exs`
 (off by default until claim grain is released), `mix surfex.suggest` proposes

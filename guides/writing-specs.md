@@ -55,6 +55,16 @@ Don't split when:
 A parent section's body is its own. Put the overview there and the requirements in the
 subsections, and editing the overview dangles nothing that relates to a requirement.
 
+**A section's prose is a claim.** Text of its own is something the spec asserts, and a
+verified hint inside the section doesn't verify it: the status calls such a section
+**contained** (spec §13.4). So for each section with prose, do one of three things: name
+its claims (a marked block, a rule, a row) until no prose of its own is left, and the
+section becomes a container whose claims answer for it; verify it, by tagging the section
+on a test that really checks what its prose says; or, once spec-unit classes land, class
+prose that asserts nothing (a rationale, a history). A heading over subsections has no
+text of its own and needs nothing. `require: [spec: [:verifies]]` is the one-line policy
+that every claim is verified, and it never asks a container for a tag.
+
 **When a heading per requirement is too many headings, mark the requirement instead.**
 A marked block is a unit of its own, inside its section:
 
