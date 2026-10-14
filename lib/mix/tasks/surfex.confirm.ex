@@ -55,7 +55,12 @@ defmodule Mix.Tasks.Surfex.Confirm do
 
         lines =
           for %{fields: [from, to, type]} = line <- R.batch_lines!(opts[:file], 4),
-              do: Map.merge(line, %{from: from, to: to, type: R.type_named!(type)})
+              do:
+                Map.merge(line, %{
+                  from: hd(R.units([from], scans, opts)),
+                  to: hd(R.units([to], scans, opts)),
+                  type: R.type_named!(type)
+                })
 
         R.record(
           root,
@@ -87,6 +92,7 @@ defmodule Mix.Tasks.Surfex.Confirm do
 
       true ->
         {from, to} = R.two!(ids)
+        [from, to] = R.units([from, to], scans, opts)
         type = R.type!(opts)
         config = Config.read!(Path.join(root, opts[:config] || ".surfex.exs"))
         policy = [require_red: Config.require_red!(config), evidence: evidence]

@@ -46,6 +46,14 @@ milestone "Claims own their code" is in.
   `MyApp.Feed.feed/2`. ex_doc renders the marker as a comment, but an `elixir contract`
   info string swallows the heading after it, as `test ID` does.
 
+- **A project's citation forms** (#205, #236). `unit_refs:` in `.surfex.exs` lists the
+  forms a project cites spec units in across files, each a regex with named captures `id`
+  and `file` or `chapter` (a spec file's leading number):
+  `~r/^§(?<chapter>\d\d)\.(?<id>[\w.]+)$/` makes `§03.4` name `spec/03-wire-format.md#4`
+  (spec §11.1). `Surfex.Scan.resolver/2` takes them and `Surfex.Scan.resolve/2` tries them
+  first; a test's `verifies:`, `mix surfex.test` and the recording tasks that take a unit
+  accept the forms.
+
 ## [0.9.1] — 2026-10-14
 
 What surfex writes now reads right. Spec pages published with ex_doc keep their headings

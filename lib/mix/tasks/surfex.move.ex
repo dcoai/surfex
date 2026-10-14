@@ -32,6 +32,7 @@ defmodule Mix.Tasks.Surfex.Move do
     {opts, ids} = R.parse(args)
     {old, new} = R.two!(ids)
     {root, scans, entries, meta} = R.context(opts)
+    [old, new] = R.units([old, new], scans, opts)
     result = Surfex.Record.move(scans, entries, old, new, meta)
     R.record(root, result)
 

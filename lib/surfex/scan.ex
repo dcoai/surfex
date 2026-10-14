@@ -113,10 +113,11 @@ defmodule Surfex.Scan do
 
   @doc """
   The spec units of `scans`, indexed once by full id and by bare id (`Surfex.Scan.Resolver`),
-  for `resolve/2` to look references up in.
+  for `resolve/2` to look references up in. Given a project's `unit_refs:`, it reads the
+  project's own citation forms too (§11.1).
   """
-  @spec resolver([t]) :: Resolver.t()
-  def resolver(scans), do: Resolver.new(scans)
+  @spec resolver([t], [Regex.t()]) :: Resolver.t()
+  def resolver(scans, unit_refs \\ []), do: Resolver.new(scans, unit_refs)
 
   @doc """
   What a code record is a version of: its file, lines and version. A function with

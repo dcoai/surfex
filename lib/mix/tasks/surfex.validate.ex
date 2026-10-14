@@ -63,6 +63,7 @@ defmodule Mix.Tasks.Surfex.Validate do
     case opts[:file] do
       nil ->
         {test, unit} = R.two!(ids)
+        [test, unit] = R.units([test, unit], scans, opts)
         R.record(root, Surfex.Record.validate(scans, entries, test, unit, evidence, meta))
 
       path ->
@@ -74,7 +75,7 @@ defmodule Mix.Tasks.Surfex.Validate do
 
         lines =
           for %{fields: [test, unit]} = l <- R.batch_lines!(path, 3),
-              do: Map.merge(l, %{test: test, unit: unit})
+              do: Map.merge(l, %{test: test, unit: hd(R.units([unit], scans, opts))})
 
         R.record(
           root,

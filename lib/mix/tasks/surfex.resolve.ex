@@ -23,6 +23,7 @@ defmodule Mix.Tasks.Surfex.Resolve do
     type = R.type!(opts)
     pick = opts[:pick] || Mix.raise("--pick is required: the start of the chosen tip's id")
     {root, scans, entries, meta} = R.context(opts)
+    [from, to] = R.units([from, to], scans, opts)
     R.record(root, Surfex.Record.resolve(scans, entries, from, to, type, pick, meta))
   end
 end

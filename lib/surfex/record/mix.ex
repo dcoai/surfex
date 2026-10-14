@@ -66,6 +66,20 @@ defmodule Surfex.Record.Mix do
     end
   end
 
+  # The ids a task was given, with each spec unit written in the project's own citation
+  # form (`unit_refs:`, §11.1) as its full id. Any other id is as given.
+  def units(ids, scans, opts) do
+    config = Config.read!(Path.expand(opts[:config] || ".surfex.exs"))
+    resolver = Surfex.Scan.resolver(scans, Config.unit_refs!(config))
+
+    Enum.map(ids, fn id ->
+      case Surfex.Scan.Resolver.form(resolver, String.replace_prefix(id, "spec:", "")) do
+        {:ok, unit} -> "spec:" <> unit.id
+        _ -> id
+      end
+    end)
+  end
+
   # A batch file's lines (`Surfex.Record.parse_batch/2`), or stops naming the file.
   def batch_lines!(path, fields) do
     case Surfex.Record.parse_batch(File.read!(path), fields) do

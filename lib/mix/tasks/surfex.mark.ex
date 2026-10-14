@@ -39,6 +39,7 @@ defmodule Mix.Tasks.Surfex.Mark do
       end
 
     {root, scans, entries, meta} = R.context(opts)
+    [unit] = R.units([unit], scans, opts)
     meta = if opts[:pick], do: [pick: opts[:pick]] ++ meta, else: meta
 
     case {opts[:needs_update], opts[:withdraw]} do
