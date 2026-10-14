@@ -300,6 +300,16 @@ defmodule Surfex.ClaimFormsTest do
                Enum.filter(claim_units(text, subjects: subjects), &(&1.role == :contract))
     end
 
+    test "a signature naming its module is keyed by it, and needs no module from elsewhere" do
+      text =
+        "# Api\n\n```elixir contract\n@spec MyApp.open(port, opts) :: {:ok, t}\n@spec MyApp.Env.check(atom) :: :ok\n```\n"
+
+      assert for(u <- claim_units(text), u.role == :contract, do: {u.id, u.contract}) == [
+               {"spec.md#MyApp.open/2", "MyApp.open/2"},
+               {"spec.md#MyApp.Env.check/1", "MyApp.Env.check/1"}
+             ]
+    end
+
     test "a signature's version is its own text: changing one changes only its unit" do
       before = claim_versions(@claim_contract, [])
 
@@ -334,7 +344,7 @@ defmodule Surfex.ClaimFormsTest do
     @contract_errors [
       {"a fence with no module",
        "# A\n\n<!-- surfex: contract -->\n```elixir\n@spec f(t) :: t\n```\n",
-       "spec.md:4: the contract fence has no module"},
+       "spec.md:5: the contract signature names no module"},
       {"a marker with no fence", "# A\n\n<!-- surfex: contract module: M -->\ntext\n",
        "spec.md:3: the contract marker has no fence after it"},
       {"a fence with no signature",
@@ -552,6 +562,49 @@ defmodule Surfex.ClaimFormsTest do
       assert_raise ArgumentError, ~r/fold_paths: must be true or false/, fn ->
         Surfex.Status.Config.scans(Keyword.put(config, :fold_paths, :yes), dir)
       end
+    end
+  end
+
+  describe "list-shaped keys" do
+    @describetag verifies: ["list-keys"]
+
+    @claim_keyed """
+    # Codes
+
+    <!-- surfex: table codes key: Code -->
+    | Code | Means |
+    |---|---|
+    | 1001, 1005 | legacy hilite |
+    | 2001 / 2002 | split |
+    | read and write | both |
+    | 3001 | one |
+
+    <!-- surfex: table pairs key: [Mode, Key] -->
+    | Mode | Key | Means |
+    |---|---|---|
+    | render | :width | composite, not a list |
+    """
+
+    test "a row key holding a list separator is a warning under its table, and nothing else" do
+      units = claim_units(@claim_keyed)
+      status = Surfex.Status.derive(units, [])
+
+      assert for(k <- Surfex.Status.list_keys(status), do: {k.row.id, k.table, k.separator}) == [
+               {"spec.md#codes/1001, 1005", "spec.md#codes", ", "},
+               {"spec.md#codes/2001 / 2002", "spec.md#codes", " / "},
+               {"spec.md#codes/read and write", "spec.md#codes", " and "}
+             ]
+
+      text = Surfex.Status.Report.text(status)
+      assert text =~ "List-shaped keys"
+      assert text =~ ~s(row spec.md#codes/1001, 1005 in table spec.md#codes: its key holds ", ")
+      refute Surfex.Status.failing?(status)
+
+      {json, :ok, _} = status |> Surfex.Status.Report.json() |> :json.decode(:ok, %{null: nil})
+      assert [%{"table" => "spec.md#codes", "separator" => ", "} | _] = json["list_keys"]
+
+      # The scan's units are as they were: the warning is read from them.
+      assert Enum.count(units, &(&1.role == :row)) == 5
     end
   end
 

@@ -123,7 +123,13 @@ defmodule Surfex.Status.Report do
       end),
       items("Broken (a test declares what no spec unit is)", status.broken, fn b ->
         "#{b.scan.kind} #{b.scan.id} #{b.type} #{inspect(b.ref)}: #{reason(b.reason)}#{at(b.scan)}"
-      end)
+      end),
+      # A warning, not a failure (§11.2).
+      items(
+        "List-shaped keys (a table row's key that may name two things)",
+        Status.list_keys(status),
+        &"row #{&1.row.id} in table #{&1.table}: its key holds #{inspect(&1.separator)}#{at(&1.row)}"
+      )
     ]
 
     verdict = if Status.failing?(status), do: "FAILING", else: "ok"
@@ -185,6 +191,10 @@ defmodule Surfex.Status.Report do
       "units" =>
         status |> Status.units() |> Map.new(fn {role, n} -> {Atom.to_string(role), n} end),
       "new" => Enum.map(status.new, &scan_json/1),
+      "list_keys" =>
+        Enum.map(Status.list_keys(status), fn k ->
+          Map.merge(scan_json(k.row), %{"table" => k.table, "separator" => k.separator})
+        end),
       "unimplemented" => Enum.map(status.unimplemented, &scan_json/1),
       "unmet" =>
         Enum.map(status.unmet, fn %{scan: scan, requires: requires} ->

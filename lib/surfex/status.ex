@@ -422,6 +422,22 @@ defmodule Surfex.Status do
   end
 
   @doc """
+  The marked tables' rows whose key looks like a list, a probable key naming two things
+  (§11.2): a key holding `, `, ` / ` or ` and `, as `%{row, table, separator}`, in file and
+  line order. A warning, never a failure: a key may hold a comma on purpose.
+  """
+  @spec list_keys(t) :: [%{row: Scan.t(), table: String.t(), separator: String.t()}]
+  def list_keys(status) do
+    for {_key, %Scan{kind: :spec, role: :row, within: table, id: id} = row} <- status.scans,
+        key = String.replace_prefix(id, table <> "/", ""),
+        separator = Enum.find([", ", " / ", " and "], &String.contains?(key, &1)),
+        separator != nil do
+      %{row: row, table: table, separator: separator}
+    end
+    |> Enum.sort_by(&{&1.row.location.file, &1.row.location.lines})
+  end
+
+  @doc """
   The tips of `relation` among `entries`: its entries that no other entry of it names as a
   parent, oldest first. One tip, or several that agree (`representative/1`), is the
   judgement in force; tips that disagree are a conflict; none means the log has never

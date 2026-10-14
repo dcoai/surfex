@@ -64,6 +64,10 @@ that has an id (`### run/2` under `## §Engine.13`) is part of that unit: its te
 the id'd section's version, and its hints sit in that section. Give a sub-heading an id
 when it should be a unit of its own. Off by default until 0.8.
 
+**One claim per row**: a table row whose key reads as a list (`1001, 1005`, `a / b`,
+`a and b`) is probably two claims in one row; the status lists it under "List-shaped keys"
+as a warning. Split the row.
+
 **Not a claim**: bold. A bold-lead sentence without an id comment is its section's text.
 
 A claim's version is its text and nested lines, without the list marker or id comment, so

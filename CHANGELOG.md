@@ -39,10 +39,11 @@ milestone "Claims own their code" is in.
 
 - **Contract fences** (#205, #235). A fenced block after `<!-- surfex: contract -->`, or
   opened as ```` ```elixir contract ````, is one unit of role `:contract` per function its
-  `@spec`, `@callback` and `@macrocallback` lines name, keyed `file#name/arity`, so changing
-  one signature dangles only that function's relations (spec §11.1). The module is the
-  marker's `module:` option or the enclosing subject section's item (`subjects:`); a fence
-  with neither is an error. The new scan-record field `contract` holds the function,
+  `@spec`, `@callback` and `@macrocallback` lines name, keyed `file#name/arity` (or
+  `file#Module.name/arity` for a head that names its module), so changing one signature
+  dangles only that function's relations (spec §11.1). The module is the one the head names,
+  else the marker's `module:` option, else the enclosing subject section's item
+  (`subjects:`); a signature with none is an error. The new scan-record field `contract` holds the function,
   `MyApp.Feed.feed/2`. ex_doc renders the marker as a comment, but an `elixir contract`
   info string swallows the heading after it, as `test ID` does.
 
@@ -52,6 +53,10 @@ milestone "Claims own their code" is in.
   in that section (spec §11.1). **Upgrade step, when it becomes the default (0.8, with plan
   item C.1):** a spec that writes ids keeps fewer units, and each folded heading's relations
   move to the id'd section; until then nothing changes unless a project sets it.
+- **List-shaped table keys warn** (#205, #238). A marked table's row whose key reads as a
+  list (`1001, 1005 legacy hilite`: it holds `, `, ` / ` or ` and `) is probably two things
+  in one row. `Surfex.Status.list_keys/1` lists them, and the status reports them in a list
+  of their own (`list_keys` in the JSON), as a warning that never fails (spec §11.2).
 - **A project's citation forms** (#205, #236). `unit_refs:` in `.surfex.exs` lists the
   forms a project cites spec units in across files, each a regex with named captures `id`
   and `file` or `chapter` (a spec file's leading number):

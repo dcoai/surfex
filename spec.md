@@ -1157,19 +1157,21 @@ between are fine), or opened as ```` ```elixir contract ````, yields one unit of
 `:contract` per function its `@spec`, `@callback` or `@macrocallback` lines name. A
 signature takes the lines indented under it.
 - **Its id** is `file#name/arity`, read by parsing the signature as Elixir:
-  `spec/17-public-api.md#feed/2`. Several signatures of one function (a multi-clause spec)
-  are one unit, at the first one's place.
-- **Its module** is the marker's `module:` option (`<!-- surfex: contract module:
-  MyApp.Feed -->`), else the one item of the nearest enclosing subject section (§6.6). The
-  record's `contract` is the function it is the contract of, `MyApp.Feed.feed/2`.
+  `spec/17-public-api.md#feed/2`. A head that names its module, `@spec MyApp.open(port,
+  opts) :: …`, is keyed as written, `file#MyApp.open/2`. Several signatures of one function
+  (a multi-clause spec) are one unit, at the first one's place.
+- **Its module** is the one its head names, else the marker's `module:` option
+  (`<!-- surfex: contract module: MyApp.Feed -->`), else the one item of the nearest
+  enclosing subject section (§6.6). The record's `contract` is the function it is the
+  contract of, `MyApp.Feed.feed/2`.
 - **Its version** is its signatures' text, so changing a signature dangles exactly that
   unit's relations. The fence's other lines (comments, code) and its fence lines are the
   text of what it sits in.
 
 The bare marker is a block's opening marker too, and stays a block where a
-`<!-- /surfex -->` closes it (§11). A fence with no module, a marker with no fence after it,
-a fence holding no signature, a signature that doesn't parse, and a function in two fences
-of one file are errors naming the line. Whether a contract unit's citation of its own
+`<!-- /surfex -->` closes it (§11). A signature with no module, a marker with no fence after
+it, a fence holding no signature, a signature that doesn't parse, and a function in two
+fences of one file are errors naming the line. Whether a contract unit's citation of its own
 function yields `implements` is plan item D.2's to decide.
 
 **Folding path headings.** With `fold_paths: true` in `.surfex.exs`, a heading with no id
@@ -1245,12 +1247,13 @@ after it.
 
 ```test:contract-fences
 a contract fence (after the contract marker, or opened elixir contract) is one unit per
-function its @spec, @callback and @macrocallback lines name, keyed file#name/arity, with
-its module from module: or the enclosing subject section; changing one signature changes
-only its unit, the fence's other lines are its section's text; a bare marker a close marker
-follows is a block; a fence with no module or no signature, a marker with no fence, a
-signature that doesn't parse and a function in two fences are errors naming the line;
-status counts contracts
+function its @spec, @callback and @macrocallback lines name, keyed file#name/arity (or as
+written, Module.name/arity, for a head naming its module), with its module from its head,
+module: or the enclosing subject section; changing one signature changes only its unit, the
+fence's other lines are its section's text; a bare marker a close marker follows is a block;
+a signature with no module, a fence with no signature, a marker with no fence, a signature
+that doesn't parse and a function in two fences are errors naming the line; status counts
+contracts
 ```
 
 ```test:rule-items
@@ -1272,6 +1275,24 @@ the block error it was
 ```test:no-positional-ids
 inserting a claim at the top of every claim form (a named paragraph, a marked list, a named
 item) changes no other unit's id or version
+```
+
+### 11.2 List-shaped table keys
+<!-- surfex: list-keys-section -->
+
+A marked table's row key (§11) that reads as a list, such as `1001, 1005 legacy hilite`, is
+almost always two things in one row, so their relations can't be told apart.
+`Surfex.Status.list_keys/1` lists every row whose key holds `, `, ` / ` or ` and `, with
+its table and the separator it holds, in file and line order. The key parts of a
+composite key (`key: [A, B]`) are joined by a bare `/`, which is no separator. The status
+reports them in a list of their own, and the JSON as `list_keys`. It is a **warning**, never
+a failure, since a key may hold a comma on purpose. The scan is unchanged: the rows are
+units as before.
+
+```test:list-keys
+a row key holding ", ", " / " or " and " is listed with its table and separator, in the text
+report and the JSON, and the status doesn't fail; a composite key or a plain one isn't
+listed, and the rows are units as before
 ```
 
 ## 12. The relation log
