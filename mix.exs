@@ -27,8 +27,10 @@ defmodule Surfex.MixProject do
       # A true leaf at runtime. A runtime dependency is inherited by every project that scans
       # its own source, so the bar for one is: it cannot be done with the stdlib. Dev and
       # test dependencies aren't inherited: ex_doc builds the docs, and no consumer fetches it.
+      # The tests use it too (model runs them all), to render the spec's unit forms as the
+      # docs will (#195).
       deps: [
-        {:ex_doc, "~> 0.40", only: :dev, runtime: false},
+        {:ex_doc, "~> 0.40", only: [:dev, :test, :model], runtime: false},
         # The model of the relation log (#128), checked by extla in a Mix environment of its
         # own (MIX_ENV=model), so the rest of CI neither fetches nor compiles it.
         {:extla,

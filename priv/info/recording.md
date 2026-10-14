@@ -13,8 +13,9 @@ Create the log once with `mix surfex.log --init` (it also sets git's union merge
 - `mix surfex.retire FROM TO --type T --note N`: the relation no longer holds. On a pair
   never related it declines a suggestion (the note is required), and suggest skips it.
 - `mix surfex.move OLD NEW --note N`: an id was renamed; carries every relation, keeping
-  each basis. Anchored headings (`## Totals {#totals}`) keep their id across renames. A
-  test moved to a renamed module, describe or file brings its red→green and baseline
+  each basis. Headings with an id written for them (`<!-- surfex: totals -->` on the line
+  after, spec §11) keep their id across renames. A test moved to a renamed module,
+  describe or file brings its red→green and baseline
   records when its version is unchanged; the task lists any it leaves behind. A function
   renamed or re-aritied moves too (`code:Mod.f/2` to `code:Mod.f/3`); suggest proposes it
   when the arity changed. The moved relations dangle until judged again.

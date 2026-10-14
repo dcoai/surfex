@@ -28,7 +28,7 @@ so it survives a clean checkout.
 | Spec unit reworded, same behaviour | `verifies` dangle | `mix surfex.confirm TEST UNIT --type verifies --note …` (judgement) |
 | Spec unit changed behaviour | `verifies` and `implements` dangle | update the test (it fails), then the code (green), then `confirm --evidence` |
 | Spec wrong, tests and code agree with it | none | `mix surfex.mark UNIT --needs-update` |
-| Id renamed | orphaned | `mix surfex.move OLD NEW` (anchors `{#id}` avoid this) |
+| Id renamed | orphaned | `mix surfex.move OLD NEW` (a written heading id avoids this) |
 | Thing removed | orphaned | `mix surfex.retire FROM TO --type T` |
 
 A spec unit may be verified by one test or by several; add or remove tests as the unit

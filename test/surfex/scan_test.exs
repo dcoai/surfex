@@ -417,6 +417,25 @@ defmodule Surfex.ScanTest do
       assert Enum.map(units(quoted), & &1.id) == ["spec.md#S"]
     end
 
+    @tag verifies: "hint-info-forms"
+    test "a test:ID info string opens the hint ID, versioned as test ID is" do
+      spaced = unit("cart-add-qty")
+      colon = String.replace(@units, "```test cart-add-qty", "```test:cart-add-qty")
+      assert colon != @units
+
+      assert %{role: :test_hint, within: "spec.md#cart-add", hash: hash} =
+               unit(colon, "cart-add-qty")
+
+      assert hash == spaced.hash
+      assert Enum.map(units(colon), & &1.id) == Enum.map(units(), & &1.id)
+
+      # Anything else after test is an ordinary code block, the section's own text.
+      for info <- ["test:", "test:x y"] do
+        text = "# S\n\n```#{info}\nz\n```\n"
+        assert [%{id: "spec.md#S", role: :section}] = units(text)
+      end
+    end
+
     test "a spec using none of them scans exactly as before" do
       plain = "# A\n\ntext\n\n## B\n\nmore\n"
       assert Enum.all?(units(plain), &(&1.role == :section and &1.within == nil))
@@ -428,13 +447,15 @@ defmodule Surfex.ScanTest do
                units("<!-- surfex: r -->\nA rule.\n<!-- /surfex -->\n\n# A\n\ntext\n")
     end
 
+    # A marker straight after a heading may be the heading's id (heading-id-after), so these
+    # open their block a line further down.
     @errors [
-      {"an unclosed block", "# A\n<!-- surfex: a -->\ntext\n",
-       "spec.md:2: block a is never closed"},
-      {"a block spanning a heading", "# A\n<!-- surfex: a -->\n# B\n<!-- /surfex -->\n",
-       "spec.md:3: block a (line 2) spans a heading"},
-      {"a nested block", "# A\n<!-- surfex: a -->\n<!-- surfex: b -->\n",
-       "spec.md:3: block b opens inside block a (line 2)"},
+      {"an unclosed block", "# A\n\n<!-- surfex: a -->\ntext\n",
+       "spec.md:3: block a is never closed"},
+      {"a block spanning a heading", "# A\n\n<!-- surfex: a -->\n# B\n<!-- /surfex -->\n",
+       "spec.md:4: block a (line 3) spans a heading"},
+      {"a nested block", "# A\n\n<!-- surfex: a -->\n<!-- surfex: b -->\n",
+       "spec.md:4: block b opens inside block a (line 3)"},
       {"a close with no block", "# A\n<!-- /surfex -->\n",
        "spec.md:2: <!-- /surfex --> closes no block"},
       {"an unclosed hint", "# A\n```test h\nx\n", "spec.md:2: test hint h is never closed"},
@@ -476,6 +497,55 @@ defmodule Surfex.ScanTest do
       renamed = String.replace(text, "Adding items", "Adding lines")
       [_, again, _] = Markdown.sections(renamed, "spec.md")
       assert {again.id, again.hash} == {section.id, section.hash}
+    end
+
+    @tag verifies: "heading-id-after"
+    test "an id comment on the line after a heading names it, unless a close makes it a block" do
+      at_end =
+        "# Carts\n\n## Adding items <!-- surfex: cart-add -->\n\nAdd one.\n\n### Notes\n\nn\n"
+
+      next_line =
+        String.replace(at_end, " <!-- surfex: cart-add -->\n", "\n<!-- surfex: cart-add -->\n")
+
+      assert next_line != at_end
+
+      versions = fn text ->
+        text |> Markdown.sections("spec.md") |> Enum.map(&{&1.id, &1.role, &1.hash, &1.named})
+      end
+
+      assert versions.(next_line) == versions.(at_end)
+      assert written_ids(next_line) == written_ids(at_end)
+
+      # A close before the next marker or heading: the comment opens a block, as it always did.
+      block = "# A\n<!-- surfex: r -->\nA rule.\n<!-- /surfex -->\n\n# B\n<!-- surfex: b -->\n"
+
+      assert block |> Markdown.sections("spec.md") |> Enum.map(&{&1.id, &1.role}) == [
+               {"spec.md#A", :section},
+               {"spec.md#r", :block},
+               {"spec.md#b", :section}
+             ]
+
+      # The next marker opens a block of its own, in the section the comment named.
+      text = "# A\n<!-- surfex: a -->\n\nIntro.\n\n<!-- surfex: r -->\nRule.\n<!-- /surfex -->\n"
+
+      assert text |> Markdown.sections("spec.md") |> Enum.map(&{&1.id, &1.within}) == [
+               {"spec.md#a", nil},
+               {"spec.md#r", "spec.md#a"}
+             ]
+
+      # A comment inside a fence is text, and doesn't name the heading before the fence.
+      assert written_ids("# A\n```\n<!-- surfex: a -->\n```\n") == ["spec.md#A"]
+
+      for two <- [
+            "# A {#x}\n<!-- surfex: a -->\n",
+            "# A <!-- surfex: x -->\n<!-- surfex: a -->\n"
+          ] do
+        assert_raise ArgumentError,
+                     ~r/spec.md:2: heading of line 1 already has a written id, x/,
+                     fn ->
+                       written_ids(two)
+                     end
+      end
     end
 
     test "heading_ids: reads § ids, section numbers, or the project's regex; others keep their path" do
