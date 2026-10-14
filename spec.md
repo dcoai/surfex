@@ -3458,7 +3458,7 @@ complete means validated, not asserted.
 
 | Kind | Complete when | Missing, as listed |
 |---|---|---|
-| spec unit | a test verifies it, or a unit inside it, by a current, validated relation; and every `implements` relation to it is current and validated. A unit no code implements (a policy, say) is complete with its test alone: every unit needs a test, and code only where the spec describes code. A deviating unit (§13.1) is never complete, whatever its basis: a `verifies` recorded on its test's red run is validated, but the code doesn't meet the unit | `no_relation` (in none), `no_test`, `unvalidated`, `deviates (<ref>, …)` |
+| spec unit | a test verifies it, or a unit inside it, by a current, validated relation (under `claim_grain: true`, only one of its own, §20.1); and every `implements` relation to it is current and validated. A unit no code implements (a policy, say) is complete with its test alone: every unit needs a test, and code only where the spec describes code. A deviating unit (§13.1) is never complete, whatever its basis: a `verifies` recorded on its test's red run is validated, but the code doesn't meet the unit | `no_relation` (in none), `no_test`, `contained (<unit>, …)` (§20.1), `unvalidated`, `deviates (<ref>, …)` |
 | test | it verifies a spec unit by a current, validated relation, and exercises code (a current `tests` relation). A test verifying only units no code implements is complete with its `verifies` alone | `no_relation`, `verifies_nothing`, `exercises_nothing` |
 | code | it implements a unit by a current, validated relation, or is excused by a current `excuses` relation; and, when implemented, a test verifying the unit exercises it (no `code_untested` gap, §13.1). Code is one item per definition (§11): a function's default-argument arities are judged together and counted once, listed under the first of their ids | `no_relation`, `not_described` (neither implemented nor excused), `unvalidated`, `untested` |
 
@@ -3506,6 +3506,41 @@ relations validated, it is complete
 the score is complete over all per kind and overall, to one decimal, 100 with nothing to
 count; it reads as text, JSON and a golden with no hashes or times; below completeness:
 [min: N] the status check fails
+```
+
+### 20.1 Own text in the score
+<!-- surfex: own-text-score -->
+
+Under `claim_grain: true` (§13.2), completeness (`Surfex.Completeness.report/1`) reads a
+spec unit's text as verification does (§13.4): a unit is counted when it is a claim, and
+a claim is complete only with **its own** evidence.
+
+- A claim is complete when a test or check verifies **it** by a current, validated
+  relation, and every `implements` relation to it is current and validated, as before.
+  A `verifies` to a unit inside it doesn't complete it: that unit's evidence is the inner
+  unit's, not the claim's own text's.
+- A `:contained` claim, one with no `verifies` of its own while a claim inside it is
+  verified, misses `contained`, which names the verified claims inside it
+  (`contained (<unit>, …)`), so the work list says where evidence already is. A claim
+  with nothing, own or inside, misses `no_test`, as before.
+- Containers (§13.4) aren't counted: a heading over subsections, a section whose body is
+  only named claims, and a marked table, whose rows are its claims.
+
+A contained claim is settled by adding it to the tag of a test that really checks its
+prose, by naming the prose's claims (§11.1) and migrating its relations (§14.1), or by
+classing the prose as asserting nothing. Without `claim_grain:` completeness reads as
+before, and the verdict lists (§13.4) are reported either way.
+
+```test:completeness-own-text
+under claim_grain: true a contained section is incomplete, missing contained with the
+verified unit inside it; the same section tagged by a validated test is complete; a
+container, a marked table among them, isn't counted
+```
+
+```test:claim-grain-switch
+without claim_grain: completeness counts a unit complete through a unit inside it and
+counts a marked table, as before, and the status still gives verdicts and contained
+claims; with it, completeness reads own text
 ```
 
 ## 21. Discovering the tool
