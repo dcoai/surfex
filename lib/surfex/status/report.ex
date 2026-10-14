@@ -41,6 +41,12 @@ defmodule Surfex.Status.Report do
       ),
       section("Impacted (an end depends on something not current)", status, & &1.impacted),
       section("Planned (an end doesn't exist yet)", status, &(&1.state == :planned)),
+      # Listed, not failing (§14.1): a section moving to its claims, one commit or several.
+      items(
+        "Migrating (a section's implements moving to its claims)",
+        status.migrating,
+        &migrating_line/1
+      ),
       # Listed, not failing (§13.1): the declared state of a project fixing its code.
       items(
         "Deviating (a test declares the code doesn't meet the unit yet)",
@@ -264,6 +270,16 @@ defmodule Surfex.Status.Report do
           }
         end),
       "moved" => Enum.map(status.moved, &%{"from" => &1.from, "to" => &1.to, "now" => &1.now}),
+      "migrating" =>
+        Enum.map(
+          status.migrating,
+          &%{
+            "code" => &1.code,
+            "section" => &1.section,
+            "claims" => &1.claims,
+            "settled" => &1.settled
+          }
+        ),
       "unselectable" => Enum.map(status.unselectable, &%{"test" => &1.test, "ids" => &1.ids}),
       "deviating" =>
         Enum.map(status.deviating, fn d ->
@@ -355,6 +371,7 @@ defmodule Surfex.Status.Report do
         "A row per relation. **dangling**: an end changed since it was confirmed (`mix surfex.confirm`). " <>
           "**orphaned**: an end is gone. **planned**: an end doesn't exist yet. **conflicted**: recorded on two branches (`mix surfex.resolve`). " <>
           "**deviates**: proposed, to a unit a test declares the code doesn't meet yet (`@tag deviation:`), listed with its reference under `deviating`. " <>
+          migrating_prose(status) <>
           "For `depends_on`, `refines` and `tests` the first end depends on, refines or tests the " <>
           "other; the other types' ends are in sorted order. `mix surfex.status` is the check; " <>
           "this is the record.",
@@ -394,6 +411,19 @@ defmodule Surfex.Status.Report do
       # By file, not line, so the golden doesn't drift when lines move.
       groups:
         relation_groups ++
+          id_group.("migrating", ["Item", "Moving"], status.migrating, fn m ->
+            %{
+              "Item" => {:code, "code #{m.code}"},
+              "Moving" =>
+                {:raw,
+                 [
+                   Span.code(m.section),
+                   " → ",
+                   Enum.map_intersperse(m.claims, ", ", &Span.code/1),
+                   if(m.settled, do: " (settled)", else: "")
+                 ]}
+            }
+          end) ++
           id_group.(
             "unimplemented",
             ["Item"],
@@ -481,7 +511,12 @@ defmodule Surfex.Status.Report do
 
   defp golden_row(%{relation: {_type, {ak, aid}, {bk, bid}}} = r) do
     flags =
-      for {true, flag} <- [{r.impacted, "impacted"}, {r.deviates != [], "deviates"}], do: flag
+      for {true, flag} <- [
+            {r.impacted, "impacted"},
+            {r.deviates != [], "deviates"},
+            {r.migrates != nil, "migrating"}
+          ],
+          do: flag
 
     state =
       if flags == [],
@@ -524,11 +559,24 @@ defmodule Surfex.Status.Report do
         deviates =
           if r.deviates == [], do: "", else: " (deviates: #{Enum.join(r.deviates, ", ")})"
 
-        "#{type}  #{end_text(a)} ↔ #{end_text(b)}#{changed}#{tips}#{deviates}"
+        migrates = if r.migrates, do: " (migrating from #{r.migrates})", else: ""
+
+        "#{type}  #{end_text(a)} ↔ #{end_text(b)}#{changed}#{tips}#{deviates}#{migrates}"
       end
 
     items(title, rows, & &1)
   end
+
+  # A code item moving from a section to its claims (§14.1), and what settles it.
+  defp migrating_line(%{settled: true} = m),
+    do:
+      "implements  code #{m.code}: #{m.section} → #{Enum.join(m.claims, ", ")}: settled, " <>
+        "every claim holds it; mix surfex.suggest --accept retires the section's relation"
+
+  defp migrating_line(m),
+    do:
+      "implements  code #{m.code}: #{m.section} → #{Enum.join(m.claims, ", ")}: " <>
+        "the section keeps its relation until the claim's is validated"
 
   # What an unrecorded declaration is, and the two explicit acts that settle it (§13.1).
   defp unrecorded_text(%{retired: nil}),
@@ -711,6 +759,7 @@ defmodule Surfex.Status.Report do
       "state" => Atom.to_string(r.state),
       "impacted" => r.impacted,
       "deviates" => r.deviates,
+      "migrates" => r.migrates,
       "ends" =>
         Enum.map([a, b], fn {kind, id} = key ->
           scan = Map.get(status.scans, key)
@@ -730,6 +779,13 @@ defmodule Surfex.Status.Report do
       "through" => r.tip && r.tip.through
     }
   end
+
+  # Said only where a section is migrating (§14.1), so other goldens read as before.
+  defp migrating_prose(%{migrating: []}), do: ""
+
+  defp migrating_prose(_status),
+    do:
+      "**migrating**: proposed, a claim's relation moving from the section listed under `migrating`, which keeps its own until this one is validated. "
 
   # A row only where a project declares checks (§11.4), so others keep their golden.
   defp check_stat(status) do

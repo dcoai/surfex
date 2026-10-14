@@ -64,9 +64,14 @@ defmodule Surfex.Record do
   defp with_basis(meta, basis), do: Keyword.put(meta, :basis, basis)
 
   # A relation re-recorded as its tip stands (a move, a resolve, a new note): what
-  # validated it, and how a review said its test exercises the code (§18), come along.
+  # validated it, how a review said its test exercises the code (§18), and the section a
+  # migration moves it from (§14.1), come along.
   defp as_tip(meta, tip),
-    do: meta |> with_basis(tip.basis) |> Keyword.put(:through, tip.through)
+    do:
+      meta
+      |> with_basis(tip.basis)
+      |> Keyword.put(:through, tip.through)
+      |> Keyword.put(:migrates, tip.migrates)
 
   @doc """
   Relates `from` and `to` as `type` when one of them doesn't exist yet: a **planned**
@@ -1523,7 +1528,8 @@ defmodule Surfex.Record do
       parents: parents,
       ends: ends,
       basis: meta[:basis],
-      through: if(op == :relate, do: meta[:through])
+      through: if(op == :relate, do: meta[:through]),
+      migrates: if(op == :relate, do: meta[:migrates])
     )
   end
 

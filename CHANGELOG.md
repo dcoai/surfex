@@ -179,6 +179,16 @@ milestone "Claims own their code" is in.
   first (one marker line re-versions the section), and each code item's dangle width; with
   no section, every section worst first and the population split into sections whose
   claims are already units and prose ones (`Surfex.Migrate.report/3`). Read-only.
+- **Migrating: a section moves over several commits, green** (#209, #252). `mix
+  surfex.migrate SECTION --accept` records each single proposal as an `implements` to its
+  claim, proposed, with the new entry field `migrates` naming the section (spec §12.1,
+  §14.1). Such a relation doesn't fail the status while the section still holds its own,
+  and the status lists it as **migrating** (text, JSON `migrating` and each relation's
+  `migrates`, `RELATIONS.md`). Once the claim's relation is validated the pair is settled,
+  and `--accept` or `mix surfex.suggest --accept` (a new `migrated` suggestion) retires the
+  section's relation, noting the claim: a section never loses a relation before its claim
+  holds one. `--code ID --to CLAIM` records a reviewer's choice. Additive: an entry without
+  `migrates` keeps its line and id, and nothing changes for a project that doesn't migrate.
 
 ## [0.9.1] — 2026-10-14
 

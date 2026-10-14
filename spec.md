@@ -1651,6 +1651,7 @@ only state surfex keeps. Scanners never read or write it (§11).
 | `note` | why, optionally |
 | `basis` | how the entry validates the relation (§18): `evidence`, `review`, `judgement`, `baseline` (§18.1) or `proposed` (`Surfex.Log.Entry.bases/0`); absent when it validates nothing, which keeps every older entry's canonical line and id |
 | `through` | how a reviewed test exercises code no call reaches (§18.2), free text; only on a `relate` of an `implements` with basis `review`, and absent otherwise, which keeps every other entry's line and id |
+| `migrates` | the section (or table) a claim's `implements` moves from, recorded by a migration (§14.1); only on a `relate` of an `implements` with basis `proposed` or `baseline`, and absent otherwise, which keeps every other entry's line and id |
 
 - **An observation** is a fact the log keeps about one test version, not a relation:
   `op: observe`, type `red_green`, one `test` end at its version (or a check's, §17.1), basis `evidence`. It
@@ -1735,6 +1736,12 @@ observation carries exactly its own
 ```test:through-entry
 through is written after basis only when set, so an entry without it keeps its line and
 id; an entry other than a reviewed implements carrying it, or a blank one, is refused
+```
+
+```test:migrates-entry
+migrates is written last only when set, so an entry without it keeps its line and id; an
+entry other than a proposed or baselined implements relate carrying it, or a blank one, is
+refused
 ```
 
 ```test:grammar-loud
@@ -2360,11 +2367,48 @@ it, naming through what; arities of one definition are one proposal; none is lis
 then several, then single; --within takes every section under a prefix
 ```
 
+**Recording a migration.** `mix surfex.migrate SECTION --accept [--note N]`
+(`Surfex.Migrate.accept/4`) records each single proposal: an `implements` between the code
+and its claim, **proposed** like any pair named by hand (§18), with the entry's `migrates`
+naming the section, or table, it moves from (§12.1). `--code ID --to CLAIM` (`--to` once
+per claim, `Surfex.Migrate.choose/6`) records a reviewer's choice the same way: one or more
+of several candidates, or the claim written for code that had none. It takes every arity
+of ID's definition that the section relates, and refuses a claim that isn't inside the
+section. Where a claim already holds a validated relation to the code, nothing is left to
+wait for, and the section's relation is retired at once.
+- **Migrating.** A proposed relation recorded with `migrates` doesn't fail the status (an
+  exception to proposed, §13.1) while the relation between the same code and the section
+  it names is live. So a section can move across several commits with the check green,
+  rather than in one commit that relates, validates and retires everything at once. The
+  status lists each code item moving (`migrating`: code, section, claims, and whether it
+  is settled) in its text, its JSON (`migrating`, and each relation's `migrates`) and
+  `RELATIONS.md` (a `migrating` group, and the flag on the relation), where there are any.
+- **Settled.** The claim relation is validated as any `implements` is: by evidence, a
+  review, or a review naming a path (§18). Once every claim relation of a code item from a
+  section is validated, the pair is settled: `mix surfex.suggest` proposes retiring the
+  section's relation and `--accept` retires it, as `migrate SECTION --accept` does
+  (`Surfex.Migrate.settle/4`), with a note naming the claims it moved to
+  (`Surfex.Migrate.settled_note/2`). **A section never loses a relation before its claim
+  holds one.** Retired another way first, the section no longer holds it, and the claim's
+  proposed relation fails as any proposed relation does.
+- A pair once declined, a retired relation between the code and a claim, is no candidate:
+  undoing a retirement takes someone choosing to, with `--code --to`.
+
+```test:migrate-accept
+--accept records each single proposal proposed with migrates, which doesn't fail while the
+section holds its relation and is listed as migrating in the reports; once the claim's
+relation is validated the pair is settled, and accept or suggest retires the section's,
+noting the claim; retired early, the claim's relation fails; --code --to records a chosen
+claim and refuses one outside the section; a claim already holding the code retires the
+section's at once; a declined claim is no candidate
+```
+
 **What migration buys.** `mix surfex.migrate --report [SECTION…]` is read-only
 (`Surfex.Migrate.report/3`). For each section:
 - its **relations**, of every type, now and **after** migration: what one edit of its text
-  dangles. After is now less each section-grain `implements` with a candidate claim;
-- its section-grain `implements` by outcome (single, several, none);
+  dangles. After is now less each section-grain `implements` with a candidate or a claim
+  it is migrating to;
+- its section-grain `implements` by outcome (single, several, none, or migrating already);
 - the **marking**: a **prose** section, one with no claim inside it that is a unit yet,
   needs its claims named before anything can move (§11.1), and the first marker or id
   comment re-versions the section, dangling all its relations at once. It is counted,

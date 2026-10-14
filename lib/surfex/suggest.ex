@@ -121,6 +121,7 @@ defmodule Surfex.Suggest do
           reached: [%{spec: String.t(), through: String.t(), count: pos_integer}],
           undeclared: [%{test: String.t(), spec: String.t()}],
           moved: [%{from: String.t(), to: String.t(), now: String.t()}],
+          migrated: [%{code: String.t(), section: String.t(), claims: [String.t()]}],
           refresh: [%{type: atom, from: Scan.t(), to: Scan.t()}]
         }
 
@@ -149,6 +150,9 @@ defmodule Surfex.Suggest do
     * **moved** — each `refines` relation whose unit no longer sits in what it refines
       (`Surfex.Status`), to retire: the source no longer states it. The unit's new place
       is suggested under refines, so accepting settles both.
+    * **migrated** — each code item a migration (§14.1) moved from a section to claims
+      whose relations are all validated now: the section's relation, to retire, noting the
+      claims (`Surfex.Migrate.settled_note/2`).
     * **excuses** — each code item nothing implements (and no implements candidate will),
       paired with the class of the first rule it matches, as `Surfex.Coverage` matches
       them. A parent counts as cited when something implements it. `never_excused`
@@ -200,6 +204,13 @@ defmodule Surfex.Suggest do
       verifies: ordered(verifications(scans, moved)),
       undeclared: ordered(status.undeclared),
       moved: ordered(status.moved),
+      migrated:
+        ordered(
+          for(
+            %{settled: true} = m <- status.migrating,
+            do: %{code: m.code, section: m.section, claims: m.claims}
+          )
+        ),
       refresh: ordered(refreshed(scans, status)),
       tests: ordered(exercised(scans, moved))
     }
@@ -285,6 +296,16 @@ defmodule Surfex.Suggest do
             "spec:" <> m.to,
             :refines,
             Keyword.put_new(meta, :note, "the unit no longer sits in it")
+          )
+        end) ++
+        Enum.map(suggestions.migrated, fn m ->
+          &Record.retire(
+            scans,
+            &1,
+            "code:" <> m.code,
+            "spec:" <> m.section,
+            :implements,
+            Surfex.Migrate.settled_note(m.claims, meta)
           )
         end) ++
         Enum.map(suggestions.excuses, fn x ->

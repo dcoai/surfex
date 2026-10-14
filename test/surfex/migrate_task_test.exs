@@ -61,7 +61,9 @@ defmodule Surfex.MigrateTaskTest do
                "single    MyApp.Cart.add/2, MyApp.Cart.add/3 (one definition) → " <>
                  "spec.md#surface/MyApp.Cart.add (its key MyApp.Cart.add names it)"
 
-      assert summary == "2 proposals: 1 single, 0 several, 1 none"
+      assert summary ==
+               "2 proposals: 1 single, 0 several, 1 none; --accept records the single ones"
+
       assert run(root, ["spec.md#", "--within"]) == [none, single, summary]
       assert File.read!(Path.join(root, ".surfex/surfex.log")) == log
 
@@ -82,6 +84,46 @@ defmodule Surfex.MigrateTaskTest do
                "  MyApp.Cart.add/2, MyApp.Cart.add/3: 3 now → 2 after (single)",
                "  MyApp.Cart.total/0: 3 now → 1 after (none)"
              ] = run(root, ["--report"])
+    end
+
+    @tag verifies: "migrate-accept"
+    test "--accept records the single proposals as migrating; --code --to a chosen claim", %{
+      tmp_dir: root
+    } do
+      out = run(root, ["spec.md#carts", "--accept", "--note", "the table names it"])
+
+      assert [
+               "recorded relate implements  code MyApp.Cart.add/2@" <> add2,
+               "recorded relate implements  code MyApp.Cart.add/3@" <> _
+             ] = out
+
+      assert add2 =~ "spec spec.md#surface/MyApp.Cart.add@"
+
+      assert add2 =~
+               "migrating from spec.md#carts to its claim spec.md#surface/MyApp.Cart.add: " <>
+                 "the table names it"
+
+      assert [none, migrating, _summary] = run(root, ["spec.md#carts"])
+      assert none =~ "none      MyApp.Cart.total/0"
+
+      assert migrating =~
+               "migrating MyApp.Cart.add/2, MyApp.Cart.add/3 (one definition) → " <>
+                 "spec.md#surface/MyApp.Cart.add: validate the claim's relation"
+
+      assert [chosen] =
+               run(root, [
+                 "spec.md#carts",
+                 "--code",
+                 "MyApp.Cart.total/0",
+                 "--to",
+                 "spec.md#surface/MyApp.Cart.add"
+               ])
+
+      assert chosen =~ "code MyApp.Cart.total/0@"
+
+      assert_raise Mix.Error, ~r/--to CLAIM/, fn ->
+        run(root, ["spec.md#carts", "--code", "MyApp.Cart.total/0"])
+      end
     end
   end
 end

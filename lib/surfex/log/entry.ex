@@ -16,6 +16,7 @@ defmodule Surfex.Log.Entry do
   | `note` | why, optionally |
   | `basis` | how it validates the relation: `:evidence`, `:review`, `:judgement`, `:baseline` or `:proposed`; absent when it validates nothing |
   | `through` | how the reviewed test exercises code no call reaches (`route GET /settings`), on a reviewed `implements` only (`mix surfex.validate --through`, §18); absent otherwise |
+  | `migrates` | the section a claim's `implements` moves from (`mix surfex.migrate --accept`, §14.1), on a `relate` of an `implements` with basis `:proposed` or `:baseline` only; absent otherwise |
 
   Which ends and bases each type and op may have is the grammar of spec §12.1, enforced by
   `build/1` and so by `decode/1`.
@@ -28,7 +29,20 @@ defmodule Surfex.Log.Entry do
   """
 
   @enforce_keys [:id, :at, :parents, :op, :type, :ends]
-  defstruct [:id, :at, :commit, :op, :type, :by, :note, :basis, :through, parents: [], ends: []]
+  defstruct [
+    :id,
+    :at,
+    :commit,
+    :op,
+    :type,
+    :by,
+    :note,
+    :basis,
+    :through,
+    :migrates,
+    parents: [],
+    ends: []
+  ]
 
   @ops [:relate, :retire, :mark, :observe]
   @bases [:evidence, :review, :judgement, :baseline, :proposed]
@@ -69,7 +83,8 @@ defmodule Surfex.Log.Entry do
           by: String.t() | nil,
           note: String.t() | nil,
           basis: :evidence | :review | :judgement | :baseline | :proposed | nil,
-          through: String.t() | nil
+          through: String.t() | nil,
+          migrates: String.t() | nil
         }
 
   @doc "The operations an entry may record."
@@ -133,7 +148,8 @@ defmodule Surfex.Log.Entry do
            by: fields[:by],
            note: fields[:note],
            basis: fields[:basis],
-           through: fields[:through]
+           through: fields[:through],
+           migrates: fields[:migrates]
          },
          :ok <- check(entry) do
       {:ok, %{entry | id: id(entry)}}
@@ -196,7 +212,8 @@ defmodule Surfex.Log.Entry do
                  by: map["by"],
                  note: map["note"],
                  basis: basis,
-                 through: map["through"]
+                 through: map["through"],
+                 migrates: map["migrates"]
                ) do
           if entry.id == id,
             do: {:ok, entry},
@@ -258,6 +275,8 @@ defmodule Surfex.Log.Entry do
     fields = if entry.basis, do: fields ++ [{"basis", Atom.to_string(entry.basis)}], else: fields
     # Likewise `through`, which only a review crediting unreached code carries (§12.1).
     fields = if entry.through, do: fields ++ [{"through", entry.through}], else: fields
+    # And `migrates`, which only a claim relation a migration records carries (§14.1).
+    fields = if entry.migrates, do: fields ++ [{"migrates", entry.migrates}], else: fields
     fields = if with_id?, do: [{"id", entry.id} | fields], else: fields
     IO.iodata_to_binary(value({:object, fields}))
   end
@@ -398,6 +417,16 @@ defmodule Surfex.Log.Entry do
 
       e.through != nil and not (is_binary(e.through) and String.trim(e.through) != "") ->
         bad(:through, e.through)
+
+      # The section a claim relation moves from (§14.1): a claim recorded by a migration,
+      # which a review or evidence validates later, or a baseline carried to it.
+      e.migrates != nil and
+          not (e.op == :relate and e.type == :implements and e.basis in [:proposed, :baseline]) ->
+        {:error,
+         "only a proposed or baselined implements carries migrates, got #{e.op} #{e.type} with #{basis_name(e.basis)}"}
+
+      e.migrates != nil and not (is_binary(e.migrates) and String.trim(e.migrates) != "") ->
+        bad(:migrates, e.migrates)
 
       true ->
         :ok

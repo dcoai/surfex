@@ -17,6 +17,8 @@ defmodule Mix.Tasks.Surfex.Suggest do
     * **tests** — each test paired with each code item it calls.
     * **excuses** — each code item nothing implements, paired with the class of the first
       rule in `.surfex.exs` it matches.
+    * **migrated** — a section's `implements` that `mix surfex.migrate` moved to claims
+      whose relations are all validated now: accepting retires the section's.
 
   With `claim_implements: true` in `.surfex.exs`, **implements** also pairs each claim (a
   block, test hint, row, rule or contract) with the code its verifying tests call
@@ -89,6 +91,13 @@ defmodule Mix.Tasks.Surfex.Suggest do
 
     for m <- suggestions.moved,
         do: Mix.shell().info("retire      refines #{m.from} → #{m.to} (now in #{m.now})")
+
+    for m <- suggestions.migrated,
+        do:
+          Mix.shell().info(
+            "retire      implements #{m.code} ↔ #{m.section} (moved to #{Enum.join(m.claims, ", ")}, " <>
+              "which hold it now)"
+          )
 
     for x <- suggestions.excuses do
       Mix.shell().info("excuses     #{x.from.id} ↔ #{x.to.id}")
