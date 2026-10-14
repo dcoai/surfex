@@ -15,6 +15,7 @@ defmodule Surfex.GoldenTest do
   @moduletag verifies: "golden-renders"
 
   alias Surfex.Golden
+  alias Surfex.Golden.Span
 
   defp spec(overrides \\ %{}) do
     Map.merge(
@@ -209,6 +210,107 @@ defmodule Surfex.GoldenTest do
         )
 
       assert rendered =~ "—"
+    end
+  end
+
+  # #199: a cell is read back the way GitLab reads it. GFM splits the row on every `|` not
+  # preceded by a backslash and turns `\|` into `|`; then a code span opens with a run of N
+  # backticks and closes at the next run of exactly N, and one space is stripped from each
+  # side of content that begins and ends with a space and is not all spaces.
+  defp gfm_row_cells(line) do
+    line
+    |> String.trim()
+    |> String.trim_leading("|")
+    |> String.trim_trailing("|")
+    |> then(&Regex.split(~r/(?<!\\)\|/, &1))
+    |> Enum.map(&(&1 |> String.trim() |> String.replace("\\|", "|")))
+  end
+
+  defp gfm_code_span(cell) do
+    [opener] = Regex.run(~r/\A`+/, cell)
+    n = byte_size(opener)
+    rest = binary_part(cell, n, byte_size(cell) - n)
+
+    # the first backtick run of exactly n closes the span; it must end the cell
+    {start, ^n} =
+      ~r/`+/
+      |> Regex.scan(rest, return: :index)
+      |> Enum.map(&hd/1)
+      |> Enum.find(fn {_at, len} -> len == n end)
+
+    assert start + n == byte_size(rest), "the span closes before the cell ends: #{cell}"
+    inner = binary_part(rest, 0, start)
+
+    if String.starts_with?(inner, " ") and String.ends_with?(inner, " ") and
+         String.trim(inner, " ") != "",
+       do: binary_part(inner, 1, byte_size(inner) - 2),
+       else: inner
+  end
+
+  # The one row of a golden whose Item is `cell`, read back as [item_text, other_text].
+  defp gfm_read_back(cell) do
+    line =
+      spec(%{columns: ["Item", "Other"], rows: [%{"Item" => cell, "Other" => "x"}]})
+      |> Golden.render()
+      |> String.split("\n", trim: true)
+      |> List.last()
+
+    assert [item, "x"] = gfm_row_cells(line), "the row splits into other than 2 cells: #{line}"
+    gfm_code_span(item)
+  end
+
+  describe "code spans read back under GFM" do
+    @describetag verifies: "golden-code-spans"
+
+    @tag verifies: ["golden-code-spans", "golden-cells"]
+    test "the proposal's cases, a pipe and backtick runs of 1 to 3 at start, end and middle" do
+      cases =
+        ["ESC |", "|", "a|b|c", "CSI `` `", "\\|", "x\\", " a ", " ", "  ", " a", "a "] ++
+          for run <- ["`", "``", "```"],
+              form <- [run, run <> "a", "a" <> run, "a" <> run <> "b", run <> "a" <> run],
+              do: form
+
+      for text <- cases, do: assert(gfm_read_back({:code, text}) == text, inspect(text))
+
+      assert IO.iodata_to_binary(Span.code("ESC |")) == "`ESC \\|`"
+      assert IO.iodata_to_binary(Span.code("CSI ` x")) == "``CSI ` x``"
+      assert IO.iodata_to_binary(Span.code("`")) == "`` ` ``"
+      assert IO.iodata_to_binary(Span.code("plain")) == "`plain`"
+    end
+
+    test "every string up to five characters of a, space, backtick, pipe and backslash" do
+      alphabet = ["a", " ", "`", "|", "\\"]
+
+      texts =
+        Enum.flat_map(1..5, fn len ->
+          Enum.reduce(1..len, [""], fn _, acc -> for t <- acc, c <- alphabet, do: t <> c end)
+        end)
+
+      assert length(texts) == 3905
+
+      for text <- texts, do: assert(gfm_read_back({:code, text}) == text, inspect(text))
+    end
+
+    test "atoms, loci and versions are spans by the same rule" do
+      assert gfm_read_back({:atom, :"a|`b"}) == inspect(:"a|`b")
+      assert gfm_read_back({:locus, "lib/a|b`.ex", 7}) == "lib/a|b`.ex:7"
+      assert gfm_read_back({:locus, "``lib.ex", nil}) == "``lib.ex"
+      assert gfm_read_back({:version, "`|`"}) == "`|`"
+    end
+
+    test "free text in a composite cell keeps a pipe as content and the rest to render" do
+      assert IO.iodata_to_binary(Span.text("a | `b`")) == "a \\| `b`"
+
+      [line] =
+        spec(%{
+          columns: ["Item", "Note"],
+          rows: [%{"Item" => {:code, "i"}, "Note" => {:raw, Span.text("x | y")}}]
+        })
+        |> Golden.render()
+        |> String.split("\n", trim: true)
+        |> Enum.take(-1)
+
+      assert gfm_row_cells(line) == ["`i`", "x | y"]
     end
   end
 

@@ -26,7 +26,9 @@ Both are **supported library API** (spec §23).
   - `natural_key/1` for ordering rows.
 
   The renderer owns the notation, so every project's goldens read the same way, and it
-  never emits a timestamp, so a golden is a pure function of source.
+  never emits a timestamp, so a golden is a pure function of source. A backticked cell
+  reads back as its text under GFM even when the text holds `|` or a backtick; a
+  `{:raw, …}` or plain-string cell is written verbatim, so escape a `|` in it as `\|`.
 
 ## A surface golden in a few lines
 

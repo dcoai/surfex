@@ -7,6 +7,7 @@ defmodule Surfex.Status.Report do
   has to scan anything again to act on it.
   """
 
+  alias Surfex.Golden.Span
   alias Surfex.Log.Entry
   alias Surfex.Status
 
@@ -349,19 +350,20 @@ defmodule Surfex.Status.Report do
             &%{"Item" => {:code, "#{&1.kind} #{&1.id}"}}
           ) ++
           id_group.("triangle", ["Item", "Gap"], status.triangle, fn g ->
-            %{"Item" => {:code, "spec #{g.spec}"}, "Gap" => {:raw, gap_text(g, false)}}
+            %{"Item" => {:code, "spec #{g.spec}"}, "Gap" => {:raw, gap_what(g, &Span.code/1)}}
           end) ++
           id_group.("broken citations", ["Item", "Cited at"], status.citations, fn c ->
             %{
               "Item" => {:code, c.span},
-              "Cited at" => {:raw, "`#{c.file}` · #{c.section}: #{citation_text(c)}"}
+              "Cited at" =>
+                {:raw, [Span.code(c.file), " · ", Span.text([c.section, ": ", citation_text(c)])]}
             }
           end) ++
           id_group.("marks", ["Item", "State", "Note"], status.marks, fn m ->
             %{
               "Item" => {:code, "spec #{m.unit}"},
               "State" => Atom.to_string(m.state),
-              "Note" => {:raw, m.note || ""}
+              "Note" => {:raw, Span.text(m.note || "")}
             }
           end) ++
           id_group.("undeclared", ["Item", "Verified"], status.undeclared, fn u ->
@@ -370,38 +372,38 @@ defmodule Surfex.Status.Report do
           id_group.("unrecorded", ["Item", "Declares"], status.unrecorded, fn u ->
             %{
               "Item" => {:code, "test #{u.test}"},
-              "Declares" => {:raw, "`spec #{u.spec}`: #{unrecorded_text(u)}"}
+              "Declares" => {:raw, coded("spec #{u.spec}", unrecorded_text(u))}
             }
           end) ++
           id_group.("deviating", ["Item", "Deviation", "Test"], status.deviating, fn d ->
             %{
               "Item" => {:code, "spec #{d.spec}"},
-              "Deviation" => d.ref,
+              "Deviation" => {:raw, Span.text(d.ref)},
               "Test" => {:code, "test #{d.test}"}
             }
           end) ++
           id_group.("moved", ["Item", "Refines"], status.moved, fn m ->
             %{
               "Item" => {:code, "spec #{m.from}"},
-              "Refines" => {:raw, "`spec #{m.to}`: #{moved_text(m)}"}
+              "Refines" => {:raw, coded("spec #{m.to}", moved_text(m))}
             }
           end) ++
           id_group.("stale", ["Item", "Excused as"], status.stale, fn s ->
             %{
               "Item" => {:code, "code #{s.code}"},
-              "Excused as" => {:raw, "`#{s.class}`: #{stale_text(s.reason)}"}
+              "Excused as" => {:raw, coded(to_string(s.class), stale_text(s.reason))}
             }
           end) ++
           id_group.("broken", ["Item", "Declares"], status.broken, fn b ->
             %{
               "Item" => {:code, "#{b.scan.kind} #{b.scan.id}"},
-              "Declares" => {:raw, "`#{b.type} #{b.ref}`: #{reason(b.reason)}"}
+              "Declares" => {:raw, coded("#{b.type} #{b.ref}", reason(b.reason))}
             }
           end) ++
           id_group.("unmet", ["Item", "Needs"], status.unmet, fn %{scan: s, requires: r} ->
             %{
               "Item" => {:code, "#{s.kind} #{s.id}"},
-              "Needs" => {:raw, Enum.map_join(r, ", ", &"`#{&1}`")}
+              "Needs" => {:raw, Enum.map_intersperse(r, ", ", &Span.code(to_string(&1)))}
             }
           end)
     }
@@ -414,7 +416,7 @@ defmodule Surfex.Status.Report do
     state =
       if flags == [],
         do: {:atom, r.state},
-        else: {:raw, Enum.join(["`#{inspect(r.state)}`" | flags], " · ")}
+        else: {:raw, Enum.intersperse([Span.code(inspect(r.state)) | flags], " · ")}
 
     %{
       "End" => {:code, "#{ak} #{aid}"},
@@ -423,7 +425,9 @@ defmodule Surfex.Status.Report do
       "Changed" =>
         if(r.changed == [],
           do: :absent,
-          else: {:raw, Enum.map_join(r.changed, ", ", fn {k, id} -> "`#{k} #{id}`" end)}
+          else:
+            {:raw,
+             Enum.map_intersperse(r.changed, ", ", fn {k, id} -> Span.code("#{k} #{id}") end)}
         )
     }
   end
@@ -500,16 +504,20 @@ defmodule Surfex.Status.Report do
     end
   end
 
-  defp gap_text(g, with_spec? \\ true) do
-    what =
-      case g.gap do
-        :no_test -> "no test verifies it"
-        :test_misses_code -> "`#{g.test}` verifies it but calls none of its code"
-        :code_untested -> "`#{g.code}` implements it but no verifying test calls it"
-      end
+  defp gap_text(g), do: IO.iodata_to_binary(["spec #{g.spec}: ", gap_what(g, & &1)])
 
-    if with_spec?, do: "spec #{g.spec}: #{String.replace(what, "`", "")}", else: what
+  # What a triangle gap lacks, naming its test or code through `name` (plain in the text
+  # report, a code span in the golden).
+  defp gap_what(g, name) do
+    case g.gap do
+      :no_test -> "no test verifies it"
+      :test_misses_code -> [name.(g.test), " verifies it but calls none of its code"]
+      :code_untested -> [name.(g.code), " implements it but no verifying test calls it"]
+    end
   end
+
+  # A golden cell naming an item, then saying something about it: `` `item`: text ``.
+  defp coded(item, text), do: [Span.code(item), ": ", Span.text(text)]
 
   defp citation_text(%{status: :unresolved}), do: "names nothing the code has"
 

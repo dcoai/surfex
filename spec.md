@@ -111,6 +111,18 @@ A caller never writes notation. Each cell is typed, and the renderer formats it:
 | `:absent` or `nil` | `—` |
 | a string | the string verbatim |
 
+Every backticked cell is a GFM code span that reads back as its text, whatever the text
+holds. GFM splits a table row on `|` before it reads a code span, so each `|` is escaped
+as `\|`. The delimiter is one backtick longer than the longest run of backticks in the
+text. One space pads each side when the text starts or ends with a backtick, or starts
+and ends with a space without being all spaces. surfex's own goldens build their
+composite `{:raw, text}` cells by the same rule, and escape the `|` in their free text.
+
+```test:golden-code-spans
+a backticked cell holding a pipe, backtick runs or only backticks, split as a GFM table
+row and read back by GFM's code-span rule, gives its text
+```
+
 ### 2.3 Determinism
 <!-- surfex: golden-determinism -->
 
