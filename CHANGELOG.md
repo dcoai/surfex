@@ -270,6 +270,24 @@ to claim grain, with a walkthrough in the new guide "Migrating to claim grain".
   spec units are complete under the key, against 100% without it, and settling them is
   its own upgrade (#263).
 
+- **Guides for containment** (#256, #262). "Writing specs" says a section's prose is a
+  claim: name its claims, verify it, or (with spec-unit classes) class it, and that
+  `require: [spec: [:verifies]]` never asks a container for a tag (spec §16).
+  `mix surfex.info claims` explains the verdicts and earning, and the status, completeness
+  and config pages the new lists, the `contained` reason and `claim_grain: true`.
+
+  Measured read-only over the volunteer projects before release (#145, #262), six relation
+  logs including surfex's own: of 3,788 live `implements`, 969 end at a contained claim and
+  28 at a container. Under the earn rule 18 of them, in one project, are `not_exercised`
+  and 2 more, in another, end at a container no claim inside exercises; every other one
+  earns. Completeness under `claim_grain: true` moves only in the three projects that tag
+  hints rather than sections (spec units 100% to 79.7%, 56.5% to 46.4%, 79.0% to 60.9%);
+  the three that tag sections are unchanged. `require: [section: [:verifies]]` stops
+  failing on containers: unmet sections fall from 20 to 15, 68 to 48, 5 to 4 and 159 to
+  153, and stay at 75 in the project whose sections need classes (C.2). Folding by
+  default under the key changes one measured spec, 1,389 sections to 1,178 (211 path
+  headings folded into their id'd sections), and three others by 0 to 3.
+
 ## [0.9.1] — 2026-10-14
 
 What surfex writes now reads right. Spec pages published with ex_doc keep their headings

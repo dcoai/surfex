@@ -8,7 +8,8 @@ A keyword list, evaluated as data. An unknown key is refused, naming it.
   items: `:section_sign` (`§ID`), `:section_number` (`1.2`), a regex with `(?<id>…)`, or a
   list of them (`mix surfex.info claims`).
 - `fold_paths: true`: a heading with no id inside one that has an id is part of that unit,
-  not a unit of its own (off by default until 0.8; `mix surfex.info claims`).
+  not a unit of its own (`mix surfex.info claims`). Off by default; the default under
+  `claim_grain: true` wherever `heading_ids:` is set, and `fold_paths: false` opts out.
 - `unit_refs: [~r/^§(?<chapter>\d\d)\.(?<id>[\w.]+)$/]`: the project's own forms of citing
   a spec unit across files, read in `verifies:` tags and by the tasks (`mix surfex.info claims`).
 - `tests: ["test/**/*_test.exs"]`: test files, scanned per test case. Add
@@ -43,7 +44,13 @@ A keyword list, evaluated as data. An unknown key is refused, naming it.
 **Policy**
 - `require: [code: [:implements], test_hint: [:verifies]]`: what must take part in a
   relation of those types (keys: a kind, or a spec role `section`, `block`, `test_hint`,
-  `table`, `row`, `rule`, `contract`).
+  `table`, `row`, `rule`, `contract`). A spec rule judges claims only: a unit with no text
+  of its own is never unmet (`mix surfex.info claims`). `spec: [:verifies]` says every
+  claim is verified.
+- `claim_grain: true`: read the spec at claim grain before the release that makes it the
+  only reading: path headings fold where the spec writes ids, and completeness counts a
+  claim complete only with its own evidence. One switch for every breaking part, so a
+  project can measure them together; that release refuses the key.
 - `triangle: :report | :fail`: whether a unit, its tests and its code must meet.
 - `require_red:`: whether a `tests` relation needs its test's red run.
 - `adoption: :reevaluate | :trust | [trust: globs, reevaluate: globs]` (`mix surfex.info adoption`).
