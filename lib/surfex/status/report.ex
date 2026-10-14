@@ -90,6 +90,11 @@ defmodule Surfex.Status.Report do
       items("Undeclared (a test no longer declares what it verifies)", status.undeclared, fn u ->
         "verifies  test #{u.test} → spec #{u.spec}"
       end),
+      items(
+        "Unrecorded (a test declares what the log doesn't record)",
+        status.unrecorded,
+        &"verifies  test #{describe({:test, &1.test}, status)} → spec #{&1.spec}: #{unrecorded_text(&1)}"
+      ),
       items("Stale (an excuse its class no longer covers)", status.stale, fn s ->
         "class #{s.class} ↔ code #{s.code}: #{stale_text(s.reason)}"
       end),
@@ -178,6 +183,15 @@ defmodule Surfex.Status.Report do
       "unproven" => Enum.map(status.unproven, &claim_json/1),
       "unchecked" => Enum.map(status.unchecked, &claim_json/1),
       "undeclared" => Enum.map(status.undeclared, &%{"test" => &1.test, "spec" => &1.spec}),
+      "unrecorded" =>
+        Enum.map(status.unrecorded, fn u ->
+          %{
+            "test" => u.test,
+            "spec" => u.spec,
+            "retired" => u.retired != nil,
+            "note" => u.retired && u.retired.note
+          }
+        end),
       "unselectable" => Enum.map(status.unselectable, &%{"test" => &1.test, "ids" => &1.ids}),
       "baseline" => %{
         "relations" => Status.baseline_count(status),
@@ -274,6 +288,7 @@ defmodule Surfex.Status.Report do
           {"broken", length(status.broken)},
           {"stale", length(status.stale)},
           {"undeclared", length(status.undeclared)},
+          {"unrecorded", length(status.unrecorded)},
           {"marks", length(status.marks)},
           {"baseline", Status.baseline_count(status)},
           {"broken citations", length(status.citations)},
@@ -314,6 +329,12 @@ defmodule Surfex.Status.Report do
           end) ++
           id_group.("undeclared", ["Item", "Verified"], status.undeclared, fn u ->
             %{"Item" => {:code, "test #{u.test}"}, "Verified" => {:code, "spec #{u.spec}"}}
+          end) ++
+          id_group.("unrecorded", ["Item", "Declares"], status.unrecorded, fn u ->
+            %{
+              "Item" => {:code, "test #{u.test}"},
+              "Declares" => {:raw, "`spec #{u.spec}`: #{unrecorded_text(u)}"}
+            }
           end) ++
           id_group.("stale", ["Item", "Excused as"], status.stale, fn s ->
             %{
@@ -375,6 +396,14 @@ defmodule Surfex.Status.Report do
 
     items(title, rows, & &1)
   end
+
+  # What an unrecorded declaration is, and the two explicit acts that settle it (§13.1).
+  defp unrecorded_text(%{retired: nil}),
+    do: "no verifies relation is recorded: record it (mix surfex.suggest), or remove the tag"
+
+  defp unrecorded_text(%{retired: %{note: note}}),
+    do:
+      "declared, but the relation was retired (#{note || "no note"}): remove the tag, or reinstate it"
 
   defp items(_title, [], _fun), do: []
   defp items(title, list, fun), do: ["\n", title, ":\n", Enum.map(list, &["  ", fun.(&1), "\n"])]

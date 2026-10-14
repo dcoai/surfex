@@ -227,6 +227,82 @@ defmodule Surfex.StatusTest do
       assert Report.text(dropped) =~ "Undeclared (a test no longer declares what it verifies)"
     end
 
+    # #203: a tag written and never recorded claims what the log doesn't hold; a tag left
+    # on a retired relation asserts what the log decided against. Both fail.
+    @tag verifies: ["unrecorded-declaration", "status-failing", "status-states", "status-reports"]
+    test "a declaration with no verifies relation, or a retired one, is unrecorded, and fails" do
+      unrecorded_rel = fn extra ->
+        Entry.new!(
+          [
+            at: "2026-09-28T10:00:00Z",
+            op: :relate,
+            type: :verifies,
+            ends: [
+              %{kind: :test, id: "T: a", hash: "t1"},
+              %{kind: :spec, id: "spec.md#h", hash: "h1"}
+            ]
+          ] ++ extra
+        )
+      end
+
+      tagged = [hint("h"), test_scan([{:verifies, "h"}, {:verifies, "h"}]) | scans()]
+
+      absent = Status.derive(tagged, [])
+      assert absent.unrecorded == [%{test: "T: a", spec: "spec.md#h", retired: nil}]
+      assert Status.failing?(absent)
+      text = Report.text(absent)
+      assert text =~ "Unrecorded (a test declares what the log doesn't record)"
+
+      assert text =~
+               "verifies  test T: a (f:1-2) → spec spec.md#h: no verifies relation is recorded"
+
+      {json, :ok, _} = absent |> Report.json() |> :json.decode(:ok, %{null: nil})
+
+      assert json["unrecorded"] == [
+               %{"test" => "T: a", "spec" => "spec.md#h", "retired" => false, "note" => nil}
+             ]
+
+      assert absent |> Report.golden() |> Surfex.Golden.render() =~ "## unrecorded"
+
+      # A relation in any state but retired records the claim: current, proposed, dangling.
+      current = unrecorded_rel.([])
+      assert Status.derive(tagged, [current]).unrecorded == []
+      assert Status.derive(tagged, [unrecorded_rel.(basis: :proposed)]).unrecorded == []
+      moved = [hint("h"), %{test_scan([{:verifies, "h"}]) | hash: "t2"} | scans()]
+      assert Status.derive(moved, [current]).unrecorded == []
+
+      retire =
+        unrecorded_rel.(
+          op: :retire,
+          parents: [current.id],
+          at: "2026-09-28T11:00:00Z",
+          note: "it checks the cart, not this"
+        )
+
+      retired = Status.derive(tagged, [current, retire])
+
+      assert retired.unrecorded == [
+               %{
+                 test: "T: a",
+                 spec: "spec.md#h",
+                 retired: %{note: "it checks the cart, not this"}
+               }
+             ]
+
+      assert Status.failing?(retired)
+
+      assert Report.text(retired) =~
+               "declared, but the relation was retired (it checks the cart, not this): " <>
+                 "remove the tag, or reinstate it"
+
+      {json, :ok, _} = retired |> Report.json() |> :json.decode(:ok, %{null: nil})
+      assert [%{"retired" => true, "note" => "it checks the cart, not this"}] = json["unrecorded"]
+
+      # The tag removed: nothing is claimed, so nothing is unrecorded.
+      untagged = [hint("h"), test_scan([]) | scans()]
+      assert Status.derive(untagged, [current, retire]).unrecorded == []
+    end
+
     # #190: a list of several ids is legitimate, so it's reported, never failed on: the
     # text counts, the JSON lists.
     @tag verifies: ["unselectable-status", "status-states", "status-reports"]
@@ -236,7 +312,21 @@ defmodule Surfex.StatusTest do
         | unselectable: ["h", "g"]
       }
 
-      status = Status.derive([hint("h"), hint("g"), listed | scans()], [])
+      # Both claims recorded (#203: a declaration with no relation fails on its own).
+      listed_relations =
+        for unit <- ["spec.md#h", "spec.md#g"] do
+          Entry.new!(
+            at: "2026-09-28T10:00:00Z",
+            op: :relate,
+            type: :verifies,
+            ends: [
+              %{kind: :test, id: "T: a", hash: "t1"},
+              %{kind: :spec, id: unit, hash: "h1"}
+            ]
+          )
+        end
+
+      status = Status.derive([hint("h"), hint("g"), listed | scans()], listed_relations)
       assert status.unselectable == [%{test: "T: a", ids: ["h", "g"]}]
       refute Status.failing?(status)
       assert Report.text(status) =~ "  unselectable by --only: 1 test\n"
