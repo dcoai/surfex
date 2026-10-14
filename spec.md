@@ -2314,6 +2314,79 @@ annotate gives a current relation a new note at its own versions and basis, keep
 current; a relation that isn't current, or a missing note, is refused
 ```
 
+### 14.1 Migrating to claim grain
+<!-- surfex: migration -->
+
+A project whose `implements` relations are on sections moves them to the claims inside
+(§11.1) **section by section, as work touches a section, never wholesale**. A section's
+existing relations are the input of its migration and of nothing else (§15.1).
+`Surfex.Migrate` is the aid, and `Mix.Tasks.Surfex.Migrate` is `mix surfex.migrate`.
+
+`mix surfex.migrate SECTION` lists, for each live (current, dangling or proposed)
+`implements` between code C and the section, or a table in it, the claims inside that
+unit that could own C (`Surfex.Migrate.proposals/3`). `--within PREFIX` takes every section
+whose id starts with PREFIX, such as one spec file (`Surfex.Migrate.sections/3`). A claim is
+a candidate when:
+- it **names** C: a row whose key is C's id, or C's name with no arity, which names every
+  arity (`Mod.fun` is `Mod.fun/*`, since one row may honestly state one claim over both
+  arities); a contract unit whose function is C;
+- one of its verifying tests **calls** C directly: a test with a live `verifies` to the
+  claim or a unit inside it, or a declaration resolving there, whose `calls` (§11) name C,
+  or name a hidden definition of C's module;
+- failing both, for any claim, one of its verifying tests **reaches** C (§13.1) through
+  an item it calls, named in the listing. A test reaching a helper through a public entry
+  point is a weaker sign than a call, so reach counts only where nothing names or calls C.
+
+A check (§11.4) verifies a claim but calls nothing, so it proposes nothing.
+
+**Arities of one definition are one proposal.** A function's default-argument arities
+share a definition (§11), and one review credits both (§18.4), so they are proposed, and
+judged, together, said to be one definition.
+
+Each proposal is one of:
+- **single**: one candidate claim;
+- **several**: the candidates are listed, never decided: which claim code realises is a
+  judgement;
+- **none**: no claim inside the section owns C. It is realised by a claim not written yet,
+  or it doesn't belong to the section. These are the spec work the migration surfaces, so
+  they are listed **first**.
+
+The listing writes nothing.
+
+```test:migrate-candidates
+a section's section-grain implements are each proposed to the claims inside it that name
+the code (an arity-less row key every arity), whose tests call it, or failing those reach
+it, naming through what; arities of one definition are one proposal; none is listed first,
+then several, then single; --within takes every section under a prefix
+```
+
+**What migration buys.** `mix surfex.migrate --report [SECTION…]` is read-only
+(`Surfex.Migrate.report/3`). For each section:
+- its **relations**, of every type, now and **after** migration: what one edit of its text
+  dangles. After is now less each section-grain `implements` with a candidate claim;
+- its section-grain `implements` by outcome (single, several, none);
+- the **marking**: a **prose** section, one with no claim inside it that is a unit yet,
+  needs its claims named before anything can move (§11.1), and the first marker or id
+  comment re-versions the section, dangling all its relations at once. It is counted,
+  since it is paid even for relations that don't move. A section whose claims are already
+  units needs none;
+- the **dangle width** of each proposal: the relations a change to the text stating its
+  claim dangles, now (the section's, or the table's) and after (the claim's own and the
+  moved ones; for several, the widest candidate's; for none, the section's after).
+
+Each section's totals come first, then its proposals, widest after first. With no section
+it reports every section holding a section-grain `implements`, worst first (most
+relations), after the **population**: how many of those sections, and their `implements`,
+have claims that are already units (tables, hints, blocks, rules or contracts), which
+migrate today, and how many are prose, which need their claims named first.
+
+```test:migrate-report
+the report gives a section's relations now and after, its implements by outcome, the
+marking a prose section needs and none for one with units, and each code item's dangle
+width now and after, widest first; with no section, every section holding section-grain
+implements, worst first, and the population split into units and prose
+```
+
 ## 15. Suggesting relations
 <!-- surfex: suggesting -->
 
