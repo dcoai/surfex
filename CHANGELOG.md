@@ -189,6 +189,12 @@ milestone "Claims own their code" is in.
   section's relation, noting the claim: a section never loses a relation before its claim
   holds one. `--code ID --to CLAIM` records a reviewer's choice. Additive: an entry without
   `migrates` keeps its line and id, and nothing changes for a project that doesn't migrate.
+- **A baseline carried to the claim** (#209, #253). A section relation resting on the
+  baseline (§18.1) migrates to a claim whose verifying test is the same baselined test, at
+  the trusted version, exercising the code: the claim relation keeps basis `baseline`,
+  holds at once, and the section's retires in the same `--accept` (spec §14.1). A project
+  that baselined at section grain starts its migration from that baseline instead of
+  redoing it. Any other claim relation is proposed, as before.
 
 ## [0.9.1] — 2026-10-14
 
