@@ -30,7 +30,12 @@ defmodule Mix.Tasks.Surfex.Migrate do
   noting the claims it moved to: by the next `--accept`, or by `mix surfex.suggest
   --accept`. A section never loses a relation before its claim holds one. `--code ID --to
   CLAIM` (`--to` once per claim) records your choice for a proposal with several
-  candidates, or one with none once its claim is written (`Surfex.Migrate.choose/6`).
+  candidates, or one with none once its claim is written (`Surfex.Migrate.choose/7`).
+
+  A section relation resting on the baseline (`adoption: :trust`, `mix surfex.baseline`)
+  carries it to the claim when the same baselined test, at the version trusted, verifies
+  the claim and exercises the code: the claim relation is recorded with basis `baseline`,
+  holds at once, and the section's relation retires in the same `--accept`.
 
   `--report` is read-only too. Per section: the relations an edit of its text dangles now
   and after migration, its section-grain `implements` by outcome, the marking a prose
@@ -58,6 +63,9 @@ defmodule Mix.Tasks.Surfex.Migrate do
       )
 
     {root, scans, entries, meta} = R.context(opts)
+    config = Surfex.Status.Config.read!(Path.join(root, opts[:config] || ".surfex.exs"))
+    # What is trusted (§18.1), so a section's baseline carries to its claims.
+    derive = [adoption: Surfex.Status.Config.adoption!(config, root)]
     refs = for ref <- R.units(refs, scans, opts), do: String.replace_prefix(ref, "spec:", "")
 
     sections =
@@ -84,7 +92,10 @@ defmodule Mix.Tasks.Surfex.Migrate do
 
         case {sections, claims} do
           {[section], [_ | _]} ->
-            R.record(root, Migrate.choose(scans, entries, section, opts[:code], claims, meta))
+            R.record(
+              root,
+              Migrate.choose(scans, entries, section, opts[:code], claims, meta, derive)
+            )
 
           {[_], []} ->
             Mix.raise("--code needs the claim it moves to: --to CLAIM (once per claim)")
@@ -94,7 +105,7 @@ defmodule Mix.Tasks.Surfex.Migrate do
         end
 
       opts[:accept] ->
-        R.record(root, Migrate.accept(scans, entries, sections, meta))
+        R.record(root, Migrate.accept(scans, entries, sections, meta, derive))
 
       true ->
         list(scans, entries, sections)

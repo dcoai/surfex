@@ -37,6 +37,9 @@ Create the log once with `mix surfex.log --init` (it also sets git's union merge
   next `--accept` or `mix surfex.suggest --accept` retires the section's, noting the claim.
   `--code ID --to CLAIM` records your choice for several, or for none once its claim is
   written.
+  A section relation on the baseline (`mix surfex.info adoption`) keeps basis `baseline`
+  on the claim when the same baselined test verifies the claim and exercises the code,
+  and the section's retires at once.
 
 Types: `implements`, `verifies`, `tests`, `refines`, `depends_on`, `excuses`.
 Ids: `spec.md#anchor` or `spec.md#Heading/Path`, a bare hint id, `Mod`, `Mod.fun/2`,

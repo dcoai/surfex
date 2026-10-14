@@ -342,6 +342,67 @@ defmodule Surfex.MigrateTest do
       assert {get.outcome, Enum.map(get.claims, & &1.claim)} == {:single, [@h2]}
     end
 
+    # A section relation on the baseline, its test baselined at its version (§18.1).
+    defp baselined(test) do
+      on_baseline = fn e ->
+        if code_of_or_nil(e) == "M.list/1" or e.type == :verifies,
+          do: Entry.new!(e |> Map.from_struct() |> Map.put(:basis, :baseline)),
+          else: e
+      end
+
+      Enum.map(entries(), on_baseline) ++
+        [
+          rel(:tests, {:test, @t2}, {:code, "M.list/1"}, nil),
+          Entry.new!(
+            at: "2026-10-14T09:00:00Z",
+            op: :observe,
+            type: :baseline,
+            basis: :baseline,
+            ends: [%{kind: :test, id: test, hash: "t1"}]
+          )
+        ]
+    end
+
+    defp code_of_or_nil(entry), do: Enum.find_value(entry.ends, &(&1.kind == :code && &1.id))
+
+    @trust [adoption: %{setting: :trust, trusted: :all}]
+
+    @tag verifies: "migrate-baseline"
+    test "a baselined section relation carries its baseline to the claim its test verifies" do
+      log = baselined(@t2)
+      {:ok, recorded} = Migrate.accept(scans(), log, [@s], @meta, @trust)
+
+      carried = Enum.find(recorded, &(&1.op == :relate and code_of(&1) == "M.list/1"))
+
+      assert {carried.basis, spec_of(carried), Map.get(carried, :migrates)} ==
+               {:baseline, @h2, @s}
+
+      assert carried.note =~ "baseline carried from #{@s} to its claim #{@h2}"
+
+      # It holds at once, so the section's relation retires in the same accept.
+      assert Enum.any?(recorded, &(&1.op == :retire and code_of(&1) == "M.list/1"))
+      status = Surfex.Status.derive(scans(), log ++ recorded, [], @trust)
+      assert %{state: :current} = state(status, "M.list/1", @h2)
+      assert Surfex.Status.validated?(status, state(status, "M.list/1", @h2))
+      assert %{state: :retired} = state(status, "M.list/1", @s)
+
+      # The others aren't on the baseline: proposed, as any claim relation.
+      helper = Enum.find(recorded, &(&1.op == :relate and code_of(&1) == "M.helper/1"))
+      assert helper.basis == :proposed
+
+      # Another baselined test, which doesn't exercise the code, carries nothing.
+      {:ok, other} = Migrate.accept(scans(), baselined(@t1), [@s], @meta, @trust)
+      list = Enum.find(other, &(&1.op == :relate and code_of(&1) == "M.list/1"))
+      assert list.basis == :proposed
+      refute Enum.any?(other, &(&1.op == :retire))
+
+      # A changed test version isn't the one the baseline trusted.
+      changed = Enum.map(scans(), &if(&1.id == @t2, do: %{&1 | hash: "t2"}, else: &1))
+      {:ok, moved} = Migrate.accept(changed, log, [@s], @meta, @trust)
+      list = Enum.find(moved, &(&1.op == :relate and code_of(&1) == "M.list/1"))
+      assert list.basis == :proposed
+    end
+
     @tag verifies: "migrate-accept"
     test "the reports show what is migrating" do
       {:ok, recorded} = Migrate.accept(scans(), entries(), [@s], @meta)

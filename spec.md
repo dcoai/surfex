@@ -2393,6 +2393,23 @@ wait for, and the section's relation is retired at once.
   proposed relation fails as any proposed relation does.
 - A pair once declined, a retired relation between the code and a claim, is no candidate:
   undoing a retirement takes someone choosing to, with `--code --to`.
+- **A baseline is carried.** A section relation resting on the baseline (§18.1, basis
+  `baseline`, while it holds) moves to a claim whose verifying test is the same baselined
+  test, at the version the baseline trusted, exercising the same code: a live `verifies`
+  from it to the claim or a unit inside it, and a current `tests` relation to the code. The
+  claim relation is then recorded **keeping basis `baseline`**: the trust already given
+  covers the same test and the same code. It holds at once, so the section relation is
+  retired in the same `--accept` (or `--code --to`). Any other claim relation is proposed,
+  and needs evidence or a review. A project that took its baseline at section grain starts
+  its migration from it rather than redoing it. The task reads `adoption:` for this, as
+  status does.
+
+```test:migrate-baseline
+a baselined section relation migrates keeping basis baseline, and the section's retires at
+once, only when the same baselined test at its trusted version verifies the claim and
+exercises the code; a changed test version, or another test, makes the claim relation
+proposed
+```
 
 ```test:migrate-accept
 --accept records each single proposal proposed with migrates, which doesn't fail while the
