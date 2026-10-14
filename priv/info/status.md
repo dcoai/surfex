@@ -48,6 +48,10 @@ the same code versions, so its red→green can't be credited. What made it pass 
 what it reaches: look for a call the scanner doesn't see (a dispatch by name, an
 unscanned module), a change outside the scanned code, or a flaky test.
 
+**Inert** (not failing): a `verifies` tag that applies to no test or property block, so it
+verifies nothing: a `@tag` no test follows, a `@moduletag` or `@describetag` over no test,
+or any tag in `test/support/`. Move it onto the test that checks the claim, or delete it.
+
 JSON, per relation: `type`, `state`, `impacted`, `tips`, and `ends`, each with `kind`, `id`,
 `recorded` and `now` (hashes), `changed`, `planned` and `location`. Work it one relation
 at a time.

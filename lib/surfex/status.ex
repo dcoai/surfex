@@ -52,6 +52,11 @@ defmodule Surfex.Status do
   changes on such a move, so without this the relation would stay current. A unit that
   sits in nothing (a section) states no such fact, so a `refines` from one isn't checked.
 
+  A `verifies` tag that applies to no test or property block (a trailing `@tag`, a
+  `@moduletag` on a module with no test, any tag in `test/support`) is **inert**: given as
+  `inert:` (`Surfex.Scan.ExUnit.inert/2`), listed so a misplaced tag is visible, never a
+  failure.
+
   A test that `mix test --only verifies:id` can't select by some of the ids it declares (a
   list tag of several, §11) is **unselectable**, with those ids. A list is legitimate, so
   this is information, never a failure.
@@ -143,6 +148,7 @@ defmodule Surfex.Status do
           uncredited: [%{test: String.t(), code: [String.t()]}],
           unchecked: [%{relation: tuple, test: String.t(), reason: :excluded | :skipped}],
           citations: [Surfex.Cite.t()],
+          inert: [Surfex.Scan.ExUnit.inert()],
           stale: [
             %{
               class: String.t(),
@@ -293,6 +299,8 @@ defmodule Surfex.Status do
         )
         |> Enum.sort_by(& &1.test),
       citations: Keyword.get(opts, :citations, []),
+      # Information, not a failure (§11.5): a tag that verifies nothing, made visible.
+      inert: Keyword.get(opts, :inert, []),
       stale: stale(scans, relations, Keyword.get(opts, :coverage)),
       failed: failed,
       unproven: unproven,

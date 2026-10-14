@@ -147,6 +147,13 @@ milestone "Claims own their code" is in.
   code in their inputs, count in completeness, and are listed in the status text, its JSON
   (`checks`) and `RELATIONS.md`. `mix surfex.test UNIT` names the checks verifying a unit,
   and runs them with `--checks`. A project with no `checks:` scans and reports as before.
+- **Inert verifies tags are reported** (#207, #246). A `verifies` declaration counts only
+  from the test or property block it applies to, or from a check (spec §11.5, §17.2). A
+  tag that applies to none (a `@tag` no test follows, a `@moduletag` or `@describetag`
+  over a module or describe with no test, any `verifies` tag under `test/support/`) is
+  listed as **inert** (`Surfex.Scan.ExUnit.inert/2`; `inert` in the JSON and, where there
+  are any, in `RELATIONS.md`), so a misplaced tag is visible rather than silently ignored.
+  It never fails the check, and nothing it names was ever credited by it.
 
 ## [0.9.1] — 2026-10-14
 

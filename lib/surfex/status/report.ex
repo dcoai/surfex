@@ -126,6 +126,12 @@ defmodule Surfex.Status.Report do
       items("Broken (a test declares what no spec unit is)", status.broken, fn b ->
         "#{b.scan.kind} #{b.scan.id} #{b.type} #{inspect(b.ref)}: #{reason(b.reason)}#{at(b.scan)}"
       end),
+      # Information, not a failure (§11.5): a tag that verifies nothing.
+      items(
+        "Inert (a verifies tag outside any test: it verifies nothing)",
+        status.inert,
+        &"#{&1.file}:#{&1.line} verifies #{Enum.join(&1.ids, ", ")}: #{inert_text(&1.reason)}"
+      ),
       # A warning, not a failure (§11.2).
       items(
         "List-shaped keys (a table row's key that may name two things)",
@@ -222,6 +228,15 @@ defmodule Surfex.Status.Report do
       "triangle" =>
         Enum.map(status.triangle, fn g ->
           %{"spec" => g.spec, "gap" => Atom.to_string(g.gap), "test" => g.test, "code" => g.code}
+        end),
+      "inert" =>
+        Enum.map(status.inert, fn i ->
+          %{
+            "file" => i.file,
+            "line" => i.line,
+            "ids" => i.ids,
+            "reason" => Atom.to_string(i.reason)
+          }
         end),
       "citations" =>
         Enum.map(status.citations, fn c ->
@@ -367,6 +382,7 @@ defmodule Surfex.Status.Report do
             | through_stat(status)
           ] ++
             check_stat(status) ++
+            if(status.inert == [], do: [], else: [{"inert tags", length(status.inert)}]) ++
             [
               {"broken citations", length(status.citations)},
               {"triangle gaps", length(status.triangle)}
@@ -375,6 +391,7 @@ defmodule Surfex.Status.Report do
         units_stat(Status.units(status))
       ],
       columns: ["End", "Other end", "State", "Changed"],
+      # By file, not line, so the golden doesn't drift when lines move.
       groups:
         relation_groups ++
           id_group.(
@@ -404,6 +421,12 @@ defmodule Surfex.Status.Report do
               "Item" => {:code, c.span},
               "Cited at" =>
                 {:raw, [Span.code(c.file), " · ", Span.text([c.section, ": ", citation_text(c)])]}
+            }
+          end) ++
+          id_group.("inert", ["Item", "Verifies"], status.inert, fn i ->
+            %{
+              "Item" => {:code, i.file},
+              "Verifies" => {:raw, coded(Enum.join(i.ids, ", "), inert_text(i.reason))}
             }
           end) ++
           id_group.("marks", ["Item", "State", "Note"], status.marks, fn m ->
@@ -632,6 +655,10 @@ defmodule Surfex.Status.Report do
   defp unproven_text(:failed), do: "failed"
   defp unproven_text(:other_code), do: "ran against another version of the code"
   defp unproven_text(:no_verifying_test), do: "no current verifying test exercises the code"
+
+  # Why a verifies tag verifies nothing (§11.5).
+  defp inert_text(:no_test), do: "no test or property block takes it"
+  defp inert_text(:support), do: "in test/support, which runs no test"
 
   defp stale_text(:implemented), do: "something implements it now"
   defp stale_text(:unmatched), do: "no rule of its class matches it"
