@@ -132,6 +132,17 @@ defmodule Surfex.Status.Report do
       items("Broken (a test declares what no spec unit is)", status.broken, fn b ->
         "#{b.scan.kind} #{b.scan.id} #{b.type} #{inspect(b.ref)}: #{reason(b.reason)}#{at(b.scan)}"
       end),
+      # Information, not a failure (§13.4): green only through a claim inside it.
+      items(
+        "Contained (a claim verified only through a claim inside it: its own text isn't)",
+        status.contained,
+        &contained_line(&1, status)
+      ),
+      items(
+        "On a container (a verifies aimed at a unit with no text of its own verifies nothing)",
+        status.on_container,
+        &on_container_line/1
+      ),
       # Information, not a failure (§11.5): a tag that verifies nothing.
       items(
         "Inert (a verifies tag outside any test: it verifies nothing)",
@@ -197,6 +208,7 @@ defmodule Surfex.Status.Report do
       baseline,
       through,
       units,
+      claims_text(status),
       lists
     ])
   end
@@ -227,6 +239,21 @@ defmodule Surfex.Status.Report do
           Map.merge(scan_json(k.row), %{"table" => k.table, "separator" => k.separator})
         end),
       "unimplemented" => Enum.map(status.unimplemented, &scan_json/1),
+      "verdicts" => Map.new(status.verdicts, fn {unit, v} -> {unit, Atom.to_string(v)} end),
+      "contained" =>
+        Enum.map(status.contained, fn c ->
+          %{"unit" => c.unit, "inside" => c.inside, "location" => location_json(c.location)}
+        end),
+      "on_container" =>
+        Enum.map(
+          status.on_container,
+          &%{"test" => &1.test, "unit" => &1.unit, "inside" => &1.inside}
+        ),
+      "containers" =>
+        Enum.map(
+          status.containers,
+          &%{"unit" => &1.unit, "claims" => &1.claims, "verified" => &1.verified}
+        ),
       "unmet" =>
         Enum.map(status.unmet, fn %{scan: scan, requires: requires} ->
           Map.put(scan_json(scan), "requires", Enum.map(requires, &Atom.to_string/1))
@@ -405,7 +432,8 @@ defmodule Surfex.Status.Report do
               {"triangle gaps", length(status.triangle)}
             ]
         ),
-        units_stat(Status.units(status))
+        units_stat(Status.units(status)),
+        claims_stat(status)
       ],
       columns: ["End", "Other end", "State", "Changed"],
       # By file, not line, so the golden doesn't drift when lines move.
@@ -423,6 +451,15 @@ defmodule Surfex.Status.Report do
                    if(m.settled, do: " (settled)", else: "")
                  ]}
             }
+          end) ++
+          id_group.("contained", ["Item", "Verified inside"], status.contained, fn c ->
+            %{
+              "Item" => {:code, "spec #{c.unit}"},
+              "Verified inside" => {:raw, Enum.map_intersperse(c.inside, ", ", &Span.code/1)}
+            }
+          end) ++
+          id_group.("on container", ["Item", "Container"], status.on_container, fn o ->
+            %{"Item" => {:code, verifier(o.test)}, "Container" => {:code, "spec #{o.unit}"}}
           end) ++
           id_group.(
             "unimplemented",
@@ -725,6 +762,41 @@ defmodule Surfex.Status.Report do
           if(u.rule > 0, do: [{"rules", u.rule}], else: []) ++
           if(u.contract > 0, do: [{"contracts", u.contract}], else: [])
       )
+
+  # The spec units by verdict (§13.4): the claims, and the containers apart.
+  defp verdict_counts(status) do
+    f = status.verdicts |> Map.values() |> Enum.frequencies()
+    claims = Map.get(f, :verified, 0) + Map.get(f, :contained, 0) + Map.get(f, :unverified, 0)
+
+    {claims,
+     [
+       {"verified", Map.get(f, :verified, 0)},
+       {"contained", Map.get(f, :contained, 0)},
+       {"unverified", Map.get(f, :unverified, 0)},
+       {"containers", Map.get(f, :through_claims, 0)}
+     ]}
+  end
+
+  defp claims_stat(status) do
+    {claims, counts} = verdict_counts(status)
+    Surfex.Golden.stat("#{claims} claims", counts)
+  end
+
+  defp claims_text(status) do
+    {claims, counts} = verdict_counts(status)
+    "  claims: #{claims} · " <> Enum.map_join(counts, " · ", fn {k, n} -> "#{k} #{n}" end) <> "\n"
+  end
+
+  defp contained_line(c, status),
+    do:
+      "spec #{c.unit}#{at(Map.fetch!(status.scans, {:spec, c.unit}))}: verified inside: " <>
+        Enum.join(c.inside, ", ")
+
+  defp on_container_line(o),
+    do: "#{verifier(o.test)} → spec #{o.unit}: its claims are #{claims_list(o.inside)}"
+
+  defp claims_list([]), do: "none"
+  defp claims_list(inside), do: Enum.join(inside, ", ")
 
   # A block or hint says what it sits in, so a list of them reads under their sections.
   defp unit_text(%{kind: kind, id: id, role: role, within: within} = scan) when within != nil,

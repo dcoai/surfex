@@ -206,6 +206,24 @@ to claim grain, with a walkthrough in the new guide "Migrating to claim grain".
   which the report counts. An import through `declares:` read 2,370 declarations on 1,237
   tests in one project's own tag form, every one of its 257 ids resolving.
 
+- **Verdicts: what verified means for each spec unit** (#256, #258). Plan item C.1 starts
+  here. A unit's own text is its body without the finer units inside it: a **claim** has
+  some (a section or block with prose of its own, and every hint, rule, row and contract),
+  a **container** has none (a heading over subsections, a section whose body is only named
+  claims, a marked table). `Surfex.Status.derive/4` gives every unit one verdict
+  (`verdicts`, `Surfex.Status.verdict/2`): `:verified` (a current `verifies` of its own),
+  `:contained` (none of its own, but a claim inside it is verified: its own text isn't),
+  `:unverified`, or `:through_claims` for a container, with how many of its claims are
+  verified (spec §13.4). No credit moves up to the claims inside a verified unit, and none
+  into a unit's own text. The status lists the **contained** claims and each `verifies`
+  aimed at a container (**on a container**: it verifies nothing), counts claims by verdict
+  (`claims: N · verified · contained · unverified · containers`), and gives `verdicts`,
+  `contained`, `on_container` and `containers` in the JSON. A section now records the
+  section whose heading it sits under (scan-record field `under`). Additive: nothing new
+  fails. **Upgrade step:** `RELATIONS.md` gains a claims line among its stats, and
+  `contained` and `on container` tables where there are any, so run `mix surfex.goldens
+  --write` once.
+
 ## [0.9.1] — 2026-10-14
 
 What surfex writes now reads right. Spec pages published with ex_doc keep their headings

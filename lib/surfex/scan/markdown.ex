@@ -134,11 +134,14 @@ defmodule Surfex.Scan.Markdown do
     ids = Map.merge(ids, Map.new(owners, fn {n, owner} -> {n, Map.fetch!(ids, owner)} end))
     unique!(sections, units, file)
 
+    # A section sits under the section of the nearest heading above it at a higher level
+    # (§13.4); one under a folded heading sits under its owner.
     section_records =
       for s <- sections,
           do: %{
             record(file, s.id, s.body, {s.first, s.last}, :section, nil)
-            | named: s.anchor != nil
+            | named: s.anchor != nil,
+              under: Map.get(s, :parent) && Map.fetch!(ids, s.parent)
           }
 
     unit_records =
