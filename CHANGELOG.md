@@ -54,6 +54,18 @@ release it merely follows.
   (or, in the status golden, a note or reference holds `|`);
   run its `--write` task (`mix surfex.goldens --write` for the status and completeness
   goldens) once after upgrading, and commit what changes. Those rows were rendering wrong.
+- **A hand-edited row read as a prose change** (#215, #231). The gate's drift report keyed
+  each row by its first cell (`Item`, else the first column) and kept one row per key, so in
+  the status golden, where many rows share an `End`, a row was hidden behind its neighbour,
+  and editing its state by hand was reported as "No row changed: the prose or a stats line
+  did". `Surfex.Gate.drift/2` now tells tables apart by their `##` heading and header, keys
+  a row by the cells that identify it (`Item`, else the fewest leading columns that name
+  every row once on both sides), compares rows whole, and names each changed cell with its
+  old and new text: `excuses: class type · code t:X.t/0 — State :current → :retired`.
+  A row with a `Version` column is now compared whole too, so a cell beside the version
+  that changed is reported rather than missed. Cells are split as GFM splits them, on each
+  `|` not escaped as `\|`. "No row changed" is kept for a change outside every row. No
+  golden's bytes change; only the failure message reads differently.
   In the local checkouts of the projects using surfex, 3 of 31 committed goldens have
   rows broken this way (25 rows in all).
 

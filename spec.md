@@ -641,17 +641,27 @@ A `.surfex.exs` that still has a trace-only key (`output`, `purpose`, `task`, `g
   render. It returns the failures, one message each: a missing file, or a drift naming
   what regenerates it. It returns none when the file is current or was just written.
 - `Surfex.Gate.drift/2` compares committed bytes with a fresh render. Identical texts
-  give `nil`. Otherwise it names the rows that changed, appeared and went. A row is keyed
-  by its table's `Item` column, or the first column when there is none, and compared by
-  its `Version` cell, or the whole row when there is none. A change outside every row is
-  reported as a change to prose or a stats line. The committed side is parsed from its
-  bytes, never re-derived.
+  give `nil`. Otherwise it names the rows that changed, appeared and went. A table is
+  told apart by its `##` heading and its header row. A row is keyed by the cells that
+  identify it, read from the table: its `Item` column when that names every row once on
+  both sides, else the fewest leading columns that do, else the whole row with its
+  occurrence. Rows are compared whole, and a changed row names each cell that differs
+  with its old and new text, `State :current → :retired`. Cells are split as GFM splits
+  them, on each `|` not escaped as `\|`. A change outside every row is reported as a
+  change to prose or a stats line. The committed side is parsed from its bytes, never
+  re-derived.
 - `Surfex.Gate.config!/1` evaluates a `.surfex.exs`-style data file, which must return a
   keyword list.
 
 ```test:gate-drift
 the gate writes a golden or checks it: a missing file and a drift fail, naming the rows
 that changed, appeared or went, or that only the prose changed
+```
+
+```test:gate-drift-rows
+a row is keyed by the cells that identify it, so rows sharing a first cell stay apart; a
+hand-edited cell is named under Changed with its old and new text, and an escaped `\|`
+stays inside its cell
 ```
 
 ### 10.2 Project goldens
