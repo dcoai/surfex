@@ -207,7 +207,16 @@ defmodule Surfex.Status do
             }
           ],
           deferred: [
-            %{unit: String.t(), ref: String.t(), reason: String.t() | nil, location: map}
+            %{
+              unit: String.t(),
+              ref: String.t(),
+              reason: String.t() | nil,
+              location: map,
+              issue: Surfex.Issues.state() | nil
+            }
+          ],
+          stale_deferrals: [
+            %{unit: String.t(), ref: String.t(), reason: :built | :closed | :unresolved}
           ],
           contradicted: [
             %{type: :verifies | :implements | :declares, from: String.t(), unit: String.t()}
@@ -322,6 +331,18 @@ defmodule Surfex.Status do
     # A spec class or deferral (§11.7) is read under claim_grain: true (§13.6): the
     # classed unit's own text is excused, or deferred, rather than judged.
     classed = if claim_grain, do: classed(scans), else: %{}
+
+    # The states of the issues the deferrals name, when the caller asked (§13.7): an
+    # input, like evidence, never read here.
+    issues = Keyword.get(opts, :issues)
+
+    unless issues == nil or is_map(issues),
+      do:
+        raise(
+          ArgumentError,
+          "issues: must be a map of reference => state, got #{inspect(issues)}"
+        )
+
     verdict = Surfex.Status.Verdict.index(scans, relations, &label/1, classed)
 
     # What each test and check exercises, by definition, built once for the triangle and
@@ -347,7 +368,8 @@ defmodule Surfex.Status do
       },
       # Listed with or without claim_grain: (§13.6): what the source classes and defers.
       excused: excused(scans, verdict.inside),
-      deferred: deferred(scans),
+      deferred: deferred(scans, issues),
+      stale_deferrals: if(claim_grain, do: stale_deferrals(scans, verdict.own, issues), else: []),
       contradicted:
         if(claim_grain, do: contradicted(scans, relations, verdict.verdicts), else: []),
       new:
@@ -459,7 +481,7 @@ defmodule Surfex.Status do
     end
 
     status.unmet != [] or status.broken != [] or status.stale != [] or status.citations != [] or
-      status.contradicted != [] or
+      status.contradicted != [] or status.stale_deferrals != [] or
       (status.policy.validated == true and status.unvalidated != []) or
       status.undeclared != [] or
       status.unrecorded != [] or
@@ -1084,10 +1106,27 @@ defmodule Surfex.Status do
           Map.merge(class, %{unit: s.id, claims: Map.get(inside, s.id, []), location: s.location})
   end
 
-  defp deferred(scans) do
+  defp deferred(scans, issues) do
     for %Scan{kind: :spec, deferred: %{} = d} = s <- Enum.sort_by(scans, & &1.id),
-        do: Map.merge(d, %{unit: s.id, location: s.location})
+        do: Map.merge(d, %{unit: s.id, location: s.location, issue: issue(issues, d.ref)})
   end
+
+  defp issue(nil, _ref), do: nil
+  defp issue(issues, ref), do: Map.get(issues, ref, :unresolved)
+
+  # A deferral that no longer holds (§13.7): the unit has its own evidence now (`built`),
+  # its issue is closed (`closed`), or, when the caller asked the tracker, the tracker
+  # couldn't say (`unresolved`). Without issue states only `built` can be judged.
+  defp stale_deferrals(scans, own, issues) do
+    for %Scan{kind: :spec, deferred: %{ref: ref}} = s <- Enum.sort_by(scans, & &1.id),
+        reason = stale_reason(Map.has_key?(own, s.id), issue(issues, ref)),
+        reason != nil,
+        do: %{unit: s.id, ref: ref, reason: reason}
+  end
+
+  defp stale_reason(true = _built, _issue), do: :built
+  defp stale_reason(false, issue) when issue in [:closed, :unresolved], do: issue
+  defp stale_reason(false, _open_or_unasked), do: nil
 
   # What says something checks or realises a classed unit's text, which its class says
   # asserts nothing (§13.6): a live verifies to a classed unit, a live implements to an

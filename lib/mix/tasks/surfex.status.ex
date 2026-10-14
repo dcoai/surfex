@@ -13,6 +13,7 @@ defmodule Mix.Tasks.Surfex.Status do
       mix surfex.status --merge A --merge B   # check them against several CI jobs' evidence together
       mix surfex.status --validated      # also fail on relations nothing has validated (§18)
       mix surfex.status --no-deviations  # also fail on declared deviations: a release's check
+      mix surfex.status --issues         # also ask the tracker whether each deferral's issue is open
 
   It fails on any dangling, orphaned or conflicted relation, on any id the `require:`
   policy in `.surfex.exs` says must be related and isn't, and, with `--verify`, on any
@@ -28,7 +29,11 @@ defmodule Mix.Tasks.Surfex.Status do
   `--merge PATH` (once per file, implying `--evidence`) it checks the claims against several
   CI jobs' evidence files together: a disproof in any fails, and so does a claim no job
   ran. It only
-  reads: nothing is recorded, so CI can run it after `mix test`. A project scanner is
+  reads: nothing is recorded, so CI can run it after `mix test`. With `--issues` it runs
+  the command `issues:` in `.surfex.exs` declares once per issue the spec's deferrals
+  name (`Surfex.Issues`), so under `claim_grain: true` a deferral whose issue is closed,
+  or that the tracker can't answer, fails; a command that exits non-zero stops the task
+  with its output. The states are never stored (§13.7). A project scanner is
   project code, so the task compiles first when `.surfex.exs` names one.
   """
 
@@ -51,7 +56,8 @@ defmodule Mix.Tasks.Surfex.Status do
           validated: :boolean,
           marks: :boolean,
           baseline: :boolean,
-          deviations: :boolean
+          deviations: :boolean,
+          issues: :boolean
         ]
       )
 
@@ -84,7 +90,7 @@ defmodule Mix.Tasks.Surfex.Status do
           deviations: deviations,
           validated: opts[:validated] == true
         ] ++
-          evidence(opts, root)
+          evidence(opts, root) ++ issues(opts, config, root)
       )
 
     case opts[:format] || "text" do
@@ -105,6 +111,27 @@ defmodule Mix.Tasks.Surfex.Status do
           "completeness #{report.scores.overall.percent}% is below the minimum, #{min}: " <>
             "mix surfex.completeness lists what's missing"
         )
+  end
+
+  # With --issues, the tracker is asked for each deferral's issue, through the project's
+  # declared command, once the spec is scanned (§13.7).
+  defp issues(opts, config, root) do
+    if opts[:issues] == true do
+      resolver =
+        Config.issues!(config) ||
+          Mix.raise("--issues needs issues: in .surfex.exs, the command that asks the tracker")
+
+      [
+        issues: fn refs ->
+          case Surfex.Issues.states(resolver, refs, root) do
+            {:ok, states} -> states
+            {:error, {ref, output}} -> Mix.raise("asking the tracker about #{ref}: #{output}")
+          end
+        end
+      ]
+    else
+      []
+    end
   end
 
   # With --evidence, this run's evidence checks every confirmation by evidence. CI runs it
