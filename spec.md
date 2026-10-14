@@ -1178,6 +1178,23 @@ tips that agree
   this the relation would stay current, asserting a claim the source no longer makes. A
   `verifies` relation recorded by hand, with no declaration, is undeclared too: a test must
   say what it verifies.
+- **Unrecorded:** a test's declaration (§11) that resolves to a spec unit, where the log
+  holds no `verifies` relation between the test and that unit, in any state: the tag was
+  written and the relation never recorded. It is undeclared's other direction, a claim in
+  the source that the log doesn't hold, and it fails the same way; a `require:` policy
+  can't say it, since the policy names what every id of a kind must relate to, not what a
+  tag asks for. `mix surfex.suggest` offers the relation (§15), to record and validate. A
+  declaration whose relation was **retired** is listed under the same heading as its own
+  line, with the retire's note: "declared, but the relation was retired (note): remove the
+  tag, or reinstate it". It fails too: the source asserts what the log decided against, and
+  the fix is one of those two explicit acts. Suggest never proposes it, so a retirement is
+  never undone without someone choosing to.
+
+```test unrecorded-declaration
+a test's declaration resolving to a spec unit with no verifies relation in the log is
+unrecorded and fails; one whose relation was retired is listed with the retire's note and
+fails too; a relation in any other state, proposed or dangling included, clears it
+```
 - **Unselectable:** a test that `mix test --only verifies:id` can't select by some of its
   declared ids (§11), with those ids. A list of several ids is legitimate, the only honest
   tag for a test that verifies several requirements, so this is information for choosing
@@ -1210,9 +1227,9 @@ the text counts them in one line and the JSON lists each test
   `coverage:`.
 
 `Surfex.Status.failing?/1` is true when any relation is dangling, orphaned, conflicted or
-proposed, any id is unmet, any `verifies` relation is undeclared, any declaration or
-citation is broken, any excuse is stale, any relation's test failed, or any confirmation
-by evidence is unproven. New,
+proposed, any id is unmet, any `verifies` relation is undeclared, any declaration is
+unrecorded, any declaration or citation is broken, any excuse is stale, any relation's
+test failed, or any confirmation by evidence is unproven. New,
 retired, impacted, planned, unimplemented, unselectable and unvalidated don't fail on
 their own. A
 status derived with `planned: :fail` (`Surfex.Status.derive/4`) fails on any planned
@@ -1296,8 +1313,9 @@ marks are reported and fail only under marks: :fail
 
 ```test status-failing
 the check fails on a dangling, orphaned, conflicted or proposed relation, an unmet id, an
-undeclared verifies relation, a broken declaration or citation, a stale excuse, a failed
-test's relation, or an unproven confirmation, and on nothing else by default; planned:
+undeclared verifies relation, an unrecorded declaration, a broken declaration or
+citation, a stale excuse, a failed test's relation, or an unproven confirmation, and on
+nothing else by default; planned:
 :fail adds planned relations, and validated: true unvalidated ones
 ```
 
@@ -1357,7 +1375,8 @@ the code is scanned once, and citations are read under the config's profile
 - `Surfex.Status.Report.text/1`: the verdict, the counts per type and the spec units by
   role. Then each dangling, orphaned, conflicted, proposed, impacted and planned relation,
   the unimplemented, new and unmet ids, the broken citations, the failed relations (each
-  with its test), the unproven confirmations, the undeclared relations, the stale excuses,
+  with its test), the unproven confirmations, the undeclared relations, the unrecorded
+  declarations (each with its test's location, and what settles it), the stale excuses,
   the broken declarations, the triangle's
   gaps and the open and orphaned marks (with their notes, who and when), with locations. A block or hint in a list says what it sits in. Unvalidated
   relations (§18) are counted; they are listed only when the status is derived with
@@ -1368,7 +1387,8 @@ the code is scanned once, and citations are read under the config's profile
 - `Surfex.Status.Report.golden/2` (`Surfex.Status.Report.golden/1` writes `RELATIONS.md`):
   the status as a golden to commit. It has a table per relation type (end, other end,
   state, the ends that changed or are planned), then the unimplemented, new and unmet
-  ids, the broken citations (by section, not line), the stale excuses, the broken
+  ids, the broken citations (by section, not line), the undeclared relations, the
+  unrecorded declarations, the stale excuses, the broken
   declarations, the triangle's gaps and the open and orphaned marks (unit, state, note), with
   the spec units by role among its stats. It holds no hashes and no times, so it changes when a relation's
   state changes, not on every confirmation. It's a pure function of the scans and the
@@ -1382,7 +1402,9 @@ the code is scanned once, and citations are read under the config's profile
   it changed, whether it is planned, and its location. Plus the spec units by role, the
   unimplemented, new and unmet ids (each with its role, what it sits in and what it
   declares), the broken citations, the failed relations (`failed`, each with its type,
-  ends and test), the unproven confirmations, the stale excuses, the
+  ends and test), the unproven confirmations, the undeclared relations, the unrecorded
+  declarations (`unrecorded`, each with its test, its spec unit, whether its relation was
+  retired, and the retire's note), the stale excuses, the
   broken declarations, the triangle's gaps, the unvalidated relations, the unselectable
   tests (each with its ids) and the open and orphaned marks (unit, state, note, who,
   when, entry id, location). A value that

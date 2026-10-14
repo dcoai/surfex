@@ -22,6 +22,7 @@ marks), `--no-baseline` (fail on relations resting on an adoption baseline).
 | Failed | its test failed in the run, whatever validated the relation: fix the code or the test |
 | Unproven | run the tests; a confirmation the evidence doesn't bear out |
 | Undeclared | the test dropped its tag: restore it, or retire the relation |
+| Unrecorded | a tag with no `verifies` relation: record it (`suggest`, then validate), or remove the tag; one whose relation was retired: remove the tag, or reinstate the relation |
 | Triangle | the unit's verifying test must call the implementing code (`triangle: :fail`) |
 | Unvalidated (`--validated`) | review it (`mix surfex.validate`) |
 

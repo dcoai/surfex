@@ -41,7 +41,10 @@ defmodule Surfex.Status do
   fails. A planned relation counts: the intent is on record.
 
   A `verifies` relation whose test no longer declares its spec unit (the tag was removed or
-  changed) is **undeclared**: a claim the source no longer makes.
+  changed) is **undeclared**: a claim the source no longer makes. The other direction, a
+  test's declaration resolving to a spec unit with no `verifies` relation between them in
+  the log, is **unrecorded**: a claim the log doesn't hold. A declaration whose relation
+  was retired is unrecorded too, listed as retired with the retire's note.
 
   A test that `mix test --only verifies:id` can't select by some of the ids it declares (a
   list tag of several, §11) is **unselectable**, with those ids. A list is legitimate, so
@@ -53,7 +56,8 @@ defmodule Surfex.Status do
   at. Judging it needs the rules, given as `coverage:` (`Surfex.Profile.coverage!/1`).
 
   **Failing** means any dangling, orphaned or conflicted relation, any unmet id, any
-  undeclared `verifies` relation, any broken declaration, any stale excuse, or any broken citation. Planned relations fail too when derived with
+  undeclared `verifies` relation, any unrecorded or broken declaration, any stale excuse, or
+  any broken citation. Planned relations fail too when derived with
   `planned: :fail` (`mix surfex.status --no-planned`), for a check that everything planned
   has been built, such as a release's.
 
@@ -95,6 +99,9 @@ defmodule Surfex.Status do
           triangle: [gap],
           unvalidated: [%{relation: tuple}],
           undeclared: [%{test: String.t(), spec: String.t()}],
+          unrecorded: [
+            %{test: String.t(), spec: String.t(), retired: nil | %{note: String.t() | nil}}
+          ],
           unselectable: [%{test: String.t(), ids: [String.t()]}],
           failed: [%{relation: tuple, test: String.t()}],
           unproven: [%{relation: tuple, test: String.t() | nil, reason: atom}],
@@ -216,6 +223,7 @@ defmodule Surfex.Status do
       unmet: unmet(scans, relations, require),
       broken: broken(scans, resolver),
       undeclared: undeclared(scans, relations, resolver),
+      unrecorded: unrecorded(scans, relations, resolver),
       # Information, not a failure: a list of several ids is legitimate (§13.1).
       unselectable:
         for(
@@ -263,6 +271,7 @@ defmodule Surfex.Status do
     status.unmet != [] or status.broken != [] or status.stale != [] or status.citations != [] or
       (status.policy.validated == true and status.unvalidated != []) or
       status.undeclared != [] or
+      status.unrecorded != [] or
       status.failed != [] or
       status.unproven != [] or
       (status.policy.triangle == :fail and status.triangle != []) or
@@ -922,6 +931,26 @@ defmodule Surfex.Status do
         unit not in declared(resolver, test),
         do: %{test: t, spec: unit}
   end
+
+  # A test's declaration that resolves to a spec unit with no verifies relation between
+  # them in the log, in any state: the source claims what the log doesn't record (§13.1).
+  # One whose relation was retired is listed as retired, with the retire's note: the log
+  # decided against what the source still asserts. The relations are indexed once, so
+  # this stays linear in the declarations.
+  defp unrecorded(scans, relations, resolver) do
+    verifies = for %{type: :verifies} = r <- relations, into: %{}, do: {r.relation, r}
+
+    for %Scan{kind: :test} = test <- Enum.sort_by(scans, & &1.id),
+        unit <- Enum.uniq(declared(resolver, test)),
+        relation = Entry.relation(:verifies, test, %{kind: :spec, id: unit}),
+        retired <- retired(Map.fetch(verifies, relation)),
+        do: %{test: test.id, spec: unit, retired: retired}
+  end
+
+  # [nil] when nothing is recorded, [%{note: …}] when the tip retires it, [] otherwise.
+  defp retired(:error), do: [nil]
+  defp retired({:ok, %{state: :retired, tip: tip}}), do: [%{note: tip.note}]
+  defp retired({:ok, _recorded}), do: []
 
   @doc false
   # The spec units a test declares it verifies, resolved against the scans or a resolver

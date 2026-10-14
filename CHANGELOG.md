@@ -15,6 +15,30 @@ release it merely follows.
   bare id. `Surfex.Scan.resolve/2` takes it in place of the scans and resolves exactly as
   they do (unknown, ambiguous, `§`-ids), so code resolving many references builds it once.
 
+### Changed
+
+- **A test's declaration with no `verifies` relation fails the check: Unrecorded** (#203,
+  #221). A test tagged `@tag verifies: "id"` that resolves to a real spec unit, with no
+  `verifies` relation between them in the log, was reported nowhere: the tag read as done
+  while the test contributed nothing. It is now **unrecorded**, the other direction of
+  undeclared, and fails like it. A tag left on a relation that was **retired** is listed
+  under the same heading, "declared, but the relation was retired (note): remove the tag,
+  or reinstate it", and fails too. `Surfex.Status.derive/4` returns them as `unrecorded`
+  (each with its test, its spec unit and, when retired, the retire's note), the JSON as
+  `unrecorded`, and `RELATIONS.md` as an `unrecorded` group and count. No setting: a
+  `require:` policy can't express it, and nothing needs one.
+
+  **Upgrade step.** `mix surfex.status` may newly fail. For each test and unit it lists:
+  a tag with no relation is the one `mix surfex.suggest` already offers under `verifies`;
+  record it and validate it (a failing run, or `mix surfex.validate` after reading both
+  ends), or remove the tag if the test doesn't verify that unit. Judge each one; don't
+  accept them in bulk. A tag on a retired relation: remove the tag, or reinstate the
+  relation if the retirement was wrong. Measured on eight adopting projects: none has a
+  tag without a relation, and two have one tag each on a retired relation, so the upgrade
+  newly fails 0 to 1 declarations there. One of the two is a module's `@moduletag`
+  inherited by a test it doesn't fit. Because it changes what fails, this ships in a minor
+  release.
+
 ### Fixed
 
 - **`Surfex.Status.derive/4` grows with the project in proportion** (#204, #220). It was
