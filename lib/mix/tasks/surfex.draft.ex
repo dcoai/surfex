@@ -29,7 +29,7 @@ defmodule Mix.Tasks.Surfex.Draft do
     root = File.cwd!()
     config = Config.read!(Path.join(root, opts[:config] || ".surfex.exs"))
     process = Config.process!(config)
-    if Keyword.get(config, :scanner, :elixir) != :elixir, do: Mix.Task.run("compile")
+    if Config.project_scanner?(config), do: Mix.Task.run("compile")
 
     namespace = Mix.Project.config()[:app] |> to_string() |> Macro.camelize()
     drafts = Change.drafts(Config.status(config, root, namespace, []), root, ids)

@@ -75,10 +75,10 @@ defmodule Surfex.Goldens do
   @spec needs_compile?([entry], keyword) :: boolean
   def needs_compile?(entries, config) do
     Enum.any?(entries, fn
-      :status -> Keyword.get(config, :scanner, :elixir) != :elixir
-      {:status, _output} -> Keyword.get(config, :scanner, :elixir) != :elixir
-      :completeness -> Keyword.get(config, :scanner, :elixir) != :elixir
-      {:completeness, _output} -> Keyword.get(config, :scanner, :elixir) != :elixir
+      :status -> Config.project_scanner?(config)
+      {:status, _output} -> Config.project_scanner?(config)
+      :completeness -> Config.project_scanner?(config)
+      {:completeness, _output} -> Config.project_scanner?(config)
       {_output, _module, _opts} -> true
     end)
   end

@@ -58,7 +58,7 @@ defmodule Mix.Tasks.Surfex.Status do
     root = File.cwd!()
     config = Config.read!(Path.join(root, opts[:config] || ".surfex.exs"))
 
-    if Keyword.get(config, :scanner, :elixir) != :elixir, do: Mix.Task.run("compile")
+    if Config.project_scanner?(config), do: Mix.Task.run("compile")
 
     # Verified before loading: a tampered log gets its report, not the first decode error.
     problems = if opts[:verify], do: Log.verify(root), else: []

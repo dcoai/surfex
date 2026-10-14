@@ -14,7 +14,9 @@ A keyword list, evaluated as data. An unknown key is refused, naming it.
 - `tests: ["test/**/*_test.exs"]`: test files, scanned per test case. Add
   `Surfex.ExUnitFormatter` to `ExUnit.start(formatters: [...])` to record evidence.
 - `namespace:`: the code's namespace (defaults to the app name).
-- `scanner:`, `scanner_opts:`: a project scanner (`Surfex.Scanner`) instead of the Elixir one.
+- `scanners: [:elixir, {MyApp.DslScanner, opts}]`: code scanners whose items are combined
+  (`Surfex.Scanner`); one key from two scanners is an error. `scanner:` with
+  `scanner_opts:` is the one-element list.
 - Citation profile: `exclude`, `shape`, `token`, `known_shape`, `normalise`, `subjects`,
   `table_columns`, `file_targets`, `known_external`, `documented_absences`.
 - `classes: [{name, reason}]`, `rules: [%{class:, kinds:, name:, parent_cited:, parent:}]`,

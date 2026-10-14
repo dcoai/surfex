@@ -18,7 +18,7 @@ defmodule Surfex.Record.Mix do
   def context(opts) do
     root = File.cwd!()
     config = Config.read!(Path.join(root, opts[:config] || ".surfex.exs"))
-    if Keyword.get(config, :scanner, :elixir) != :elixir, do: Mix.Task.run("compile")
+    if Config.project_scanner?(config), do: Mix.Task.run("compile")
 
     unless File.dir?(Log.dir(root)),
       do: Mix.raise("no relation log in #{Log.dir(root)}: run `mix surfex.log --init`")
@@ -30,9 +30,9 @@ defmodule Surfex.Record.Mix do
   end
 
   # Whether an unscanned id could be one of this project's (`Surfex.Record.plan/7`). A spec
-  # id must be in a file the spec scanner read. A code id must have the scanner's shape:
+  # id must be in a file the spec scanner read. A code id must have a code scanner's shape:
   # for the built-in Elixir scanner, a name under a namespace the project already has; for
-  # a project scanner, the `shape:` its config gives, when it gives one.
+  # a project scanner, the `shape:` its config gives, when it gives one (any id, when not).
   def plausible(opts, scans) do
     config = Config.read!(Path.join(File.cwd!(), opts[:config] || ".surfex.exs"))
     files = for %{kind: :spec, location: %{file: f}} <- scans, into: MapSet.new(), do: f
@@ -52,17 +52,18 @@ defmodule Surfex.Record.Mix do
   end
 
   defp code_shapes(config, scans) do
-    case Keyword.get(config, :scanner, :elixir) do
-      :elixir ->
-        for(%{kind: :code, id: id} <- scans, do: id |> String.split(".") |> hd())
-        |> Enum.uniq()
-        |> Enum.map(&Keyword.fetch!(Surfex.Scanner.Elixir.profile_defaults(&1), :shape))
+    elixir =
+      if Config.elixir_scanner?(config),
+        do:
+          for(%{kind: :code, id: id} <- scans, do: id |> String.split(".") |> hd())
+          |> Enum.uniq()
+          |> Enum.map(&Keyword.fetch!(Surfex.Scanner.Elixir.profile_defaults(&1), :shape)),
+        else: []
 
-      _project_scanner ->
-        case Keyword.get(config, :shape) do
-          nil -> :any
-          shape -> [shape]
-        end
+    case {Config.project_scanner?(config), Keyword.get(config, :shape)} do
+      {false, _} -> elixir
+      {true, nil} -> :any
+      {true, shape} -> elixir ++ [shape]
     end
   end
 

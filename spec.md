@@ -431,6 +431,43 @@ a public type is cited as `Mod.t()` or `t:Mod.t/0` and resolves when declared; o
 declared, or private, is unresolved; a function of the same name keeps its own key
 ```
 
+### 5.3 Several scanners
+<!-- surfex: several-scanners -->
+
+A project may have more than one kind of declaration worth an item: Elixir functions, and
+the blocks a DSL declares inside its modules. `scanners:` in `.surfex.exs` lists the code
+scanners, and their items are combined. Each entry is `:elixir` (the built-in scanner,
+§5.2), a module implementing `Surfex.Scanner`, or either with its options,
+`{scanner, opts}`:
+
+```elixir
+scanners: [:elixir, {MyApp.Surfex.DslScanner, paths: ["lib/**/*.ex"]}]
+```
+
+- Each item keeps what its scanner gave it: its `file`, `lines`, `hash` and `kind`.
+  Surfex reads `kind` only for grouping and a profile's rules (§4), so two scanners'
+  kinds need not know about each other.
+- `scanner:` with `scanner_opts:` stays valid and is the one-element list
+  `[{scanner, scanner_opts}]`. With neither, the list is `[:elixir]`. Giving both
+  `scanner:` and `scanners:` is refused, as are an empty list, an entry of any other
+  shape, a scanner named twice, and `scanner_opts:` beside `scanners:`.
+- **Two scanners giving one key is an error naming both and the key.** A key is an
+  item's identity (§4), and two scanners cannot both own it. Within one scanner, items
+  sharing a key are told apart by kind, as before (§11).
+- A task compiles the project before reading the code when any scanner is the project's
+  own, and reads citations under the Elixir scanner's profile defaults (§5.2) when
+  `:elixir` is among them.
+
+`Surfex.Status.Config.scanners!/1` reads the list, and `Surfex.Status.Config.items/2` runs
+it. `Surfex.Status.Config.project_scanner?/1` and `Surfex.Status.Config.elixir_scanner?/1`
+say whether the project's own scanner, or the Elixir one, is among them.
+
+```test:scanners-combined
+the items of several scanners are combined, each keeping its scanner's file, lines, hash
+and kind; scanner: is a one-element list; both keys, a malformed list or a scanner named
+twice is refused; one key from two scanners raises naming both
+```
+
 ## 6. Citations
 <!-- surfex: citations -->
 
@@ -1732,17 +1769,18 @@ suggest --accept retires it
 
 `Surfex.Status.Config` reads `.surfex.exs`. It holds the profile keys (§8) and the
 log's own: `heading_ids` (§11), `rule_ids`, `fold_paths` and `unit_refs` (§11.1),
-`scanner`, `scanner_opts`, `namespace`, `goldens` (§10.3), `require`, `tests`, `triangle`,
+`scanners` (§5.3), `scanner`, `scanner_opts`, `namespace`, `goldens` (§10.3), `require`,
+`tests`, `triangle`,
 `require_red` (§17), `adoption` (§18.1), `process` (§19) and `completeness` (§20).
 - `Surfex.Status.Config.read!/1` reads and validates it. It raises on an unknown key, and
   on a key of the removed trace, saying so (§9). Every task reads its config through
   it, so a misspelt key is never silently ignored.
-- `Surfex.Status.Config.items/2` runs the code scanner: the built-in Elixir scanner, or
-  the project's `scanner:` module (`Surfex.Scanner`) with its `scanner_opts:`.
+- `Surfex.Status.Config.items/2` runs the code scanners and combines their items (§5.3):
+  the built-in Elixir scanner, the project's own (`Surfex.Scanner`), or several.
 - `Surfex.Status.Config.scans/2` scans each markdown unit of `sources`, reading headings
   by `heading_ids:` (§11), folded by `fold_paths:`, and marked lists by `rule_ids:`
   (§11.1), each item the code
-  scanner (`scanner`, `scanner_opts`) finds, and, when `tests:` names globs of test
+  scanners (§5.3) find, and, when `tests:` names globs of test
   files, each test in them (`Surfex.Scan.ExUnit`), its declarations in a `unit_refs:` form
   given as the full ids they name.
   A missing `sources`, or one that matches no section, raises. So does a `tests:` that
