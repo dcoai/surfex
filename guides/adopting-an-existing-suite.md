@@ -100,3 +100,9 @@ can hold every deviation with `mix surfex.status --no-deviations`.
 
 Trust only saves work on the most common change, a refactor under green tests. Everything
 else costs what it would without adoption.
+
+## Moving to claim grain later
+
+A baseline taken while relations sit on sections isn't redone when the project moves them
+to its claims: `mix surfex.migrate` carries a section relation's baseline to a claim the
+same baselined test verifies. See the guide "Migrating to claim grain".

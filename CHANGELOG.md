@@ -10,7 +10,8 @@ All notable changes to Surfex are recorded here, following
 release it merely follows.
 
 Plan v2's B.1 (#205, claim forms) is landing here piece by piece, unreleased until most of
-milestone "Claims own their code" is in.
+milestone "Claims own their code" is in. So is B.5 (#209), the migration from section grain
+to claim grain, with a walkthrough in the new guide "Migrating to claim grain".
 
 ### Added
 
@@ -195,6 +196,15 @@ milestone "Claims own their code" is in.
   holds at once, and the section's retires in the same `--accept` (spec §14.1). A project
   that baselined at section grain starts its migration from that baseline instead of
   redoing it. Any other claim relation is proposed, as before.
+
+  Measured read-only over the volunteer projects before release (#145, #254): of 526
+  sections holding section-grain `implements` in five relation logs, 121 (750 `implements`)
+  already have their claims as units and migrate today; in the two projects that have
+  them, what an edit of a section can dangle falls from 1,128 relations to 413, and in the
+  widest section the widest code item from 81 to 6. The other 405 sections (2,698
+  `implements`) are prose: their first marker would dangle up to 153 relations at once,
+  which the report counts. An import through `declares:` read 2,370 declarations on 1,237
+  tests in one project's own tag form, every one of its 257 ids resolving.
 
 ## [0.9.1] — 2026-10-14
 

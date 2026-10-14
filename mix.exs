@@ -66,6 +66,7 @@ defmodule Surfex.MixProject do
             [
               "guides/writing-specs.md",
               "guides/adopting-an-existing-suite.md",
+              "guides/migrating-to-claim-grain.md",
               "guides/using-surfex-as-a-library.md",
               "spec.md",
               "CHANGELOG.md"
@@ -73,7 +74,7 @@ defmodule Surfex.MixProject do
         groups_for_extras: [
           "Using surfex": ["usage-rules.md" | Path.wildcard("priv/info/*.md")],
           Guides:
-            ~w(guides/writing-specs.md guides/adopting-an-existing-suite.md guides/using-surfex-as-a-library.md),
+            ~w(guides/writing-specs.md guides/adopting-an-existing-suite.md guides/migrating-to-claim-grain.md guides/using-surfex-as-a-library.md),
           Reference: ~w(spec.md CHANGELOG.md)
         ],
         # The mix tasks, the three modules a project writes code against, and the two a
