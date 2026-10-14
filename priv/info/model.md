@@ -37,6 +37,7 @@ relate), broken (a tag naming no spec unit), broken citation (the spec names cod
 doesn't exist), failed (a relation's test failed in the run, whatever validated it),
 unproven (evidence doesn't bear a confirmation out), undeclared (a test no
 longer tags the unit it verifies), unrecorded (a test tags a unit the log records no
-`verifies` relation to, or only a retired one), triangle gaps (a unit, its tests and its
+`verifies` relation to, or only a retired one), moved (a block or hint no longer sits in
+the unit its `refines` relation names), triangle gaps (a unit, its tests and its
 code don't meet),
 impacted (a `depends_on` end isn't current; information only), marks (`mix surfex.info marks`).

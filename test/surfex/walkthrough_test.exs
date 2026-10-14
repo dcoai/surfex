@@ -803,4 +803,42 @@ defmodule Surfex.WalkthroughTest do
 
     assert Enum.all?(passing_json(root)["relations"], &(&1["state"] == "retired"))
   end
+
+  # #218: a block moved unchanged into another section. Neither version changes, so only
+  # status's re-reading of `within` sees it; one suggest --accept settles it.
+  @tag verifies: "suggest-moved"
+  test "a block moved to another section: status fails as moved, suggest --accept settles it",
+       %{root: root} do
+    rule = "<!-- surfex: free-over -->\nFree delivery over 50.\n<!-- /surfex -->\n"
+    spec = Path.join(root, "spec.md")
+    File.write!(spec, "# Totals\n\nA cart's total.\n\n#{rule}\n# Delivery\n\nShipping.\n")
+    task(root, Mix.Tasks.Surfex.Suggest, ["--accept"])
+    assert passing_json(root)["moved"] == []
+
+    File.write!(spec, "# Totals\n\nA cart's total.\n\n# Delivery\n\nShipping.\n\n#{rule}")
+
+    assert failing_json(root)["moved"] == [
+             %{"from" => "spec.md#free-over", "to" => @section, "now" => "spec.md#Delivery"}
+           ]
+
+    task(root, Mix.Tasks.Surfex.Suggest, [])
+    listed = Enum.join(drain(), "\n")
+    assert listed =~ "refines     spec.md#free-over → spec.md#Delivery"
+
+    assert listed =~
+             "retire      refines spec.md#free-over → #{@section} (now in spec.md#Delivery)"
+
+    task(root, Mix.Tasks.Surfex.Suggest, ["--accept"])
+    json = passing_json(root)
+    assert json["moved"] == []
+
+    assert Enum.map(
+             json["relations"],
+             &{&1["ends"] |> Enum.map(fn e -> e["id"] end), &1["state"]}
+           ) ==
+             [
+               {["spec.md#free-over", "spec.md#Delivery"], "current"},
+               {["spec.md#free-over", @section], "retired"}
+             ]
+  end
 end

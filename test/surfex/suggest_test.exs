@@ -465,6 +465,60 @@ defmodule Surfex.SuggestTest do
                implements: [{"spec.md#max-len", "Wren.max_len/0"}]
              }
     end
+
+    # #218: a block moved unchanged into another section. The old refines can't dangle
+    # (neither version changed), so suggest proposes its retirement beside the new one.
+    @tag verifies: ["suggest-moved", "moved-refines"]
+    test "a block moved to another section: the new refines and the old one's retirement", %{
+      tmp_dir: root
+    } do
+      block = """
+      <!-- surfex: max-len -->
+      Messages are short.
+      <!-- /surfex -->
+      """
+
+      before = "# Limits {#limits}\n\n#{block}\n# Wire {#wire}\n\nBytes.\n"
+      later = "# Limits {#limits}\n\n# Wire {#wire}\n\nBytes.\n\n#{block}"
+
+      {first, old_scans} = suggest(root, before, [])
+      {:ok, entries} = Suggest.accept_all(first, old_scans, [], @meta)
+      assert Status.derive(old_scans, entries).moved == []
+
+      {s, new_scans} = suggest(root, later, entries)
+      assert Enum.map(s.refines, &{&1.from.id, &1.to.id}) == [{"spec.md#max-len", "spec.md#wire"}]
+
+      assert s.moved == [
+               %{from: "spec.md#max-len", to: "spec.md#limits", now: "spec.md#wire"}
+             ]
+
+      assert Status.failing?(Status.derive(new_scans, entries))
+
+      {:ok, recorded} = Suggest.accept_all(s, new_scans, entries, @meta)
+      settled = Status.derive(new_scans, entries ++ recorded)
+      assert settled.moved == []
+
+      assert %{state: :retired} =
+               Enum.find(
+                 settled.relations,
+                 &(&1.relation ==
+                     {:refines, {:spec, "spec.md#max-len"}, {:spec, "spec.md#limits"}})
+               )
+
+      assert %{state: :current} =
+               Enum.find(
+                 settled.relations,
+                 &(&1.relation == {:refines, {:spec, "spec.md#max-len"}, {:spec, "spec.md#wire"}})
+               )
+
+      assert Suggest.all(
+               Config.profile!([sources: ["spec.md"]], "Wren"),
+               @wren,
+               new_scans,
+               entries ++ recorded,
+               root
+             ).moved == []
+    end
   end
 
   # #148: declining is a `retire` of a never-related pair. `suggest` shows the exact command

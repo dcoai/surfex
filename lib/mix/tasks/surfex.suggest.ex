@@ -10,7 +10,8 @@ defmodule Mix.Tasks.Surfex.Suggest do
       test's red→green and baseline records, onto the new id (`mix surfex.move`). A
       version found under several ids is listed as ambiguous and never moved.
     * **refines** — each marked block and test hint refines the section or block it sits
-      in.
+      in. A `refines` relation whose unit no longer sits there (moved to another section)
+      is listed as a retire; accepting retires it beside the new one.
     * **implements** — each spec unit paired with each code item it names.
     * **verifies** — each test paired with the spec unit its `@tag verifies:` names.
     * **tests** — each test paired with each code item it calls.
@@ -78,6 +79,9 @@ defmodule Mix.Tasks.Surfex.Suggest do
 
     for u <- suggestions.undeclared,
         do: Mix.shell().info("retire      verifies #{u.test} → #{u.spec} (no longer declared)")
+
+    for m <- suggestions.moved,
+        do: Mix.shell().info("retire      refines #{m.from} → #{m.to} (now in #{m.now})")
 
     for x <- suggestions.excuses do
       Mix.shell().info("excuses     #{x.from.id} ↔ #{x.to.id}")

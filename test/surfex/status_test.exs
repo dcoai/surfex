@@ -303,6 +303,90 @@ defmodule Surfex.StatusTest do
       assert Status.derive(untagged, [current, retire]).unrecorded == []
     end
 
+    # #218: a block moved unchanged into another section changes neither end's version,
+    # so its old refines relation stayed current. Status re-reads `within`.
+    @tag verifies: ["moved-refines", "status-failing", "status-states", "status-reports"]
+    test "a refines whose block moved to another section is moved, and fails" do
+      carts = scan(:spec, "spec.md#Carts", "k1")
+      delivery = scan(:spec, "spec.md#Delivery", "d1")
+
+      block_in = fn section ->
+        %{scan(:spec, "spec.md#free-over", "b1") | role: :block, within: section}
+      end
+
+      refines =
+        Entry.new!(
+          at: "2026-09-28T10:00:00Z",
+          op: :relate,
+          type: :refines,
+          ends: [
+            %{kind: :spec, id: "spec.md#free-over", hash: "b1"},
+            %{kind: :spec, id: "spec.md#Carts", hash: "k1"}
+          ]
+        )
+
+      in_place = Status.derive([carts, delivery, block_in.("spec.md#Carts")], [refines])
+      assert in_place.moved == []
+      refute Status.failing?(in_place)
+
+      moved_out = Status.derive([carts, delivery, block_in.("spec.md#Delivery")], [refines])
+      # Neither end changed: the relation itself reads current.
+      assert [%{type: :refines, state: :current}] = moved_out.relations
+
+      assert moved_out.moved == [
+               %{from: "spec.md#free-over", to: "spec.md#Carts", now: "spec.md#Delivery"}
+             ]
+
+      assert Status.failing?(moved_out)
+      text = Report.text(moved_out)
+      assert text =~ "Moved (a unit no longer sits in what it refines)"
+
+      assert text =~
+               "refines  spec spec.md#free-over (f:1-2) → spec spec.md#Carts: it now sits in spec.md#Delivery"
+
+      {json, :ok, _} = moved_out |> Report.json() |> :json.decode(:ok, %{null: nil})
+
+      assert json["moved"] == [
+               %{
+                 "from" => "spec.md#free-over",
+                 "to" => "spec.md#Carts",
+                 "now" => "spec.md#Delivery"
+               }
+             ]
+
+      assert moved_out |> Report.golden() |> Surfex.Golden.render() =~ "## moved"
+
+      # A retired relation states nothing, so nothing is moved.
+      retired_refines =
+        Entry.new!(
+          at: "2026-09-28T11:00:00Z",
+          op: :retire,
+          type: :refines,
+          parents: [refines.id],
+          ends: refines.ends
+        )
+
+      gone =
+        Status.derive([carts, delivery, block_in.("spec.md#Delivery")], [refines, retired_refines])
+
+      assert gone.moved == []
+      refute Status.failing?(gone)
+
+      # A section sits in nothing: a refines from one, related by hand, isn't checked.
+      by_hand =
+        Entry.new!(
+          at: "2026-09-28T10:00:00Z",
+          op: :relate,
+          type: :refines,
+          ends: [
+            %{kind: :spec, id: "spec.md#Delivery", hash: "d1"},
+            %{kind: :spec, id: "spec.md#Carts", hash: "k1"}
+          ]
+        )
+
+      assert Status.derive([carts, delivery], [by_hand]).moved == []
+    end
+
     # #190: a list of several ids is legitimate, so it's reported, never failed on: the
     # text counts, the JSON lists.
     @tag verifies: ["unselectable-status", "status-states", "status-reports"]
