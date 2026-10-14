@@ -7,6 +7,8 @@ A keyword list, evaluated as data. An unknown key is refused, naming it.
 - `heading_ids:`, `rule_ids:`: the ids authors write into headings and into a marked list's
   items: `:section_sign` (`§ID`), `:section_number` (`1.2`), a regex with `(?<id>…)`, or a
   list of them (`mix surfex.info claims`).
+- `unit_refs: [~r/^§(?<chapter>\d\d)\.(?<id>[\w.]+)$/]`: the project's own forms of citing
+  a spec unit across files, read in `verifies:` tags and by the tasks (`mix surfex.info claims`).
 - `tests: ["test/**/*_test.exs"]`: test files, scanned per test case. Add
   `Surfex.ExUnitFormatter` to `ExUnit.start(formatters: [...])` to record evidence.
 - `namespace:`: the code's namespace (defaults to the app name).

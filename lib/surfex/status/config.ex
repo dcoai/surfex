@@ -11,6 +11,9 @@ defmodule Surfex.Status.Config do
     * `:rule_ids` — the ids written at the start of a marked list's items
       (`<!-- surfex: rules NAME -->`), in the forms `:heading_ids` takes: `:section_sign`
       reads `1. §Tenancy.1.4 …`, a regex `~r/^(?<id>P\d+)/` reads `P3` (§11.1)
+    * `:unit_refs` — the project's own forms of citing a spec unit, as regexes with named
+      captures `id` and `file` or `chapter` (a spec file's leading number):
+      `~r/^§(?<chapter>\d\d)\.(?<id>[\w.]+)$/` reads `§03.4` (§11.1)
     * `:scanner`, `:scanner_opts` — the code scanner (`:elixir` by default)
     * `:require` — `[key: [type, …]]`: a key is a kind (`:spec`, `:code`, `:test`, …) or
       a spec role (`:section`, `:block`, `:test_hint`, `:table`, `:row`, `:rule`, `:contract`), validated with the
@@ -32,6 +35,7 @@ defmodule Surfex.Status.Config do
   @own [
     :heading_ids,
     :rule_ids,
+    :unit_refs,
     :scanner,
     :scanner_opts,
     :namespace,
@@ -367,7 +371,35 @@ defmodule Surfex.Status.Config do
       do: raise(ArgumentError, "no spec sections found in #{inspect(sources)} under #{root}")
 
     code = Scan.code(items)
-    spec ++ code ++ tests(config, root, code) ++ classes(config)
+
+    spec ++
+      code ++ declared(tests(config, root, code), spec, unit_refs!(config)) ++ classes(config)
+  end
+
+  @doc """
+  The project's `unit_refs:` (`Surfex.Scan.Resolver.unit_refs!/1`), `[]` when it has none.
+  """
+  @spec unit_refs!(keyword) :: [Regex.t()]
+  def unit_refs!(config), do: config |> Keyword.get(:unit_refs, []) |> Scan.Resolver.unit_refs!()
+
+  # A test's declaration in the project's own citation form names the unit by its full id,
+  # so everything reading declarations resolves it as it would the id (§11.1).
+  defp declared(tests, _spec, []), do: tests
+
+  defp declared(tests, spec, unit_refs) do
+    resolver = Scan.resolver(spec, unit_refs)
+
+    for test <- tests do
+      declares =
+        for {type, ref} <- test.declares do
+          case Scan.Resolver.form(resolver, ref) do
+            {:ok, unit} -> {type, unit.id}
+            _ -> {type, ref}
+          end
+        end
+
+      %{test | declares: declares}
+    end
   end
 
   # Classes (`classes:` and `rules:`, the profile's keys) are scanned when a project has

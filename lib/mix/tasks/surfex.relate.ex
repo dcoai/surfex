@@ -36,6 +36,7 @@ defmodule Mix.Tasks.Surfex.Relate do
     {from, to} = R.two!(ids)
     type = R.type!(opts)
     {root, scans, entries, meta} = R.context(opts)
+    [from, to] = R.units([from, to], scans, opts)
 
     result =
       if opts[:planned],

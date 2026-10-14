@@ -14,7 +14,9 @@ defmodule Surfex.Select do
   (`Surfex.Scan.resolve/2`), each test once, in file and line order. With `within: true`,
   also the tests declaring a unit inside one: a block, hint or row whose `within` chain
   reaches it. A ref that is no spec unit, more than one, or that no test declares is an
-  error, every such ref named in it: selecting nothing would run nothing, and pass.
+  error, every such ref named in it: selecting nothing would run nothing, and pass. With
+  `unit_refs:` (the project's, §11.1) a ref may be written in the project's own citation
+  form.
   """
   @spec tests([Scan.t()], [String.t()], keyword) :: {:ok, [Scan.t()]} | {:error, String.t()}
   def tests(scans, refs, opts \\ []) do
@@ -23,7 +25,7 @@ defmodule Surfex.Select do
     parents =
       for %Scan{kind: :spec, id: id, within: w} <- scans, w != nil, into: %{}, do: {id, w}
 
-    resolver = Scan.resolver(scans)
+    resolver = Scan.resolver(scans, Keyword.get(opts, :unit_refs, []))
 
     declared =
       for %Scan{kind: :test} = t <- scans,

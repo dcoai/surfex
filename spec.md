@@ -1172,6 +1172,36 @@ a fence holding no signature, a signature that doesn't parse, and a function in 
 of one file are errors naming the line. Whether a contract unit's citation of its own
 function yields `implements` is plan item D.2's to decide.
 
+**A project's citation forms.** Ids are file-scoped, and a project cites them across files
+in its own forms: `§03.4` (chapter 3, section 4), `spec/05 §4.3`. `unit_refs:` in
+`.surfex.exs` lists those forms, each a regex with named captures: `id`, the unit's id in
+its file, and `file`, the spec file's path with or without `.md`, or `chapter`, the number
+a spec file's name starts with (`spec/03-wire-format.md` is chapter 3, `03` and `3` alike).
+`~r/^§(?<chapter>\d\d)\.(?<id>[\w.]+)$/` makes `§03.4` resolve to
+`spec/03-wire-format.md#4`.
+- `Surfex.Scan.Resolver` reads them: `Surfex.Scan.resolver/2` takes the scans and the
+  forms, and `Surfex.Scan.resolve/2` tries the forms before its exact and bare-id lookups.
+  The first form that matches decides: one unit is found; none falls through to the ids;
+  several (two files of one chapter) is ambiguous. `Surfex.Scan.Resolver.unit_refs!/1`
+  validates them, and a form with no `id`, or neither `file` nor `chapter`, is an error.
+- So a test's `verifies:` may use the project's form. `Surfex.Status.Config.scans/2` gives
+  such a declaration as the full id it names, so everything reading declarations resolves
+  it as the id; one that names nothing stays as written, and is reported as any unknown
+  declaration is.
+- `mix surfex.test` and the recording tasks that take a unit (`relate`, `validate`,
+  `confirm`, `annotate`, `retire`, `move`, `resolve`, `mark`, their `--file` batches
+  included) take the form too.
+
+Prose citations of spec units aren't checked as citations: §6 checks citations of the code,
+and checking the spec's citations of itself is plan item D's.
+
+```test:unit-refs
+unit_refs: forms resolve a project's citations by chapter or file to file-scoped units, an
+unknown chapter or id is unknown and two files of one chapter ambiguous; a form without id
+and file or chapter is an error; a test's declaration in the form names its unit, and
+surfex.test and the recording tasks take the form
+```
+
 Rule ids share the file's namespace (§11), so a repeated one is the duplicate-id error.
 `Surfex.Status.units/1` counts rules and contracts with the other roles, and the reports
 show them once a spec has one. A spec that names no claim scans exactly as before. An id
@@ -1660,9 +1690,9 @@ suggest --accept retires it
 <!-- surfex: status-config -->
 
 `Surfex.Status.Config` reads `.surfex.exs`. It holds the profile keys (§8) and the
-log's own: `heading_ids` (§11), `rule_ids` (§11.1), `scanner`, `scanner_opts`,
-`namespace`, `goldens` (§10.3), `require`, `tests`, `triangle`, `require_red` (§17),
-`adoption` (§18.1), `process` (§19) and `completeness` (§20).
+log's own: `heading_ids` (§11), `rule_ids` and `unit_refs` (§11.1), `scanner`,
+`scanner_opts`, `namespace`, `goldens` (§10.3), `require`, `tests`, `triangle`,
+`require_red` (§17), `adoption` (§18.1), `process` (§19) and `completeness` (§20).
 - `Surfex.Status.Config.read!/1` reads and validates it. It raises on an unknown key, and
   on a key of the removed trace, saying so (§9). Every task reads its config through
   it, so a misspelt key is never silently ignored.
@@ -1671,7 +1701,8 @@ log's own: `heading_ids` (§11), `rule_ids` (§11.1), `scanner`, `scanner_opts`,
 - `Surfex.Status.Config.scans/2` scans each markdown unit of `sources`, reading headings
   by `heading_ids:` (§11) and marked lists by `rule_ids:` (§11.1), each item the code
   scanner (`scanner`, `scanner_opts`) finds, and, when `tests:` names globs of test
-  files, each test in them (`Surfex.Scan.ExUnit`).
+  files, each test in them (`Surfex.Scan.ExUnit`), its declarations in a `unit_refs:` form
+  given as the full ids they name.
   A missing `sources`, or one that matches no section, raises. So does a `tests:` that
   matches no file.
 - `Surfex.Status.Config.options!/1` reads `triangle: :report | :fail` (`:report` by

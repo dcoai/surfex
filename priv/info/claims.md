@@ -47,6 +47,18 @@ An item with no id is an error naming its line.
 In a subject section (`subjects:`) the marker needs no `module:`. Changing one signature
 dangles only that function's relations.
 
+**Citing a unit in the project's own form**: ids are per file, and a project often cites
+them across files as `§03.4` or `spec/05 §4.3`. List the forms in `.surfex.exs`, each a
+regex naming the `id` and the `file` (its path, with or without `.md`) or the `chapter`
+(the number the file's name starts with):
+
+```
+unit_refs: [~r/^§(?<chapter>\d\d)\.(?<id>[\w.]+)$/]
+```
+
+Then `@tag verifies: "§03.4"`, `mix surfex.test §03.4` and `mix surfex.validate TEST §03.4`
+all name `spec/03-wire-format.md#4`.
+
 **Not a claim**: bold. A bold-lead sentence without an id comment is its section's text.
 
 A claim's version is its text and nested lines, without the list marker or id comment, so

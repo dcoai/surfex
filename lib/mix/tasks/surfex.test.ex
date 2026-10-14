@@ -72,7 +72,11 @@ defmodule Mix.Tasks.Surfex.Test do
     selected =
       if deviations?,
         do: Select.deviations(scans),
-        else: Select.tests(scans, refs, within: opts[:within] || false)
+        else:
+          Select.tests(scans, refs,
+            within: opts[:within] || false,
+            unit_refs: Config.unit_refs!(config)
+          )
 
     tests =
       case selected do

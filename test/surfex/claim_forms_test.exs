@@ -368,6 +368,100 @@ defmodule Surfex.ClaimFormsTest do
     end
   end
 
+  describe "unit_refs" do
+    @describetag verifies: ["unit-refs"]
+
+    @chapter_refs [
+      ~r/^§(?<chapter>\d\d)\.(?<id>[\w.]+)$/,
+      ~r/^spec\/(?<chapter>\d\d) §(?<id>[\w.]+)$/
+    ]
+
+    defp chapter_scans do
+      Markdown.sections("# Wire\n\n## 4. Framing\n\nf\n", "spec/03-wire-format.md",
+        heading_ids: :section_number
+      ) ++
+        Markdown.sections("# Scales\n\n### 4.3 Ticks\n\nt\n", "spec/05-scales.md",
+          heading_ids: :section_number
+        )
+    end
+
+    test "a project's citation forms resolve to file-scoped units, by chapter or file" do
+      resolver = Surfex.Scan.resolver(chapter_scans(), @chapter_refs)
+
+      assert {:ok, %{id: "spec/03-wire-format.md#4"}} = Surfex.Scan.resolve(resolver, "§03.4")
+      assert {:ok, %{id: "spec/05-scales.md#4.3"}} = Surfex.Scan.resolve(resolver, "spec/05 §4.3")
+      # An unknown chapter, or an id the chapter lacks, is unknown, as any reference is.
+      assert {:error, :unknown} = Surfex.Scan.resolve(resolver, "§09.4")
+      assert {:error, :unknown} = Surfex.Scan.resolve(resolver, "§03.9")
+      # Full ids resolve as before.
+      assert {:ok, _} = Surfex.Scan.resolve(resolver, "spec/03-wire-format.md#4")
+
+      by_file = Surfex.Scan.resolver(chapter_scans(), [~r/^(?<file>[\w\/-]+) §(?<id>[\w.]+)$/])
+
+      assert {:ok, %{id: "spec/05-scales.md#4.3"}} =
+               Surfex.Scan.resolve(by_file, "spec/05-scales §4.3")
+
+      twice =
+        chapter_scans() ++
+          Markdown.sections("## 4. Other\n\no\n", "spec/03-other.md",
+            heading_ids: :section_number
+          )
+
+      assert {:error, {:ambiguous, ["spec/03-other.md#4", "spec/03-wire-format.md#4"]}} =
+               Surfex.Scan.resolve(Surfex.Scan.resolver(twice, @chapter_refs), "§03.4")
+    end
+
+    test "unit_refs: must be regexes with an id and a file or chapter capture" do
+      for bad <- [[~r/^§(?<id>.+)$/], [~r/^§(?<chapter>\d+)$/], ["§"], :x] do
+        assert_raise ArgumentError, ~r/unit_refs:/, fn -> Surfex.Scan.resolver([], bad) end
+      end
+    end
+
+    @tag :tmp_dir
+    test "a test's declaration, surfex.test and the recording tasks take the project's form", %{
+      tmp_dir: dir
+    } do
+      File.mkdir_p!(Path.join(dir, "spec"))
+      File.mkdir_p!(Path.join(dir, "test"))
+      File.write!(Path.join(dir, "spec/03-wire-format.md"), "# Wire\n\n## 4. Framing\n\nf\n")
+
+      File.write!(Path.join(dir, "test/wire_test.exs"), """
+      defmodule WireTest do
+        use ExUnit.Case
+        @tag verifies: "§03.4"
+        test "frames", do: assert(true)
+      end
+      """)
+
+      config = [
+        sources: ["spec/*.md"],
+        tests: ["test/*_test.exs"],
+        heading_ids: :section_number,
+        unit_refs: @chapter_refs
+      ]
+
+      scans = Surfex.Status.Config.scans(config, dir)
+
+      assert [%{declares: [verifies: "spec/03-wire-format.md#4"]}] =
+               for(s <- scans, s.kind == :test, do: s)
+
+      assert {:ok, [%{id: "WireTest: frames"}]} =
+               Surfex.Select.tests(scans, ["§03.4"], unit_refs: @chapter_refs)
+
+      path = Path.join(dir, ".surfex.exs")
+      File.write!(path, inspect(config))
+
+      assert Surfex.Record.Mix.units(["§03.4", "spec:§03.4", "test:WireTest: frames"], scans,
+               config: path
+             ) ==
+               [
+                 "spec:spec/03-wire-format.md#4",
+                 "spec:spec/03-wire-format.md#4",
+                 "test:WireTest: frames"
+               ]
+    end
+  end
+
   defp rules_of(units),
     do: Enum.filter(units, &(&1.role == :rule))
 end

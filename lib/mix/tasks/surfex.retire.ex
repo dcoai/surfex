@@ -26,6 +26,7 @@ defmodule Mix.Tasks.Surfex.Retire do
     {from, to} = R.two!(ids)
     type = R.type!(opts)
     {root, scans, entries, meta} = R.context(opts)
+    [from, to] = R.units([from, to], scans, opts)
     R.record(root, Surfex.Record.retire(scans, entries, from, to, type, meta))
   end
 end
