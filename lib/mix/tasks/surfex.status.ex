@@ -12,11 +12,15 @@ defmodule Mix.Tasks.Surfex.Status do
       mix surfex.status --evidence       # also check confirmations by evidence against the last run
       mix surfex.status --merge A --merge B   # check them against several CI jobs' evidence together
       mix surfex.status --validated      # also fail on relations nothing has validated (§18)
+      mix surfex.status --no-deviations  # also fail on declared deviations: a release's check
 
   It fails on any dangling, orphaned or conflicted relation, on any id the `require:`
   policy in `.surfex.exs` says must be related and isn't, and, with `--verify`, on any
   problem with the log. With `--no-planned` it fails on any planned relation as well, for
-  a check that everything planned has been built (a release, say). With `--evidence` it
+  a check that everything planned has been built (a release, say). A unit a test declares
+  the code deviates from (`@tag deviation: "#119"`) is listed, and its proposed relations
+  don't fail; with `--no-deviations` any deviation fails, and a deviation test that passed
+  in the evidence always does (`Surfex.Status`). With `--evidence` it
   fails when a relation confirmed by evidence isn't borne out by the evidence the last
   `mix test` recorded: its test didn't run, failed, or ran against other code. It also
   fails on any `verifies` or `tests` relation whose test failed, whatever validated it: a
@@ -46,7 +50,8 @@ defmodule Mix.Tasks.Surfex.Status do
           merge: :keep,
           validated: :boolean,
           marks: :boolean,
-          baseline: :boolean
+          baseline: :boolean,
+          deviations: :boolean
         ]
       )
 
@@ -65,13 +70,20 @@ defmodule Mix.Tasks.Surfex.Status do
     planned = if opts[:planned] == false, do: :fail, else: :allow
     marks = if opts[:marks] == false, do: :fail, else: :allow
     baseline = if opts[:baseline] == false, do: :fail, else: :allow
+    deviations = if opts[:deviations] == false, do: :fail, else: :allow
 
     status =
       Config.status(
         config,
         root,
         namespace,
-        [planned: planned, marks: marks, baseline: baseline, validated: opts[:validated] == true] ++
+        [
+          planned: planned,
+          marks: marks,
+          baseline: baseline,
+          deviations: deviations,
+          validated: opts[:validated] == true
+        ] ++
           evidence(opts, root)
       )
 

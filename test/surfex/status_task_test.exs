@@ -295,4 +295,83 @@ defmodule Surfex.StatusTaskTest do
              "verifies  test MyApp.CartTest: an empty cart ↔ spec spec.md#totals-test: " <>
                "MyApp.CartTest: an empty cart failed"
   end
+
+  # #214: a project joins the gate while it fixes its deviations; a release holds them.
+  @tag verifies: ["status-report-forms"]
+  test "a declared deviation passes the check, --no-deviations fails it, and a pass is stale",
+       %{root: root} do
+    File.write!(
+      Path.join(root, "spec.md"),
+      "# Totals\n\nA cart's total.\n\n```test totals-free\na cart over 50 ships free\n```\n"
+    )
+
+    File.mkdir_p!(Path.join(root, "test"))
+
+    File.write!(Path.join(root, "test/cart_test.exs"), """
+    defmodule MyApp.CartTest do
+      use ExUnit.Case
+      @tag verifies: "totals-free", deviation: "#119", skip: "known deviation (#119)"
+      test "free over 50" do
+        assert MyApp.Cart.total() == :free
+      end
+    end
+    """)
+
+    config = [sources: ["spec.md"], namespace: "MyApp", tests: ["test/**/*_test.exs"]]
+    File.write!(Path.join(root, ".surfex.exs"), inspect(config))
+    File.rm_rf!(Path.join(root, ".surfex"))
+    Log.init(root)
+
+    scans = Config.scans(config, root) |> Map.new(&{&1.id, &1})
+    deviant = scans["MyApp.CartTest: free over 50"]
+    end_of = fn %Scan{} = s -> %{kind: s.kind, id: s.id, hash: s.hash} end
+
+    on_basis = fn type, a, b, basis ->
+      Entry.new!(
+        at: "2026-09-28T10:00:00Z",
+        op: :relate,
+        type: type,
+        ends: [end_of.(a), end_of.(b)],
+        basis: basis
+      )
+    end
+
+    # The verifies on its red run; the section's implements cited, so only proposed.
+    Log.append(root, [
+      on_basis.(:verifies, deviant, scans["spec.md#totals-free"], :evidence),
+      on_basis.(:implements, scans["spec.md#Totals"], scans["MyApp.Cart.total/0"], :proposed)
+    ])
+
+    task(root, [])
+    text = output()
+    assert text =~ "relation status: ok"
+    assert text =~ "spec.md#totals-free (spec.md:5-7): #119, declared by test MyApp.CartTest"
+
+    assert_raise Mix.Error, ~r/relations need attention/, fn ->
+      task(root, ["--no-deviations"])
+    end
+
+    passed = Path.join(root, "passed.jsonl")
+
+    Surfex.Evidence.append(passed, [
+      %{
+        test: deviant.id,
+        test_hash: deviant.hash,
+        result: :passed,
+        at: "2026-09-28T11:00:00Z",
+        run: "r",
+        seq: 0,
+        code: %{"MyApp.Cart.total/0" => scans["MyApp.Cart.total/0"].hash}
+      }
+    ])
+
+    # Drain the --no-deviations report before the stale run's.
+    _held = output()
+
+    assert_raise Mix.Error, ~r/relations need attention/, fn ->
+      task(root, ["--merge", passed])
+    end
+
+    assert output() =~ "Stale deviations"
+  end
 end

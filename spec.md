@@ -727,6 +727,21 @@ changes its version.
 a test's record lists the declared ids mix test --only can't select it by: every id of a
 list of several, none of a string or a one-id list, whichever level's tag it took
 ```
+- **What it deviates from**: a test whose requirement the code is known not to meet yet
+  says so with `@tag deviation: "#119"`, beside the ExUnit `skip:` that keeps the suite
+  green. The value is a reference to what will fix the code, free text: a project's
+  tracker is its own business. It is read at the same levels as `verifies` and merged the
+  same way, key by key: a test's own `@tag` over its `describe`'s over its module's, so a
+  tag setting only `verifies` leaves an inherited `deviation` as it was. The record's
+  `deviation` is the reference, or `nil`. It names no unit itself: the test deviates from
+  what it declares it verifies, and status lists those units as deviating (§13.1). A
+  `deviation` value that isn't a literal string raises, naming the file and line.
+
+```test deviation-tag
+a test's deviation: tag is read as its reference at its own, its describe's or its
+module's level, the most specific level that sets it winning, independently of verifies;
+a value that isn't a literal string raises
+```
 
 `mix surfex.test UNIT…` runs a requirement's tests as surfex reads them, list members
 included. Each UNIT is any reference a declaration may use, resolved as a declaration is
@@ -1097,7 +1112,8 @@ new segment, and verifying finds an edited line, a removed parent or a truncatio
 `Surfex.Status` derives the state of every relation from the scans (§11) and the log
 (§12). `Surfex.Status.derive/2`, `Surfex.Status.derive/3` (with a `require:` policy) and
 `Surfex.Status.derive/4` (with options: `planned: :allow | :fail`, `triangle: :report |
-:fail`, `validated:` (§18), `evidence:` (§17), `citations:` (§6), `coverage:` (§13.1)) are
+:fail`, `validated:` (§18), `evidence:` (§17), `citations:` (§6), `coverage:` (§13.1),
+`deviations: :allow | :fail` (§13.1)) are
 pure: the same scans, log and options always give the same status.
 
 ```test status-pure
@@ -1224,6 +1240,33 @@ status reports each test some declared id can't select, with its ids, without fa
 the text counts them in one line and the JSON lists each test
 ```
 
+- **Deviating:** a spec unit a test declares it verifies, where the test also declares a
+  deviation (`@tag deviation: "<ref>"`, §11). The spec is right and the code doesn't meet
+  it yet; the test, written from the spec, fails, and is skipped with the reference to
+  what will fix the code. That is not `needs_update` (§14), where the spec is wrong and the
+  code agrees with it. Status lists each deviating unit with its test and reference, and,
+  given evidence (§17), the test's last result at its version. A **proposed** relation
+  that deviates doesn't fail: one whose spec end is a deviating unit or a unit one sits in
+  (the requirement whose code deviates), such as the unit's `implements`, the deviation
+  test's own `verifies`, or another test's `verifies` that a review would overstate. It stays
+  proposed, marked `deviates` with the references, and is reported as a planned relation
+  is. The check is then a gate a project can join while it fixes its deviations, failing
+  on anything else. A status derived with `deviations: :fail` (`mix surfex.status
+  --no-deviations`) fails on any deviation, for a release. A deviation tag on a test that
+  declares no spec unit deviates from nothing it names, and is **broken**.
+- **Stale deviation:** a deviating unit whose deviation test **passed**, at its version,
+  in the evidence given (§17): the code meets the unit now, so the tag comes off and the
+  relations are validated by the process. It fails, or tags would outlive their fixes. It
+  is judged only from a run where the test ran: a skipped test records `skipped`, never
+  `passed`, so without such a run a deviation is listed, not judged stale.
+
+```test deviating-status
+a unit a deviation-tagged test declares is listed as deviating with its reference and
+test; its proposed relations and those of a unit it sits in don't fail and are marked
+deviates, while other states still fail; deviations: :fail fails on any; a deviation tag
+on a test declaring no unit is broken
+```
+
 - **Proposed:** the tip is recorded with basis `proposed`: a claim (a citation, a tag, a
   pair named by hand) that nothing has validated yet (§18). It fails the check, like a
   dangling relation, until evidence or a review validates it.
@@ -1246,11 +1289,11 @@ the text counts them in one line and the JSON lists each test
   `coverage:`.
 
 `Surfex.Status.failing?/1` is true when any relation is dangling, orphaned, conflicted or
-proposed, any id is unmet, any `verifies` relation is undeclared, any declaration is
-unrecorded, any `refines` relation is moved, any declaration or citation is broken, any excuse is stale, any relation's
+proposed (unless it deviates), any id is unmet, any `verifies` relation is undeclared, any declaration is
+unrecorded, any `refines` relation is moved, any declaration or citation is broken, any excuse or deviation is stale, any relation's
 test failed, or any confirmation by evidence is unproven. New,
-retired, impacted, planned, unimplemented, unselectable and unvalidated don't fail on
-their own. A
+retired, impacted, planned, unimplemented, unselectable, deviating and unvalidated don't fail on
+their own. A status derived with `deviations: :fail` fails on any deviating unit. A
 status derived with `planned: :fail` (`Surfex.Status.derive/4`) fails on any planned
 relation too: the check that everything planned has been built, such as a release's. One
 derived with `validated: true` fails on any unvalidated relation: the check that every
@@ -1331,11 +1374,12 @@ marks are reported and fail only under marks: :fail
 ```
 
 ```test status-failing
-the check fails on a dangling, orphaned, conflicted or proposed relation, an unmet id, an
-undeclared verifies relation, an unrecorded declaration, a moved refines relation, a
-broken declaration or citation, a stale excuse, a failed test's relation, or an unproven confirmation, and on
-nothing else by default; planned:
-:fail adds planned relations, and validated: true unvalidated ones
+the check fails on a dangling, orphaned, conflicted or proposed relation (one that
+deviates excepted), an unmet id, an undeclared verifies relation, an unrecorded
+declaration, a moved refines relation, a broken declaration or citation, a stale excuse or
+deviation, a failed test's relation, or an unproven confirmation, and on nothing else by
+default; planned: :fail adds planned relations, validated: true unvalidated ones, and
+deviations: :fail deviating units
 ```
 
 ```test units-by-role
@@ -1392,8 +1436,10 @@ the code is scanned once, and citations are read under the config's profile
 
 `Surfex.Status.Report` presents a status:
 - `Surfex.Status.Report.text/1`: the verdict, the counts per type and the spec units by
-  role. Then each dangling, orphaned, conflicted, proposed, impacted and planned relation,
-  the unimplemented, new and unmet ids, the broken citations, the failed relations (each
+  role. Then each dangling, orphaned, conflicted, proposed (one that deviates with its
+  references), impacted and planned relation, the deviating units (each with its location,
+  reference, test, and the test's result in the run) and, apart, the stale deviations with
+  what settles them, the unimplemented, new and unmet ids, the broken citations, the failed relations (each
   with its test), the unproven confirmations, the undeclared relations, the unrecorded
   declarations (each with its test's location, and what settles it), the moved `refines`
   relations (each with its unit's location, where it sits now, and what settles it), the
@@ -1408,24 +1454,28 @@ the code is scanned once, and citations are read under the config's profile
   the status as a golden to commit. It has a table per relation type (end, other end,
   state, the ends that changed or are planned), then the unimplemented, new and unmet
   ids, the broken citations (by section, not line), the undeclared relations, the
-  unrecorded declarations, the moved `refines` relations, the stale excuses, the broken
+  unrecorded declarations, the deviating units (unit, reference, test: the ledger of known
+  deviations), the moved `refines` relations, the stale excuses, the broken
   declarations, the triangle's gaps and the open and orphaned marks (unit, state, note), with
   the spec units by role among its stats. It holds no hashes and no times, so it changes when a relation's
   state changes, not on every confirmation. It's a pure function of the scans and the
-  log, so a merge conflict in it is resolved by regenerating. It leaves failed relations
+  log, so a merge conflict in it is resolved by regenerating. A proposed relation that
+  deviates reads `:proposed` · deviates. It leaves failed relations, stale deviations
   and unproven confirmations out, since they depend on the last test run, not on the
   source or the log,
   and validation too: it follows the relations' states, and a proposed relation shows as
   one.
 - `Surfex.Status.Report.json/1`: the work list for tools and agents. For each relation,
-  its type, state and impact, and per end the recorded hash, the current hash, whether
+  its type, state, impact and the references it deviates by (`deviates`), and per end the recorded hash, the current hash, whether
   it changed, whether it is planned, and its location. Plus the spec units by role, the
   unimplemented, new and unmet ids (each with its role, what it sits in and what it
   declares), the broken citations, the failed relations (`failed`, each with its type,
   ends and test), the unproven confirmations, the undeclared relations, the unrecorded
   declarations (`unrecorded`, each with its test, its spec unit, whether its relation was
   retired, and the retire's note), the moved `refines` relations (`moved`, each with
-  `from`, `to`, and `now`, where the unit sits now), the stale excuses, the
+  `from`, `to`, and `now`, where the unit sits now), the deviating units (`deviating`, each
+  with its `spec`, `test`, `ref`, the test's `run` result or null, and whether it is
+  `stale`), the stale excuses, the
   broken declarations, the triangle's gaps, the unvalidated relations, the unselectable
   tests (each with its ids) and the open and orphaned marks (unit, state, note, who,
   when, entry id, location). A value that
@@ -1445,6 +1495,9 @@ the code is scanned once, and citations are read under the config's profile
   lists them
 - `--no-marks` fails on any open or orphaned mark as well (`marks: :fail`), for a release
   that must not ship with a known spec problem
+- `--no-deviations` fails on any deviating unit as well (`deviations: :fail`), for a
+  release that must not ship with a known deviation. Which pipeline allows them is the
+  caller's decision, as with `--no-planned`
 - `--no-baseline` fails on any relation resting on the baseline (`baseline: :fail`,
   §18.1), and the report counts them with the adoption mode
 - `--merge PATH`, once per file, checks the confirmations by evidence against several CI
@@ -1874,6 +1927,21 @@ invalidated, so once the test passes again it holds with no new review. A projec
 validated entirely by review (`adoption: :reevaluate`) is therefore held to its run as
 well: its gate can't pass while the tests behind its requirements fail.
 
+**A deviation test's run is its declared state.** A test tagged `deviation:` (§11) is
+expected to fail: the code doesn't meet its requirement yet. When it runs and fails, its
+relations aren't failed. The deviating unit is listed with its result instead
+(§13.1). Only the tag does this: any other test's failure fails its relations as above.
+When it runs and passes, at its version, the deviation is **stale** and fails the check:
+the fix landed, and the tag must come off. Evidence of that needs a run that includes the
+test (`mix test --include skip`, or the skip removed): a skipped test is recorded as
+skipped, never as passed. With several jobs' evidence, a pass in any job makes it stale.
+
+```test deviation-runs
+a deviation test that failed is listed with its deviation, not as failed, while an
+untagged test's failure still fails; one that passed at its version is a stale deviation
+and fails, in any job's evidence; skipped, or without evidence, nothing is judged stale
+```
+
 ```test evidence-failed
 a test that failed at the version its relations hold fails every current verifies and
 tests relation it is an end of, whatever their basis, and the check; a pass afterwards
@@ -2208,7 +2276,7 @@ complete means validated, not asserted.
 
 | Kind | Complete when | Missing, as listed |
 |---|---|---|
-| spec unit | a test verifies it, or a unit inside it, by a current, validated relation; and every `implements` relation to it is current and validated. A unit no code implements (a policy, say) is complete with its test alone: every unit needs a test, and code only where the spec describes code | `no_relation` (in none), `no_test`, `unvalidated` |
+| spec unit | a test verifies it, or a unit inside it, by a current, validated relation; and every `implements` relation to it is current and validated. A unit no code implements (a policy, say) is complete with its test alone: every unit needs a test, and code only where the spec describes code. A deviating unit (§13.1) is never complete, whatever its basis: a `verifies` recorded on its test's red run is validated, but the code doesn't meet the unit | `no_relation` (in none), `no_test`, `unvalidated`, `deviates (<ref>, …)` |
 | test | it verifies a spec unit by a current, validated relation, and exercises code (a current `tests` relation). A test verifying only units no code implements is complete with its `verifies` alone | `no_relation`, `verifies_nothing`, `exercises_nothing` |
 | code | it implements a unit by a current, validated relation, or is excused by a current `excuses` relation; and, when implemented, a test verifying the unit exercises it (no `code_untested` gap, §13.1). Code is one item per definition (§11): a function's default-argument arities are judged together and counted once, listed under the first of their ids | `no_relation`, `not_described` (neither implemented nor excused), `unvalidated`, `untested` |
 
@@ -2237,6 +2305,12 @@ heading-only section isn't counted; a test is complete verifying and exercising 
 verifying only code-less units; code is complete when validated and exercised, or
 excused, one item per definition whatever its default-argument arities; each incomplete
 item names what it lacks
+```
+
+```test completeness-deviates
+a deviating unit is incomplete, missing deviates with its references, whatever validated
+its relations and whether or not code implements it; with the tag removed and its
+relations validated, it is complete
 ```
 
 ```test completeness-score

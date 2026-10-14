@@ -24,9 +24,14 @@ defmodule Surfex.Scan.ExUnit do
     * **unselectable** — the declared ids `mix test --only verifies:id` can't select the
       test by. ExUnit compares a list tag as one string, its ids run together, so a test
       tagged `["cart-add", "carts"]` is selected by neither, though it declares both.
+    * **deviation** — the reference a test gives with `@tag deviation: "#119"` (or at its
+      `describe`'s or module's level, merged as `verifies` is): the code is known to
+      deviate from what the test verifies, and the reference names what will fix it. Free
+      text, `nil` when the test doesn't declare one.
 
-  A `verifies` value that isn't a literal string or list of strings raises, naming the
-  file and line: a declaration that can't be read must not be silently dropped.
+  A `verifies` value that isn't a literal string or list of strings, or a `deviation`
+  that isn't a literal string, raises, naming the file and line: a declaration that can't
+  be read must not be silently dropped.
   """
 
   alias Surfex.{Scan, SourceScan}
@@ -73,20 +78,21 @@ defmodule Surfex.Scan.ExUnit do
     ctx = %{
       file: file,
       describe: nil,
-      tags: nil,
+      tags: %{},
       setups: [],
       wrappers: [],
       aliases: names.aliases
     }
 
-    {found, _pending} = walk(exprs(body), ctx, nil)
+    {found, _pending} = walk(exprs(body), ctx, %{})
     module = %{tags: module_tags(exprs(body), file), setups: setups(exprs(body))}
 
     for t <- found do
       nodes = t.wrappers ++ module.setups ++ t.setups ++ [t.node]
-      # As ExUnit merges tags (#149): the most specific level that sets `verifies` wins,
-      # the test's own over its describe's over its module's.
-      tag = t.tags || module.tags || []
+      # As ExUnit merges tags (#149): the most specific level that sets a key wins, the
+      # test's own over its describe's over its module's, `verifies` and `deviation` alike.
+      tags = Map.merge(module.tags, t.tags)
+      tag = Map.get(tags, :verifies, [])
       declares = tag |> List.wrap() |> Enum.uniq()
       describe = if t.describe, do: "#{t.describe}: ", else: ""
 
@@ -97,6 +103,7 @@ defmodule Surfex.Scan.ExUnit do
         location: %{file: file, lines: SourceScan.line_range(t.node)},
         declares: Enum.map(declares, &{:verifies, &1}),
         unselectable: unselectable(tag),
+        deviation: Map.get(tags, :deviation),
         calls: calls(mod, t, names, scopes)
       }
     end
@@ -143,13 +150,13 @@ defmodule Surfex.Scan.ExUnit do
 
   # Tests in order, each with the tags and setups that apply from its describe, its own
   # `@tag`s, and the comprehension generators around it. `pending` is the `@tag`s waiting
-  # for the next test.
+  # for the next test, as a map of the keys surfex reads.
   defp walk(exprs, ctx, pending) do
     Enum.reduce(exprs, {[], pending}, fn expr, {found, pending} ->
       case expr do
         {:@, _, [{:tag, _, [value]}]} ->
-          # A later `@tag verifies:` replaces an earlier one; a tag without it leaves it.
-          {found, verifies(value, expr, ctx.file) || pending}
+          # A later `@tag` replaces what an earlier one set; a key it doesn't set is left.
+          {found, Map.merge(pending, read_tags(value, expr, ctx.file))}
 
         {:describe, _, [name, [do: block]]} ->
           inner = exprs(block)
@@ -162,21 +169,21 @@ defmodule Surfex.Scan.ExUnit do
               setups: ctx.setups ++ setups(inner)
           }
 
-          {more, _} = walk(inner, describe, nil)
-          {found ++ more, nil}
+          {more, _} = walk(inner, describe, %{})
+          {found ++ more, %{}}
 
         {definer, _, [name | _]} = node when definer in @definers ->
           test = %{
             name: text(name),
             node: node,
             describe: ctx.describe,
-            tags: pending || ctx.tags,
+            tags: Map.merge(ctx.tags, pending),
             setups: ctx.setups,
             wrappers: ctx.wrappers,
             aliases: ctx.aliases
           }
 
-          {found ++ [test], nil}
+          {found ++ [test], %{}}
 
         {:for, _, args} when is_list(args) ->
           {generators, [[do: block]]} = Enum.split(args, -1)
@@ -192,17 +199,14 @@ defmodule Surfex.Scan.ExUnit do
     end)
   end
 
-  # A level's `verifies`: the last `@moduletag` or `@describetag` that sets it, or nil when
-  # none does (the level then leaves it to the one above, as ExUnit does).
+  # A level's tags: for each key, the last `@moduletag` or `@describetag` that sets it. A
+  # key no tag sets is absent, so the level leaves it to the one above, as ExUnit does.
   defp module_tags(exprs, file), do: last_set(exprs, :moduletag, file)
   defp describe_tags(exprs, file), do: last_set(exprs, :describetag, file)
 
   defp last_set(exprs, attribute, file) do
-    for {:@, _, [{^attribute, _, [v]}]} = e <- exprs,
-        ids = verifies(v, e, file),
-        ids != nil,
-        reduce: nil do
-      _earlier -> ids
+    for {:@, _, [{^attribute, _, [v]}]} = e <- exprs, reduce: %{} do
+      earlier -> Map.merge(earlier, read_tags(v, e, file))
     end
   end
 
@@ -224,20 +228,30 @@ defmodule Surfex.Scan.ExUnit do
     |> List.flatten()
   end
 
-  # A tag value's `verifies:` as written, a string or a list of strings, or nil when it
-  # doesn't set it. Its form matters to `unselectable/1`.
-  defp verifies(value, expr, file) do
-    case value do
-      list when is_list(list) ->
-        if Keyword.keyword?(list) and Keyword.has_key?(list, :verifies),
-          do: ids(list[:verifies], expr, file)
+  # The keys surfex reads from a tag value, as written: `verifies:` a string or a list of
+  # strings (its form matters to `unselectable/1`), `deviation:` a string or nil. A key the
+  # tag doesn't set is absent.
+  @read [:verifies, :deviation]
 
-      {:%{}, _, pairs} ->
-        if Keyword.has_key?(pairs, :verifies), do: ids(Keyword.get(pairs, :verifies), expr, file)
+  defp read_tags(value, expr, file) do
+    pairs =
+      case value do
+        list when is_list(list) -> if Keyword.keyword?(list), do: list, else: []
+        {:%{}, _, pairs} -> pairs
+        _ -> []
+      end
 
-      _ ->
-        nil
+    for key <- @read, Keyword.has_key?(pairs, key), into: %{} do
+      {key, read(key, Keyword.get(pairs, key), expr, file)}
     end
+  end
+
+  defp read(:verifies, value, expr, file), do: ids(value, expr, file)
+  defp read(:deviation, ref, _expr, _file) when is_binary(ref) or is_nil(ref), do: ref
+
+  defp read(:deviation, _other, expr, file) do
+    {line, _} = SourceScan.line_range(expr) || {0, 0}
+    raise ArgumentError, "#{file}:#{line}: deviation: must be a string"
   end
 
   defp ids(nil, _expr, _file), do: []

@@ -28,8 +28,10 @@ defmodule Surfex.Scan do
   own source: `declares` is a list of `{type, id}`, such as `{:verifies, "cart-add"}`
   from `@tag verifies: "cart-add"`. A declaration is a claim in the source, not a
   relation; `resolve/2` finds the spec unit it names. `unselectable` lists the declared
-  ids the test's runner can't select it by (a list tag, to `mix test --only`). A test
-  record also lists what it
+  ids the test's runner can't select it by (a list tag, to `mix test --only`). `deviation`
+  is the reference a test gives with `@tag deviation: "#119"`: the code is known to deviate
+  from what the test verifies (§13.1); `nil` when it gives none. A test record also lists
+  what it
   `calls`: the functions its source calls (`MyApp.Cart.add/3`), as facts to suggest
   `tests` relations from. A code record lists what its item calls (`Surfex.Item`), so
   `reach/1` can follow a test through the code it calls.
@@ -51,6 +53,7 @@ defmodule Surfex.Scan do
     :within,
     declares: [],
     unselectable: [],
+    deviation: nil,
     calls: [],
     hidden: %{},
     shape: false,
@@ -69,6 +72,8 @@ defmodule Surfex.Scan do
           declares: [{atom, String.t()}],
           # Declared ids the test's runner can't select it by (§11).
           unselectable: [String.t()],
+          # A test's declared deviation: the reference to what fixes it (§13.1).
+          deviation: String.t() | nil,
           calls: [String.t()],
           # A code record's hidden code, by the key a call names it with (`Surfex.Item`).
           hidden: %{String.t() => [String.t()]},
