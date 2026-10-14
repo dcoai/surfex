@@ -35,6 +35,9 @@ defmodule Surfex.Status.Config do
     * `:router` — the router module (or a list of them) whose routes a test's requests
       resolve through (§11); found from the project's endpoint when not given, and `false`
       turns route resolution off
+    * `:checks` — gates that verify claims: each `[id:, run:, verifies:, inputs:]`, a
+      command that can fail, the spec units it verifies, and the files it inspects
+      (`Surfex.Scan.Checks`, §11.4)
   """
 
   alias Surfex.Log.Entry
@@ -59,6 +62,7 @@ defmodule Surfex.Status.Config do
     :require_red,
     :router,
     :claim_implements,
+    :checks,
     :adoption,
     :process,
     :completeness
@@ -542,9 +546,37 @@ defmodule Surfex.Status.Config do
       do: raise(ArgumentError, "no spec sections found in #{inspect(sources)} under #{root}")
 
     code = Scan.code(items)
+    checks = config |> Scan.Checks.records(root) |> rows(spec, unit_refs!(config))
 
     spec ++
-      code ++ declared(tests(config, root, code), spec, unit_refs!(config)) ++ classes(config)
+      code ++
+      declared(tests(config, root, code) ++ checks, spec, unit_refs!(config)) ++
+      classes(config)
+  end
+
+  # A check may verify every row of a marked table at once, `TABLE/*` (§11.4): the
+  # declaration is each row's. A reference whose table isn't one is left as written, so it
+  # is reported broken.
+  defp rows([], _spec, _unit_refs), do: []
+
+  defp rows(checks, spec, unit_refs) do
+    resolver = Scan.resolver(spec, unit_refs)
+    by_table = spec |> Enum.filter(&(&1.role == :row)) |> Enum.group_by(& &1.within)
+
+    for check <- checks do
+      declares =
+        Enum.flat_map(check.declares, fn {type, ref} = declared ->
+          with true <- String.ends_with?(ref, "/*"),
+               {:ok, %Scan{role: :table, id: table}} <-
+                 Scan.resolve(resolver, String.replace_suffix(ref, "/*", "")) do
+            by_table |> Map.get(table, []) |> Enum.map(&{type, &1.id}) |> Enum.sort()
+          else
+            _ -> [declared]
+          end
+        end)
+
+      %{check | declares: Enum.uniq(declares)}
+    end
   end
 
   @doc """

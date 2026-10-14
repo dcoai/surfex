@@ -16,11 +16,13 @@ defmodule Surfex.Select do
   reaches it. A ref that is no spec unit, more than one, or that no test declares is an
   error, every such ref named in it: selecting nothing would run nothing, and pass. With
   `unit_refs:` (the project's, §11.1) a ref may be written in the project's own citation
-  form.
+  form. With `checks: true`, a check declaring a unit is selected as a test declaring it
+  is (§11.4), and the checks follow the tests, in id order.
   """
   @spec tests([Scan.t()], [String.t()], keyword) :: {:ok, [Scan.t()]} | {:error, String.t()}
   def tests(scans, refs, opts \\ []) do
     within? = Keyword.get(opts, :within, false)
+    kinds = if Keyword.get(opts, :checks, false), do: [:test, :check], else: [:test]
 
     parents =
       for %Scan{kind: :spec, id: id, within: w} <- scans, w != nil, into: %{}, do: {id, w}
@@ -28,7 +30,8 @@ defmodule Surfex.Select do
     resolver = Scan.resolver(scans, Keyword.get(opts, :unit_refs, []))
 
     declared =
-      for %Scan{kind: :test} = t <- scans,
+      for %Scan{kind: kind} = t <- scans,
+          kind in kinds,
           {:verifies, ref} <- t.declares,
           {:ok, unit} <- [Scan.resolve(resolver, ref)],
           do: {t, unit.id}
@@ -57,10 +60,12 @@ defmodule Surfex.Select do
       [] ->
         tests = for {:ok, tests} <- results, t <- tests, do: t
 
+        {checks, tests} =
+          tests |> Enum.uniq_by(&{&1.kind, &1.id}) |> Enum.split_with(&(&1.kind == :check))
+
         {:ok,
-         tests
-         |> Enum.uniq_by(& &1.id)
-         |> Enum.sort_by(fn %{location: %{file: f, lines: {first, _}}} -> {f, first} end)}
+         Enum.sort_by(tests, fn %{location: %{file: f, lines: {first, _}}} -> {f, first} end) ++
+           Enum.sort_by(checks, & &1.id)}
 
       errors ->
         {:error, Enum.join(errors, "; ")}

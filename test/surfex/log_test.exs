@@ -66,7 +66,7 @@ defmodule Surfex.LogTest do
     test "the vocabulary is fixed: ops, types, kinds, and which types are directed" do
       assert Entry.ops() == [:relate, :retire, :mark, :observe]
       assert Entry.types() == [:implements, :refines, :depends_on, :tests, :verifies, :excuses]
-      assert Entry.kinds() == [:spec, :code, :test, :class]
+      assert Entry.kinds() == [:spec, :code, :test, :class, :check]
       assert Entry.directed() == [:depends_on, :refines, :tests, :verifies]
 
       a = %{kind: :spec, id: "spec.md#S"}
@@ -303,6 +303,7 @@ defmodule Surfex.LogTest do
       for {type, ends} <- [
             implements: [code: "M.f/1", spec: "s#a"],
             verifies: [test: "T: t", spec: "s#a"],
+            verifies: [check: "no-rescue", spec: "s#a"],
             tests: [test: "T: t", code: "M.f/1"],
             refines: [spec: "s#a", spec: "s#b"],
             depends_on: [code: "M.f/1", code: "M.g/1"],
@@ -315,8 +316,14 @@ defmodule Surfex.LogTest do
       assert {:error, "implements ends must be code ↔ spec, got test, test"} =
                e(:relate, :implements, test: "T: a", test: "T: b")
 
-      assert {:error, "verifies ends must be test → spec, got spec, test"} =
+      assert {:error, "verifies ends must be test or check → spec, got spec, test"} =
                e(:relate, :verifies, spec: "s#a", test: "T: t")
+
+      # A check verifies; it never tests code.
+      assert {:error, "tests ends must be test → code, got check, code"} =
+               e(:relate, :tests, check: "no-rescue", code: "M.f/1")
+
+      assert {:ok, _} = e(:observe, :red_green, [check: "no-rescue"], :evidence)
 
       assert {:error, "tests ends must be test → code, got code, test"} =
                e(:retire, :tests, code: "M.f/1", test: "T: t")
@@ -327,7 +334,7 @@ defmodule Surfex.LogTest do
       assert {:error, "needs_update ends must be one spec, got code"} =
                e(:mark, :needs_update, code: "M.f/1")
 
-      assert {:error, "red_green ends must be one test, got spec"} =
+      assert {:error, "red_green ends must be one test or check, got spec"} =
                e(:observe, :red_green, [spec: "s#a"], :evidence)
 
       # Nothing records a config end: it is no kind.

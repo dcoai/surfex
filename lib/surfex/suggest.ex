@@ -205,6 +205,10 @@ defmodule Surfex.Suggest do
     }
   end
 
+  # A verifier as status lists it (`check ID` for a check, §11.4), as an id to record by.
+  defp verifier_ref("check " <> check), do: "check:" <> check
+  defp verifier_ref(test), do: "test:" <> test
+
   # Suggestions in one canonical order, by the ids they name, so they never follow the
   # order the scans or the log's lines came in (#151): a union merge reorders lines, and a
   # file system lists files as it likes.
@@ -243,7 +247,7 @@ defmodule Surfex.Suggest do
           &Record.relate(
             scans,
             &1,
-            "test:" <> v.from.id,
+            "#{v.from.kind}:#{v.from.id}",
             "spec:" <> v.to.id,
             :verifies,
             meta,
@@ -267,7 +271,7 @@ defmodule Surfex.Suggest do
           &Record.retire(
             scans,
             &1,
-            "test:" <> u.test,
+            verifier_ref(u.test),
             "spec:" <> u.spec,
             :verifies,
             Keyword.put_new(meta, :note, "the test no longer declares that it verifies this")
@@ -568,7 +572,9 @@ defmodule Surfex.Suggest do
     related = MapSet.new(entries, &Entry.relation/1)
     resolver = Scan.resolver(scans)
 
-    for %Scan{kind: :test, declares: declares} = test <- scans,
+    # A check declares what it verifies as a test does (§11.4).
+    for %Scan{kind: kind, declares: declares} = test <- scans,
+        kind in [:test, :check],
         {:verifies, ref} <- declares,
         {:ok, spec} <- [Scan.resolve(resolver, ref)],
         not MapSet.member?(related, Entry.relation(:verifies, test, spec)),

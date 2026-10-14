@@ -9,7 +9,7 @@ defmodule Surfex.Record do
   ## Ids
 
   An id is a scan id: `MyApp.Cart.add/2`, `spec.md#Carts/Adding items`. When the same id
-  is scanned under two kinds, a `spec:`, `code:`, `test:` or `class:` prefix picks one. An id that isn't
+  is scanned under two kinds, a `spec:`, `code:`, `test:`, `class:` or `check:` prefix picks one. An id that isn't
   scanned is an error that names it, since relating what doesn't exist would be
   orphaned from the moment it was recorded.
 
@@ -799,10 +799,37 @@ defmodule Surfex.Record do
           _ -> {:cont, {:ok, acc}}
         end
 
+      # A check discriminates as a test does, at its declaration's version, against its
+      # inputs (§17.1): the observation is of that declaration.
+      {:check, _} = key, {:ok, acc} ->
+        check = Map.fetch!(status.scans, key)
+        declaration = check.check.declaration
+
+        with false <- MapSet.member?(status.discriminated, {check.id, declaration}),
+             {red, green} <- Surfex.Evidence.red_then_green(evidence, check.id, declaration) do
+          note =
+            "#{Surfex.Evidence.note()}: check #{check.id}@#{declaration} failed at #{red.at} " <>
+              "(#{inputs_text(red)}) and passed at #{green.at} (#{inputs_text(green)})"
+
+          observed = %{kind: :check, id: check.id, hash: declaration}
+
+          case entry(:observe, :red_green, [observed], [], Keyword.put(meta, :note, note)) do
+            {:ok, e} -> {:cont, {:ok, acc ++ [e]}}
+            error -> {:halt, error}
+          end
+        else
+          _ -> {:cont, {:ok, acc}}
+        end
+
       _key, acc ->
         {:cont, acc}
     end)
   end
+
+  defp inputs_text(%{code: inputs}) when map_size(inputs) == 0, do: "no inputs"
+
+  defp inputs_text(%{code: inputs}),
+    do: inputs |> Enum.sort() |> Enum.map_join(", ", fn {file, h} -> "#{file}@#{h}" end)
 
   # A verifies relation on its failing run: the test's current version has failed, so it
   # is live and tests something the code didn't do (§18). When only the spec end changed,
@@ -818,6 +845,38 @@ defmodule Surfex.Record do
              &(&1.test == t and &1.test_hash == test.hash and &1.result == :failed)
            ) do
       "#{Surfex.Evidence.note()}: #{t}@#{test.hash} failed at #{red.at}, the test relation on its failing run"
+    else
+      _ -> nil
+    end
+  end
+
+  # A check's verifies (§17.1): its declaration discriminated (failed against one set of
+  # input versions and passed against another, in the evidence or recorded in the log),
+  # and its latest run passed against the inputs as they are. A check that never failed
+  # is confirmed only by a review. After a spec-only change it is a judgement, as for a
+  # test.
+  defp verifies_evidence(%{relation: {:verifies, {:check, c}, {:spec, _}}} = r, status, evidence) do
+    check = Map.fetch!(status.scans, {:check, c})
+    declaration = check.check.declaration
+    spec_only? = r.changed != [] and {:check, c} not in r.changed
+
+    with false <- spec_only?,
+         %{result: :passed, code: inputs} = latest <-
+           Surfex.Evidence.latest(evidence, c, declaration),
+         true <- Surfex.Scan.Checks.version(declaration, inputs) == check.hash do
+      passes = "passes at #{latest.at} against #{inputs_text(latest)}"
+
+      case Surfex.Evidence.red_then_green(evidence, c, declaration) do
+        {red, _green} ->
+          "#{Surfex.Evidence.note()}: check #{c}@#{declaration} failed at #{red.at} " <>
+            "(#{inputs_text(red)}) and #{passes}"
+
+        nil ->
+          if MapSet.member?(status.discriminated, {c, declaration}),
+            do:
+              "#{Surfex.Evidence.note()}: check #{c}@#{declaration} discriminated " <>
+                "(recorded in the log) and #{passes}"
+      end
     else
       _ -> nil
     end
@@ -997,11 +1056,57 @@ defmodule Surfex.Record do
     status = Status.derive(scans, entries)
     meta = with_basis(meta, :review)
 
-    with :ok <-
-           if(is_binary(note) and String.trim(note) != "",
-             do: :ok,
-             else: {:error, "a note is required: say which claim each assertion checks"}
-           ),
+    noted =
+      if(is_binary(note) and String.trim(note) != "",
+        do: :ok,
+        else: {:error, "a note is required: say which claim each assertion checks"}
+      )
+
+    case {split_kind(test_id), find(scans, "check:" <> strip_kind(test_id))} do
+      {{kind, _}, {:ok, check}} when kind in [nil, :check] ->
+        with :ok <- noted,
+             {:ok, unit} <- find(scans, "spec:" <> strip_kind(unit_id)),
+             do: validate_check(status, check, unit, evidence, meta)
+
+      _test ->
+        validate_test(scans, status, noted, test_id, unit_id, evidence, meta)
+    end
+  end
+
+  # A review of a check (§18.3): its verifies to the unit, on a green run at its current
+  # version. What its note says is what the check would catch. A check verifies and
+  # doesn't realise, so nothing else is recorded.
+  defp validate_check(status, check, unit, evidence, meta) do
+    missing = "no verifies relation from check #{check.id} to #{unit.id}"
+    declaration = check.check.declaration
+
+    with {:ok, r} <-
+           live_relation(status, Entry.relation(:verifies, end_(check), end_(unit)), missing) do
+      green =
+        case Surfex.Evidence.latest(evidence, check.id, declaration) do
+          %{result: :passed, code: inputs} ->
+            Surfex.Scan.Checks.version(declaration, inputs) == check.hash
+
+          _ ->
+            false
+        end
+
+      cond do
+        Status.validated?(status, r) ->
+          {:error, "already validated: nothing to record (check #{check.id} and #{unit.id})"}
+
+        not green ->
+          {:error,
+           "no green run of check #{check.id} at its current version: run mix surfex.check #{check.id} first"}
+
+        true ->
+          confirm_each([r], status, meta)
+      end
+    end
+  end
+
+  defp validate_test(scans, status, noted, test_id, unit_id, evidence, meta) do
+    with :ok <- noted,
          {:ok, test} <- find(scans, "test:" <> strip_kind(test_id)),
          {:ok, unit} <- find(scans, "spec:" <> strip_kind(unit_id)),
          {:ok, reviewed} <- reviewed(status, test, unit),
@@ -1416,7 +1521,7 @@ defmodule Surfex.Record do
         if kind == nil and length(Enum.uniq_by(several, & &1.kind)) > 1,
           do:
             {:error,
-             "#{id} is scanned as more than one kind; prefix it with spec:, code:, test: or class:"},
+             "#{id} is scanned as more than one kind; prefix it with spec:, code:, test:, class: or check:"},
           else: {:error, "#{id} names #{length(several)} scanned records of one kind"}
     end
   end
@@ -1433,6 +1538,7 @@ defmodule Surfex.Record do
   defp split_kind("code:" <> rest), do: {:code, rest}
   defp split_kind("test:" <> rest), do: {:test, rest}
   defp split_kind("class:" <> rest), do: {:class, rest}
+  defp split_kind("check:" <> rest), do: {:check, rest}
   defp split_kind(id), do: {nil, id}
 
   defp strip_kind(id), do: id |> split_kind() |> elem(1)

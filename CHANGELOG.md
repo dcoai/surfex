@@ -129,6 +129,24 @@ milestone "Claims own their code" is in.
   completes claim grain):** `suggest --accept` will then record these as proposed
   `implements`, which fail the check until validated; until then nothing changes unless
   a project sets it.
+- **Checks: gates that verify claims** (#207, #245). Some claims are verified by a tool,
+  not a test: a lint rule, a security scanner, a project's own verification task.
+  `checks:` in `.surfex.exs` declares each as `[id:, run:, verifies:, inputs:]`: a
+  command that can fail, the spec units it verifies (`TABLE/*` for a table's every row,
+  and `unit_refs:` forms), and the files it inspects (spec §11.4). A check is a scan
+  record of the new kind `:check` (`Surfex.Scan.Checks`), versioned over its declaration
+  and its inputs' content; the log's `verifies` now runs from a test or a check, and a
+  `red_green` observation may be a check's (spec §12.1). `mix surfex.check [ID…]` runs
+  them and records each result as evidence in the test formatter's file (`Surfex.Check`).
+  A check discriminates as a test does, failing against one set of inputs and passing
+  against another, and then `mix surfex.confirm --evidence` confirms its `verifies`; one
+  that never failed is validated only by `mix surfex.validate CHECK UNIT --note`, the note
+  saying what it would catch (spec §17.1, §18.3). CI's `--evidence` check covers
+  check-confirmed claims, so a check CI doesn't run reads as not run. Checks are
+  suggested, listed as unrecorded and undeclared as tests are, close the triangle for the
+  code in their inputs, count in completeness, and are listed in the status text, its JSON
+  (`checks`) and `RELATIONS.md`. `mix surfex.test UNIT` names the checks verifying a unit,
+  and runs them with `--checks`. A project with no `checks:` scans and reports as before.
 
 ## [0.9.1] — 2026-10-14
 

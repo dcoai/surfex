@@ -10,6 +10,7 @@ defmodule Mix.Tasks.Surfex.Test do
       mix surfex.test cart-add --list          # name them; run nothing
       mix surfex.test cart-add -- --trace      # what follows `--` goes to mix test
       mix surfex.test --deviations             # every deviation test, skips included
+      mix surfex.test plat-3 --checks          # and the checks verifying it
 
   `mix test --only verifies:cart-add` selects a test tagged `["cart-add", "carts"]` by
   neither id: ExUnit compares a list tag as one string. This task selects by declaration
@@ -26,11 +27,17 @@ defmodule Mix.Tasks.Surfex.Test do
   one as a stale deviation. It takes no unit. None to run, another test in their files
   skipped for a deviation test's reason, or a skip reason that isn't a literal, is an
   error before anything runs.
+
+  A unit may also be verified by declared checks (`checks:`, §11.4). `--list` names them
+  after the tests, and a run says which there are. `--checks` runs them too, after the
+  tests, recording their evidence as `mix surfex.check` does (§17.1); the task fails if
+  either the tests or a check fail. With `--checks`, a unit only checks verify is no
+  error.
   """
 
   use Mix.Task
 
-  alias Surfex.Select
+  alias Surfex.{Check, Evidence, Select}
   alias Surfex.Status.Config
 
   @impl Mix.Task
@@ -43,7 +50,13 @@ defmodule Mix.Tasks.Surfex.Test do
 
     {opts, refs} =
       OptionParser.parse!(ours,
-        strict: [within: :boolean, list: :boolean, config: :string, deviations: :boolean]
+        strict: [
+          within: :boolean,
+          list: :boolean,
+          config: :string,
+          deviations: :boolean,
+          checks: :boolean
+        ]
       )
 
     deviations? = opts[:deviations] == true
@@ -69,20 +82,39 @@ defmodule Mix.Tasks.Surfex.Test do
 
     scans = Config.scans(config, root)
 
-    selected =
-      if deviations?,
-        do: Select.deviations(scans),
-        else:
-          Select.tests(scans, refs,
-            within: opts[:within] || false,
-            unit_refs: Config.unit_refs!(config)
-          )
+    select = fn checks? ->
+      Select.tests(scans, refs,
+        within: opts[:within] || false,
+        unit_refs: Config.unit_refs!(config),
+        checks: checks?
+      )
+    end
 
-    tests =
-      case selected do
-        {:ok, tests} -> tests
-        {:error, message} -> Mix.raise(message)
+    # The checks verifying the units, whatever the run takes (§11.4).
+    checks =
+      case if(deviations?, do: {:ok, []}, else: select.(true)) do
+        {:ok, verifiers} -> Enum.filter(verifiers, &(&1.kind == :check))
+        {:error, _} -> []
       end
+
+    selected =
+      cond do
+        deviations? -> Select.deviations(scans)
+        opts[:checks] || opts[:list] -> select.(true)
+        true -> select.(false)
+      end
+
+    verifiers =
+      case selected do
+        {:ok, verifiers} ->
+          verifiers
+
+        {:error, message} ->
+          hint = if checks == [], do: "", else: " (checks verify it: run them with --checks)"
+          Mix.raise(message <> hint)
+      end
+
+    {_, tests} = Enum.split_with(verifiers, &(&1.kind == :check))
 
     # A deviation test is skipped beside its tag: included by its reason, it runs (§17).
     {selection, what} =
@@ -90,23 +122,58 @@ defmodule Mix.Tasks.Surfex.Test do
         do: {Select.deviation_args(tests), "a deviation"},
         else: {Select.args(tests), Enum.join(refs, ", ")}
 
-    if opts[:list] do
-      for t <- tests, do: Mix.shell().info("#{t.id}  #{hd(Select.args([t]))}")
-    else
-      argv = selection ++ passed
-      n = length(tests)
+    cond do
+      opts[:list] ->
+        for t <- tests, do: Mix.shell().info("#{t.id}  #{hd(Select.args([t]))}")
+        for c <- checks, do: Mix.shell().info("check #{c.id}  #{c.check.run}")
 
-      Mix.shell().info(
-        "running #{n} #{if n == 1, do: "test", else: "tests"} declaring #{what}: " <>
-          Enum.join(["mix", "test" | argv], " ")
-      )
+      true ->
+        status = if tests == [], do: 0, else: run_tests(tests, selection, passed, what, root)
 
-      mix = System.find_executable("mix") || Mix.raise("no mix executable on the PATH")
+        if checks != [] and opts[:checks] != true,
+          do:
+            Mix.shell().info(
+              "checks verifying it too: #{Enum.map_join(checks, ", ", & &1.id)} (run them with --checks)"
+            )
 
-      case System.cmd(mix, ["test" | argv], cd: root, into: IO.stream(), stderr_to_stdout: true) do
-        {_, 0} -> :ok
-        {_, status} -> exit({:shutdown, status})
-      end
+        failed = if opts[:checks], do: run_checks(checks, root), else: []
+
+        cond do
+          status != 0 -> exit({:shutdown, status})
+          failed != [] -> Mix.raise("checks failed: #{Enum.join(failed, ", ")}")
+          true -> :ok
+        end
     end
+  end
+
+  defp run_tests(tests, selection, passed, what, root) do
+    argv = selection ++ passed
+    n = length(tests)
+
+    Mix.shell().info(
+      "running #{n} #{if n == 1, do: "test", else: "tests"} declaring #{what}: " <>
+        Enum.join(["mix", "test" | argv], " ")
+    )
+
+    mix = System.find_executable("mix") || Mix.raise("no mix executable on the PATH")
+
+    {_, status} =
+      System.cmd(mix, ["test" | argv], cd: root, into: IO.stream(), stderr_to_stdout: true)
+
+    status
+  end
+
+  # The checks' results recorded as `mix surfex.check` records them (§17.1); the ids of
+  # those that failed.
+  defp run_checks(checks, root) do
+    records =
+      Check.run(checks, root, fn command, root ->
+        Mix.shell().info("running: #{command}")
+        Check.shell(command, root)
+      end)
+
+    Evidence.append(Evidence.path(root), records)
+    for r <- records, do: Mix.shell().info("check #{r.test}: #{r.result}")
+    for %{result: :failed, test: id} <- records, do: id
   end
 end

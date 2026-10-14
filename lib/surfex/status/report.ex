@@ -58,6 +58,8 @@ defmodule Surfex.Status.Report do
         &unit_text/1
       ),
       items("New (in no relation)", status.new, &unit_text/1),
+      # Listed where a project declares any, so other reports read as before (§11.4).
+      items("Checks (gates that verify claims)", checks(status), &check_line/1),
       items("Unmet (required relation missing)", status.unmet, fn %{
                                                                     scan: scan,
                                                                     requires: requires
@@ -106,12 +108,12 @@ defmodule Surfex.Status.Report do
       ),
       items("Marked (the spec needs an update)", status.marks, &mark_text/1),
       items("Undeclared (a test no longer declares what it verifies)", status.undeclared, fn u ->
-        "verifies  test #{u.test} → spec #{u.spec}"
+        "verifies  #{verifier(u.test)} → spec #{u.spec}"
       end),
       items(
         "Unrecorded (a test declares what the log doesn't record)",
         status.unrecorded,
-        &"verifies  test #{describe({:test, &1.test}, status)} → spec #{&1.spec}: #{unrecorded_text(&1)}"
+        &"verifies  #{verifier(&1.test, status)} → spec #{&1.spec}: #{unrecorded_text(&1)}"
       ),
       items(
         "Moved (a unit no longer sits in what it refines)",
@@ -200,6 +202,14 @@ defmodule Surfex.Status.Report do
       "units" =>
         status |> Status.units() |> Map.new(fn {role, n} -> {Atom.to_string(role), n} end),
       "new" => Enum.map(status.new, &scan_json/1),
+      "checks" =>
+        Enum.map(checks(status), fn s ->
+          Map.merge(scan_json(s), %{
+            "run" => s.check.run,
+            "declaration" => s.check.declaration,
+            "inputs" => s.check.inputs
+          })
+        end),
       "list_keys" =>
         Enum.map(Status.list_keys(status), fn k ->
           Map.merge(scan_json(k.row), %{"table" => k.table, "separator" => k.separator})
@@ -356,6 +366,7 @@ defmodule Surfex.Status.Report do
             {"baseline", Status.baseline_count(status)}
             | through_stat(status)
           ] ++
+            check_stat(status) ++
             [
               {"broken citations", length(status.citations)},
               {"triangle gaps", length(status.triangle)}
@@ -378,6 +389,13 @@ defmodule Surfex.Status.Report do
             status.new,
             &%{"Item" => {:code, "#{&1.kind} #{&1.id}"}}
           ) ++
+          id_group.("checks", ["Item", "Verifies"], checks(status), fn s ->
+            %{
+              "Item" => {:code, "check #{s.id}"},
+              "Verifies" =>
+                {:raw, Enum.map_intersperse(s.declares, ", ", fn {_, ref} -> Span.code(ref) end)}
+            }
+          end) ++
           id_group.("triangle", ["Item", "Gap"], status.triangle, fn g ->
             %{"Item" => {:code, "spec #{g.spec}"}, "Gap" => {:raw, gap_what(g, &Span.code/1)}}
           end) ++
@@ -396,11 +414,11 @@ defmodule Surfex.Status.Report do
             }
           end) ++
           id_group.("undeclared", ["Item", "Verified"], status.undeclared, fn u ->
-            %{"Item" => {:code, "test #{u.test}"}, "Verified" => {:code, "spec #{u.spec}"}}
+            %{"Item" => {:code, verifier(u.test)}, "Verified" => {:code, "spec #{u.spec}"}}
           end) ++
           id_group.("unrecorded", ["Item", "Declares"], status.unrecorded, fn u ->
             %{
-              "Item" => {:code, "test #{u.test}"},
+              "Item" => {:code, verifier(u.test)},
               "Declares" => {:raw, coded("spec #{u.spec}", unrecorded_text(u))}
             }
           end) ++
@@ -525,6 +543,24 @@ defmodule Surfex.Status.Report do
   defp items(title, list, fun), do: ["\n", title, ":\n", Enum.map(list, &["  ", fun.(&1), "\n"])]
 
   defp end_text({kind, id}), do: "#{kind} #{id}"
+
+  # A verifier as a list names it: a check is listed as `check ID` (§11.4), a test by id.
+  defp verifier("check " <> _ = check), do: check
+  defp verifier(test), do: "test #{test}"
+
+  defp verifier("check " <> _ = check, _status), do: check
+  defp verifier(test, status), do: "test #{describe({:test, test}, status)}"
+
+  # The declared checks (§11.4), by id: their record and what they declare.
+  defp checks(status),
+    do: for({{:check, _}, scan} <- Enum.sort(status.scans), do: scan)
+
+  defp check_line(scan) do
+    refs = Enum.map_join(scan.declares, ", ", fn {_type, ref} -> ref end)
+    inputs = map_size(scan.check.inputs)
+
+    "check #{scan.id}: verifies #{refs}; inspects #{inputs} #{if inputs == 1, do: "file", else: "files"}"
+  end
 
   defp describe({_kind, id} = key, status) do
     case Map.get(status.scans, key) do
@@ -666,6 +702,14 @@ defmodule Surfex.Status.Report do
       "tips" => Enum.map(r.tips, & &1.id),
       "through" => r.tip && r.tip.through
     }
+  end
+
+  # A row only where a project declares checks (§11.4), so others keep their golden.
+  defp check_stat(status) do
+    case length(checks(status)) do
+      0 -> []
+      n -> [{"checks", n}]
+    end
   end
 
   # A row only when some review named a path (§18), so a project with none keeps its
