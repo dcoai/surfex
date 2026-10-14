@@ -62,8 +62,8 @@ defmodule Surfex.MigrateTest do
       code("M.helper/1", {11, 12}),
       code("M.encode/1", {14, 15}),
       code("M.other/1", {17, 18}),
-      test_scan(@t1, ["M.get/1"]),
-      test_scan(@t2, ["M.get/1", "M.list/1"])
+      %{test_scan(@t1, ["M.get/1"]) | declares: [{:verifies, @h1}]},
+      %{test_scan(@t2, ["M.get/1", "M.list/1"]) | declares: [{:verifies, @h2}]}
     ]
 
   defp rel(type, {ak, a}, {bk, b}, basis),
@@ -193,4 +193,211 @@ defmodule Surfex.MigrateTest do
 
     assert %{sections: [%{section: @p}]} = Migrate.report(scans(), entries(), [@p])
   end
+
+  describe "migrating" do
+    @meta [by: "tester", commit: "abc", at: "2026-10-14T12:00:00Z"]
+
+    # The claim relation validated, as a review records it: the relation's tip again, at
+    # its versions, with basis review.
+    defp reviewed(entries, code, claim) do
+      relation = Entry.relation(:implements, %{kind: :code, id: code}, %{kind: :spec, id: claim})
+      tips = Surfex.Status.tips(entries, relation)
+
+      Entry.new!(
+        at: "2026-10-14T13:00:00Z",
+        op: :relate,
+        type: :implements,
+        basis: :review,
+        parents: Enum.map(tips, & &1.id),
+        ends: hd(tips).ends,
+        note: "reviewed"
+      )
+    end
+
+    defp derive(entries), do: Surfex.Status.derive(scans(), entries)
+
+    defp state(status, code, unit) do
+      relation = Entry.relation(:implements, %{kind: :code, id: code}, %{kind: :spec, id: unit})
+      Enum.find(status.relations, &(&1.relation == relation))
+    end
+
+    @tag verifies: "migrate-accept"
+    test "--accept records each single proposal, proposed and migrating, failing nothing" do
+      {:ok, recorded} = Migrate.accept(scans(), entries(), [@s], @meta)
+
+      assert Enum.map(recorded, &{&1.op, &1.basis, &1.migrates, code_of(&1), spec_of(&1)}) == [
+               {:relate, :proposed, @s, "M.helper/1", @h2},
+               {:relate, :proposed, @s, "M.list/1", @h2},
+               {:relate, :proposed, @s, "M.put/3", @row},
+               {:relate, :proposed, @s, "M.put/4", @row}
+             ]
+
+      assert hd(recorded).note == "migrating from #{@s} to its claim #{@h2}"
+
+      status = derive(entries() ++ recorded)
+      refute Surfex.Status.failing?(status)
+      assert %{state: :proposed, migrates: @s} = state(status, "M.list/1", @h2)
+      # The section keeps its relation until its claim's is validated.
+      assert %{state: :current} = state(status, "M.list/1", @s)
+
+      assert %{code: "M.list/1", section: @s, claims: [@h2], settled: false} in status.migrating
+
+      # The same claims named by hand, without migrates, fail as any proposed relation.
+      plain = for e <- recorded, do: Entry.new!(e |> Map.from_struct() |> Map.put(:migrates, nil))
+      assert Surfex.Status.failing?(derive(entries() ++ plain))
+
+      # The listing shows them migrating now, and a second --accept records nothing new.
+      assert [:none, :several, :migrating, :migrating, :migrating] =
+               Enum.map(Migrate.proposals(scans(), entries() ++ recorded, [@s]), & &1.outcome)
+
+      assert {:ok, []} = Migrate.accept(scans(), entries() ++ recorded, [@s], @meta)
+    end
+
+    @tag verifies: "migrate-accept"
+    test "the section's relation is retired only once its claim's is validated" do
+      {:ok, recorded} = Migrate.accept(scans(), entries(), [@s], @meta)
+      log = entries() ++ recorded
+      assert {:ok, []} = Migrate.settle(scans(), log, [@s], @meta)
+
+      log = log ++ [reviewed(log, "M.list/1", @h2)]
+      status = derive(log)
+
+      assert %{code: "M.list/1", settled: true} =
+               Enum.find(status.migrating, &(&1.code == "M.list/1"))
+
+      # --accept retires what is settled, noting the claim it moved to.
+      {:ok, [retire]} = Migrate.accept(scans(), log, [@s], @meta)
+      assert {retire.op, code_of(retire), spec_of(retire)} == {:retire, "M.list/1", @s}
+      assert retire.note == "moved to its claim #{@h2}"
+
+      status = derive(log ++ [retire])
+      assert %{state: :retired} = state(status, "M.list/1", @s)
+      assert %{state: :current, migrates: nil} = state(status, "M.list/1", @h2)
+      refute Enum.any?(status.migrating, &(&1.code == "M.list/1"))
+      refute Surfex.Status.failing?(status)
+
+      # Retired by hand before its claim holds it, the claim's proposed relation fails.
+      early =
+        Entry.new!(
+          at: "2026-10-14T14:00:00Z",
+          op: :retire,
+          type: :implements,
+          parents: [Enum.find(entries(), &(code_of(&1) == "M.helper/1")).id],
+          ends: Enum.find(entries(), &(code_of(&1) == "M.helper/1")).ends
+        )
+
+      status = derive(log ++ [early])
+      assert %{state: :proposed, migrates: nil} = state(status, "M.helper/1", @h2)
+      assert Surfex.Status.failing?(status)
+
+      # suggest proposes the same retirement, and --accept records it.
+      profile = Surfex.Status.Config.profile!([sources: ["spec.md"]], "M")
+      log = log ++ [retire, reviewed(log, "M.helper/1", @h2)]
+      suggestions = Surfex.Suggest.all(profile, [], scans(), log, "test/fixtures/none")
+      assert [%{code: "M.helper/1", section: @s, claims: [@h2]}] = suggestions.migrated
+
+      only = Map.new(suggestions, fn {k, v} -> {k, if(k == :migrated, do: v, else: [])} end)
+      {:ok, [retire]} = Surfex.Suggest.accept_all(only, scans(), log, @meta)
+      assert {retire.op, retire.note} == {:retire, "moved to its claim #{@h2}"}
+    end
+
+    @tag verifies: "migrate-accept"
+    test "--code --to records a reviewer's choice; a claim already holding it retires the section's" do
+      {:ok, [chosen]} = Migrate.choose(scans(), entries(), @s, "M.get/1", [@h1], @meta)
+      assert {chosen.migrates, code_of(chosen), spec_of(chosen)} == {@s, "M.get/1", @h1}
+
+      # One arity names the definition: both are chosen.
+      {:ok, both} = Migrate.choose(scans(), entries(), @s, "M.put/4", [@row], @meta)
+      assert Enum.map(both, &code_of/1) == ["M.put/3", "M.put/4"]
+
+      assert {:error, "spec.md#p: not a claim inside spec.md#s"} =
+               Migrate.choose(scans(), entries(), @s, "M.get/1", [@p], @meta)
+
+      assert {:error, "M.other/1 has no live implements to spec.md#s" <> _} =
+               Migrate.choose(scans(), entries(), @s, "M.other/1", [@h1], @meta)
+
+      # The claim already holds a validated relation: nothing to wait for.
+      held = reviewed([chosen], "M.get/1", @h1)
+
+      {:ok, [retire]} =
+        Migrate.choose(scans(), entries() ++ [chosen, held], @s, "M.get/1", [@h1], @meta)
+
+      assert {retire.op, code_of(retire), spec_of(retire)} == {:retire, "M.get/1", @s}
+
+      # A claim the code was declined from is no candidate.
+      declined =
+        Entry.new!(
+          at: "2026-10-14T09:00:00Z",
+          op: :retire,
+          type: :implements,
+          note: "not this one",
+          ends: [%{kind: :code, id: "M.get/1", hash: "c1"}, %{kind: :spec, id: @h1, hash: "s1"}]
+        )
+
+      [get] =
+        for p <- Migrate.proposals(scans(), entries() ++ [declined], [@s]),
+            p.codes == ["M.get/1"],
+            do: p
+
+      assert {get.outcome, Enum.map(get.claims, & &1.claim)} == {:single, [@h2]}
+    end
+
+    @tag verifies: "migrate-accept"
+    test "the reports show what is migrating" do
+      {:ok, recorded} = Migrate.accept(scans(), entries(), [@s], @meta)
+      status = derive(entries() ++ recorded)
+      alias Surfex.Status.Report
+
+      text = Report.text(status)
+      assert text =~ "Migrating (a section's implements moving to its claims)"
+      assert text =~ "implements  code M.list/1: spec.md#s → spec.md#h2: the section keeps"
+
+      json = Entry.json(Report.json(status))
+
+      assert %{"code" => "M.list/1", "section" => @s, "claims" => [@h2], "settled" => false} in json[
+               "migrating"
+             ]
+
+      assert Enum.any?(json["relations"], &(&1["migrates"] == @s))
+
+      golden = status |> Report.golden() |> Surfex.Golden.render()
+      assert golden =~ "**migrating**"
+      assert golden =~ "`:proposed` · migrating"
+    end
+  end
+
+  @tag verifies: "migrates-entry"
+  test "migrates is written only when set, on a proposed or baselined implements" do
+    ends = [%{kind: :code, id: "M.f/1", hash: "c1"}, %{kind: :spec, id: @h1, hash: "s1"}]
+    base = [at: "2026-10-14T10:00:00Z", op: :relate, type: :implements, ends: ends]
+
+    plain = Entry.new!(base ++ [basis: :proposed])
+    refute Entry.encode(plain) =~ "migrates"
+
+    moving = Entry.new!(base ++ [basis: :proposed, migrates: @s])
+    assert String.ends_with?(Entry.encode(moving), ~s("basis":"proposed","migrates":"spec.md#s"}))
+    assert {:ok, ^moving} = Entry.decode(Entry.encode(moving))
+    assert Map.get(Entry.new!(base ++ [basis: :baseline, migrates: @s]), :migrates) == @s
+
+    for bad <- [
+          base ++ [basis: :review, migrates: @s],
+          [at: "2026-10-14T10:00:00Z", op: :retire, type: :implements, ends: ends, migrates: @s],
+          [
+            at: "2026-10-14T10:00:00Z",
+            op: :relate,
+            type: :verifies,
+            basis: :proposed,
+            ends: [%{kind: :test, id: "T", hash: "t1"}, %{kind: :spec, id: @h1, hash: "s1"}],
+            migrates: @s
+          ]
+        ] do
+      assert {:error, "only a proposed or baselined implements carries migrates" <> _} =
+               Entry.build(bad)
+    end
+
+    assert {:error, _} = Entry.build(base ++ [basis: :proposed, migrates: " "])
+  end
+
+  defp code_of(entry), do: Enum.find(entry.ends, &(&1.kind == :code)).id
+  defp spec_of(entry), do: Enum.find(entry.ends, &(&1.kind == :spec)).id
 end

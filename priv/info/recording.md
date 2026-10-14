@@ -31,6 +31,12 @@ Create the log once with `mix surfex.log --init` (it also sets git's union merge
   `--report [SECTION…]`: what migrating buys: relations an edit dangles now and after, the
   marking a prose section needs first, each item's dangle width; with no section, every
   section worst first, split into those whose claims are units and prose ones.
+  `--accept` records each single proposal, proposed, as **migrating**: it doesn't fail
+  while the section keeps its relation, so a section can move over several commits.
+  Validate the claim's relation (evidence or `mix surfex.validate`); once it holds, the
+  next `--accept` or `mix surfex.suggest --accept` retires the section's, noting the claim.
+  `--code ID --to CLAIM` records your choice for several, or for none once its claim is
+  written.
 
 Types: `implements`, `verifies`, `tests`, `refines`, `depends_on`, `excuses`.
 Ids: `spec.md#anchor` or `spec.md#Heading/Path`, a bare hint id, `Mod`, `Mod.fun/2`,

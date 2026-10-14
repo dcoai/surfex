@@ -20,7 +20,7 @@ defmodule Surfex.Migrate do
   """
 
   alias Surfex.Log.Entry
-  alias Surfex.{Scan, Status}
+  alias Surfex.{Record, Scan, Status}
 
   # The spec units that are claims (§11.1, §15.1). A section and a table are not: a
   # relation to one is section grain.
@@ -36,14 +36,16 @@ defmodule Surfex.Migrate do
   @typedoc """
   One proposal: the code items of one definition related to `unit` (the section, or a
   table in it), and the claims inside that unit that could own them. `outcome` is `:single`
-  (one claim), `:several` (listed, never decided) or `:none` (the spec work the migration
-  surfaces).
+  (one claim), `:several` (listed, never decided), `:none` (the spec work the migration
+  surfaces) or `:migrating` (recorded, its claims listed; `settled` once every claim
+  relation is validated, when the section relation is ready to retire).
   """
   @type proposal :: %{
           section: String.t(),
           unit: String.t(),
           codes: [String.t()],
-          outcome: :single | :several | :none,
+          outcome: :single | :several | :none | :migrating,
+          settled: boolean,
           claims: [%{claim: String.t(), why: [reason]}]
         }
 
@@ -92,16 +94,36 @@ defmodule Surfex.Migrate do
         unit <- [section | Map.get(ix.tables, section, [])],
         signs = signs(ix, unit),
         codes <- groups(ix, unit) do
-      claims = candidates(ix, signs, codes)
+      case Enum.find_value(codes, &ix.migrating[{&1, unit}]) do
+        %{claims: claims, settled: settled} ->
+          %{
+            section: section,
+            unit: unit,
+            codes: codes,
+            outcome: :migrating,
+            settled: settled,
+            claims: for(k <- claims, do: %{claim: k, why: []})
+          }
 
-      outcome =
-        case claims do
-          [] -> :none
-          [_] -> :single
-          _ -> :several
-        end
+        nil ->
+          claims = candidates(ix, signs, codes)
 
-      %{section: section, unit: unit, codes: codes, outcome: outcome, claims: claims}
+          outcome =
+            case claims do
+              [] -> :none
+              [_] -> :single
+              _ -> :several
+            end
+
+          %{
+            section: section,
+            unit: unit,
+            codes: codes,
+            outcome: outcome,
+            settled: false,
+            claims: claims
+          }
+      end
     end
     |> Enum.sort_by(&{outcome_order(&1.outcome), &1.section, &1.codes})
   end
@@ -109,6 +131,154 @@ defmodule Surfex.Migrate do
   defp outcome_order(:none), do: 0
   defp outcome_order(:several), do: 1
   defp outcome_order(:single), do: 2
+  defp outcome_order(:migrating), do: 3
+
+  @doc """
+  Records the migration of `sections` (§14.1), as `mix surfex.migrate --accept` does: each
+  single-candidate proposal as an `implements` between its code and its claim, recorded
+  **proposed** with `migrates` naming the section (or table) it moves from, so it doesn't
+  fail while the section still holds its relation. Then each **settled** pair, whose claim
+  relations are all validated now, retires its section relation, noting the claims it
+  moved to. A section never loses a relation before its claim holds one. `meta` is the
+  recording metadata (`Surfex.Record`); its note, if any, is added to each entry's.
+  """
+  @spec accept([Scan.t()], [Entry.t()], [String.t()], keyword) ::
+          {:ok, [Entry.t()]} | {:error, String.t()}
+  def accept(scans, entries, sections, meta) do
+    ix = index(scans, Status.derive(scans, entries))
+
+    steps =
+      for %{outcome: :single, unit: unit, codes: codes, claims: [%{claim: claim}]} <-
+            proposals_from(ix, sections),
+          code <- codes,
+          do: migration(ix, scans, code, [claim], unit, meta)
+
+    with {:ok, recorded} <- run(steps, entries),
+         {:ok, settled} <- settle(scans, entries ++ recorded, sections, meta),
+         do: {:ok, recorded ++ settled}
+  end
+
+  @doc """
+  Records a reviewer's choice (§14.1): the code `code` (and every arity of its definition
+  related to the section) moves from `section`, or a table in it, to each of `claims`,
+  each a claim inside that unit. For a proposal with several candidates, or none until its
+  claim was written. Recorded as `accept/4` records a single one.
+  """
+  @spec choose([Scan.t()], [Entry.t()], String.t(), String.t(), [String.t()], keyword) ::
+          {:ok, [Entry.t()]} | {:error, String.t()}
+  def choose(scans, entries, section, code, claims, meta) do
+    ix = index(scans, Status.derive(scans, entries))
+
+    found =
+      for unit <- [section | Map.get(ix.tables, section, [])],
+          group <- groups(ix, unit),
+          code in group,
+          do: {unit, group}
+
+    case found do
+      [] ->
+        {:error,
+         "#{code} has no live implements to #{section} or a table in it: nothing to migrate"}
+
+      [{unit, group} | _] ->
+        inside = Map.get(ix.claims_in, unit, [])
+
+        case Enum.reject(claims, &(&1 in inside)) do
+          [] ->
+            group |> Enum.map(&migration(ix, scans, &1, claims, unit, meta)) |> run(entries)
+
+          outside ->
+            {:error, "#{Enum.join(outside, ", ")}: not a claim inside #{unit}"}
+        end
+    end
+  end
+
+  @doc """
+  The retirement of each settled pair in `sections` (§14.1): a code item every claim
+  relation of which a migration recorded is validated now, so its section relation
+  retires, the note naming the claims it moved to. `mix surfex.suggest` proposes the same
+  for every section.
+  """
+  @spec settle([Scan.t()], [Entry.t()], [String.t()] | :all, keyword) ::
+          {:ok, [Entry.t()]} | {:error, String.t()}
+  def settle(scans, entries, sections, meta) do
+    status = Status.derive(scans, entries)
+    within = for %Scan{kind: :spec, within: w} = s <- scans, w != nil, into: %{}, do: {s.id, w}
+
+    for %{settled: true, code: code, section: unit, claims: claims} <- status.migrating,
+        sections == :all or Enum.any?(enclosing(unit, within), &(&1 in sections)) do
+      &Record.retire(
+        scans,
+        &1,
+        "code:" <> code,
+        "spec:" <> unit,
+        :implements,
+        settled_note(claims, meta)
+      )
+    end
+    |> run(entries)
+  end
+
+  @doc "The note a settled pair's retirement carries: the claims its code moved to."
+  @spec settled_note([String.t()], keyword) :: keyword
+  def settled_note(claims, meta) do
+    moved =
+      "moved to #{if match?([_], claims), do: "its claim", else: "its claims"} #{Enum.join(claims, ", ")}"
+
+    Keyword.put(meta, :note, if(meta[:note], do: "#{moved}: #{meta[:note]}", else: moved))
+  end
+
+  # One code item's move to its claims, as a step. Where every claim already holds a
+  # validated relation to the code, nothing is left to wait for: the section's retires.
+  defp migration(ix, scans, code, claims, unit, meta) do
+    held? =
+      &MapSet.member?(
+        ix.validated,
+        Entry.relation(:implements, %{kind: :code, id: code}, %{kind: :spec, id: &1})
+      )
+
+    if Enum.all?(claims, held?) do
+      &Record.retire(
+        scans,
+        &1,
+        "code:" <> code,
+        "spec:" <> unit,
+        :implements,
+        settled_note(claims, meta)
+      )
+    else
+      fn entries ->
+        claims
+        |> Enum.reject(held?)
+        |> Enum.map(fn claim -> &record_migration(scans, &1, code, claim, unit, meta) end)
+        |> run(entries)
+      end
+    end
+  end
+
+  defp record_migration(scans, entries, code, claim, unit, meta) do
+    note = "migrating from #{unit} to its claim #{claim}"
+    meta = Keyword.put(meta, :note, if(meta[:note], do: "#{note}: #{meta[:note]}", else: note))
+
+    Record.relate(
+      scans,
+      entries,
+      "code:" <> code,
+      "spec:" <> claim,
+      :implements,
+      Keyword.put(meta, :migrates, unit)
+    )
+  end
+
+  # Each step sees the entries the ones before it recorded.
+  defp run(steps, entries) do
+    Enum.reduce_while(steps, {:ok, []}, fn step, {:ok, acc} ->
+      case step.(entries ++ acc) do
+        {:ok, more} -> {:cont, {:ok, acc ++ more}}
+        error -> {:halt, error}
+      end
+    end)
+  end
 
   @typedoc "What migrating one section buys (§14.1)."
   @type section_report :: %{
@@ -121,10 +291,11 @@ defmodule Surfex.Migrate do
           single: non_neg_integer,
           several: non_neg_integer,
           none: non_neg_integer,
+          migrating: non_neg_integer,
           widths: [
             %{
               codes: [String.t()],
-              outcome: :single | :several | :none,
+              outcome: :single | :several | :none | :migrating,
               now: non_neg_integer,
               after: non_neg_integer
             }
@@ -197,11 +368,15 @@ defmodule Surfex.Migrate do
     widths =
       for p <- proposals do
         after_width =
-          case p.claims do
-            [] ->
+          case p do
+            %{claims: []} ->
               if p.unit == section, do: after_, else: width(ix, p.unit)
 
-            claims ->
+            # Recorded already: the claims hold the moved relations.
+            %{outcome: :migrating, claims: claims} ->
+              Enum.max(for c <- claims, do: width(ix, c.claim))
+
+            %{claims: claims} ->
               Enum.max(for c <- claims, do: width(ix, c.claim) + length(p.codes))
           end
 
@@ -219,6 +394,7 @@ defmodule Surfex.Migrate do
       single: count.([:single]),
       several: count.([:several]),
       none: count.([:none]),
+      migrating: count.([:migrating]),
       widths: widths
     }
   end
@@ -303,7 +479,21 @@ defmodule Surfex.Migrate do
           into: %{},
           do: {key, m.id}
 
+    declined =
+      for %{state: :retired, type: :implements, relation: relation} <- status.relations,
+          into: MapSet.new(),
+          do: relation
+
+    validated =
+      for %{type: :implements, relation: relation} = r <- status.relations,
+          Status.validated?(status, r),
+          into: MapSet.new(),
+          do: relation
+
     %{
+      migrating: Map.new(status.migrating, &{{&1.code, &1.section}, &1}),
+      validated: validated,
+      declined: declined,
       spec: spec,
       code: code,
       sections: Enum.sort(for {id, %Scan{role: :section}} <- spec, do: id),
@@ -369,8 +559,17 @@ defmodule Surfex.Migrate do
   defp candidates(ix, signs, codes) do
     definition = Scan.definition(ix.code[hd(codes)])
 
+    declined? = fn claim ->
+      Enum.any?(codes, fn c ->
+        MapSet.member?(
+          ix.declined,
+          Entry.relation(:implements, %{kind: :code, id: c}, %{kind: :spec, id: claim})
+        )
+      end)
+    end
+
     found =
-      for %{claim: claim, scan: scan, tests: tests} <- signs.claims do
+      for %{claim: claim, scan: scan, tests: tests} <- signs.claims, not declined?.(claim) do
         names =
           for id <- codes, names?(scan, id), uniq: true, do: {:names, signs.key.(claim)}
 

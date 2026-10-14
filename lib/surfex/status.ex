@@ -113,6 +113,7 @@ defmodule Surfex.Status do
           changed: [{atom, String.t()}],
           impacted: boolean,
           deviates: [String.t()],
+          migrates: String.t() | nil,
           tips: [Entry.t()],
           tip: Entry.t() | nil
         }
@@ -134,6 +135,9 @@ defmodule Surfex.Status do
             %{test: String.t(), spec: String.t(), retired: nil | %{note: String.t() | nil}}
           ],
           moved: [%{from: String.t(), to: String.t(), now: String.t()}],
+          migrating: [
+            %{code: String.t(), section: String.t(), claims: [String.t()], settled: boolean}
+          ],
           unselectable: [%{test: String.t(), ids: [String.t()]}],
           deviating: [
             %{
@@ -253,7 +257,7 @@ defmodule Surfex.Status do
     runs = latest_runs(Keyword.get(opts, :evidence))
     deviating = deviating(scans, resolver, runs)
 
-    relations = relations |> impacted() |> deviates(deviating, within)
+    relations = relations |> impacted() |> deviates(deviating, within) |> open_migrations()
 
     # A deviation test that fails is the state it declares: listed with its deviation, not
     # as failed (§13.1). Any other test's failure fails its relations.
@@ -279,7 +283,7 @@ defmodule Surfex.Status do
             do: {test.id, test.hash}
       )
 
-    %{
+    status = %{
       relations: relations,
       new:
         scans
@@ -324,6 +328,49 @@ defmodule Surfex.Status do
       planned: planned,
       scans: by_id
     }
+
+    Map.put(status, :migrating, migrating(status))
+  end
+
+  # A claim relation a migration recorded (§14.1) migrates while its section relation holds:
+  # the section keeps its relation until the claim's is validated, so `migrates` is kept
+  # only while the relation from the same code to that section is live.
+  defp open_migrations(relations) do
+    live =
+      for %{state: state, relation: relation} <- relations,
+          state not in [:retired, :orphaned],
+          into: MapSet.new(),
+          do: relation
+
+    Enum.map(relations, fn
+      %{migrates: nil} = r ->
+        r
+
+      %{relation: {:implements, {:code, code}, _claim}, migrates: section, state: state} = r ->
+        from = Entry.relation(:implements, %{kind: :code, id: code}, %{kind: :spec, id: section})
+
+        if state in [:retired, :orphaned] or not MapSet.member?(live, from),
+          do: %{r | migrates: nil},
+          else: r
+    end)
+  end
+
+  # Each code item moving from a section to its claims (§14.1), with whether every claim
+  # relation is validated now: then the section relation is ready to retire.
+  defp migrating(status) do
+    status.relations
+    |> Enum.filter(&(&1.migrates != nil))
+    |> Enum.group_by(fn %{relation: {_, {:code, code}, _}, migrates: s} -> {code, s} end)
+    |> Enum.map(fn {{code, section}, rs} ->
+      %{
+        code: code,
+        section: section,
+        claims:
+          rs |> Enum.map(fn %{relation: {_, _, {:spec, claim}}} -> claim end) |> Enum.sort(),
+        settled: Enum.all?(rs, &validated?(status, &1))
+      }
+    end)
+    |> Enum.sort_by(&{&1.section, &1.code})
   end
 
   @doc """
@@ -338,8 +385,11 @@ defmodule Surfex.Status do
     failing = if status.planned == :fail, do: [:planned | failing], else: failing
     deviations_fail = status.policy.deviations == :fail
 
+    # A proposed relation that deviates, or that a migration recorded while its section
+    # still holds the relation (§14.1), doesn't fail.
     excused? = fn r ->
-      not deviations_fail and r.state == :proposed and r.deviates != []
+      r.state == :proposed and
+        ((not deviations_fail and r.deviates != []) or r.migrates != nil)
     end
 
     status.unmet != [] or status.broken != [] or status.stale != [] or status.citations != [] or
@@ -479,10 +529,22 @@ defmodule Surfex.Status do
       changed: changed,
       impacted: false,
       deviates: [],
+      migrates: migrates(type, group),
       tips: tips,
       tip: tip
     }
   end
+
+  # The section a claim relation moves from: the latest of its entries that names one
+  # (§14.1). Whether it still migrates is `open_migrations/1`'s to say.
+  defp migrates(:implements, group) do
+    case group |> Enum.filter(& &1.migrates) |> Enum.max_by(&{&1.at, &1.id}, fn -> nil end) do
+      nil -> nil
+      entry -> entry.migrates
+    end
+  end
+
+  defp migrates(_type, _group), do: nil
 
   @doc """
   The one judgement a relation's tips record (§13.1): the tip itself when there is one;

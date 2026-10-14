@@ -7,6 +7,8 @@ defmodule Mix.Tasks.Surfex.Migrate do
 
       mix surfex.migrate spec.md#carts                  # the proposals for one section
       mix surfex.migrate spec/08-reclamation.md --within  # every section under a prefix
+      mix surfex.migrate spec.md#carts --accept          # record the single ones
+      mix surfex.migrate spec.md#carts --code MyApp.Cart.add/2 --to spec.md#adding
       mix surfex.migrate --report                        # every section, worst first
       mix surfex.migrate --report spec.md#carts          # what migrating it buys
 
@@ -17,7 +19,18 @@ defmodule Mix.Tasks.Surfex.Migrate do
   Arities of one definition (default arguments) are one proposal. **None** comes first:
   code no claim owns is the spec work the migration surfaces, a claim not written yet or
   code that doesn't belong to the section. **Several** are listed and never decided:
-  which claim code realises is a judgement. Nothing is written.
+  which claim code realises is a judgement. Listing writes nothing.
+
+  `--accept [--note N]` records each single proposal (`Surfex.Migrate.accept/4`): the code
+  related to its claim, **proposed**, with `migrates` naming the section. Such a relation
+  **migrates**: it doesn't fail the status while the section still holds its relation, so
+  a section can be migrated across several commits. Validate it as any `implements`, by
+  evidence or a review (`mix surfex.validate TEST CLAIM`). Once every claim relation of a
+  code item is validated the pair is **settled**, and the section's relation is retired,
+  noting the claims it moved to: by the next `--accept`, or by `mix surfex.suggest
+  --accept`. A section never loses a relation before its claim holds one. `--code ID --to
+  CLAIM` (`--to` once per claim) records your choice for a proposal with several
+  candidates, or one with none once its claim is written (`Surfex.Migrate.choose/6`).
 
   `--report` is read-only too. Per section: the relations an edit of its text dangles now
   and after migration, its section-grain `implements` by outcome, the marking a prose
@@ -35,8 +48,16 @@ defmodule Mix.Tasks.Surfex.Migrate do
 
   @impl Mix.Task
   def run(args) do
-    {opts, refs} = R.parse(args, within: :boolean, report: :boolean)
-    {_root, scans, entries, _meta} = R.context(opts)
+    {opts, refs} =
+      R.parse(args,
+        within: :boolean,
+        report: :boolean,
+        accept: :boolean,
+        code: :string,
+        to: :keep
+      )
+
+    {root, scans, entries, meta} = R.context(opts)
     refs = for ref <- R.units(refs, scans, opts), do: String.replace_prefix(ref, "spec:", "")
 
     sections =
@@ -55,6 +76,25 @@ defmodule Mix.Tasks.Surfex.Migrate do
 
       sections == [] ->
         Mix.raise("name a section: mix surfex.migrate SECTION [--within], or --report")
+
+      opts[:code] != nil ->
+        claims =
+          for c <- R.units(Keyword.get_values(opts, :to), scans, opts),
+              do: String.replace_prefix(c, "spec:", "")
+
+        case {sections, claims} do
+          {[section], [_ | _]} ->
+            R.record(root, Migrate.choose(scans, entries, section, opts[:code], claims, meta))
+
+          {[_], []} ->
+            Mix.raise("--code needs the claim it moves to: --to CLAIM (once per claim)")
+
+          _ ->
+            Mix.raise("--code moves code from one section: name one, without --within")
+        end
+
+      opts[:accept] ->
+        R.record(root, Migrate.accept(scans, entries, sections, meta))
 
       true ->
         list(scans, entries, sections)
@@ -78,9 +118,21 @@ defmodule Mix.Tasks.Surfex.Migrate do
       do:
         Mix.shell().info(
           "#{length(proposals)} proposals: #{Map.get(counts, :single, 0)} single, " <>
-            "#{Map.get(counts, :several, 0)} several, #{Map.get(counts, :none, 0)} none"
+            "#{Map.get(counts, :several, 0)} several, #{Map.get(counts, :none, 0)} none" <>
+            if(counts[:migrating], do: ", #{counts[:migrating]} migrating", else: "") <>
+            if(counts[:single], do: "; --accept records the single ones", else: "")
         )
   end
+
+  defp line(%{outcome: :migrating, settled: true} = p),
+    do:
+      "settled   #{codes(p)} → #{claims(p)}: every claim holds it; --accept (or " <>
+        "mix surfex.suggest --accept) retires the section's relation"
+
+  defp line(%{outcome: :migrating} = p),
+    do:
+      "migrating #{codes(p)} → #{claims(p)}: validate the claim's relation (evidence, or " <>
+        "mix surfex.validate TEST CLAIM); the section keeps its relation until then"
 
   defp line(%{outcome: :none} = p),
     do:
@@ -91,10 +143,13 @@ defmodule Mix.Tasks.Surfex.Migrate do
     do:
       "several   #{codes(p)} → " <>
         Enum.map_join(p.claims, "; ", &"#{&1.claim} (#{why(&1.why)})") <>
-        ": which it realises is a judgement; relate it to one or more"
+        ": which it realises is a judgement: mix surfex.migrate #{p.section} --code " <>
+        "#{hd(p.codes)} --to CLAIM"
 
   defp line(%{outcome: :single, claims: [c]} = p),
     do: "single    #{codes(p)} → #{c.claim} (#{why(c.why)})"
+
+  defp claims(p), do: Enum.map_join(p.claims, ", ", & &1.claim)
 
   defp codes(%{codes: [one], unit: unit, section: section}),
     do: one <> on(unit, section)
@@ -151,6 +206,7 @@ defmodule Mix.Tasks.Surfex.Migrate do
         "#{s.section} (#{if s.kind == :prose, do: "prose", else: "claims are units"}): " <>
           "#{s.relations} relations now → #{s.after} after; implements #{s.implements}: " <>
           "#{s.single} single · #{s.several} several · #{s.none} none" <>
+          if(s.migrating > 0, do: " · #{s.migrating} migrating", else: "") <>
           if(s.marking > 0, do: "; marking dangles #{s.marking} once", else: "")
       )
 
