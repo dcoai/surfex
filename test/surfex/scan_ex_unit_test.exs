@@ -689,5 +689,37 @@ defmodule Surfex.ScanExUnitTest do
 
       assert calls == ["P.B", "P.B.g/1", "P.B.h/1"]
     end
+
+    # #219: a hidden module has no record; the code running it carries its definitions.
+    test "an import of a hidden module resolves against the definitions code runs of it" do
+      runner = %Scan{
+        kind: :code,
+        role: :function,
+        id: "P.C.f/1",
+        hash: "h",
+        location: %{file: "lib/p.ex", lines: {1, 2}},
+        runs: %{"P.Hid.rows/1" => []}
+      }
+
+      [test] =
+        Tests.tests(
+          ~S"""
+          defmodule T do
+            use ExUnit.Case
+            import P.Hid
+
+            test "a" do
+              rows(1)
+              assert_rows(1)
+            end
+          end
+          """,
+          "t.exs",
+          [runner]
+        )
+
+      # What the hidden module defines is a call to it; what it doesn't comes from elsewhere.
+      assert test.calls == ["P.Hid", "P.Hid.rows/1"]
+    end
   end
 end

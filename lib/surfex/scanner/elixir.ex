@@ -12,9 +12,9 @@ defmodule Surfex.Scanner.Elixir do
 
   What counts as public is `Surfex.SourceScan.defs/1`'s rule: `def`, `defmacro`,
   `defdelegate` and `defguard`, minus `@doc false` and undocumented `@impl` callbacks. A
-  module under `@moduledoc false` is skipped with its functions; a module nested in it is
-  not, since Elixir documents it separately. A nested module is keyed by its full name,
-  as Elixir names it.
+  module under `@moduledoc false` makes no items, nor do its functions; a module nested in
+  it does, since Elixir documents it separately. A nested module is keyed by its full
+  name, as Elixir names it.
 
   **Hidden definitions are covered, not listed** (spec §3.3). A `@doc false` definition
   or an undocumented `@impl` callback is no item, so its version goes into its module's,
@@ -23,6 +23,12 @@ defmodule Surfex.Scanner.Elixir do
   `use`s `GenServer` runs its hidden callbacks). A call naming one reaches it through the
   module's `Surfex.Item` `:hidden`. `Surfex.SourceScan.module_hash/1` and `defs/1` stay the
   surface alone.
+
+  **A hidden module's code is covered by what runs it, in any file.** Every definition of
+  a `@moduledoc false` module is hidden code. An item's version covers the hidden modules'
+  code it runs, transitively, stopping at code an item versions (a public function, or a
+  shown module's hidden definition). The item lists that code in its `Surfex.Item`
+  `:runs`, so a call naming it goes on through its calls.
 
   **`Mod.fun` without an arity cites every arity.** A spec that says "`MyApp.Cart.add`
   rejects a closed cart" is about the function, not one of its arities, so every arity
@@ -49,17 +55,26 @@ defmodule Surfex.Scanner.Elixir do
   def items(root, opts \\ []) do
     root = Path.expand(root)
 
-    root
-    |> files(Keyword.get(opts, :paths, ["lib/**/*.ex"]))
-    |> Enum.flat_map(fn file ->
-      rel = Path.relative_to(file, root)
+    # Every file is read before any version is made: a version covers the hidden code it
+    # runs in any module, in any file.
+    modules =
+      root
+      |> files(Keyword.get(opts, :paths, ["lib/**/*.ex"]))
+      |> Enum.flat_map(fn file ->
+        rel = Path.relative_to(file, root)
 
-      file
-      |> File.read!()
-      |> Code.string_to_quoted!(file: file, token_metadata: true)
-      |> modules([])
-      |> items_in(rel)
-    end)
+        file
+        |> File.read!()
+        |> Code.string_to_quoted!(file: file, token_metadata: true)
+        |> modules([])
+        |> Enum.map(fn {parts, node} -> read_module(parts, node, rel) end)
+      end)
+
+    index = hidden_code(modules)
+
+    modules
+    |> Enum.reject(& &1.hidden_module)
+    |> Enum.flat_map(&items_in(&1, index))
     |> Enum.sort_by(&{Item.key(&1), &1.kind})
   end
 
@@ -115,52 +130,94 @@ defmodule Surfex.Scanner.Elixir do
   defp modules({a, b}, prefix), do: modules(a, prefix) ++ modules(b, prefix)
   defp modules(_leaf, _prefix), do: []
 
-  defp items_in(modules, file) do
-    modules
-    |> Enum.reject(fn {_name, node} -> SourceScan.hidden_module?(node) end)
-    |> Enum.flat_map(fn {parts, node} ->
-      module = Enum.map_join(parts, ".", &Atom.to_string/1)
-      hidden = SourceScan.hidden_definitions(node)
-      calls = definition_calls(node, module, hidden)
+  # One module as read: its name, its hidden definitions, and what each of its public and
+  # hidden definitions calls. A module under `@moduledoc false` is read the same way; it
+  # makes no items, and all its definitions are hidden code (§3.3).
+  defp read_module(parts, node, file) do
+    module = Enum.map_join(parts, ".", &Atom.to_string/1)
+    hidden = SourceScan.hidden_definitions(node)
 
-      [
+    %{
+      name: module,
+      file: file,
+      node: node,
+      hidden_module: SourceScan.hidden_module?(node),
+      hidden: hidden,
+      calls: definition_calls(node, module, hidden)
+    }
+  end
+
+  # The code no item versions: every definition of each `@moduledoc false` module, shown
+  # or `@doc false`, by the key a call names it with, with its calls and its content (its
+  # clauses, the private definitions they reach and the attributes they read).
+  defp hidden_code(modules) do
+    for %{hidden_module: true, name: module, node: node, hidden: hidden, calls: calls} <- modules,
+        {key, nodes} <-
+          Map.merge(
+            SourceScan.definition_nodes(node),
+            Map.new(hidden, &{elem(&1, 0), elem(&1, 1).nodes})
+          ),
+        into: %{} do
+      {id(module, key),
+       %{calls: Map.fetch!(calls, key), hash: SourceScan.closure_hash(node, nodes)}}
+    end
+  end
+
+  defp items_in(%{name: module, file: file, node: node, hidden: hidden, calls: calls}, index) do
+    {module_hash, module_runs} =
+      beyond(
+        covering(node, SourceScan.module_hash(node), Map.keys(hidden), hidden),
+        Enum.flat_map(hidden, fn {key, _} -> Map.fetch!(calls, key) end),
+        index
+      )
+
+    [
+      %Item{
+        kind: :module,
+        name: module,
+        file: file,
+        hash: module_hash,
+        lines: SourceScan.line_range(node),
+        hidden: Map.new(hidden, fn {key, _} -> {id(module, key), Map.fetch!(calls, key)} end),
+        runs: module_runs
+      }
+    ] ++
+      for %{name: name, arity: arity, kind: kind, hash: hash, lines: lines} <-
+            SourceScan.defs(node) do
+        key = {name, arity}
+        local = runs(key, calls, module, hidden)
+
+        {hash, runs} =
+          beyond(
+            covering(node, hash, local, hidden),
+            Enum.flat_map([key | local], &Map.fetch!(calls, &1)),
+            index
+          )
+
         %Item{
-          kind: :module,
-          name: module,
+          kind: kind,
+          name: "#{name}/#{arity}",
+          parent: module,
           file: file,
-          hash: covering(node, SourceScan.module_hash(node), Map.keys(hidden), hidden),
-          lines: SourceScan.line_range(node),
-          hidden: Map.new(hidden, fn {key, _} -> {id(module, key), Map.fetch!(calls, key)} end)
+          hash: hash,
+          aliases: ["#{module}.#{name}"],
+          lines: lines,
+          calls: Map.fetch!(calls, key),
+          runs: runs
         }
-      ] ++
-        for %{name: name, arity: arity, kind: kind, hash: hash, lines: lines} <-
-              SourceScan.defs(node) do
-          key = {name, arity}
-
-          %Item{
-            kind: kind,
-            name: "#{name}/#{arity}",
-            parent: module,
-            file: file,
-            hash: covering(node, hash, runs(key, calls, module, hidden), hidden),
-            aliases: ["#{module}.#{name}"],
-            lines: lines,
-            calls: Map.fetch!(calls, key)
-          }
-        end ++
-        for %{name: name, arity: arity, hash: hash, lines: lines} <- SourceScan.types(node) do
-          # Keyed as ExDoc writes a type, so a function of the same name keeps its own key.
-          %Item{
-            kind: :type,
-            name: "t:#{module}.#{name}/#{arity}",
-            file: file,
-            hash: hash,
-            aliases: ["#{module}.#{name}"],
-            lines: lines,
-            shape: true
-          }
-        end
-    end)
+      end ++
+      for %{name: name, arity: arity, hash: hash, lines: lines} <- SourceScan.types(node) do
+        # Keyed as ExDoc writes a type, so a function of the same name keeps its own key.
+        %Item{
+          kind: :type,
+          name: "t:#{module}.#{name}/#{arity}",
+          file: file,
+          hash: hash,
+          aliases: ["#{module}.#{name}"],
+          lines: lines,
+          shape: true
+        }
+      end
   end
 
   # What each public and hidden definition calls (§5.2), by `{name, arity}`: what its
@@ -270,6 +327,37 @@ defmodule Surfex.Scanner.Elixir do
 
       :error ->
         follow(rest, calls, by_id, found)
+    end
+  end
+
+  # The version `hash` extended over the hidden modules' code the item runs from `calls`
+  # (its own, and those of its module's hidden definitions it covers), in any module and
+  # any file, transitively. It stops at code an item versions: a public definition, or a
+  # shown module's hidden one, which is in its module's version. With it, that code by key
+  # with its calls (`Surfex.Item` `:runs`). Unchanged when the item runs none.
+  defp beyond(hash, calls, index) do
+    case calls |> through(index, MapSet.new()) |> Enum.sort() do
+      [] ->
+        {hash, %{}}
+
+      ran ->
+        {SourceScan.definition_hash([hash | Enum.map(ran, &index[&1].hash)]),
+         Map.new(ran, &{&1, index[&1].calls})}
+    end
+  end
+
+  # The hidden modules' code reached from `calls`, transitively through it alone.
+  defp through([], _index, found), do: found
+
+  defp through([call | rest], index, found) do
+    case Map.fetch(index, call) do
+      {:ok, %{calls: calls}} ->
+        if MapSet.member?(found, call),
+          do: through(rest, index, found),
+          else: through(calls ++ rest, index, MapSet.put(found, call))
+
+      :error ->
+        through(rest, index, found)
     end
   end
 

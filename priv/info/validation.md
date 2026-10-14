@@ -28,9 +28,11 @@ its test drives the public entry point: evidence and a review credit the cited f
 names what the test calls itself. Code reached only at run time (messages, dispatch by
 name) isn't reached by reading the source, with one exception: a function calling its own
 module's behaviour (`GenServer.call`) reaches the module's hidden `@impl` callbacks, and
-a call to a hidden definition (a Mix task's `run/1`) goes on through what it calls. Hidden
-definitions are versioned in their module, and in the public functions that run them, so
-changing a callback dangles both. A review's note speaks for what was read, so
+a call to a hidden definition (a Mix task's `run/1`) goes on through what it calls, as
+does a call into a `@moduledoc false` module. Hidden definitions are versioned in their
+module, and in the public functions that run them, so changing a callback dangles both; a
+hidden module's code is versioned in every function and module that runs it, in any file.
+A review's note speaks for what was read, so
 `validate` credits reached code only when you name it: `--code ID`, after reading it.
 
 **Many at once**: `--file PATH` on `confirm` or `validate` records a file of relations in one

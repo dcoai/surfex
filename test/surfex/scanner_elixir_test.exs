@@ -417,6 +417,154 @@ defmodule Surfex.Scanner.ElixirTest do
     end
   end
 
+  # #219: a Mix task hands its work to a @moduledoc false module shared by two tasks, which
+  # calls the cited function; neither reach nor any version went through it.
+  describe "hidden modules" do
+    @describetag :tmp_dir
+
+    @hm_report """
+    defmodule Shop.Report do
+      @moduledoc "Reports."
+      def render(rows), do: Shop.Internal.Format.rows(rows)
+      def plain, do: 1
+
+      @doc false
+      def via(rows), do: Shop.Internal.Format.rows(rows)
+    end
+    """
+
+    @hm_format """
+    defmodule Shop.Internal.Format do
+      @moduledoc false
+      def rows(rows), do: rows |> Shop.Internal.Table.cells() |> pad()
+      def unused, do: 0
+      defp pad(rows), do: rows
+    end
+    """
+
+    @hm_table """
+    defmodule Shop.Internal.Table do
+      @moduledoc false
+      def cells(rows), do: Shop.Cell.wrap(rows)
+      @doc false
+      def loop(n), do: Shop.Internal.Table.loop(n)
+
+      defmodule Shown do
+        @moduledoc "Nested in a hidden module, and documented on its own."
+        def go, do: Shop.Internal.Table.loop(1)
+      end
+    end
+    """
+
+    @hm_cell """
+    defmodule Shop.Cell do
+      @moduledoc "Cells."
+      def wrap(rows), do: [rows]
+    end
+    """
+
+    defp hm_scan(root, edits \\ []) do
+      sources = [report: @hm_report, format: @hm_format, table: @hm_table, cell: @hm_cell]
+
+      scan(
+        root,
+        for({name, source} <- sources, do: {name, edit_source(source, edits[name])})
+      )
+    end
+
+    defp edit_source(source, nil), do: source
+
+    defp edit_source(source, {from, to}) do
+      assert source =~ from
+      String.replace(source, from, to)
+    end
+
+    @tag verifies: ["hidden-module-versions", "elixir-scanner-items"]
+    test "a hidden module's code is in the version of each item that runs it, in any file, and stops at public code",
+         %{tmp_dir: root} do
+      before = hm_scan(root)
+
+      # No items of its own; a module nested in it is scanned.
+      refute Enum.any?(Map.keys(before), &String.starts_with?(&1, "Shop.Internal.Format"))
+      refute Map.has_key?(before, "Shop.Internal.Table")
+      assert before["Shop.Internal.Table.Shown.go/0"]
+
+      # A change to it, or to a hidden module it calls, or a private helper it reaches,
+      # re-versions what runs it: a public function calling it, and a module whose hidden
+      # definition does.
+      runners = ["Shop.Report", "Shop.Report.render/1"]
+
+      for edit <- [
+            format: {"def rows(rows), do: rows |>", "def rows(rows), do: Enum.reverse(rows) |>"},
+            format: {"defp pad(rows), do: rows", "defp pad(rows), do: [rows]"},
+            table: {"Shop.Cell.wrap(rows)", "Shop.Cell.wrap(Enum.sort(rows))"}
+          ] do
+        assert changed(versions(before), versions(hm_scan(root, [edit]))) == runners,
+               inspect(edit)
+      end
+
+      # A change to the public function the hidden code calls is that function's alone.
+      assert changed(
+               versions(before),
+               versions(hm_scan(root, cell: {"do: [rows]", "do: {rows}"}))
+             ) == ["Shop.Cell.wrap/1"]
+
+      # Code nothing public runs is in no version.
+      assert changed(
+               versions(before),
+               versions(hm_scan(root, format: {"def unused, do: 0", "def unused, do: 1"}))
+             ) == []
+
+      # The surface functions are unchanged: an item running no hidden code keeps the
+      # version Surfex.SourceScan.defs/1 gives, and one running some doesn't.
+      surface =
+        Map.new(Surfex.SourceScan.defs(Code.string_to_quoted!(@hm_report)), &{&1.name, &1.hash})
+
+      assert before["Shop.Report.plain/0"].hash == surface[:plain]
+      refute before["Shop.Report.render/1"].hash == surface[:render]
+    end
+
+    @tag verifies: ["hidden-module-reach", "code-calls"]
+    test "a call naming a hidden module's code reaches what it calls, never a record for it",
+         %{tmp_dir: root} do
+      items = hm_scan(root)
+
+      # Each item running it carries it, with its calls; it runs on through Table.
+      runs = %{
+        "Shop.Internal.Format.rows/1" => ["Shop.Internal.Table", "Shop.Internal.Table.cells/1"],
+        "Shop.Internal.Table.cells/1" => ["Shop.Cell", "Shop.Cell.wrap/1"]
+      }
+
+      assert items["Shop.Report.render/1"].runs == runs
+      assert items["Shop.Report"].runs == runs
+      assert items["Shop.Report.plain/0"].runs == %{}
+
+      assert items["Shop.Internal.Table.Shown.go/0"].runs == %{
+               "Shop.Internal.Table.loop/1" => [
+                 "Shop.Internal.Table",
+                 "Shop.Internal.Table.loop/1"
+               ]
+             }
+
+      code = Surfex.Scan.code(Map.values(items))
+
+      reach = fn calls ->
+        tester = %Surfex.Scan{kind: :test, id: "T", hash: "t", location: nil, calls: calls}
+        Surfex.Scan.reach([tester | code])["T"]
+      end
+
+      assert reach.(["Shop.Report.render/1"]) ==
+               ["Shop.Cell", "Shop.Cell.wrap/1", "Shop.Report.render/1"]
+
+      # Named directly, it reaches what it calls, and not the items that run it.
+      assert reach.(["Shop.Internal.Format", "Shop.Internal.Format.rows/1"]) ==
+               ["Shop.Cell", "Shop.Cell.wrap/1"]
+
+      # A cycle through it ends.
+      assert reach.(["Shop.Internal.Table.Shown.go/0"]) == ["Shop.Internal.Table.Shown.go/0"]
+    end
+  end
+
   # #137: a public type is an item, keyed as ExDoc writes it, so a spec may cite it.
   describe "types" do
     @shapes """

@@ -58,6 +58,29 @@ release it merely follows.
 
 ### Changed
 
+- **A `@moduledoc false` module's code is versioned in what runs it, and reach goes
+  through it** (#219, #226). 0.8.0 covered a module's hidden *definitions*; a hidden
+  *module* was still skipped outright, so a test driving a Mix task stopped at the helper
+  module the task hands its work to, and changing that helper dangled nothing. The Elixir
+  scanner now reads every file before it versions anything, and treats each definition of
+  a `@moduledoc false` module as hidden code. An item's version covers the hidden modules'
+  code it runs, in any module and any file, transitively, stopping at code an item
+  versions (a public function, or a shown module's hidden definition): changing the
+  public function the helper calls dangles that function alone. The hidden module still
+  has no items, `Surfex.SourceScan.module_hash/1` and `defs/1` are unchanged, and a module
+  nested in it is still scanned. `Surfex.Item` and code records gain `runs`, the hidden
+  modules' code the item runs with its calls: a call naming it reaches what it calls and
+  no record for it, and a test importing a hidden module resolves against it.
+
+  **Upgrade step.** Every item running a hidden module's code gets a new version once.
+  Measured on eight adopting projects: four have no item running any, and keep every
+  version; in the other four, 1 to 11 item versions change, and 11 to 62 tests reach more
+  code (none reaches less). Most of the relations that dangle are `tests` relations,
+  which `mix surfex.suggest --accept` re-records; after `mix test`, `mix surfex.confirm
+  --evidence` re-confirms the `implements` confirmed by evidence (2 or 3 per project).
+  What remains, 1 to 5 `implements` validated by review per project, plus a few excuses
+  and baselined relations, is a review of the helper code now in the version.
+
 - **A test's declaration with no `verifies` relation fails the check: Unrecorded** (#203,
   #221). A test tagged `@tag verifies: "id"` that resolves to a real spec unit, with no
   `verifies` relation between them in the log, was reported nowhere: the tag read as done

@@ -85,15 +85,24 @@ defmodule Surfex.Scan.ExUnit do
   end
 
   # What the code records say an import can resolve to, indexed once: the scanned
-  # modules, and every id a call can name, an item's or a module's hidden definition's.
+  # modules, hidden ones included, and every id a call can name, an item's, a module's
+  # hidden definition's or a hidden module's.
   defp known(code) do
+    ran = for %Scan{kind: :code, runs: runs} <- code, key <- Map.keys(runs), uniq: true, do: key
+
     %{
-      modules: MapSet.new(for %Scan{kind: :code, role: :module, id: id} <- code, do: id),
+      modules:
+        MapSet.new(
+          for(%Scan{kind: :code, role: :module, id: id} <- code, do: id) ++
+            Enum.map(ran, &Calls.module_of/1)
+        ),
       ids:
         MapSet.new(
-          for %Scan{kind: :code, id: id, hidden: hidden} <- code,
-              key <- [id | Map.keys(hidden)],
-              do: key
+          for(
+            %Scan{kind: :code, id: id, hidden: hidden} <- code,
+            key <- [id | Map.keys(hidden)],
+            do: key
+          ) ++ ran
         )
     }
   end

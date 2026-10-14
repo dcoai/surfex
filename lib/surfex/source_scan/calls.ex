@@ -102,6 +102,13 @@ defmodule Surfex.SourceScan.Calls do
   @spec call(String.t(), atom, non_neg_integer) :: String.t()
   def call(module, fun, arity), do: "#{module}.#{fun}/#{arity}"
 
+  @doc "The module of a call's id: `MyApp.Cart` for `MyApp.Cart.add/2`."
+  @spec module_of(String.t()) :: String.t()
+  def module_of(id) do
+    [_, module] = Regex.run(~r/^((?:[A-Z]\w*\.)*[A-Z]\w*)\./, id)
+    module
+  end
+
   @doc "An alias's parts, resolved through `aliases`: `Cart` is `MyApp.Cart` after `alias MyApp.Cart`."
   @spec expand(list, aliases) :: String.t()
   def expand([first | rest] = parts, aliases) when is_atom(first) do
