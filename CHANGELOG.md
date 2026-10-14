@@ -39,6 +39,27 @@ release it merely follows.
   inherited by a test it doesn't fit. Because it changes what fails, this ships in a minor
   release.
 
+- **A `refines` relation whose unit moved out of its section fails the check: Moved**
+  (#218, #222). Moving a marked block unchanged into another section changes neither
+  end's version (a section's version leaves its blocks out), so the old `refines`
+  relation stayed current, stating a structure the spec no longer has, while `suggest`
+  proposed only the new one. Status now re-reads `within` for every live `refines`
+  relation: one whose unit no longer sits in what it refines is **moved**, names where the
+  unit sits now, and fails. `Surfex.Status.derive/4` returns them as `moved` (`from`,
+  `to`, `now`), the JSON as `moved`, and `RELATIONS.md` as a `moved` group and count.
+  `Surfex.Suggest.all/5` gains `moved`, which `accept_all/5` retires beside the new
+  `refines` relation, so one `mix surfex.suggest --accept` settles the move; a dangling
+  `refines` relation whose unit moved, which refresh can't re-establish, is retired the
+  same way.
+
+  **Upgrade step.** `mix surfex.status` may newly fail on a block or test hint moved
+  between sections since its `refines` relation was recorded. Run `mix surfex.suggest`:
+  it lists the relation to where the unit sits now and the old one's retirement;
+  `--accept` records both. Both are structural facts read from source, so nothing needs
+  judging. Measured on eight adopting projects (784 live `refines` relations, four of
+  them using blocks or hints): none has a moved relation, so the upgrade newly fails
+  nothing there. Because it changes what fails, this ships in a minor release.
+
 ### Fixed
 
 - **`Surfex.Status.derive/4` grows with the project in proportion** (#204, #220). It was

@@ -95,6 +95,11 @@ defmodule Surfex.Status.Report do
         status.unrecorded,
         &"verifies  test #{describe({:test, &1.test}, status)} → spec #{&1.spec}: #{unrecorded_text(&1)}"
       ),
+      items(
+        "Moved (a unit no longer sits in what it refines)",
+        status.moved,
+        &"refines  spec #{describe({:spec, &1.from}, status)} → spec #{&1.to}: #{moved_text(&1)}"
+      ),
       items("Stale (an excuse its class no longer covers)", status.stale, fn s ->
         "class #{s.class} ↔ code #{s.code}: #{stale_text(s.reason)}"
       end),
@@ -192,6 +197,7 @@ defmodule Surfex.Status.Report do
             "note" => u.retired && u.retired.note
           }
         end),
+      "moved" => Enum.map(status.moved, &%{"from" => &1.from, "to" => &1.to, "now" => &1.now}),
       "unselectable" => Enum.map(status.unselectable, &%{"test" => &1.test, "ids" => &1.ids}),
       "baseline" => %{
         "relations" => Status.baseline_count(status),
@@ -289,6 +295,7 @@ defmodule Surfex.Status.Report do
           {"stale", length(status.stale)},
           {"undeclared", length(status.undeclared)},
           {"unrecorded", length(status.unrecorded)},
+          {"moved", length(status.moved)},
           {"marks", length(status.marks)},
           {"baseline", Status.baseline_count(status)},
           {"broken citations", length(status.citations)},
@@ -334,6 +341,12 @@ defmodule Surfex.Status.Report do
             %{
               "Item" => {:code, "test #{u.test}"},
               "Declares" => {:raw, "`spec #{u.spec}`: #{unrecorded_text(u)}"}
+            }
+          end) ++
+          id_group.("moved", ["Item", "Refines"], status.moved, fn m ->
+            %{
+              "Item" => {:code, "spec #{m.from}"},
+              "Refines" => {:raw, "`spec #{m.to}`: #{moved_text(m)}"}
             }
           end) ++
           id_group.("stale", ["Item", "Excused as"], status.stale, fn s ->
@@ -404,6 +417,10 @@ defmodule Surfex.Status.Report do
   defp unrecorded_text(%{retired: %{note: note}}),
     do:
       "declared, but the relation was retired (#{note || "no note"}): remove the tag, or reinstate it"
+
+  # Where a moved unit sits now, and what settles it (§13.1).
+  defp moved_text(%{now: now}),
+    do: "it now sits in #{now}: retire it and relate the new one (mix surfex.suggest --accept)"
 
   defp items(_title, [], _fun), do: []
   defp items(title, list, fun), do: ["\n", title, ":\n", Enum.map(list, &["  ", fun.(&1), "\n"])]

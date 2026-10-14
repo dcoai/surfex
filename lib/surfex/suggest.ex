@@ -106,6 +106,7 @@ defmodule Surfex.Suggest do
           tests: [pair],
           excuses: [pair],
           undeclared: [%{test: String.t(), spec: String.t()}],
+          moved: [%{from: String.t(), to: String.t(), now: String.t()}],
           refresh: [%{type: atom, from: Scan.t(), to: Scan.t()}]
         }
 
@@ -131,6 +132,9 @@ defmodule Surfex.Suggest do
       refreshed.
     * **undeclared** — each `verifies` relation whose test no longer declares it
       (`Surfex.Status`), to retire: the test's source no longer makes the claim.
+    * **moved** — each `refines` relation whose unit no longer sits in what it refines
+      (`Surfex.Status`), to retire: the source no longer states it. The unit's new place
+      is suggested under refines, so accepting settles both.
     * **excuses** — each code item nothing implements (and no implements candidate will),
       paired with the class of the first rule it matches, as `Surfex.Coverage` matches
       them. A parent counts as cited when something implements it. `never_excused`
@@ -156,6 +160,7 @@ defmodule Surfex.Suggest do
       end)
 
     implements = candidates(profile, items, scans, moved, root)
+    status = Surfex.Status.derive(scans, moved)
 
     %{
       moves: moves,
@@ -164,8 +169,9 @@ defmodule Surfex.Suggest do
       implements: ordered(implements),
       excuses: ordered(excusals(profile, items, scans, moved, implements)),
       verifies: ordered(verifications(scans, moved)),
-      undeclared: ordered(Surfex.Status.derive(scans, moved).undeclared),
-      refresh: ordered(refreshed(scans, moved)),
+      undeclared: ordered(status.undeclared),
+      moved: ordered(status.moved),
+      refresh: ordered(refreshed(scans, status)),
       tests: ordered(exercised(scans, moved))
     }
   end
@@ -187,8 +193,8 @@ defmodule Surfex.Suggest do
 
   @doc """
   Records suggestions: each move (`Surfex.Record.move/5`), then each other suggestion as
-  a `relate` at the current hashes, and each undeclared `verifies` relation as a
-  `retire`. `implements`, `verifies` and `excuses` relations are recorded as proposed,
+  a `relate` at the current hashes, and each undeclared `verifies` relation and each
+  moved `refines` relation as a `retire`. `implements`, `verifies` and `excuses` relations are recorded as proposed,
   a `verifies` relation on its failing run when `opts[:evidence]` shows one (§18).
   Moves carry each relation's basis across. It re-records a dangling relation only
   when it is structural and the source still states it (refresh); it never confirms a
@@ -236,6 +242,16 @@ defmodule Surfex.Suggest do
             "spec:" <> u.spec,
             :verifies,
             Keyword.put_new(meta, :note, "the test no longer declares that it verifies this")
+          )
+        end) ++
+        Enum.map(suggestions.moved, fn m ->
+          &Record.retire(
+            scans,
+            &1,
+            "spec:" <> m.from,
+            "spec:" <> m.to,
+            :refines,
+            Keyword.put_new(meta, :note, "the unit no longer sits in it")
           )
         end) ++
         Enum.map(suggestions.excuses, fn x ->
@@ -397,11 +413,10 @@ defmodule Surfex.Suggest do
   # calls or names the code (`tests`), the block or hint still sits in the unit
   # (`refines`). It records a fact read from source, not a judgement, so re-reading the
   # source is what re-establishes it (§18). Judgement relations are never refreshed.
-  defp refreshed(scans, entries) do
+  defp refreshed(scans, status) do
     by_id = Map.new(scans, &{{&1.kind, &1.id}, &1})
 
-    for %{state: :dangling, type: type, relation: {_, a, b}} <-
-          Surfex.Status.derive(scans, entries).relations,
+    for %{state: :dangling, type: type, relation: {_, a, b}} <- status.relations,
         type in [:tests, :refines],
         from = by_id[a],
         to = by_id[b],

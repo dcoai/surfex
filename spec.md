@@ -1195,6 +1195,25 @@ a test's declaration resolving to a spec unit with no verifies relation in the l
 unrecorded and fails; one whose relation was retired is listed with the retire's note and
 fails too; a relation in any other state, proposed or dangling included, clears it
 ```
+- **Moved:** a live `refines` relation, both ends scanned, whose unit no longer sits in
+  (`within`, §11) the unit it refines. A `refines` relation records a fact read from
+  source, not a judgement: the block or hint sits in that section or block. Moving a marked
+  block unchanged into another section changes neither end's version (a section's version
+  leaves its blocks out), so the relation would stay current while stating what the source
+  no longer says. Status re-reads `within` for every live `refines` relation and lists one
+  that no longer holds as moved, naming where the unit sits now. It fails: the log states
+  a structure the spec no longer has. `mix surfex.suggest` proposes its retirement beside
+  the new `refines` relation (§15), so `mix surfex.suggest --accept` settles both. Only a
+  unit that sits in another (a block, hint, table or row) is checked: a section sits in
+  nothing, so a `refines` relation from one, related by hand, states no fact the source
+  could contradict.
+
+```test moved-refines
+a refines relation whose block now sits in another section is moved, naming the section
+it sits in now, and fails, though neither end's version changed; one whose block still
+sits in its unit, a retired one, and one from a section, which sits in nothing, is not
+moved
+```
 - **Unselectable:** a test that `mix test --only verifies:id` can't select by some of its
   declared ids (§11), with those ids. A list of several ids is legitimate, the only honest
   tag for a test that verifies several requirements, so this is information for choosing
@@ -1228,7 +1247,7 @@ the text counts them in one line and the JSON lists each test
 
 `Surfex.Status.failing?/1` is true when any relation is dangling, orphaned, conflicted or
 proposed, any id is unmet, any `verifies` relation is undeclared, any declaration is
-unrecorded, any declaration or citation is broken, any excuse is stale, any relation's
+unrecorded, any `refines` relation is moved, any declaration or citation is broken, any excuse is stale, any relation's
 test failed, or any confirmation by evidence is unproven. New,
 retired, impacted, planned, unimplemented, unselectable and unvalidated don't fail on
 their own. A
@@ -1313,8 +1332,8 @@ marks are reported and fail only under marks: :fail
 
 ```test status-failing
 the check fails on a dangling, orphaned, conflicted or proposed relation, an unmet id, an
-undeclared verifies relation, an unrecorded declaration, a broken declaration or
-citation, a stale excuse, a failed test's relation, or an unproven confirmation, and on
+undeclared verifies relation, an unrecorded declaration, a moved refines relation, a
+broken declaration or citation, a stale excuse, a failed test's relation, or an unproven confirmation, and on
 nothing else by default; planned:
 :fail adds planned relations, and validated: true unvalidated ones
 ```
@@ -1376,8 +1395,9 @@ the code is scanned once, and citations are read under the config's profile
   role. Then each dangling, orphaned, conflicted, proposed, impacted and planned relation,
   the unimplemented, new and unmet ids, the broken citations, the failed relations (each
   with its test), the unproven confirmations, the undeclared relations, the unrecorded
-  declarations (each with its test's location, and what settles it), the stale excuses,
-  the broken declarations, the triangle's
+  declarations (each with its test's location, and what settles it), the moved `refines`
+  relations (each with its unit's location, where it sits now, and what settles it), the
+  stale excuses, the broken declarations, the triangle's
   gaps and the open and orphaned marks (with their notes, who and when), with locations. A block or hint in a list says what it sits in. Unvalidated
   relations (§18) are counted; they are listed only when the status is derived with
   `validated: true`, where they fail, since a project moving over has many. Unselectable
@@ -1388,7 +1408,7 @@ the code is scanned once, and citations are read under the config's profile
   the status as a golden to commit. It has a table per relation type (end, other end,
   state, the ends that changed or are planned), then the unimplemented, new and unmet
   ids, the broken citations (by section, not line), the undeclared relations, the
-  unrecorded declarations, the stale excuses, the broken
+  unrecorded declarations, the moved `refines` relations, the stale excuses, the broken
   declarations, the triangle's gaps and the open and orphaned marks (unit, state, note), with
   the spec units by role among its stats. It holds no hashes and no times, so it changes when a relation's
   state changes, not on every confirmation. It's a pure function of the scans and the
@@ -1404,7 +1424,8 @@ the code is scanned once, and citations are read under the config's profile
   declares), the broken citations, the failed relations (`failed`, each with its type,
   ends and test), the unproven confirmations, the undeclared relations, the unrecorded
   declarations (`unrecorded`, each with its test, its spec unit, whether its relation was
-  retired, and the retire's note), the stale excuses, the
+  retired, and the retire's note), the moved `refines` relations (`moved`, each with
+  `from`, `to`, and `now`, where the unit sits now), the stale excuses, the
   broken declarations, the triangle's gaps, the unvalidated relations, the unselectable
   tests (each with its ids) and the open and orphaned marks (unit, state, note, who,
   when, entry id, location). A value that
@@ -1606,6 +1627,11 @@ repeats another:
   relations are never refreshed.
 - **undeclared**: each undeclared `verifies` relation (§13.1), which accepting retires:
   the test's own source says the claim is gone.
+- **moved**: each moved `refines` relation (§13.1), which accepting retires: the unit no
+  longer sits in what it refines. The relation to where it sits now is suggested under
+  refines, so one `--accept` records the new relation and retires the old. A dangling
+  `refines` relation whose unit moved is never refreshed (its fact is gone) and is
+  retired here too.
 - **excuses**: each code item that nothing implements, and that no `implements`
   candidate in the same run will, paired with the class of the first rule it matches.
   Matching is `Surfex.Coverage`'s (§7), where a parent counts as cited when something
@@ -1639,7 +1665,7 @@ The others are computed as if the moves were already recorded, so a moved
 section's relations are not suggested again under its new id.
 `Surfex.Suggest.accept_all/5` records them (its options carry the test evidence): each
 move (`Surfex.Record.move/5`), then each other suggestion as a `relate` at the current
-hashes, except an undeclared relation, which is retired. **Accepting validates nothing:**
+hashes, except an undeclared or moved relation, which is retired. **Accepting validates nothing:**
 an `implements`, `verifies` or `excuses` relation is recorded as proposed, since a
 citation, a tag or a matching rule is a claim, not a judgement (§18). A `verifies`
 relation whose test has already failed at its current version is recorded on that
@@ -1668,6 +1694,12 @@ under several new ids is reported as ambiguous and not suggested
 ```test suggest-moves
 an anchor added to a related section is suggested as a move, and its relations
 aren't suggested again; two new ids at one version are not suggested
+```
+
+```test suggest-moved
+after a marked block moves unchanged into another section, suggest proposes the refines
+to the new section and the old one's retirement, and accepting both leaves the status
+with nothing moved
 ```
 
 ```test suggest-refresh

@@ -46,6 +46,12 @@ defmodule Surfex.Status do
   the log, is **unrecorded**: a claim the log doesn't hold. A declaration whose relation
   was retired is unrecorded too, listed as retired with the retire's note.
 
+  A `refines` relation is a fact read from source: the unit sits in (`within`) the unit it
+  refines. One whose unit no longer sits there, as when a marked block is moved unchanged
+  into another section, is **moved**, naming where the unit sits now. Neither end's version
+  changes on such a move, so without this the relation would stay current. A unit that
+  sits in nothing (a section) states no such fact, so a `refines` from one isn't checked.
+
   A test that `mix test --only verifies:id` can't select by some of the ids it declares (a
   list tag of several, §11) is **unselectable**, with those ids. A list is legitimate, so
   this is information, never a failure.
@@ -56,8 +62,8 @@ defmodule Surfex.Status do
   at. Judging it needs the rules, given as `coverage:` (`Surfex.Profile.coverage!/1`).
 
   **Failing** means any dangling, orphaned or conflicted relation, any unmet id, any
-  undeclared `verifies` relation, any unrecorded or broken declaration, any stale excuse, or
-  any broken citation. Planned relations fail too when derived with
+  undeclared `verifies` relation, any moved `refines` relation, any unrecorded or broken
+  declaration, any stale excuse, or any broken citation. Planned relations fail too when derived with
   `planned: :fail` (`mix surfex.status --no-planned`), for a check that everything planned
   has been built, such as a release's.
 
@@ -102,6 +108,7 @@ defmodule Surfex.Status do
           unrecorded: [
             %{test: String.t(), spec: String.t(), retired: nil | %{note: String.t() | nil}}
           ],
+          moved: [%{from: String.t(), to: String.t(), now: String.t()}],
           unselectable: [%{test: String.t(), ids: [String.t()]}],
           failed: [%{relation: tuple, test: String.t()}],
           unproven: [%{relation: tuple, test: String.t() | nil, reason: atom}],
@@ -224,6 +231,7 @@ defmodule Surfex.Status do
       broken: broken(scans, resolver),
       undeclared: undeclared(scans, relations, resolver),
       unrecorded: unrecorded(scans, relations, resolver),
+      moved: moved(relations, by_id),
       # Information, not a failure: a list of several ids is legitimate (§13.1).
       unselectable:
         for(
@@ -272,6 +280,7 @@ defmodule Surfex.Status do
       (status.policy.validated == true and status.unvalidated != []) or
       status.undeclared != [] or
       status.unrecorded != [] or
+      status.moved != [] or
       status.failed != [] or
       status.unproven != [] or
       (status.policy.triangle == :fail and status.triangle != []) or
@@ -945,6 +954,21 @@ defmodule Surfex.Status do
         relation = Entry.relation(:verifies, test, %{kind: :spec, id: unit}),
         retired <- retired(Map.fetch(verifies, relation)),
         do: %{test: test.id, spec: unit, retired: retired}
+  end
+
+  # A live refines relation, both ends scanned, whose unit sits inside another unit but no
+  # longer the one it refines (§13.1): a block moved unchanged to another section changes
+  # neither end's version, so only re-reading `within` shows it. A unit that sits in
+  # nothing (a section) states no such fact, so a refines from it, related by hand, isn't
+  # checked. Linear: one lookup per relation in the derive's scan index.
+  defp moved(relations, by_id) do
+    for %{type: :refines, state: state, relation: {_, {:spec, a}, {:spec, b}}} <- relations,
+        state != :retired,
+        %Scan{within: within} <- [Map.get(by_id, {:spec, a})],
+        within != nil,
+        Map.has_key?(by_id, {:spec, b}),
+        within != b,
+        do: %{from: a, to: b, now: within}
   end
 
   # [nil] when nothing is recorded, [%{note: …}] when the tip retires it, [] otherwise.
