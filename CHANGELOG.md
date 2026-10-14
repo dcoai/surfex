@@ -305,6 +305,24 @@ to claim grain, with a walkthrough in the new guide "Migrating to claim grain".
   The one change for an existing spec: an own-line comment a declared `marker:` alias reads
   leaves its section's text, so that section's version changes once.
 
+- **Excused and deferred units in the status, under `claim_grain: true`** (#257, #265).
+  The status always lists `excused` (each classed unit, its class, reasons, how it was
+  selected and the claims inside it) and `deferred` (each deferred unit, its reference and
+  reason), in text as one header line and in JSON. Under `claim_grain: true` it reads
+  them (spec §13.6): a classed section with no claim inside is `:excused`, a deferred unit
+  `:deferred`, and with claims inside either is a container. A class excuses a section's
+  own text, never a named claim inside it: every rule, row, hint, contract, block and
+  subsection inside stays a claim. `require:` spec rules and the triangle skip excused and
+  deferred units, and an `implements` to one earns nothing (`unverified`). A live
+  `verifies` to a classed section, an `implements` to an excused one, or a declaration
+  naming a classed section is **contradicted**, and fails. `mix surfex.suggest` proposes no
+  `implements` from a classed section's citations and no `verifies` to a classed unit
+  (§15.2), and completeness leaves excused and deferred units out of the spec score,
+  counting them on lines of their own (§20.2). **Upgrade step, under `claim_grain: true`
+  now and for everyone in the release that completes claim grain:** classing a section
+  your log relates to contradicts those relations; retire the ones that were narration,
+  or don't class the section.
+
 ## [0.9.1] — 2026-10-14
 
 What surfex writes now reads right. Spec pages published with ex_doc keep their headings

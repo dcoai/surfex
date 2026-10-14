@@ -2483,6 +2483,73 @@ on one fixture, an earned contained relation is one the migration finds a candid
 for among the verified claims inside, and a not_exercised one has none
 ```
 
+### 13.6 Excused and deferred units
+<!-- surfex: classed-units -->
+
+A class (§11.7) says a section's own text asserts nothing a test or check could fail on,
+and a deferral says a unit's text isn't built yet. `Surfex.Status.derive/4` lists both
+whatever the configuration: `excused` (each classed unit with its class, the class's
+reason, the marker's own reason, how it was selected, and the claims inside it) and
+`deferred` (each deferred unit with its reference and reason). Under
+`claim_grain: true` (§13.2) the status also reads them, which is what can change what
+fails; without the key nothing else changes.
+
+**A class excuses a section's own text, and nothing else.** Every named claim inside a
+classed section (a rule, a row, a hint, a contract, a marked block, a subsection) stays a
+claim and is judged as any claim is. A pattern can't hide what an author named.
+
+- A classed section with no claim inside is `:excused`, and a deferred unit with none is
+  `:deferred` (C.1's verdicts, §13.4). With claims inside, either reads as a container:
+  its claims answer for themselves, and code relating to it earns through them (§13.5).
+- `require:` spec rules don't judge an excused or deferred unit, as they don't judge a
+  container.
+- The triangle skips excused and deferred units.
+- An `implements` to an excused or deferred unit earns nothing (`Surfex.Status.earning/2`
+  says `unverified`): there is no evidence to earn through.
+
+```test:classed-claims-stay
+a section classed by pattern holding a named rule, a marked table, a hint, a contract, a
+marked block and a subsection: each stays a claim, unverified until a test verifies it,
+and require: [spec: [:verifies]] fails on the claims, not the section; a classed section
+with no claims inside is excused and not judged; without claim_grain: the classed section
+is judged as before
+```
+
+**Contradicted.** A class says the text asserts nothing, so a relation saying something
+checks or realises it means one of the two is wrong. Under `claim_grain: true` each is
+listed as `contradicted`, and the status fails:
+
+- a live `verifies` whose spec end is a classed section, with claims inside or not (it
+  should name the claims);
+- a live `implements` whose spec end is an excused section (one to a classed section with
+  claims inside is a container's);
+- a test's or check's declaration naming a classed section, when no live `verifies`
+  records it yet.
+
+The fix is to retire the relation (it was narration) or to remove the class.
+
+```test:contradicted-relations
+under claim_grain: true an implements and a verifies to an excused section, and a test
+declaration naming it, are contradicted and fail; retiring the relation or removing the
+class clears it; an implements to a classed section with claims inside isn't
+contradicted; without claim_grain: none is
+```
+
+**Deferred.** A deferred unit isn't judged by `require:` spec rules, is out of the
+completeness score (§20.2) and is listed with its reference and reason. A deferral
+excuses the spec unit, never code: the MR that builds it adds the test and the
+relations, and removes the marker.
+
+```test:deferred-units
+under claim_grain: true a deferred section and a deferred block are deferred, listed with
+reference and reason, not judged by require: spec rules; an implements to one is unearned
+as unverified
+```
+
+`Surfex.Status.Report.text/1` counts the excused units (and how many hold claims) and the
+deferred units in one header line, and lists each contradicted relation.
+`Surfex.Status.Report.json/1` gives `excused`, `deferred` and `contradicted`.
+
 ## 14. Recording
 <!-- surfex: recording -->
 
@@ -2912,6 +2979,24 @@ a claim's verifying tests' direct calls are proposed, a hidden callback as its m
 a module named alone not at all; code reached only through a called item is one reached
 line with its count; a claim with no verifying test, or a section, gets nothing; a
 declined pair isn't proposed again; nothing without claim_implements: true
+```
+
+### 15.2 Classed text suggests nothing
+<!-- surfex: classed-suggestions -->
+
+A classed section's citations are narration: an architecture map names modules to orient a
+reader, not to say what they realise. With `claim_grain: true` (§13.2),
+`mix surfex.suggest` (`Surfex.Suggest.all/6` with `classes: true`) proposes no
+`implements` from a citation in a classed section's own text, and no `verifies` to a
+classed unit from a declaration, which is contradicted instead (§13.6). The citation is
+still read and checked: one that resolves to nothing is broken (§6) whatever its section's
+class. A citation inside a named claim within the section, a block or a hint, is the
+claim's and is suggested as before.
+
+```test:classed-citations
+under claim_grain: true a citation in a classed section's text yields no implements
+suggestion and a broken one is still reported; a declaration naming the classed section
+yields no verifies suggestion; the same citation unclassed, or without the key, does
 ```
 
 ## 16. The specification guide
@@ -3658,6 +3743,30 @@ container, a marked table among them, isn't counted
 without claim_grain: completeness counts a unit complete through a unit inside it and
 counts a marked table, as before, and the status still gives verdicts and contained
 claims; with it, completeness reads own text
+```
+
+### 20.2 Excused and deferred in the score
+<!-- surfex: classed-score -->
+
+Under `claim_grain: true` (§13.2) completeness reads classes and deferrals as verification
+does (§13.6): an excused unit and a deferred unit are left out of the spec score's total,
+and counted on lines of their own, so a growing excusal moves a number the summary shows:
+
+```text
+  spec units: 91.2% (52/57)
+  excused by class: 14 spec units, out of the score
+  deferred: 2 spec units (#12, #40), out of the score
+```
+
+The claims inside a classed section are counted as any claim is.
+`Surfex.Completeness.report/1` gives them as `excused` (the units) and `deferred` (each
+unit and its reference), and `Surfex.Completeness.json/1` under the same keys. Without
+the key both are empty and the score reads as before.
+
+```test:classed-completeness
+under claim_grain: true an excused section and a deferred section are out of the spec
+total and counted on their own lines in text and JSON, while a rule inside a classed
+section is counted; without claim_grain: they are counted as before
 ```
 
 ## 21. Discovering the tool

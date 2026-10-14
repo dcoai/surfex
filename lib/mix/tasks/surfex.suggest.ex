@@ -64,7 +64,10 @@ defmodule Mix.Tasks.Surfex.Suggest do
     entries = if File.dir?(Log.dir(root)), do: Log.load(root), else: []
 
     suggestions =
-      Suggest.all(profile, items, scans, entries, root, claims: Config.claim_implements?(config))
+      Suggest.all(profile, items, scans, entries, root,
+        claims: Config.claim_implements?(config),
+        classes: Config.claim_grain?(config)
+      )
 
     for m <- suggestions.moves, do: Mix.shell().info("move        #{m.from} → #{m.to.id}")
 

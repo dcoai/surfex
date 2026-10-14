@@ -86,7 +86,8 @@ defmodule Surfex.Status do
 
   **Failing** means any dangling, orphaned or conflicted relation, any unmet id, any
   undeclared `verifies` relation, any moved `refines` relation, any unrecorded or broken
-  declaration, any stale excuse or deviation, or any broken citation. Planned relations fail too when derived with
+  declaration, any stale excuse or deviation, any contradicted relation to a classed spec
+  unit (§13.6), or any broken citation. Planned relations fail too when derived with
   `planned: :fail` (`mix surfex.status --no-planned`), for a check that everything planned
   has been built, such as a release's, and deviations with `deviations: :fail`
   (`mix surfex.status --no-deviations`).
@@ -194,6 +195,23 @@ defmodule Surfex.Status do
             exercises: %{String.t() => MapSet.t(term)},
             through: MapSet.t(tuple)
           },
+          excused: [
+            %{
+              unit: String.t(),
+              name: String.t(),
+              reason: String.t(),
+              note: String.t() | nil,
+              by: :marker | :pattern | :alias,
+              claims: [String.t()],
+              location: map
+            }
+          ],
+          deferred: [
+            %{unit: String.t(), ref: String.t(), reason: String.t() | nil, location: map}
+          ],
+          contradicted: [
+            %{type: :verifies | :implements | :declares, from: String.t(), unit: String.t()}
+          ],
           planned: :allow | :fail,
           scans: %{{atom, String.t()} => Scan.t()}
         }
@@ -301,7 +319,10 @@ defmodule Surfex.Status do
 
     # What verified means for each spec unit (§13.4), from one index of the units' `within`
     # chains: no credit moves up, none into a unit's own text.
-    verdict = Surfex.Status.Verdict.index(scans, relations, &label/1)
+    # A spec class or deferral (§11.7) is read under claim_grain: true (§13.6): the
+    # classed unit's own text is excused, or deferred, rather than judged.
+    classed = if claim_grain, do: classed(scans), else: %{}
+    verdict = Surfex.Status.Verdict.index(scans, relations, &label/1, classed)
 
     # What each test and check exercises, by definition, built once for the triangle and
     # for earning (§13.1, §13.5).
@@ -324,6 +345,11 @@ defmodule Surfex.Status do
         exercises: exercises,
         through: through_reviewed(relations)
       },
+      # Listed with or without claim_grain: (§13.6): what the source classes and defers.
+      excused: excused(scans, verdict.inside),
+      deferred: deferred(scans),
+      contradicted:
+        if(claim_grain, do: contradicted(scans, relations, verdict.verdicts), else: []),
       new:
         scans
         |> Enum.reject(&MapSet.member?(related, {&1.kind, &1.id}))
@@ -348,7 +374,7 @@ defmodule Surfex.Status do
       failed: failed,
       unproven: unproven,
       unchecked: unchecked,
-      triangle: triangle(scans, relations, exercises),
+      triangle: triangle(scans, relations, exercises, verdict.verdicts),
       unvalidated: unvalidated(relations, baselined, scans),
       baselined: baselined,
       adoption: adoption.setting,
@@ -433,6 +459,7 @@ defmodule Surfex.Status do
     end
 
     status.unmet != [] or status.broken != [] or status.stale != [] or status.citations != [] or
+      status.contradicted != [] or
       (status.policy.validated == true and status.unvalidated != []) or
       status.undeclared != [] or
       status.unrecorded != [] or
@@ -507,7 +534,8 @@ defmodule Surfex.Status do
   (by definition), or the relation is currently reviewed through a named path. `why` is
   `:unverified` (no evidence, own or inside), `:not_exercised` (a claim inside is
   verified, but none of its verifiers exercises the code) or `:nothing_inside` (a
-  container with no claims). The one definition of "earned".
+  container with no claims). An excused or deferred unit (§13.6) has no evidence to earn
+  through: `:unverified`. The one definition of "earned".
   """
   @spec earning(t, relation_status | tuple) ::
           :earned | {:unearned, :unverified | :not_exercised | :nothing_inside}
@@ -534,7 +562,8 @@ defmodule Surfex.Status do
       :verified ->
         :earned
 
-      verdict when verdict in [nil, :unverified] ->
+      # An excused or deferred unit has no evidence to earn through (§13.6).
+      verdict when verdict in [nil, :unverified, :excused, :deferred] ->
         {:unearned, :unverified}
 
       _container_or_contained ->
@@ -862,7 +891,7 @@ defmodule Surfex.Status do
   # should verify it (or a block or hint inside it), and that test should exercise the code
   # that implements it. Only when tests are scanned at all; otherwise every unit would
   # report no test for a project that doesn't scan them.
-  defp triangle(scans, relations, exercises) do
+  defp triangle(scans, relations, exercises, verdicts) do
     if Enum.any?(scans, &(&1.kind in [:test, :check])) do
       live = Enum.reject(relations, &(&1.state == :retired))
       implements = pairs(live, :implements, fn {{:code, c}, {:spec, s}} -> {s, c} end)
@@ -889,7 +918,10 @@ defmodule Surfex.Status do
                      &MapSet.put(&1, definition.(c))
                    ))
 
+      # An excused or deferred unit isn't judged: a relation to one is contradicted, or
+      # waits on its issue (§13.6).
       for {spec, codes} <- Enum.sort(implements),
+          Map.get(verdicts, spec) not in [:excused, :deferred],
           tests = Map.get(verifying, spec, MapSet.new()),
           stated = Map.get(through, spec, MapSet.new()),
           exercised =
@@ -1035,6 +1067,60 @@ defmodule Surfex.Status do
         states != [] and Enum.all?(states, &(&1 == :planned)),
         do: scan
   end
+
+  # ── Classes and deferrals (§13.6) ───────────────────────────────────────
+
+  # Each classed or deferred spec unit => how its own text is read.
+  defp classed(scans) do
+    for %Scan{kind: :spec} = s <- scans,
+        s.class != nil or s.deferred != nil,
+        into: %{},
+        do: {s.id, if(s.deferred, do: :deferred, else: :excused)}
+  end
+
+  defp excused(scans, inside) do
+    for %Scan{kind: :spec, class: %{} = class} = s <- Enum.sort_by(scans, & &1.id),
+        do:
+          Map.merge(class, %{unit: s.id, claims: Map.get(inside, s.id, []), location: s.location})
+  end
+
+  defp deferred(scans) do
+    for %Scan{kind: :spec, deferred: %{} = d} = s <- Enum.sort_by(scans, & &1.id),
+        do: Map.merge(d, %{unit: s.id, location: s.location})
+  end
+
+  # What says something checks or realises a classed unit's text, which its class says
+  # asserts nothing (§13.6): a live verifies to a classed unit, a live implements to an
+  # excused one (an implements to a classed unit with claims inside is a container's), and
+  # a test's declaration naming a classed unit that no live verifies records yet.
+  defp contradicted(scans, relations, verdicts) do
+    classed = for %Scan{kind: :spec, class: %{}} = s <- scans, into: MapSet.new(), do: s.id
+    live = Enum.reject(relations, &(&1.state == :retired))
+
+    recorded =
+      for %{type: type, relation: {_, from, {:spec, unit}}} <- live,
+          (type == :verifies and MapSet.member?(classed, unit)) or
+            (type == :implements and Map.get(verdicts, unit) == :excused),
+          do: %{type: type, from: end_label(from), unit: unit}
+
+    seen = MapSet.new(recorded, &{&1.from, &1.unit})
+    resolver = Scan.resolver(scans)
+
+    declared =
+      for %Scan{kind: kind, declares: declares} = t <- scans,
+          kind in [:test, :check],
+          {:verifies, ref} <- declares,
+          {:ok, %Scan{id: unit}} <- [Scan.resolve(resolver, ref)],
+          MapSet.member?(classed, unit),
+          not MapSet.member?(seen, {label({kind, t.id}), unit}),
+          uniq: true,
+          do: %{type: :declares, from: label({kind, t.id}), unit: unit}
+
+    Enum.sort_by(recorded ++ declared, &{&1.unit, &1.type, &1.from})
+  end
+
+  defp end_label({:code, id}), do: id
+  defp end_label(verifier), do: label(verifier)
 
   # ── Policy ──────────────────────────────────────────────────────────────
 
