@@ -105,7 +105,8 @@ defmodule Surfex.Scan.Markdown do
   The units of one markdown text (sections, marked blocks, test hints, tables, rows and
   rules), as records located in `file`, in the order they start. `heading_ids:` names the
   project's heading grammar (`heading_grammar/1`), and `rule_ids:` the grammar a marked
-  list's items are read by, in the same forms. `subjects:` (the profile's, §6.6) says
+  list's items are read by, in the same forms. With `fold_paths: true`, a heading with no
+  id inside one that has an id is part of that unit. `subjects:` (the profile's, §6.6) says
   which module a contract fence in a subject section is about.
   """
   @spec sections(String.t(), String.t(), keyword) :: [Scan.t()]
@@ -117,6 +118,9 @@ defmodule Surfex.Scan.Markdown do
     subjects = Keyword.get(opts, :subjects, [])
     {sections, units} = split(lines, file, {grammar, rule_grammar, subjects}, unclosed(lines))
 
+    {sections, owners} =
+      if Keyword.get(opts, :fold_paths, false) == true, do: fold(sections), else: {sections, %{}}
+
     sections =
       sections
       |> Enum.reject(fn s ->
@@ -127,6 +131,7 @@ defmodule Surfex.Scan.Markdown do
       |> Enum.map(&Map.put(&1, :id, "#{file}##{&1.anchor || &1.path}"))
 
     ids = Map.new(sections, &{&1.n, &1.id})
+    ids = Map.merge(ids, Map.new(owners, fn {n, owner} -> {n, Map.fetch!(ids, owner)} end))
     unique!(sections, units, file)
 
     section_records =
@@ -235,6 +240,47 @@ defmodule Surfex.Scan.Markdown do
       |> Enum.map(&%{&1 | body: Enum.reverse(&1.body)})
 
     {sections, Enum.reverse(st.units)}
+  end
+
+  # With fold_paths: a section with no id, inside a section that has one (through any path
+  # sections between), is part of that section: its heading line and body join the id'd
+  # section's body, which runs to its last line. The sections left, and %{folded n =>
+  # owner n} for what sat in a folded one.
+  defp fold(sections) do
+    by_n = Map.new(sections, &{&1.n, &1})
+
+    owner = fn s ->
+      Stream.iterate(s.parent, &(&1 && by_n[&1].parent))
+      |> Enum.find(fn p -> p == nil or by_n[p].anchor != nil end)
+    end
+
+    owners =
+      for s <- sections,
+          s.heading != nil,
+          s.anchor == nil,
+          o = owner.(s),
+          o != nil,
+          into: %{},
+          do: {s.n, o}
+
+    folded =
+      sections
+      |> Enum.filter(&Map.has_key?(owners, &1.n))
+      |> Enum.group_by(&Map.fetch!(owners, &1.n))
+
+    kept =
+      for s <- sections, not Map.has_key?(owners, s.n) do
+        case Map.get(folded, s.n, []) do
+          [] ->
+            s
+
+          inside ->
+            body = s.body ++ Enum.flat_map(inside, &[&1.heading | &1.body])
+            %{s | body: body, last: Enum.max([s.last | Enum.map(inside, & &1.last)])}
+        end
+      end
+
+    {kept, owners}
   end
 
   defp section(n, heading, anchor, path, first),
@@ -412,9 +458,12 @@ defmodule Surfex.Scan.Markdown do
     written = explicit || (after_id && checked_id!(st, no + 1, after_id, "heading"))
     anchor = written || grammar_id(st, text, no)
 
-    stack = [{level, text} | Enum.drop_while(st.stack, fn {l, _} -> l >= level end)]
+    above = Enum.drop_while(st.stack, fn {l, _, _} -> l >= level end)
+    n = st.cur.n + 1
+    stack = [{level, text, n} | above]
     path = stack |> Enum.reverse() |> Enum.map_join("/", &elem(&1, 1))
-    next = section(st.cur.n + 1, text, anchor, path, no)
+    parent = with [{_, _, p} | _] <- above, do: p, else: (_ -> nil)
+    next = Map.put(section(n, text, anchor, path, no), :parent, parent)
     %{st | done: [st.cur | st.done], cur: next, stack: stack}
   end
 

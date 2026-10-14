@@ -1172,6 +1172,26 @@ a fence holding no signature, a signature that doesn't parse, and a function in 
 of one file are errors naming the line. Whether a contract unit's citation of its own
 function yields `implements` is plan item D.2's to decide.
 
+**Folding path headings.** With `fold_paths: true` in `.surfex.exs`, a heading with no id
+(no id comment, anchor or `heading_ids:` id) inside a section that has one is **part of
+that section's unit**, through any such headings between them:
+- it isn't a unit of its own;
+- its heading line and body count in the id'd section's version, which runs to its last
+  line, so editing or renaming it changes that section's version;
+- the units inside it (hints, blocks, rules, rows, contracts) sit in the id'd section.
+
+A heading with no id'd heading above it stays a path unit, as before: an index page, or a
+project that writes no ids. A sub-heading meant as a unit of its own gets an id. Folding
+changes which units exist, so it is off by default until plan item C.1 decides how a
+section relates to the claims inside it; a value other than `true` or `false` is an error.
+
+```test:fold-paths
+with fold_paths: true a heading with no id inside an id'd section is no unit: its text and
+body count in that section's version and what sits in it sits in that section; one with no
+id'd heading above stays a path unit; without it every heading is a unit as before; a
+value that isn't a boolean is an error
+```
+
 **A project's citation forms.** Ids are file-scoped, and a project cites them across files
 in its own forms: `§03.4` (chapter 3, section 4), `spec/05 §4.3`. `unit_refs:` in
 `.surfex.exs` lists those forms, each a regex with named captures: `id`, the unit's id in
@@ -1690,8 +1710,8 @@ suggest --accept retires it
 <!-- surfex: status-config -->
 
 `Surfex.Status.Config` reads `.surfex.exs`. It holds the profile keys (§8) and the
-log's own: `heading_ids` (§11), `rule_ids` and `unit_refs` (§11.1), `scanner`,
-`scanner_opts`, `namespace`, `goldens` (§10.3), `require`, `tests`, `triangle`,
+log's own: `heading_ids` (§11), `rule_ids`, `fold_paths` and `unit_refs` (§11.1),
+`scanner`, `scanner_opts`, `namespace`, `goldens` (§10.3), `require`, `tests`, `triangle`,
 `require_red` (§17), `adoption` (§18.1), `process` (§19) and `completeness` (§20).
 - `Surfex.Status.Config.read!/1` reads and validates it. It raises on an unknown key, and
   on a key of the removed trace, saying so (§9). Every task reads its config through
@@ -1699,7 +1719,8 @@ log's own: `heading_ids` (§11), `rule_ids` and `unit_refs` (§11.1), `scanner`,
 - `Surfex.Status.Config.items/2` runs the code scanner: the built-in Elixir scanner, or
   the project's `scanner:` module (`Surfex.Scanner`) with its `scanner_opts:`.
 - `Surfex.Status.Config.scans/2` scans each markdown unit of `sources`, reading headings
-  by `heading_ids:` (§11) and marked lists by `rule_ids:` (§11.1), each item the code
+  by `heading_ids:` (§11), folded by `fold_paths:`, and marked lists by `rule_ids:`
+  (§11.1), each item the code
   scanner (`scanner`, `scanner_opts`) finds, and, when `tests:` names globs of test
   files, each test in them (`Surfex.Scan.ExUnit`), its declarations in a `unit_refs:` form
   given as the full ids they name.

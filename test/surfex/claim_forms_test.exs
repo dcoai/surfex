@@ -462,6 +462,99 @@ defmodule Surfex.ClaimFormsTest do
     end
   end
 
+  describe "fold_paths" do
+    @describetag verifies: ["fold-paths"]
+
+    @claim_folding """
+    # Index
+
+    Intro.
+
+    ## §Engine.13 Engine
+
+    The engine runs.
+
+    ### run/2
+
+    Runs a job.
+
+    ```test:run-ok
+    a job runs
+    ```
+
+    #### details
+
+    More detail.
+
+    ## Paths
+
+    ### sub
+
+    Sub text.
+    """
+
+    defp folded(text \\ @claim_folding),
+      do: claim_units(text, heading_ids: :section_sign, fold_paths: true)
+
+    test "a path heading inside an id'd section is part of it, and what sits in it sits in the section" do
+      assert for(u <- folded(), do: {u.id, u.role, u.within}) == [
+               {"spec.md#Index", :section, nil},
+               {"spec.md#Engine.13", :section, nil},
+               {"spec.md#run-ok", :test_hint, "spec.md#Engine.13"},
+               {"spec.md#Index/Paths", :section, nil},
+               {"spec.md#Index/Paths/sub", :section, nil}
+             ]
+
+      assert %{location: %{lines: {5, 19}}} = Enum.find(folded(), &(&1.id == "spec.md#Engine.13"))
+    end
+
+    test "a folded heading's text and body count in the id'd section's version" do
+      before = Map.new(folded(), &{&1.id, &1.hash})
+
+      for {from, to} <- [
+            {"Runs a job.", "Runs two jobs."},
+            {"More detail.", "Less."},
+            {"### run/2", "### run/3"}
+          ] do
+        edited = Map.new(folded(String.replace(@claim_folding, from, to)), &{&1.id, &1.hash})
+        assert for({id, h} <- before, edited[id] != h, do: id) == ["spec.md#Engine.13"]
+      end
+    end
+
+    @tag verifies: ["fold-paths", "no-positional-ids"]
+    test "inserting a heading at the top of a folded section changes only that section" do
+      text =
+        String.replace(
+          @claim_folding,
+          "The engine runs.\n",
+          "The engine runs.\n\n### start/1\n\nStarts.\n"
+        )
+
+      before = folded()
+      after_insert = Map.new(folded(text), &{&1.id, &1.hash})
+      assert Enum.map(folded(text), & &1.id) == Enum.map(before, & &1.id)
+      assert for(u <- before, after_insert[u.id] != u.hash, do: u.id) == ["spec.md#Engine.13"]
+    end
+
+    test "without fold_paths: every heading is a unit, as before" do
+      ids = for u <- claim_units(@claim_folding, heading_ids: :section_sign), do: u.id
+      assert "spec.md#Index/§Engine.13 Engine/run/2" in ids
+      assert "spec.md#Index/§Engine.13 Engine/run/2/details" in ids
+    end
+
+    @tag :tmp_dir
+    test "the config's fold_paths: is a boolean, passed to the scanner", %{tmp_dir: dir} do
+      File.write!(Path.join(dir, "spec.md"), @claim_folding)
+      config = [sources: ["spec.md"], heading_ids: :section_sign, fold_paths: true]
+      ids = for s <- Surfex.Status.Config.scans(config, dir), s.kind == :spec, do: s.id
+      refute "spec.md#Index/§Engine.13 Engine/run/2" in ids
+
+      assert_raise ArgumentError, ~r/fold_paths: must be true or false/, fn ->
+        Surfex.Status.Config.scans(Keyword.put(config, :fold_paths, :yes), dir)
+      end
+    end
+  end
+
   defp rules_of(units),
     do: Enum.filter(units, &(&1.role == :rule))
 end
