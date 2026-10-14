@@ -252,7 +252,7 @@ defmodule Surfex.Status do
     # A deviation test that fails is the state it declares: listed with its deviation, not
     # as failed (§13.1). Any other test's failure fails its relations.
     deviation_tests = MapSet.new(deviating, & &1.test)
-    all_failed = failed(relations, runs)
+    all_failed = failed(relations, runs, by_id)
     failed_relations = MapSet.new(all_failed, & &1.relation)
     failed = Enum.reject(all_failed, &MapSet.member?(deviation_tests, &1.test))
 
@@ -690,10 +690,10 @@ defmodule Surfex.Status do
   # that implements it. Only when tests are scanned at all; otherwise every unit would
   # report no test for a project that doesn't scan them.
   defp triangle(scans, relations) do
-    if Enum.any?(scans, &(&1.kind == :test)) do
+    if Enum.any?(scans, &(&1.kind in [:test, :check])) do
       live = Enum.reject(relations, &(&1.state == :retired))
       implements = pairs(live, :implements, fn {{:code, c}, {:spec, s}} -> {s, c} end)
-      verifies = pairs(live, :verifies, fn {{:test, t}, {:spec, s}} -> {s, t} end)
+      verifies = pairs(live, :verifies, fn {from, {:spec, s}} -> {s, label(from)} end)
       # Code is compared by its definition, so a test calling `f/1` exercises the `f/2`
       # that a spec unit names, when both are one function with a default argument.
       definition = definitions(scans)
@@ -706,7 +706,24 @@ defmodule Surfex.Status do
       reached =
         for {t, ids} <- Scan.reach(scans), into: %{}, do: {t, MapSet.new(ids, definition)}
 
-      exercises = Map.merge(reached, recorded, fn _test, a, b -> MapSet.union(a, b) end)
+      # A check exercises the code in the files it inspects (§11.4).
+      files = Enum.group_by(for(%Scan{kind: :code} = s <- scans, do: s), & &1.location.file)
+
+      inspected =
+        for %Scan{kind: :check, id: id, check: %{inputs: inputs}} <- scans,
+            into: %{},
+            do:
+              {label({:check, id}),
+               MapSet.new(
+                 for(f <- Map.keys(inputs), s <- Map.get(files, f, []), do: s.id),
+                 definition
+               )}
+
+      exercises =
+        reached
+        |> Map.merge(recorded, fn _test, a, b -> MapSet.union(a, b) end)
+        |> Map.merge(inspected)
+
       within = for %Scan{kind: :spec, within: w} = s <- scans, w != nil, into: %{}, do: {s.id, w}
 
       verifying = verifying(verifies, within)
@@ -948,25 +965,51 @@ defmodule Surfex.Status do
   # version the relation holds, whatever its basis (§17): a review judged that the test
   # covers the claim, and relied on the run to say whether it passes. With several jobs'
   # runs, a failure in any of them. Excluded, skipped and unrun tests aren't failures.
-  defp failed(_relations, nil), do: []
+  defp failed(_relations, nil, _by_id), do: []
 
-  defp failed(relations, runs) do
-    for %{
-          state: :current,
-          type: type,
-          relation: {_, {:test, t}, _} = relation,
-          tip: %Entry{} = tip
-        } <-
-          relations,
-        type in [:verifies, :tests],
-        test_hash = hash_of(tip, :test, t),
-        test_hash != nil,
-        failed?(runs, t, test_hash),
-        do: %{relation: relation, test: t}
+  defp failed(relations, runs, by_id) do
+    tests =
+      for %{
+            state: :current,
+            type: type,
+            relation: {_, {:test, t}, _} = relation,
+            tip: %Entry{} = tip
+          } <-
+            relations,
+          type in [:verifies, :tests],
+          test_hash = hash_of(tip, :test, t),
+          test_hash != nil,
+          failed?(runs, t, test_hash),
+          do: %{relation: relation, test: t}
+
+    # A check failed at the version the relation holds: its declaration's run, against
+    # the inputs that make that version (§17.1).
+    checks =
+      for %{state: :current, relation: {:verifies, {:check, c}, _} = relation, tip: tip} <-
+            relations,
+          %Scan{check: %{declaration: declaration}} <- [Map.get(by_id, {:check, c})],
+          version = hash_of(tip, :check, c),
+          check_failed?(runs, c, declaration, version),
+          do: %{relation: relation, test: c}
+
+    Enum.sort_by(tests ++ checks, & &1.relation)
   end
 
   defp failed?({:merged, runs}, test, hash), do: Enum.any?(runs, &failed?(&1, test, hash))
   defp failed?(latest, test, hash), do: match?(%{result: :failed}, latest[{test, hash}])
+
+  defp check_failed?({:merged, runs}, check, declaration, version),
+    do: Enum.any?(runs, &check_failed?(&1, check, declaration, version))
+
+  defp check_failed?(latest, check, declaration, version) do
+    case latest[{check, declaration}] do
+      %{result: :failed, code: inputs} ->
+        Surfex.Scan.Checks.version(declaration, inputs) == version
+
+      _ ->
+        false
+    end
+  end
 
   # A current relation confirmed by evidence (`Surfex.Evidence.claimed?/1`) whose claim the
   # given evidence (this run's) doesn't bear out: its test, at the version the relation
@@ -997,11 +1040,16 @@ defmodule Surfex.Status do
     verifying =
       pairs.(:verifies)
       |> Enum.with_index()
-      |> Enum.reduce(%{}, fn {{{:test, t}, {:spec, unit}}, place}, acc ->
-        Map.update(acc, t, [{place, unit}], &[{place, unit} | &1])
+      |> Enum.reduce(%{}, fn
+        {{{:test, t}, {:spec, unit}}, place}, acc ->
+          Map.update(acc, t, [{place, unit}], &[{place, unit} | &1])
+
+        {{{:check, _}, _}, _place}, acc ->
+          acc
       end)
 
-    index = {testing, verifying, within, definition}
+    checks = for %Scan{kind: :check, id: id, check: c} <- scans, into: %{}, do: {id, c}
+    index = {testing, verifying, within, definition, checks}
 
     for {%{relation: relation} = r, tip} <- current,
         Surfex.Evidence.claimed?(tip),
@@ -1024,7 +1072,7 @@ defmodule Surfex.Status do
   defp claim_judge(
          %{type: :tests, relation: {_, {:test, t}, {:code, c}}},
          tip,
-         {_, _, _, definition}
+         {_, _, _, definition, _}
        ) do
     test_hash = hash_of(tip, :test, t)
     code_hash = hash_of(tip, :code, c)
@@ -1034,7 +1082,7 @@ defmodule Surfex.Status do
   defp claim_judge(
          %{type: :implements, relation: {_, {:code, c}, {:spec, s}}},
          tip,
-         {testing, verifying, within, definition}
+         {testing, verifying, within, definition, _}
        ) do
     code_hash = hash_of(tip, :code, c)
 
@@ -1059,6 +1107,35 @@ defmodule Surfex.Status do
         if length(failures) == length(candidates),
           do: Enum.min_by(failures, &Enum.find_index(@reasons, fn r -> r == &1.reason end)),
           else: nil
+      end
+    end
+  end
+
+  # A check's claim: its declaration ran and passed against the inputs that make the
+  # version the relation holds (§17.1). A check this run didn't run didn't run.
+  defp claim_judge(
+         %{type: :verifies, relation: {_, {:check, c}, _}},
+         tip,
+         {_, _, _, _, checks}
+       ) do
+    version = hash_of(tip, :check, c)
+    declaration = checks |> Map.fetch!(c) |> Map.fetch!(:declaration)
+
+    fn latest ->
+      case Map.get(latest, {c, declaration}) do
+        nil ->
+          %{test: c, reason: :not_run}
+
+        %{result: :passed, code: inputs} ->
+          if Surfex.Scan.Checks.version(declaration, inputs) == version,
+            do: nil,
+            else: %{test: c, reason: :other_code}
+
+        %{result: result} when result in [:excluded, :skipped] ->
+          %{test: c, reason: result}
+
+        _failed ->
+          %{test: c, reason: :failed}
       end
     end
   end
@@ -1121,15 +1198,20 @@ defmodule Surfex.Status do
   # removed from the test's source, but the relation still asserts it. A tag is not part of
   # a test's version, so without this the relation would stay current.
   defp undeclared(scans, relations, resolver) do
-    tests = for %Scan{kind: :test} = s <- scans, into: %{}, do: {s.id, s}
+    declaring =
+      for %Scan{kind: k} = s <- scans, k in [:test, :check], into: %{}, do: {{k, s.id}, s}
 
-    for %{type: :verifies, state: state, relation: {_, {:test, t}, {:spec, unit}}} <- relations,
+    for %{type: :verifies, state: state, relation: {_, from, {:spec, unit}}} <- relations,
         state != :retired,
-        test = Map.get(tests, t),
+        test = Map.get(declaring, from),
         test != nil,
         unit not in declared(resolver, test),
-        do: %{test: t, spec: unit}
+        do: %{test: label(from), spec: unit}
   end
+
+  # How a verifier is named in a list: a test by its id, a check as `check ID` (§11.4).
+  defp label({:test, t}), do: t
+  defp label({:check, c}), do: "check #{c}"
 
   # A test's declaration that resolves to a spec unit with no verifies relation between
   # them in the log, in any state: the source claims what the log doesn't record (§13.1).
@@ -1139,11 +1221,12 @@ defmodule Surfex.Status do
   defp unrecorded(scans, relations, resolver) do
     verifies = for %{type: :verifies} = r <- relations, into: %{}, do: {r.relation, r}
 
-    for %Scan{kind: :test} = test <- Enum.sort_by(scans, & &1.id),
+    for %Scan{kind: kind} = test <- Enum.sort_by(scans, &{&1.kind == :check, &1.id}),
+        kind in [:test, :check],
         unit <- Enum.uniq(declared(resolver, test)),
         relation = Entry.relation(:verifies, test, %{kind: :spec, id: unit}),
         retired <- retired(Map.fetch(verifies, relation)),
-        do: %{test: test.id, spec: unit, retired: retired}
+        do: %{test: label({kind, test.id}), spec: unit, retired: retired}
   end
 
   # A live refines relation, both ends scanned, whose unit sits inside another unit but no

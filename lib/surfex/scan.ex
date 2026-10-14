@@ -40,6 +40,11 @@ defmodule Surfex.Scan do
   `tests` relations from. A code record lists what its item calls (`Surfex.Item`), so
   `reach/1` can follow a test through the code it calls.
 
+  A check record (`Surfex.Scan.Checks`, kind `:check`) is a declared gate: its `declares`
+  are what it verifies, and `check` holds its command, its declaration's version and its
+  inputs' versions, from which its own version is made (§11.4). `nil` for every other
+  record.
+
   `code/1` makes code records from any `Surfex.Scanner`'s items. `Surfex.Scan.Markdown`
   makes spec records and `Surfex.Scan.ExUnit` test records.
   """
@@ -64,7 +69,8 @@ defmodule Surfex.Scan do
     runs: %{},
     shape: false,
     named: false,
-    contract: nil
+    contract: nil,
+    check: nil
   ]
 
   @type location :: %{file: String.t(), lines: {pos_integer, pos_integer} | nil}
@@ -94,7 +100,11 @@ defmodule Surfex.Scan do
           # project's heading grammar), not its heading path (§11).
           named: boolean,
           # A contract unit's function, `Module.name/arity` (§11.1).
-          contract: String.t() | nil
+          contract: String.t() | nil,
+          # A check's command, its declaration's version and its inputs' versions (§11.4).
+          check:
+            %{run: String.t(), declaration: String.t(), inputs: %{String.t() => String.t()}}
+            | nil
         }
 
   @doc """

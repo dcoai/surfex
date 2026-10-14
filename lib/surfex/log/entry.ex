@@ -10,7 +10,7 @@ defmodule Surfex.Log.Entry do
   | `commit` | HEAD when it was recorded: context only, and may be squashed away |
   | `parents` | the entry ids it follows for the same relation; two means it resolves a fork |
   | `op` | `:relate` or `:retire` |
-  | `type` | `:implements`, `:refines`, `:depends_on`, `:tests`, `:verifies` (a test verifies a spec unit) or `:excuses` |
+  | `type` | `:implements`, `:refines`, `:depends_on`, `:tests`, `:verifies` (a test or a check verifies a spec unit) or `:excuses` |
   | `ends` | two `%{kind, id, hash}`: in order, from → to, for a directed type; sorted for an undirected one, so A↔B and B↔A are one relation. A `nil` hash (JSON `null`) is a **planned** end: an id that didn't exist when the relation was recorded. At most one end is planned. |
   | `by` | who recorded it |
   | `note` | why, optionally |
@@ -37,19 +37,21 @@ defmodule Surfex.Log.Entry do
   @mark_types [:needs_update]
   # An observation is a fact about one test version (§12.1, §17), not a relation.
   @observation_types [:red_green, :baseline]
-  @kinds [:spec, :code, :test, :class]
-  # The grammar (§12.1): each type's ends, in order (sorted for an undirected type), and
-  # the bases it may carry. `nil` is no basis; for implements, verifies and excuses it is
-  # legacy, admitted for entries written before bases existed.
+  @kinds [:spec, :code, :test, :class, :check]
+  # The grammar (§12.1): each type's ends, in order (sorted for an undirected type), each
+  # end a kind or the kinds it may be, and the bases it may carry. `nil` is no basis; for
+  # implements, verifies and excuses it is legacy, admitted for entries written before
+  # bases existed. A check verifies as a test does (§11.4), and discriminates as one does.
   @grammar %{
     implements: {[:code, :spec], [nil, :proposed, :evidence, :review, :judgement, :baseline]},
-    verifies: {[:test, :spec], [nil, :proposed, :evidence, :review, :judgement, :baseline]},
+    verifies:
+      {[[:test, :check], :spec], [nil, :proposed, :evidence, :review, :judgement, :baseline]},
     tests: {[:test, :code], [nil, :evidence, :judgement, :baseline]},
     refines: {[:spec, :spec], [nil, :judgement]},
     depends_on: {[:code, :code], [nil, :judgement]},
     excuses: {[:class, :code], [nil, :proposed, :judgement]},
     needs_update: {[:spec], [nil]},
-    red_green: {[:test], [:evidence]},
+    red_green: {[[:test, :check]], [:evidence]},
     baseline: {[:test], [:baseline]}
   }
   # "A depends on B" is not "B depends on A": these keep their ends in the order given.
@@ -311,9 +313,22 @@ defmodule Surfex.Log.Entry do
 
   defp shape(type) do
     case elem(@grammar[type], 0) do
-      [one] -> "one #{one}"
-      [a, b] -> "#{a} #{if type in @directed, do: "→", else: "↔"} #{b}"
+      [one] -> "one #{kind_name(one)}"
+      [a, b] -> "#{kind_name(a)} #{if type in @directed, do: "→", else: "↔"} #{kind_name(b)}"
     end
+  end
+
+  defp kind_name(kinds) when is_list(kinds), do: Enum.join(kinds, " or ")
+  defp kind_name(kind), do: kind
+
+  # Whether the ends' kinds are the grammar's for the type, in order.
+  defp shaped?(type, ends) do
+    shape = elem(@grammar[type], 0)
+
+    length(ends) == length(shape) and
+      ends
+      |> Enum.zip(shape)
+      |> Enum.all?(fn {%{kind: kind}, allowed} -> kind in List.wrap(allowed) end)
   end
 
   defp kinds(ends), do: Enum.map_join(ends, ", ", &to_string(&1.kind))
@@ -346,7 +361,7 @@ defmodule Surfex.Log.Entry do
       not (is_nil(e.basis) or e.basis in @bases) ->
         bad(:basis, e.basis)
 
-      Enum.map(e.ends, & &1.kind) != elem(@grammar[e.type], 0) ->
+      not shaped?(e.type, e.ends) ->
         {:error, "#{e.type} ends must be #{shape(e.type)}, got #{kinds(e.ends)}"}
 
       # A mark and an observation are of a version: their one end always has a hash.

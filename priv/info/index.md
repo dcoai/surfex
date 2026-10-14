@@ -38,7 +38,7 @@ Read the state:
 - `mix surfex.completeness [--format json | --summary]`: coverage by validated relations, and what's missing
 - `mix surfex.history ID`: every relation an id has had, from the log alone
 - `mix surfex.info [TOPIC]`: this directory, or a topic's page
-- `mix surfex.test UNIT [--within] [--list] [-- ARGS]`: run the tests declaring a unit, list tags included
+- `mix surfex.test UNIT [--within] [--list] [--checks] [-- ARGS]`: run the tests declaring a unit, list tags included
 
 Record relations:
 - `mix surfex.suggest [--accept --note N]`: relations the spec and test tags already state
@@ -48,6 +48,7 @@ Record relations:
 - `mix surfex.resolve FROM TO --type T --pick TIP`: settle a conflicted relation
 
 Validate relations:
+- `mix surfex.check [ID…] [--list]`: run the declared checks, recording their results as evidence
 - `mix surfex.confirm --evidence`: every relation the recorded test runs validate
 - `mix surfex.validate TEST SPEC_UNIT --note N`: a review: this test validates this unit
 - `mix surfex.confirm FROM TO --type T --note N`: a judgement (never for implements)

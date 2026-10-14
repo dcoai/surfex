@@ -101,7 +101,7 @@ defmodule Surfex.Completeness do
   defp lacks(:spec, scan, touching, live, within, status) do
     verified =
       Enum.any?(live, fn
-        %{relation: {:verifies, {:test, _}, {:spec, unit}}} = r ->
+        %{relation: {:verifies, {kind, _}, {:spec, unit}}} = r when kind in [:test, :check] ->
           validated?(status, r) and inside?(unit, scan.id, within)
 
         _ ->

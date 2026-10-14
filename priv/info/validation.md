@@ -53,6 +53,21 @@ relation.
 `relate` and `suggest --accept` reads CI jobs' evidence files beside the local run, so a
 test excluded locally (it needs a service you don't run) counts from CI's run.
 
+**Checks**: some claims are verified by a gate, not a test: a linter rule (no `rescue`),
+a security scanner, a project's own task comparing a layout with a header. Declare it
+under `checks:` (`mix surfex.info config`) with the units it verifies and the files it
+inspects, record its `verifies` (`mix surfex.suggest --accept`), and run it with `mix
+surfex.check`. A check is evidence only once it has shown it can fail: break an input on
+purpose (the rule's config, or the code it inspects), run it red, restore it, run it
+green, then `mix surfex.confirm --evidence`. A check that has never failed is validated
+only by a review whose note says what it would catch: `mix surfex.validate CHECK UNIT
+--note N`. Changing the check or any input dangles its relations; a green run
+re-confirms them. CI runs `mix surfex.check` in the job whose evidence the check reads,
+or a check-confirmed claim reads as not run. Checks verify: they never carry
+`implements`, which is related by hand to the code the claim is about. A gate is the
+right verifier for a rule over the whole code (style, safety, layout); a behaviour is a
+test's.
+
 **Docstrings aren't covered.** A function's version leaves out its `@doc`, so a docstring
 that states a contract can drift from the spec unnoticed. Read them together.
 

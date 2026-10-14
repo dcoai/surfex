@@ -26,6 +26,10 @@ A keyword list, evaluated as data. An unknown key is refused, naming it.
   runs (a LiveView's `mount/3` and `handle_params/3`, or a controller action), its
   `render_click(view, …)` and friends call the view's `handle_event/3`, and
   `GenServer.call(Module, msg)` calls that module's `handle_call/3` (spec §11.3).
+- `checks: [[id:, run:, verifies:, inputs:]]`: gates that verify claims, such as a linter
+  rule or a project's own verification task: a command that can fail, the spec units it
+  verifies (a table's every row as `TABLE/*`), and the files it inspects, which with the
+  declaration make its version (`mix surfex.info validation`, spec §11.4).
 - Citation profile: `exclude`, `shape`, `token`, `known_shape`, `normalise`, `subjects`,
   `table_columns`, `file_targets`, `known_external`, `documented_absences`.
 - `classes: [{name, reason}]`, `rules: [%{class:, kinds:, name:, parent_cited:, parent:}]`,

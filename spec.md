@@ -1476,6 +1476,84 @@ GenServer.call and cast with a module call its handle_call/3 or handle_cast/2, a
 other server is no call; a capture handed to a helper is the test's call
 ```
 
+### 11.4 Checks
+<!-- surfex: checks -->
+
+Some claims are verified by a gate, not a test: a lint rule that no function rescues, a
+security scanner, a project's own task comparing a layout table with a compiled header.
+`checks:` in `.surfex.exs` declares them, each a command that can fail and the claims it
+verifies:
+
+```elixir
+checks: [
+  [id: "no-rescue", run: "mix credo --strict --only Credo.Check.Warning.Rescue",
+   verifies: ["plat-3"], inputs: [".credo.exs", "lib/**/*.ex"]],
+  [id: "layout", run: "mix my_app.layout", verifies: ["spec/03-wire.md#layout/*"],
+   inputs: ["lib/my_app/wire.ex", "c_src/wire.h"]]
+]
+```
+
+`Surfex.Scan.Checks` makes one scan record of kind `:check` per check
+(`Surfex.Scan.Checks.records/2`), and `Surfex.Status.Config.scans/2` includes them:
+- **Its id** is the check's `id`: letters, digits and `.` `_` `-`, starting with a letter
+  or digit, so never a test's.
+- **Its version** covers its declaration (`run`, `verifies` and `inputs`) and the content
+  of every file its `inputs` globs match. Changing the rule, what it verifies or what it
+  inspects is a new version, and its relations dangle; no other file changes it. The
+  record's `check` holds the command, the declaration's own version and each input file's
+  version, from which `Surfex.Scan.Checks.version/2` makes its version.
+- **What it declares** is its `verifies`, each `{:verifies, ref}`, resolved as a test's
+  declaration is (§11, and `unit_refs:`, §11.1). `TABLE/*` declares every row of a marked
+  table at once. A reference that resolves to nothing is broken (§13.1), as a test's is.
+- **Its location** is `.surfex.exs`, with no lines.
+
+`Surfex.Scan.Checks.declared!/1` validates the key: each check is a keyword list of `id`
+(unique), `run` (a command), `verifies` (a reference or a list of them) and, optionally,
+`inputs` (a list of globs), and nothing else. Anything else raises, naming it, as does an
+input glob that matches no file: a misspelt input would leave the version blind to what
+the check inspects.
+
+```test:check-records
+a check is a record of kind check, its version changing with its command, its verifies,
+its input globs and its inputs' content, and not with other files; TABLE/* declares each
+row; a malformed check, a repeated id or an input matching no file raises
+```
+
+A check verifies, as a test does, and does nothing else. A `verifies` relation runs from
+a test or a check to a spec unit (§12.1), and status treats a check's as a test's: it is
+suggested from the declaration (§15), unrecorded while the log lacks it and undeclared
+once the check stops declaring it (§13.1), the check named `check ID` in those lists. A
+check has no calls, so it takes no `tests` relation, and it carries no `implements`: the
+code a claim is about is related to the claim by hand. The triangle (§13) counts a check
+verifying a unit as a verifying test that exercises the code in the files it inspects,
+and completeness (§20) counts a unit a check verifies by a validated relation as
+verified. Status lists the checks, with what they verify, in its text, its JSON
+(`checks`) and `RELATIONS.md`, where a project has any.
+
+```test:check-status
+a check's declared verifies is suggested, unrecorded until recorded and undeclared once
+dropped; a unit only a check verifies has no triangle gap for the code in its inputs and
+counts as verified in completeness; status, its JSON and the golden list the checks
+```
+
+`mix surfex.check [ID…]` runs checks, every one or those named, with the system's shell
+in the project's root (`Surfex.Check.run/3`), and records each result as evidence
+(§17.1) in the file the test formatter writes, or in `--evidence PATH`. Exit status 0
+passed and anything else failed; the task then fails, so it is the gate as well. An
+unknown id, or a project with no checks, is an error before anything runs
+(`Surfex.Check.select/2`). `--list` names them and runs nothing.
+
+`mix surfex.test UNIT` (§11) also names the checks verifying a unit: `--list` lists them
+after the tests, and a run says which there are. `--checks` runs them after the tests,
+recording their evidence as `mix surfex.check` does, and fails if a test or a check
+fails. With it, a unit that only checks verify is no error.
+
+```test:check-run
+mix surfex.check records each check's result, passed or failed by its exit status, at its
+declaration's version with its inputs' versions, and fails when one failed; an unknown id
+is an error; surfex.test --checks runs the checks verifying a unit, and --list names them
+```
+
 ## 12. The relation log
 <!-- surfex: relation-log -->
 
@@ -1494,15 +1572,15 @@ only state surfex keeps. Scanners never read or write it (§11).
 | `commit` | HEAD when it was recorded: context only, since squash merges can make it unreachable |
 | `parents` | the entry ids it follows for the same relation; two means it resolves a fork |
 | `op` | `relate`, `retire`, `mark` or `observe` (`Surfex.Log.Entry.ops/0`) |
-| `type` | a relation's: `implements`, `refines`, `depends_on`, `tests`, `verifies` (a test verifies a spec unit) or `excuses` (`Surfex.Log.Entry.types/0`); or a mark's: `needs_update` (`Surfex.Log.Entry.mark_types/0`); or an observation's: `red_green` or `baseline` (`Surfex.Log.Entry.observation_types/0`) |
-| `ends` | a relation's two `{kind, id, hash}`, of the kinds `Surfex.Log.Entry.kinds/0` lists (`spec`, `code`, `test`, `class`) and the grammar below allows. A `null` hash is a **planned** end: an id that didn't exist when the relation was recorded (§14). At most one end is planned. A mark's one end: the spec unit, at its hash. An observation's one end: the test, at its version |
+| `type` | a relation's: `implements`, `refines`, `depends_on`, `tests`, `verifies` (a test or a check verifies a spec unit, §11.4) or `excuses` (`Surfex.Log.Entry.types/0`); or a mark's: `needs_update` (`Surfex.Log.Entry.mark_types/0`); or an observation's: `red_green` or `baseline` (`Surfex.Log.Entry.observation_types/0`) |
+| `ends` | a relation's two `{kind, id, hash}`, of the kinds `Surfex.Log.Entry.kinds/0` lists (`spec`, `code`, `test`, `class`, `check`) and the grammar below allows. A `null` hash is a **planned** end: an id that didn't exist when the relation was recorded (§14). At most one end is planned. A mark's one end: the spec unit, at its hash. An observation's one end: the test, at its version, or for a `red_green`, a check at its declaration's version (§17.1) |
 | `by` | who recorded it |
 | `note` | why, optionally |
 | `basis` | how the entry validates the relation (§18): `evidence`, `review`, `judgement`, `baseline` (§18.1) or `proposed` (`Surfex.Log.Entry.bases/0`); absent when it validates nothing, which keeps every older entry's canonical line and id |
 | `through` | how a reviewed test exercises code no call reaches (§18.2), free text; only on a `relate` of an `implements` with basis `review`, and absent otherwise, which keeps every other entry's line and id |
 
 - **An observation** is a fact the log keeps about one test version, not a relation:
-  `op: observe`, type `red_green`, one `test` end at its version, basis `evidence`. It
+  `op: observe`, type `red_green`, one `test` end at its version (or a check's, §17.1), basis `evidence`. It
   records that the version **discriminated** (§17): it failed against one version of its
   code and later passed against another, with the two runs in its note. It is never
   withdrawn: a changed test is a new version, which the observation doesn't speak for.
@@ -1525,13 +1603,13 @@ only state surfex keeps. Scanners never read or write it (§11).
   | Type | Op | Ends | Basis |
   |---|---|---|---|
   | `implements` | relate, retire | code ↔ spec | `proposed`, `evidence`, `review`, `judgement`, `baseline`; or none (legacy) |
-  | `verifies` | relate, retire | test → spec | `proposed`, `evidence`, `review`, `judgement`, `baseline`; or none (legacy) |
+  | `verifies` | relate, retire | test or check → spec | `proposed`, `evidence`, `review`, `judgement`, `baseline`; or none (legacy) |
   | `tests` | relate, retire | test → code | none, `evidence`, `judgement`, `baseline` |
   | `refines` | relate, retire | spec → spec | none, `judgement` |
   | `depends_on` | relate, retire | code → code | none, `judgement` |
   | `excuses` | relate, retire | class ↔ code | `proposed`, `judgement`; or none (legacy) |
   | `needs_update` | mark, retire | one spec | none |
-  | `red_green` | observe | one test | `evidence` |
+  | `red_green` | observe | one test or check | `evidence` |
   | `baseline` | observe | one test | `baseline` |
 
   A `retire` has the ends of what it retires and never a basis. **None (legacy)** admits
@@ -1570,8 +1648,9 @@ written only when set, so an entry without one keeps its line and id
 ```
 
 ```test:grammar-ends
-each type joins only its kinds of end, and a directed type only from → to; a mark is one
-spec end and an observation one test end; there is no config kind
+each type joins only its kinds of end, and a directed type only from → to; a verifies runs
+from a test or a check; a mark is one spec end and an observation one test end, or a check
+for red_green; there is no config kind
 ```
 
 ```test:grammar-bases
@@ -2622,6 +2701,44 @@ a test run's results are recorded per scanned test at its versions, under _build
 read back oldest first
 ```
 
+### 17.1 Evidence from a check
+<!-- surfex: check-evidence -->
+
+A check's run (§11.4) is evidence in a test's form (`Surfex.Check`): its `test` is the
+check's id, its `test_hash` its declaration's version, and its `code` its inputs'
+versions at the run. So a check discriminates as a test does
+(`Surfex.Evidence.red_then_green/3`): its declaration, unchanged, failed against one set
+of input versions and later passed against another. Breaking an input on purpose to show
+the check can fail (the rule's config, or the code it inspects), then restoring it, is
+that run.
+- `mix surfex.confirm --evidence` records a check's discrimination as a `red_green`
+  observation of the check at its declaration's version (§12.1). It confirms the check's
+  `verifies` relations once the check has discriminated, in the evidence or by that
+  observation, and its latest run passed against the inputs as they are. A check that has
+  never failed is confirmed only by a review (§18.3). After a spec-only change it is a
+  judgement, as for a test.
+- **CI's check covers checks.** A `verifies` relation confirmed by a check's evidence is a
+  claim a run bears out (§17): the run's latest record of the check, at its declaration's
+  version, passed against the inputs that make the version the relation holds. A check
+  the run didn't run **didn't run**, so CI runs `mix surfex.check` in the job whose
+  evidence the check reads; a checks job of its own is merged in with `--merge`, as any
+  job is. A pass against other inputs ran against other code.
+- **A failed check fails its relations**, whatever validated them, as a failed test does:
+  its latest record at the declaration's version failed against the inputs of the version
+  the relation holds.
+
+```test:check-discriminates
+a check that failed and then passed with its inputs changed is observed as discriminated
+and confirms its verifies by evidence, and a green run after an input change re-confirms
+it; one that never failed, or failed and passed against the same inputs, confirms nothing
+```
+
+```test:check-evidence-checked
+a claim a check's evidence confirmed is borne out by a run where the check passed against
+its inputs, and is unproven as not run without one, as failed when it failed, and as other
+code against other inputs; merged evidence from a checks job bears it out
+```
+
 ## 18. Validation by process
 <!-- surfex: validation -->
 
@@ -2850,6 +2967,22 @@ a review naming how its test exercises code the green run didn't reach credits t
 with through recorded, counted, shown and kept by a new note, and the triangle closes;
 without --through it is refused; --through without --code, for reached code, for code
 not scanned or not related to the unit, is refused
+```
+
+### 18.3 Reviewing a check
+<!-- surfex: review-check -->
+
+A check that has never failed hasn't shown it can, so evidence can't confirm it (§17.1).
+`mix surfex.validate CHECK UNIT --note N` reviews it instead. CHECK is the check's id (a
+`check:` prefix picks it where a test has the same id), and the note says what the check
+would catch. The review needs the live `verifies` relation from the check to the unit and
+a green run of the check at its current version. It records that relation with basis
+`review`, and nothing else, since a check carries no `implements`.
+
+```test:check-review
+a review of a check records its verifies to the unit on a green run at its current
+version, with the note; without a green run, a relation or a note, or when already
+validated, it is refused
 ```
 
 ## 19. Handing off found work
