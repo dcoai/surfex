@@ -787,12 +787,9 @@ defmodule Surfex.Scan.Markdown do
               "the contract fence's subject section names several items, #{Enum.join(several, ", ")}: give module:"
             )
 
+          # Only a signature that doesn't name its module needs one (close_contract/1).
           nil ->
-            fail(
-              st,
-              no,
-              "the contract fence has no module: give module: or put it in a subject section (§6.6)"
-            )
+            nil
         end
 
     contract =
@@ -833,7 +830,7 @@ defmodule Surfex.Scan.Markdown do
           last: sig.last,
           body: sig.body,
           within: contract.within,
-          contract: "#{contract.module}.#{sig.key}"
+          contract: contract_of(st, sig, contract.module)
         }
       end
 
@@ -844,6 +841,19 @@ defmodule Surfex.Scan.Markdown do
       do: %{st | block: %{st.block | body: Enum.reverse(around) ++ st.block.body}},
       else: %{st | cur: %{st.cur | body: Enum.reverse(around) ++ st.cur.body}}
   end
+
+  # The function a signature is the contract of: its head's own module, else the fence's.
+  defp contract_of(_st, %{module: module} = sig, _fence) when module != nil, do: sig.key
+
+  defp contract_of(st, sig, nil),
+    do:
+      fail(
+        st,
+        sig.first,
+        "the contract signature names no module: qualify it, give module: or put it in a subject section (§6.6)"
+      )
+
+  defp contract_of(_st, sig, module), do: "#{module}.#{sig.key}"
 
   # ── Rules ───────────────────────────────────────────────────────────────
 

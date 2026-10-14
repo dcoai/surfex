@@ -5,7 +5,8 @@ defmodule Surfex.Scan.Markdown.Contract do
   # A fence is a contract when the line `<!-- surfex: contract [module: M] -->` stands
   # before it, or when its info string is `elixir contract`. Each `@spec`, `@callback` or
   # `@macrocallback` in it, with the lines indented under it, is one signature, keyed
-  # `name/arity`; several signatures of one function (a multi-clause spec) are one unit.
+  # `name/arity`, or `Module.name/arity` for a head that names its module; several
+  # signatures of one function (a multi-clause spec) are one unit.
 
   @marker ~r/^ {0,3}<!--\s*surfex:\s*contract(?:\s+module:\s*(\S+))?\s*-->\s*$/
   @signature ~r/^(\s*)@(spec|callback|macrocallback)\b/
@@ -39,13 +40,21 @@ defmodule Surfex.Scan.Markdown.Contract do
       text = Enum.map_join(group, "\n", &elem(&1, 0))
 
       case key(text) do
-        {:ok, key} ->
+        {:ok, key, module} ->
           {_, last} = List.last(group)
 
           {:cont,
            {:ok,
-            [%{key: key, first: first, last: last, body: Enum.map(group, &elem(&1, 0))} | acc],
-            rest}}
+            [
+              %{
+                key: key,
+                module: module,
+                first: first,
+                last: last,
+                body: Enum.map(group, &elem(&1, 0))
+              }
+              | acc
+            ], rest}}
 
         {:error, why} ->
           {:halt, {:error, first, why}}
@@ -97,8 +106,15 @@ defmodule Surfex.Scan.Markdown.Contract do
 
   defp head({:when, _, [spec, _guards]}), do: head(spec)
 
+  # A head naming its module (`MyApp.open(…)`) is keyed by it, as written.
+  defp head({:"::", _, [{{:., _, [{:__aliases__, _, parts}, name]}, _, args}, _return]})
+       when is_atom(name) do
+    module = Enum.join(parts, ".")
+    {:ok, "#{module}.#{name}/#{length(List.wrap(args))}", module}
+  end
+
   defp head({:"::", _, [{name, _, args}, _return]}) when is_atom(name),
-    do: {:ok, "#{name}/#{length(List.wrap(args))}"}
+    do: {:ok, "#{name}/#{length(List.wrap(args))}", nil}
 
   defp head(_spec), do: {:error, "has no `name(args) :: return` head"}
 
