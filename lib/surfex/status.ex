@@ -187,6 +187,12 @@ defmodule Surfex.Status do
           contained: [%{unit: String.t(), inside: [String.t()], location: map}],
           on_container: [%{test: String.t(), unit: String.t(), inside: [String.t()]}],
           containers: [%{unit: String.t(), claims: non_neg_integer, verified: non_neg_integer}],
+          earning: %{
+            inside: %{String.t() => [String.t()]},
+            own: %{String.t() => MapSet.t(String.t())},
+            exercises: %{String.t() => MapSet.t(term)},
+            through: MapSet.t(tuple)
+          },
           planned: :allow | :fail,
           scans: %{{atom, String.t()} => Scan.t()}
         }
@@ -291,6 +297,10 @@ defmodule Surfex.Status do
     # chains: no credit moves up, none into a unit's own text.
     verdict = Surfex.Status.Verdict.index(scans, relations, &label/1)
 
+    # What each test and check exercises, by definition, built once for the triangle and
+    # for earning (§13.1, §13.5).
+    exercises = exercises(scans, relations)
+
     status = %{
       relations: relations,
       verdicts: verdict.verdicts,
@@ -299,6 +309,15 @@ defmodule Surfex.Status do
       contained: verdict.contained,
       on_container: verdict.on_container,
       containers: verdict.containers,
+      # What `earning/2` reads (§13.5): the claims inside each unit, each claim's own
+      # verifiers, what each verifier exercises, and the relations reviewed through a
+      # named path.
+      earning: %{
+        inside: verdict.inside,
+        own: verdict.own,
+        exercises: exercises,
+        through: through_reviewed(relations)
+      },
       new:
         scans
         |> Enum.reject(&MapSet.member?(related, {&1.kind, &1.id}))
@@ -323,7 +342,7 @@ defmodule Surfex.Status do
       failed: failed,
       unproven: unproven,
       unchecked: unchecked,
-      triangle: triangle(scans, relations),
+      triangle: triangle(scans, relations, exercises),
       unvalidated: unvalidated(relations, baselined, scans),
       baselined: baselined,
       adoption: adoption.setting,
@@ -472,6 +491,59 @@ defmodule Surfex.Status do
   """
   @spec verdict(t, String.t()) :: Surfex.Status.Verdict.verdict() | nil
   def verdict(status, unit), do: Map.get(status.verdicts, unit)
+
+  @doc """
+  Whether the `implements` relation `relation` (a relation status, or its
+  `{:implements, {:code, id}, {:spec, id}}`) earns (§13.5): `:earned`, or `{:unearned,
+  why}`. It earns when its spec unit is `:verified`, or is a container or `:contained`
+  and a verified claim inside it has a verifying test or check that exercises the code
+  (by definition), or the relation is currently reviewed through a named path. `why` is
+  `:unverified` (no evidence, own or inside), `:not_exercised` (a claim inside is
+  verified, but none of its verifiers exercises the code) or `:nothing_inside` (a
+  container with no claims). The one definition of "earned".
+  """
+  @spec earning(t, relation_status | tuple) ::
+          :earned | {:unearned, :unverified | :not_exercised | :nothing_inside}
+  def earning(status, %{relation: relation}), do: earning(status, relation)
+
+  def earning(status, {:implements, {:code, code}, {:spec, unit}} = relation) do
+    %{inside: inside, own: own, exercises: exercises, through: through} = status.earning
+    claims = Map.get(inside, unit, [])
+    verified = Enum.filter(claims, &(Map.get(status.verdicts, &1) == :verified))
+
+    definition =
+      case Map.fetch(status.scans, {:code, code}) do
+        {:ok, scan} -> Scan.definition(scan)
+        :error -> {:code, code}
+      end
+
+    exercised? = fn claim ->
+      Enum.any?(Map.get(own, claim, []), fn verifier ->
+        exercises |> Map.get(verifier, MapSet.new()) |> MapSet.member?(definition)
+      end)
+    end
+
+    case Map.get(status.verdicts, unit) do
+      :verified ->
+        :earned
+
+      verdict when verdict in [nil, :unverified] ->
+        {:unearned, :unverified}
+
+      _container_or_contained ->
+        cond do
+          claims == [] -> {:unearned, :nothing_inside}
+          verified == [] -> {:unearned, :unverified}
+          MapSet.member?(through, relation) -> :earned
+          Enum.any?(verified, exercised?) -> :earned
+          true -> {:unearned, :not_exercised}
+        end
+    end
+  end
+
+  @doc "Whether the `implements` relation earns (`earning/2`): `true` for `:earned`."
+  @spec earned?(t, relation_status | tuple) :: boolean
+  def earned?(status, relation), do: earning(status, relation) == :earned
 
   @doc """
   How many spec units were scanned, by role: sections, marked blocks, test hints, marked
@@ -783,40 +855,12 @@ defmodule Surfex.Status do
   # should verify it (or a block or hint inside it), and that test should exercise the code
   # that implements it. Only when tests are scanned at all; otherwise every unit would
   # report no test for a project that doesn't scan them.
-  defp triangle(scans, relations) do
+  defp triangle(scans, relations, exercises) do
     if Enum.any?(scans, &(&1.kind in [:test, :check])) do
       live = Enum.reject(relations, &(&1.state == :retired))
       implements = pairs(live, :implements, fn {{:code, c}, {:spec, s}} -> {s, c} end)
       verifies = pairs(live, :verifies, fn {from, {:spec, s}} -> {s, label(from)} end)
-      # Code is compared by its definition, so a test calling `f/1` exercises the `f/2`
-      # that a spec unit names, when both are one function with a default argument.
       definition = definitions(scans)
-      recorded = pairs(live, :tests, fn {{:test, t}, {:code, c}} -> {t, definition.(c)} end)
-
-      # What a test reaches is a fact of the source (§11, §13.1): the scanned code it calls,
-      # and what that code calls, transitively. It counts whether or not a `tests` relation
-      # records it, so a project that doesn't record them sees no false gaps; code not
-      # written yet is reached by nothing.
-      reached =
-        for {t, ids} <- Scan.reach(scans), into: %{}, do: {t, MapSet.new(ids, definition)}
-
-      # A check exercises the code in the files it inspects (§11.4).
-      files = Enum.group_by(for(%Scan{kind: :code} = s <- scans, do: s), & &1.location.file)
-
-      inspected =
-        for %Scan{kind: :check, id: id, check: %{inputs: inputs}} <- scans,
-            into: %{},
-            do:
-              {label({:check, id}),
-               MapSet.new(
-                 for(f <- Map.keys(inputs), s <- Map.get(files, f, []), do: s.id),
-                 definition
-               )}
-
-      exercises =
-        reached
-        |> Map.merge(recorded, fn _test, a, b -> MapSet.union(a, b) end)
-        |> Map.merge(inspected)
 
       within = for %Scan{kind: :spec, within: w} = s <- scans, w != nil, into: %{}, do: {s.id, w}
 
@@ -848,6 +892,53 @@ defmodule Surfex.Status do
     else
       []
     end
+  end
+
+  # Each test and check (by label) => the code it exercises, by definition (§13.1): code
+  # is compared by its definition, so a test calling `f/1` exercises the `f/2` that a spec
+  # unit names, when both are one function with a default argument. Empty when no test or
+  # check is scanned.
+  defp exercises(scans, relations) do
+    if Enum.any?(scans, &(&1.kind in [:test, :check])) do
+      live = Enum.reject(relations, &(&1.state == :retired))
+      definition = definitions(scans)
+      recorded = pairs(live, :tests, fn {{:test, t}, {:code, c}} -> {t, definition.(c)} end)
+
+      # What a test reaches is a fact of the source (§11, §13.1): the scanned code it calls,
+      # and what that code calls, transitively. It counts whether or not a `tests` relation
+      # records it, so a project that doesn't record them sees no false gaps; code not
+      # written yet is reached by nothing.
+      reached =
+        for {t, ids} <- Scan.reach(scans), into: %{}, do: {t, MapSet.new(ids, definition)}
+
+      # A check exercises the code in the files it inspects (§11.4).
+      files = Enum.group_by(for(%Scan{kind: :code} = s <- scans, do: s), & &1.location.file)
+
+      inspected =
+        for %Scan{kind: :check, id: id, check: %{inputs: inputs}} <- scans,
+            into: %{},
+            do:
+              {label({:check, id}),
+               MapSet.new(
+                 for(f <- Map.keys(inputs), s <- Map.get(files, f, []), do: s.id),
+                 definition
+               )}
+
+      reached
+      |> Map.merge(recorded, fn _test, a, b -> MapSet.union(a, b) end)
+      |> Map.merge(inspected)
+    else
+      %{}
+    end
+  end
+
+  # The implements relations a current review named a path for (`--through`, §18.2).
+  defp through_reviewed(relations) do
+    for %{type: :implements, state: :current, tip: %Entry{through: how}, relation: r} <-
+          relations,
+        how != nil,
+        into: MapSet.new(),
+        do: r
   end
 
   defp pairs(relations, type, fun) do

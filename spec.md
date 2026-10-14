@@ -2282,6 +2282,60 @@ and `containers` (each container's claims and how many are verified). The status
 (`Surfex.Status.Report.golden/2`) counts claims by verdict among its stats and holds a
 `contained` table and an `on container` table.
 
+### 13.5 Earning an implements
+<!-- surfex: earning -->
+
+Whether code earns its `implements` is a question about the code, and it is answered by
+the verified claim whose tests exercise it (§13.4). `Surfex.Status.earning/2` gives the
+answer for one `implements` relation, and `Surfex.Status.earned?/2` says only whether it
+earns. It is the one definition of "earned": a policy that counts only earned relations
+reads it, as do the migration's candidates (§14.1).
+
+An `implements` from code C to a spec unit U **earns** when:
+
+1. U is `:verified`; or
+2. U is a container, or `:contained`, and a `:verified` claim inside U has a verifying
+   test that exercises C, or a verifying check whose inputs hold C (§11.4). A test
+   exercises C as the triangle reads it (§13.1): it reaches C, or holds a live `tests`
+   relation to it. A current review of the relation through a named path (`--through`,
+   §18.2) counts as a verified claim's test exercising C.
+
+Otherwise it is **unearned**, and the answer says why:
+
+- `unverified`: no evidence at all, neither on U nor on a claim inside it;
+- `not_exercised`: a claim inside U is verified, but none of its tests or checks
+  exercise C;
+- `nothing_inside`: U is a container with no claims inside it.
+
+Code compares by definition (§11), so a function's default-argument arities earn
+together.
+
+Rule 2 is containment for code, bounded by evidence. A claim with no verifying test earns
+nothing, however many relations hang off it, and a verified claim earns only for the code
+its tests exercise: no credit moves upward from a verified section to the claims inside
+it, and none is given wholesale to whatever a verified claim's section names. An earned
+contained relation is exactly one the migration can re-home to its claim (§14.1). The
+answers come from indexes derive builds once (what each test and check exercises, the
+claims inside each unit), so asking about every relation stays linear.
+
+```test:earned-through-claims
+code implementing a contained section earns when a verified hint inside it has a test
+reaching the code, directly, through a function that calls it, or through another arity
+of the same definition, or a verifying check whose inputs hold it; it is not_exercised
+when the hint's test reaches only other code, and nothing_inside when the section is a
+container with no claims
+```
+
+```test:no-upward-credit
+a rule inside a section the section's own tag verifies is unverified, and code related
+only to that rule is unearned as unverified
+```
+
+```test:earning-agrees
+on one fixture, an earned contained relation is one the migration finds a candidate claim
+for among the verified claims inside, and a not_exercised one has none
+```
+
 ## 14. Recording
 <!-- surfex: recording -->
 
