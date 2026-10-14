@@ -34,6 +34,19 @@ above it.
 `:section_number`, a regex with `(?<id>…)` such as `~r/^(?<id>P\d+)/`, or a list of them.
 An item with no id is an error naming its line.
 
+**A module's signatures**: a contract fence, one unit per function, `spec.md#feed/2`.
+
+````
+<!-- surfex: contract module: MyApp.Feed -->
+```elixir
+@spec feed(t, item) :: t
+@callback init(term) :: {:ok, t}
+```
+````
+
+In a subject section (`subjects:`) the marker needs no `module:`. Changing one signature
+dangles only that function's relations.
+
 **Not a claim**: bold. A bold-lead sentence without an id comment is its section's text.
 
 A claim's version is its text and nested lines, without the list marker or id comment, so

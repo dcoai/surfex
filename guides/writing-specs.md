@@ -146,6 +146,9 @@ dangles only that claim's relations:
 - **A list of rules whose ids the text already writes** (`1. §Send.3 …`, `P3 …`): mark the
   list with `<!-- surfex: rules send -->` and tell `.surfex.exs` how the ids are written,
   `rule_ids: :section_sign` or a regex such as `~r/^(?<id>P\d+)/`.
+- **A module's signatures**: a contract fence (`<!-- surfex: contract module: Wren -->`
+  before an `elixir` fence of `@spec` lines), one unit per function, so changing one
+  signature dangles only that function's relations.
 - **A table of cases**: a marked table, one unit per row (`spec.md` §11).
 
 Bold is never a claim: it is emphasis far more often than it is a requirement, so a

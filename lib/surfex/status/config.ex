@@ -13,7 +13,7 @@ defmodule Surfex.Status.Config do
       reads `1. §Tenancy.1.4 …`, a regex `~r/^(?<id>P\d+)/` reads `P3` (§11.1)
     * `:scanner`, `:scanner_opts` — the code scanner (`:elixir` by default)
     * `:require` — `[key: [type, …]]`: a key is a kind (`:spec`, `:code`, `:test`, …) or
-      a spec role (`:section`, `:block`, `:test_hint`, `:table`, `:row`, `:rule`), validated with the
+      a spec role (`:section`, `:block`, `:test_hint`, `:table`, `:row`, `:rule`, `:contract`), validated with the
       types
     * `:tests` — globs of ExUnit test files, scanned for tests (`Surfex.Scan.ExUnit`)
       when present
@@ -26,7 +26,7 @@ defmodule Surfex.Status.Config do
   alias Surfex.Log.Entry
   alias Surfex.Scan
 
-  @roles [:section, :block, :test_hint, :table, :row, :rule]
+  @roles [:section, :block, :test_hint, :table, :row, :rule, :contract]
 
   # The keys a `.surfex.exs` may hold, besides the profile's (`Surfex.Profile.keys/0`).
   @own [
@@ -359,7 +359,8 @@ defmodule Surfex.Status.Config do
     spec =
       Scan.Markdown.records(root, sources, Keyword.get(config, :exclude, []),
         heading_ids: Keyword.get(config, :heading_ids),
-        rule_ids: Keyword.get(config, :rule_ids)
+        rule_ids: Keyword.get(config, :rule_ids),
+        subjects: Keyword.get(config, :subjects, [])
       )
 
     if spec == [],

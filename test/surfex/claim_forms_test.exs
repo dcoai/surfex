@@ -196,6 +196,12 @@ defmodule Surfex.ClaimFormsTest do
     TOP-ITEM
     - <!-- surfex: item-a --> The first named item.
     - plain
+
+    <!-- surfex: contract module: Forms -->
+    ```elixir
+    TOP-SIGNATURE
+    @spec first(t) :: t
+    ```
     """
 
     test "inserting a claim at the top of every form changes no other unit" do
@@ -208,6 +214,7 @@ defmodule Surfex.ClaimFormsTest do
         |> String.replace("TOP-PARAGRAPH\n", "<!-- surfex: para-new -->\nA new paragraph.\n")
         |> String.replace("TOP-RULE\n", "1. §L.0 A new first rule.\n")
         |> String.replace("TOP-ITEM\n", "- <!-- surfex: item-new --> A new first item.\n")
+        |> String.replace("TOP-SIGNATURE\n", "@spec zeroth(t) :: t\n")
 
       after_insert = claim_units(inserted, opts)
       by_id = Map.new(after_insert, &{&1.id, &1.hash})
@@ -217,7 +224,8 @@ defmodule Surfex.ClaimFormsTest do
       assert Enum.map(after_insert, & &1.id) -- Enum.map(before, & &1.id) == [
                "spec.md#para-new",
                "spec.md#L.0",
-               "spec.md#item-new"
+               "spec.md#item-new",
+               "spec.md#zeroth/1"
              ]
     end
   end
@@ -252,6 +260,111 @@ defmodule Surfex.ClaimFormsTest do
       assert_raise ArgumentError, ~r/rule_ids: .*needs a named capture/, fn ->
         Surfex.Status.Config.scans(Keyword.put(config, :rule_ids, ~r/^P\d+/), dir)
       end
+    end
+  end
+
+  describe "contracts" do
+    @describetag verifies: ["contract-fences"]
+
+    @claim_contract """
+    # Feeds
+
+    <!-- surfex: contract module: MyApp.Feed -->
+    ```elixir
+    # A feed takes items in order.
+    @spec feed(t, item) :: t
+    @spec feed(t, item, keyword) ::
+            t
+    @spec feed(t, [item], keyword) :: t
+    @callback init(term) :: {:ok, state} when state: term
+    @macrocallback guard(Macro.t()) :: Macro.t()
+    ```
+    """
+
+    test "a marked contract fence is one unit per function its signatures name" do
+      units = for u <- claim_units(@claim_contract), u.role == :contract, do: u
+
+      assert for(u <- units, do: {u.id, u.contract, u.within, u.location.lines}) == [
+               {"spec.md#feed/2", "MyApp.Feed.feed/2", "spec.md#Feeds", {6, 6}},
+               {"spec.md#feed/3", "MyApp.Feed.feed/3", "spec.md#Feeds", {7, 9}},
+               {"spec.md#init/1", "MyApp.Feed.init/1", "spec.md#Feeds", {10, 10}},
+               {"spec.md#guard/1", "MyApp.Feed.guard/1", "spec.md#Feeds", {11, 11}}
+             ]
+    end
+
+    test "an elixir contract fence in a subject section takes the subject's module" do
+      text = "# Feeds\n\n```elixir contract\n@spec feed(t) :: t\n```\n"
+      subjects = [%{file: "spec.md", heading: ~r/^Feeds$/, items: ["MyApp.Feed"]}]
+
+      assert [%{id: "spec.md#feed/1", contract: "MyApp.Feed.feed/1"}] =
+               Enum.filter(claim_units(text, subjects: subjects), &(&1.role == :contract))
+    end
+
+    test "a signature's version is its own text: changing one changes only its unit" do
+      before = claim_versions(@claim_contract, [])
+
+      changed = fn from, to ->
+        edited = claim_versions(String.replace(@claim_contract, from, to), [])
+        for {id, hash} <- before, edited[id] != hash, do: id
+      end
+
+      assert changed.("@spec feed(t, item) :: t", "@spec feed(t, item) :: t | nil") == [
+               "spec.md#feed/2"
+             ]
+
+      assert changed.("[item], keyword) :: t", "[item], keyword) :: :ok") == ["spec.md#feed/3"]
+      # The fence's other lines are its section's text.
+      assert changed.("in order", "in turn") == ["spec.md#Feeds"]
+    end
+
+    test "a fence with no contract marker is the section's text, and a bare marker a block stays a block" do
+      assert [] =
+               for(
+                 u <- claim_units("# A\n\n```elixir\n@spec f(t) :: t\n```\n"),
+                 u.role == :contract,
+                 do: u
+               )
+
+      block = "# A\n\n<!-- surfex: contract -->\nA block.\n<!-- /surfex -->\n"
+
+      assert [%{id: "spec.md#contract", role: :block}] =
+               Enum.filter(claim_units(block), &(&1.role == :block))
+    end
+
+    @contract_errors [
+      {"a fence with no module",
+       "# A\n\n<!-- surfex: contract -->\n```elixir\n@spec f(t) :: t\n```\n",
+       "spec.md:4: the contract fence has no module"},
+      {"a marker with no fence", "# A\n\n<!-- surfex: contract module: M -->\ntext\n",
+       "spec.md:3: the contract marker has no fence after it"},
+      {"a fence with no signature",
+       "# A\n\n<!-- surfex: contract module: M -->\n```elixir\ndef f, do: 1\n```\n",
+       "spec.md:3: the contract fence holds no @spec"},
+      {"a signature that doesn't parse",
+       "# A\n\n<!-- surfex: contract module: M -->\n```elixir\n@spec f(t :: t\n```\n",
+       "spec.md:5: the contract signature doesn't parse"},
+      {"a function in two fences",
+       "# A\n\n```elixir contract\n@spec f(t) :: t\n```\n\n```elixir contract\n@spec f(t) :: t\n```\n",
+       "is already the id of line"}
+    ]
+
+    for {name, text, message} <- @contract_errors do
+      test "raises on #{name}" do
+        subjects = [%{file: "spec.md", heading: ~r/^A$/, items: ["M"]}]
+        opts = if unquote(name) == "a fence with no module", do: [], else: [subjects: subjects]
+        error = assert_raise ArgumentError, fn -> claim_units(unquote(text), opts) end
+        assert error.message =~ unquote(message)
+      end
+    end
+
+    test "status counts contracts, and require: takes the contract role" do
+      status = Surfex.Status.derive(claim_units(@claim_contract), [])
+      assert %{contract: 4} = Surfex.Status.units(status)
+      assert Surfex.Status.Report.text(status) =~ " · contracts 4\n"
+
+      assert Surfex.Status.Config.require!(require: [contract: [:implements]]) == [
+               contract: [:implements]
+             ]
     end
   end
 

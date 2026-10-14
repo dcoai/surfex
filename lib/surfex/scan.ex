@@ -20,6 +20,8 @@ defmodule Surfex.Scan do
       its body), `:block` (a marked requirement inside a section) or `:test_hint` (a
       fenced `test` block saying how to test something). For code, the item's kind
       (`:module`, `:function`, …). `nil` for tests and classes.
+    * `contract` — for a contract unit (role `:contract`, a signature in a contract
+      fence), the function it is the contract of, `MyApp.Cart.add/2`; `nil` otherwise.
     * `within` — what it sits in: the section or block of a block or hint, the parent of a
       code item (its module, for a function). `nil` when nothing encloses it. It is a
       fact about the source, not a relation.
@@ -61,7 +63,8 @@ defmodule Surfex.Scan do
     hidden: %{},
     runs: %{},
     shape: false,
-    named: false
+    named: false,
+    contract: nil
   ]
 
   @type location :: %{file: String.t(), lines: {pos_integer, pos_integer} | nil}
@@ -89,7 +92,9 @@ defmodule Surfex.Scan do
           shape: boolean,
           # A spec section whose id the author wrote (an anchor, a heading comment or the
           # project's heading grammar), not its heading path (§11).
-          named: boolean
+          named: boolean,
+          # A contract unit's function, `Module.name/arity` (§11.1).
+          contract: String.t() | nil
         }
 
   @doc """
