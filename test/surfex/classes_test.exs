@@ -22,6 +22,7 @@ defmodule Surfex.ClassesTest do
     @describetag verifies: "scan-records-pure"
 
     @tag :tmp_dir
+    @tag verifies: ["scan-records-pure", "scan-records"]
     test "one per class, located in .surfex.exs; Config.scans/2 includes them", %{
       tmp_dir: root
     } do
@@ -42,6 +43,7 @@ defmodule Surfex.ClassesTest do
       assert classes.(config) == []
     end
 
+    @tag verifies: ["scan-records-pure", "scan-records"]
     test "the version covers the reason and the class's rules, not their order" do
       base = hash(@config, "plumbing")
 

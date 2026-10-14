@@ -86,6 +86,7 @@ defmodule Surfex.AdoptionTest do
   describe "adoption:" do
     @describetag verifies: "adoption-modes"
 
+    @tag verifies: ["adoption-modes", "adoption"]
     test "is :reevaluate by default, :trust, or trusted and re-evaluated globs", %{tmp_dir: root} do
       config = suite(root)
       default = Config.adoption!(config, root)
@@ -128,7 +129,7 @@ defmodule Surfex.AdoptionTest do
 
     # #123: the baseline adopts the tags already written; it is one-shot, so adopting
     # none by mistake is refused, and it says what it adopted.
-    @tag verifies: "baseline-adopts-tags"
+    @tag verifies: ["baseline-adopts-tags", "adoption"]
     test "it refuses to adopt no tags unless no_tags says so, and reports what it adopted", %{
       tmp_dir: root
     } do
@@ -155,6 +156,7 @@ defmodule Surfex.AdoptionTest do
              }
     end
 
+    @tag verifies: ["baseline-one-shot", "adoption"]
     test "records each trusted test version and its declared verifies, basis baseline", %{
       tmp_dir: root
     } do
@@ -183,6 +185,7 @@ defmodule Surfex.AdoptionTest do
       assert %{kind: :test, id: @core, hash: "t1"} in ends
     end
 
+    @tag verifies: ["baseline-one-shot", "adoption"]
     test "refuses under :reevaluate, a second time, without tests, or before a green run", %{
       tmp_dir: root
     } do
@@ -217,6 +220,7 @@ defmodule Surfex.AdoptionTest do
       {log ++ confirmed, trust}
     end
 
+    @tag verifies: ["baseline-shrinks", "adoption"]
     test "a baselined test carries implements, and re-confirms a refactor, as baseline", %{
       tmp_dir: root
     } do
@@ -244,6 +248,7 @@ defmodule Surfex.AdoptionTest do
       assert [%Entry{basis: :evidence}] = by_type(moved, :implements)
     end
 
+    @tag verifies: ["baseline-shrinks", "adoption"]
     test "a changed test version, or narrowed trust, leaves its relations unvalidated", %{
       tmp_dir: root
     } do
@@ -263,7 +268,7 @@ defmodule Surfex.AdoptionTest do
     end
 
     # #123: a move keeps the basis but not the note; the check must follow the basis.
-    @tag verifies: ["evidence-claims-by-basis", "baseline-shrinks"]
+    @tag verifies: ["evidence-claims-by-basis", "baseline-shrinks", "evidence"]
     test "a moved baseline relation stays in the --evidence check", %{tmp_dir: root} do
       {log, trust} = trusted(root)
 
@@ -308,6 +313,7 @@ defmodule Surfex.AdoptionTest do
                                                               |> Enum.map(& &1.relation))
     end
 
+    @tag verifies: ["baseline-shrinks", "adoption"]
     test "baseline relations are counted with the mode, and fail under baseline: :fail", %{
       tmp_dir: root
     } do

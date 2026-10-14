@@ -81,6 +81,7 @@ defmodule Surfex.DslCallsTest do
   defp calls(tests),
     do: Map.new(tests, &{String.replace_prefix(&1.id, "Shop.OrderTest: ", ""), &1.calls})
 
+  @tag verifies: ["dsl-calls", "scanner-calls"]
   test "a test's call through the entry names the action, piped or not; a capture names none" do
     code = Scan.code(FixtureDsl.Scanner.items(@project, []))
 
@@ -104,6 +105,7 @@ defmodule Surfex.DslCallsTest do
   end
 
   @tag :tmp_dir
+  @tag verifies: ["dsl-calls", "scanner-calls"]
   test "a function's call through the entry names the action, and reach goes on through it",
        %{tmp_dir: root} do
     config = project(root)
@@ -133,6 +135,7 @@ defmodule Surfex.DslCallsTest do
   end
 
   @tag :tmp_dir
+  @tag verifies: ["dsl-calls", "scanner-calls"]
   test "a run records the action's version for a test driving it", %{tmp_dir: root} do
     project(root)
     file = Path.join(root, "test/order_test.exs")
@@ -184,6 +187,7 @@ defmodule Surfex.DslCallsTest do
            ]
   end
 
+  @tag verifies: ["dsl-calls", "scanner-calls"]
   test "an answer that isn't a list of keys raises, naming the scanner" do
     code = Scan.code(FixtureDsl.Scanner.items(@project, []))
 

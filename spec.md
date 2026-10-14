@@ -138,6 +138,7 @@ carries a date, a time or a commit
 
 ## 3. Reading source
 <!-- surfex: reading-source -->
+<!-- surfex: class informative: names the module; its primitives are specified in 3.1 to 3.3 -->
 
 `Surfex.SourceScan` holds the primitives every scanner of Elixir source shares.
 

@@ -618,6 +618,7 @@ defmodule Surfex.RecordTest do
       for(e <- recorded, Entry.relation?(e), do: e.type) |> Enum.sort()
     end
 
+    @tag verifies: ["evidence-confirms", "evidence"]
     test "code changed: a test that went red then green confirms tests, and implements follows" do
       evidence = [ev(:failed, "c1", 1), ev(:passed, "c2", 2)]
 
@@ -706,6 +707,7 @@ defmodule Surfex.RecordTest do
              ]
     end
 
+    @tag verifies: ["evidence-confirms", "evidence"]
     test "after a spec-only rewording, a failing run doesn't confirm verifies: that is a judgement" do
       evidence = [ev(:failed, "c1", 1)]
 
@@ -732,6 +734,7 @@ defmodule Surfex.RecordTest do
              ]
     end
 
+    @tag verifies: ["evidence-confirms", "evidence"]
     test "require_red: a tests relation can't be confirmed by hand until its test was red" do
       entries = confirmed()
       policy = [require_red: true, evidence: [ev(:passed, "c2", 1)]]
@@ -764,6 +767,7 @@ defmodule Surfex.RecordTest do
 
     defp observations(entries), do: for(%Entry{op: :observe} = e <- entries, do: e)
 
+    @tag verifies: ["red-green-recorded", "evidence"]
     test "a test version's red then green is recorded once, with its runs" do
       evidence = [ev(:failed, "c1", 1), ev(:passed, "c2", 2)]
 
@@ -877,6 +881,7 @@ defmodule Surfex.RecordTest do
              )
     end
 
+    @tag verifies: ["evidence-checked", "evidence"]
     test "a test that didn't run, failed, or ran against other code, disproves them" do
       assert [%{reason: :not_run}, %{reason: :not_run}] = unproven([])
 
@@ -893,7 +898,7 @@ defmodule Surfex.RecordTest do
     end
 
     # #98: a test this job excluded wasn't checked here; that isn't a disproof.
-    @tag verifies: ["evidence-excluded", "evidence-checked"]
+    @tag verifies: ["evidence-excluded", "evidence-checked", "evidence"]
     test "a test excluded or skipped in this run leaves its claims not checked here, not failing" do
       for reason <- [:excluded, :skipped] do
         status = Status.derive(world("s1", "c2"), claimed(), [], evidence: [ev(reason, nil, 5)])
@@ -915,7 +920,7 @@ defmodule Surfex.RecordTest do
     end
 
     # #98: each CI job's evidence, read together in a final job.
-    @tag verifies: ["evidence-merged", "evidence-checked"]
+    @tag verifies: ["evidence-merged", "evidence-checked", "evidence"]
     test "merged jobs: one bearing a claim out passes it, a disproof anywhere fails, and none checking it fails" do
       merged = fn files ->
         Status.derive(world("s1", "c2"), claimed(), [], evidence: {:merged, files})
@@ -979,7 +984,7 @@ defmodule Surfex.RecordTest do
     defp checked(entries, run, opts \\ []),
       do: Status.derive(world("s1", "c1"), entries, [], [evidence: run] ++ opts)
 
-    @tag verifies: ["evidence-failed", "status-failing", "status-report-forms"]
+    @tag verifies: ["evidence-failed", "status-failing", "status-report-forms", "evidence"]
     test "a test that failed at the version its relations hold fails them, and the check" do
       status = checked(reviewed(), [ev(:failed, "c1", 1)], validated: true)
 
@@ -1139,6 +1144,7 @@ defmodule Surfex.RecordTest do
           @meta ++ [note: "the entry point's run checks the section's claim"] ++ extra
         )
 
+    @tag verifies: ["review-reach", "evidence"]
     test "a review credits the code the test calls, and reached code only when named" do
       {:ok, called} = review(review_log(true))
 
@@ -1184,6 +1190,7 @@ defmodule Surfex.RecordTest do
           @meta ++ [note: "the server's reply checks the section's claim"] ++ extra
         )
 
+    @tag verifies: ["review-through", "review-through-path"]
     test "named code the run didn't reach is credited with how the test exercises it" do
       assert {:error, refused} =
                through_review(through_world(), [unreached_ev()], code: [@code_id])
@@ -1224,6 +1231,7 @@ defmodule Surfex.RecordTest do
       assert noted.through == @how
     end
 
+    @tag verifies: ["review-through", "review-through-path"]
     test "--through needs named code the run didn't reach, scanned and related" do
       assert {:error, "--through says how the test exercises code you name" <> _} =
                through_review(through_world(), [unreached_ev()], through: @how)
@@ -1262,6 +1270,7 @@ defmodule Surfex.RecordTest do
     defp shape_note,
       do: Keyword.put(@meta, :note, "the cart type has the fields the section lists")
 
+    @tag verifies: ["shapes-by-judgement", "validation"]
     test "an implements to a shape is confirmed by judgement, and validates" do
       {:ok, [proposed]} = Record.relate(shaped(), [], @spec_id, @type_id, :implements, @meta)
       assert proposed.basis == :proposed
@@ -1370,6 +1379,7 @@ defmodule Surfex.RecordTest do
       assert_received {:saw, 2, 1}
     end
 
+    @tag verifies: ["batch-distinct-notes", "validation"]
     test "refuses notes that aren't distinct, naming the lines, and records nothing" do
       same = "reviewed"
 
@@ -1406,7 +1416,7 @@ defmodule Surfex.RecordTest do
           basis: basis
         )
 
-    @tag verifies: "process-proposed"
+    @tag verifies: ["process-proposed", "validation"]
     test "a pair named by hand, or a tag with no failing run, is proposed and fails" do
       {:ok, [impl]} = Record.relate(world(), [], @spec_id, @code_id, :implements, @meta)
       assert impl.basis == :proposed
@@ -1429,7 +1439,7 @@ defmodule Surfex.RecordTest do
       assert [%{state: :current}] = Status.derive(world(), [ver]).relations
     end
 
-    @tag verifies: "process-validated"
+    @tag verifies: ["process-validated", "validation"]
     test "implements becomes current by evidence; without a validating basis it is unvalidated" do
       {:ok, [impl]} = Record.relate(world(), [], @spec_id, @code_id, :implements, @meta)
       ver = with_basis(rel(:verifies, {:test, @t, "t1"}, {:spec, @hint, "h1"}), :evidence)
@@ -1463,7 +1473,7 @@ defmodule Surfex.RecordTest do
     end
 
     # #89: re-recording a tip judges nothing new, so it keeps whatever validated it.
-    @tag verifies: "process-validated"
+    @tag verifies: ["process-validated", "validation"]
     test "re-recording a tip keeps its basis: move, and resolve between conflicted tips" do
       impl = &rel(:implements, {:spec, @spec_id, "s1"}, {:code, @code_id, &1})
       renamed = [%{scan(:spec, "spec.md#new", "s1") | role: :section} | tl(world())]
@@ -1504,7 +1514,7 @@ defmodule Surfex.RecordTest do
       assert Status.failing?(status)
     end
 
-    @tag verifies: "process-one-at-a-time"
+    @tag verifies: ["process-one-at-a-time", "validation"]
     test "confirm takes one relation and a note, refuses implements, and records a judgement" do
       legacy = rel(:implements, {:spec, @spec_id, "s1"}, {:code, @code_id, "c1"})
 
@@ -1538,7 +1548,7 @@ defmodule Surfex.RecordTest do
       assert judged.basis == :judgement
     end
 
-    @tag verifies: "process-one-at-a-time"
+    @tag verifies: ["process-one-at-a-time", "validation"]
     test "validate needs the verifies relation and green evidence, and records a review" do
       impl = rel(:implements, {:spec, @hint, "h1"}, {:code, @code_id, "c1"})
       tests = rel(:tests, {:test, @t, "t1"}, {:code, @code_id, "c1"})
@@ -1599,7 +1609,7 @@ defmodule Surfex.RecordTest do
 
     # #138: a review records what isn't validated already. A verifies on its failing run
     # keeps that basis (CI goes on checking it), and a second review records nothing.
-    @tag verifies: "review-records-once"
+    @tag verifies: ["review-records-once", "validation"]
     test "validate records only what isn't validated already, and refuses when that's nothing" do
       impl = rel(:implements, {:spec, @hint, "h1"}, {:code, @code_id, "c1"})
       tests = rel(:tests, {:test, @t, "t1"}, {:code, @code_id, "c1"})
@@ -1654,7 +1664,7 @@ defmodule Surfex.RecordTest do
              ]
     end
 
-    @tag verifies: "process-one-at-a-time"
+    @tag verifies: ["process-one-at-a-time", "validation"]
     test "validate against a section needs the test's current relation to a hint inside it" do
       # The code implements the section; the test verifies the hint inside it.
       impl = rel(:implements, {:spec, @spec_id, "s1"}, {:code, @code_id, "c1"})

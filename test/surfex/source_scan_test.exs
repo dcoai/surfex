@@ -52,6 +52,7 @@ defmodule Surfex.SourceScanTest do
                SourceScan.definition_hash(@definition)
     end
 
+    @tag verifies: ["structure-versions", "content-versions"]
     test "reindenting does not change it" do
       indented = @definition |> String.split("\n") |> Enum.map_join("\n", &("    " <> &1))
 
@@ -93,6 +94,7 @@ defmodule Surfex.SourceScanTest do
     end
     '''
 
+    @tag verifies: ["structure-versions", "content-versions"]
     test "a @doc or @typedoc edit leaves the version unchanged; a @moduledoc edit doesn't" do
       versions = fn source ->
         [mod] = source |> Code.string_to_quoted!() |> SourceScan.defmodules()
@@ -129,6 +131,7 @@ defmodule Surfex.SourceScanTest do
       assert hash =~ ~r/^[0-9a-f]{8}$/
     end
 
+    @tag verifies: ["structure-versions", "content-versions"]
     test "accepts a quoted node and a source binary, and agrees on both" do
       quoted = Code.string_to_quoted!(@definition)
 
@@ -144,6 +147,7 @@ defmodule Surfex.SourceScanTest do
   describe "defmodules/1" do
     @describetag verifies: "public-definitions"
 
+    @tag verifies: ["public-definitions", "definitions"]
     test "returns every module in source order, nested ones included" do
       ast =
         Code.string_to_quoted!("""
@@ -182,6 +186,7 @@ defmodule Surfex.SourceScanTest do
       %{root: root}
     end
 
+    @tag verifies: ["finding-lib-sources", "finding-source"]
     test "ascends to the directory holding the marker", %{root: root} do
       found = SourceScan.project_root("mix.exs", Path.join(root, "nested/deeper"))
       # Compared through `Path.expand/1` because a tmp dir is often reached via a symlink.
@@ -193,6 +198,7 @@ defmodule Surfex.SourceScanTest do
       assert SourceScan.project_root("no-such-marker-anywhere", start) == Path.expand(start)
     end
 
+    @tag verifies: ["finding-lib-sources", "finding-source"]
     test "starts from the working directory by default" do
       assert SourceScan.project_root("mix.exs") == Path.expand(Path.join(__DIR__, "../.."))
     end
@@ -224,6 +230,7 @@ defmodule Surfex.SourceScanTest do
 
     # #9: ExUnit's tmp_dir trees and test fixtures have a lib/ too. Counting them made a
     # golden drift on the machine that had just run the tests, and never in CI.
+    @tag verifies: ["finding-lib-sources", "finding-source"]
     test "only a Mix project's own lib/, outside test, tmp and hidden trees", %{root: root} do
       tree = %{
         "app/mix.exs" => "",
@@ -258,6 +265,7 @@ defmodule Surfex.SourceScanTest do
 
     defp arities(source), do: source |> defs() |> Enum.map(&{&1.name, &1.arity, &1.kind})
 
+    @tag verifies: ["public-definitions", "definitions"]
     test "groups clauses, expands defaults, keeps public definers" do
       assert arities(~S"""
              defmodule M do
@@ -304,6 +312,7 @@ defmodule Surfex.SourceScanTest do
              """) == []
     end
 
+    @tag verifies: ["public-definitions", "definitions"]
     test "an @impl callback is hidden unless it has its own @doc" do
       assert arities("""
              defmodule M do
@@ -343,6 +352,7 @@ defmodule Surfex.SourceScanTest do
       refute hash.(String.replace(base, "f(0), do: 0", "f(0), do: 1")) == hash.(base)
     end
 
+    @tag verifies: ["public-definitions", "definitions"]
     test "hidden_module?/1 reads @moduledoc false" do
       [hidden, shown] =
         "defmodule A do\n @moduledoc false\nend\ndefmodule B do\n @moduledoc \"b\"\nend"
@@ -388,6 +398,7 @@ defmodule Surfex.SourceScanTest do
       hashes(@base)[fun] != hashes(String.replace(@base, from, to))[fun]
     end
 
+    @tag verifies: ["structure-versions", "content-versions"]
     test "a private helper it calls, directly or transitively" do
       assert changes?(:price, "deep(x) + 1", "deep(x) + 2")
       assert changes?(:price, "do: x * 2", "do: x * 3")
@@ -462,6 +473,7 @@ defmodule Surfex.SourceScanTest do
       refute surface_changes?("defp p(x), do: x", "defp p(x), do: x\n  defp q, do: 0")
     end
 
+    @tag verifies: ["structure-versions", "content-versions"]
     test "its public definitions, docs, behaviours, uses, struct and types are" do
       assert surface_changes?("def g, do: 1", "def g, do: 1\n  def h, do: 2")
       assert surface_changes?(~s("doc"), ~s("docs"))
@@ -516,6 +528,7 @@ defmodule Surfex.SourceScanTest do
       Map.new(SourceScan.types(mod), &{{&1.name, &1.arity}, &1})
     end
 
+    @tag verifies: ["structure-versions", "content-versions"]
     test "the public types, each versioned by its declaration alone" do
       types = types(@typed)
       assert Map.keys(types) |> Enum.sort() == [h: 0, pair: 2, t: 0]

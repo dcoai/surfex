@@ -109,6 +109,7 @@ defmodule Surfex.EarningTest do
   describe "earning through the claims inside a unit" do
     @describetag verifies: "earned-through-claims"
 
+    @tag verifies: ["earned-through-claims", "earning"]
     test "code a verified claim's test reaches earns; code it doesn't reach doesn't" do
       {_, _, status} = derive([test_scan("T", ["feature-hint"], ["M.c/1"])])
 
@@ -132,6 +133,7 @@ defmodule Surfex.EarningTest do
       assert Status.earning(status, implements("M.c/2", "feature")) == :earned
     end
 
+    @tag verifies: ["earned-through-claims", "earning"]
     test "a verifying check earns the code in the files it inspects" do
       {_, _, status} = derive([check_scan("gate", ["feature-hint"], %{"lib/m.ex" => "v1"})])
 
@@ -141,6 +143,7 @@ defmodule Surfex.EarningTest do
                {:unearned, :not_exercised}
     end
 
+    @tag verifies: ["earned-through-claims", "earning"]
     test "a current review through a named path earns what no call reaches" do
       {_, _, status} =
         derive([test_scan("T", ["feature-hint"], ["M.other/0"])], [
@@ -154,6 +157,7 @@ defmodule Surfex.EarningTest do
       assert Status.earned?(status, relation)
     end
 
+    @tag verifies: ["earned-through-claims", "earning"]
     test "a container with no claims earns nothing; no evidence at all is unverified" do
       {_, _, status} = derive([test_scan("T", ["feature-hint"], ["M.c/1"])])
 
@@ -165,7 +169,7 @@ defmodule Surfex.EarningTest do
     end
   end
 
-  @tag verifies: "no-upward-credit"
+  @tag verifies: ["no-upward-credit", "earning"]
   test "a section's own tag earns its own code, never the code of a claim inside it" do
     {_, _, status} = derive([test_scan("T", ["tagged"], ["M.r/0"])])
 
@@ -175,7 +179,7 @@ defmodule Surfex.EarningTest do
     assert Status.earning(status, implements("M.r/0", "inner-rule")) == {:unearned, :unverified}
   end
 
-  @tag verifies: "earning-agrees"
+  @tag verifies: ["earning-agrees", "earning"]
   test "earning and the migration's candidates agree on one fixture" do
     {scans, entries, status} =
       derive([test_scan("T", ["feature-hint"], ["M.c/1"])], [

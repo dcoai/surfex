@@ -82,6 +82,7 @@ defmodule Surfex.ChecksTest do
   describe "check records" do
     @describetag verifies: "check-records"
 
+    @tag verifies: ["check-records", "checks"]
     test "a check is a record of kind check, declaring what it verifies", %{tmp_dir: root} do
       scans = root |> project() |> scans()
       rescue_check = check(scans, "no-rescue")
@@ -101,6 +102,7 @@ defmodule Surfex.ChecksTest do
                [{:verifies, "spec.md#layout/a"}, {:verifies, "spec.md#layout/b"}]
     end
 
+    @tag verifies: ["check-records", "checks"]
     test "its version changes with its command, verifies, input globs and inputs' content",
          %{tmp_dir: root} do
       project(root)
@@ -120,6 +122,7 @@ defmodule Surfex.ChecksTest do
       assert version.(config()) == changed
     end
 
+    @tag verifies: ["check-records", "checks"]
     test "a malformed check, a repeated id or an input matching no file raises",
          %{tmp_dir: root} do
       project(root)
@@ -170,6 +173,7 @@ defmodule Surfex.ChecksTest do
   describe "a check's evidence confirms its verifies" do
     @describetag verifies: "check-discriminates"
 
+    @tag verifies: ["check-discriminates", "check-evidence"]
     test "failing then passing with its inputs changed confirms, and a later green re-confirms",
          %{tmp_dir: root} do
       project(root)
@@ -247,6 +251,7 @@ defmodule Surfex.ChecksTest do
   describe "the check covers checks" do
     @describetag verifies: "check-evidence-checked"
 
+    @tag verifies: ["check-evidence-checked", "check-evidence"]
     test "a run where the check passed bears its claim out; one without it didn't run",
          %{tmp_dir: root} do
       {scans, entries, green} = confirmed(root)
@@ -258,6 +263,7 @@ defmodule Surfex.ChecksTest do
       assert [%{test: "no-rescue", reason: :not_run}] = status.unproven
     end
 
+    @tag verifies: ["check-evidence-checked", "check-evidence"]
     test "a failed check fails its relation; a pass against other inputs ran against other code",
          %{tmp_dir: root} do
       {scans, entries, [green]} = confirmed(root)
@@ -290,6 +296,7 @@ defmodule Surfex.ChecksTest do
   describe "reviewing a check" do
     @describetag verifies: "check-review"
 
+    @tag verifies: ["check-review", "review-check"]
     test "records its verifies on a green run at its current version, with the note",
          %{tmp_dir: root} do
       scans = root |> project() |> scans()
@@ -333,6 +340,7 @@ defmodule Surfex.ChecksTest do
   describe "a check in the status" do
     @describetag verifies: "check-status"
 
+    @tag verifies: ["check-status", "checks"]
     test "its declared verifies is suggested, unrecorded until recorded, undeclared once dropped",
          %{tmp_dir: root} do
       scans = root |> project() |> scans()
@@ -383,6 +391,7 @@ defmodule Surfex.ChecksTest do
              )
     end
 
+    @tag verifies: ["check-status", "checks"]
     test "a unit only a check verifies: no triangle gap for the code it inspects, and verified in completeness",
          %{tmp_dir: root} do
       config = config(checks(inputs: ["rules.txt", "lib/app.ex"]))

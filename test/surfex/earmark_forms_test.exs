@@ -61,6 +61,7 @@ defmodule Surfex.EarmarkFormsTest do
     end
   end
 
+  @tag verifies: ["earmark-forms", "scan-records"]
   test "the forms said to break do: markers show as heading text, and a heading is lost" do
     for heading <- ["## Totals <!-- surfex: totals -->", "## Totals {#totals}"] do
       ast = ExDoc.Markdown.Earmark.to_ast(heading <> "\n\nt\n", [])
@@ -74,6 +75,7 @@ defmodule Surfex.EarmarkFormsTest do
     assert earmark_headings(ExDoc.Markdown.Earmark.to_ast(spaced, [])) == ["Carts"]
   end
 
+  @tag verifies: ["earmark-forms", "claim-forms"]
   test "the claim forms said to break do: a comment in a list item shows, one starting a paragraph swallows a heading" do
     for item <- [
           "- <!-- surfex: no-override --> Never honour it.\n",
@@ -110,7 +112,7 @@ defmodule Surfex.EarmarkFormsTest do
     "# Views\n<!-- surfex: views -->\n<!-- surfex: deferred group/project#7 -->\nViews.\n# Next\n"
   ]
 
-  @tag verifies: "class-markers-render"
+  @tag verifies: ["class-markers-render", "spec-classes"]
   test "class and deferral markers render as comments with every heading kept" do
     classes =
       Surfex.Status.Config.spec_classes!([spec_classes: [{"informative", "asserts nothing"}]], [

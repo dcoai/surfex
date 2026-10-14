@@ -42,6 +42,7 @@ defmodule Surfex.SelectTest do
 
   defp ids({:ok, tests}), do: Enum.map(tests, & &1.id)
 
+  @tag verifies: ["test-selection", "scan-records"]
   test "the tests declaring a unit, a list's members included, by bare or full id" do
     # `--only verifies:carts` selects neither: `T: listed` is tagged with a list of two.
     assert ids(Select.tests(world(), ["carts"])) == ["T: listed"]
@@ -51,6 +52,7 @@ defmodule Surfex.SelectTest do
              ["T: one", "T: listed", "T: deep"]
   end
 
+  @tag verifies: ["test-selection", "scan-records"]
   test "--within adds the tests of the units inside, along the within chain" do
     assert ids(Select.tests(world(), ["carts"], within: true)) ==
              ["T: one", "T: listed", "T: deep"]

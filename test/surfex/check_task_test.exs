@@ -48,6 +48,7 @@ defmodule Surfex.CheckTaskTest do
     end
   end
 
+  @tag verifies: ["check-run", "checks"]
   test "mix surfex.check records evidence and fails when a check failed; --list runs nothing",
        %{tmp_dir: root} do
     evidence = Path.join(root, "evidence.jsonl")
@@ -67,6 +68,7 @@ defmodule Surfex.CheckTaskTest do
     assert_raise Mix.Error, ~r/no check has the id nope/, fn -> check(root, ["nope"]) end
   end
 
+  @tag verifies: ["check-run", "checks"]
   test "mix surfex.test lists the checks verifying a unit, and runs them with --checks",
        %{tmp_dir: root} do
     infos()

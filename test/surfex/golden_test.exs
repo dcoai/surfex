@@ -42,7 +42,7 @@ defmodule Surfex.GoldenTest do
   describe "the header block" do
     @describetag verifies: "golden-stats"
 
-    @tag verifies: ["golden-stats", "golden-renders"]
+    @tag verifies: ["golden-stats", "golden-renders", "goldens"]
     test "is title, purpose, attribution — in that order, contiguous" do
       [title, purpose, attribution | _] = Golden.render(spec()) |> String.split("\n")
 
@@ -79,6 +79,7 @@ defmodule Surfex.GoldenTest do
 
     # The property the drift gates rest on. Two scanners that agree on content but not on
     # order must produce identical bytes.
+    @tag verifies: ["golden-order", "golden-determinism"]
     test "row order does not change the bytes" do
       forward = spec()
       reversed = %{forward | rows: Enum.reverse(forward.rows)}
@@ -86,6 +87,7 @@ defmodule Surfex.GoldenTest do
       assert Golden.render(reversed) == Golden.render(forward)
     end
 
+    @tag verifies: ["golden-order", "golden-determinism"]
     test "nor does the order of a row map's keys" do
       forward = spec()
 
@@ -97,6 +99,7 @@ defmodule Surfex.GoldenTest do
       assert Golden.render(shuffled) == Golden.render(forward)
     end
 
+    @tag verifies: ["golden-order", "golden-determinism"]
     test "rows come out in natural-key order by default, or in the spec's :sort order" do
       rows =
         for id <- ["item10", "item2", "item1"],

@@ -35,7 +35,7 @@ defmodule Surfex.IssuesTest do
 
   defp derive(scans, entries, opts), do: Status.derive(scans, entries, [], opts)
 
-  @tag verifies: "deferral-stale"
+  @tag verifies: ["deferral-stale", "stale-deferrals"]
   test "a deferral is stale once its issue closes or its unit is built" do
     scans = spec()
     grain = [claim_grain: true]
@@ -104,6 +104,7 @@ defmodule Surfex.IssuesTest do
     @describetag verifies: "issue-resolver"
 
     @tag :tmp_dir
+    @tag verifies: ["issue-resolver", "stale-deferrals"]
     test "states come from the command's output, with refs substituted and no shell", %{
       tmp_dir: root
     } do
@@ -143,6 +144,7 @@ defmodule Surfex.IssuesTest do
     end
 
     @tag :tmp_dir
+    @tag verifies: ["issue-resolver", "stale-deferrals"]
     test "mix surfex.status --issues asks the tracker, and fails on what it can't answer", %{
       tmp_dir: root
     } do

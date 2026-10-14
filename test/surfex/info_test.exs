@@ -4,6 +4,7 @@ defmodule Surfex.InfoTest do
 
   alias Surfex.Info
 
+  @tag verifies: ["info-directory", "info"]
   test "the directory is under 100 lines and lists every topic and every command" do
     directory = Info.directory()
     assert length(String.split(directory, "\n", trim: true)) < 100
@@ -25,7 +26,7 @@ defmodule Surfex.InfoTest do
 
   # #117, #126: the pages live with the code; the package's usage rules are one short page
   # (the agent topic) that points to them, so a project's AGENTS.md stays small and current.
-  @tag verifies: ["usage-rules-shipped", "info-directory"]
+  @tag verifies: ["usage-rules-shipped", "info-directory", "info"]
   test "usage-rules.md is the short agent page pointing to mix surfex.info; the rest stay in priv/info" do
     root = Path.expand("../..", __DIR__)
     rules = File.read!(Path.join(root, "usage-rules.md"))
@@ -83,6 +84,7 @@ defmodule Surfex.InfoTest do
         do: refute(shown.(name), "#{name} is on hexdocs")
   end
 
+  @tag verifies: ["info-directory", "info"]
   test "each topic prints its page; an unknown topic is refused, naming the topics" do
     for {topic, _summary} <- Info.topics() do
       assert {:ok, page} = Info.page(topic)
@@ -97,7 +99,7 @@ defmodule Surfex.InfoTest do
 
   # #150: a project that renders goldens with surfex but keeps no relation log hasn't
   # adopted it, and the directory says so (extc found this the expensive way).
-  @tag verifies: "info-without-log"
+  @tag verifies: ["info-without-log", "info"]
   @tag :tmp_dir
   test "the directory notes when the project has no relation log", %{tmp_dir: root} do
     assert Info.adoption_note(root) =~ "no relation log"
@@ -107,6 +109,7 @@ defmodule Surfex.InfoTest do
     assert Info.adoption_note(root) == nil
   end
 
+  @tag verifies: ["info-directory", "info"]
   test "mix surfex.info prints the directory, or a topic's page" do
     Mix.shell(Mix.Shell.Process)
     on_exit(fn -> Mix.shell(Mix.Shell.IO) end)

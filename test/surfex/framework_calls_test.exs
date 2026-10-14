@@ -85,7 +85,7 @@ defmodule Surfex.FrameworkCallsTest do
     Map.new(tests, &{String.replace_prefix(&1.id, "ShopWeb.CartTest: ", ""), &1.calls})
   end
 
-  @tag verifies: ["route-calls"]
+  @tag verifies: ["route-calls", "framework-calls"]
   test "the router is found from the endpoint, its scopes joined in order" do
     assert [health, home, new, show, item, checkout, drop, admin, files] = routes()
 
@@ -115,7 +115,7 @@ defmodule Surfex.FrameworkCallsTest do
     end
   end
 
-  @tag verifies: ["route-calls"]
+  @tag verifies: ["route-calls", "framework-calls"]
   test "a request calls what its route runs: a view's mount and handle_params, or an action" do
     calls = calls()
 
@@ -161,7 +161,7 @@ defmodule Surfex.FrameworkCallsTest do
     refute "ShopWeb.CartLive.Show.mount/3" in plain.calls
   end
 
-  @tag verifies: ["event-calls"]
+  @tag verifies: ["event-calls", "framework-calls"]
   test "an event to a view a request mounted calls its handle_event/3" do
     calls = calls()
 
@@ -175,7 +175,7 @@ defmodule Surfex.FrameworkCallsTest do
            )
   end
 
-  @tag verifies: ["message-calls"]
+  @tag verifies: ["message-calls", "framework-calls"]
   test "a message to a GenServer named by its module calls its callback; a capture is a call" do
     calls = calls()
     messages = calls["messages to a named GenServer"]
@@ -192,7 +192,7 @@ defmodule Surfex.FrameworkCallsTest do
   end
 
   @tag :tmp_dir
-  @tag verifies: ["route-calls"]
+  @tag verifies: ["route-calls", "framework-calls"]
   test "a project's scans pass its routes to the test scanner", %{tmp_dir: root} do
     File.cp_r!(@project, root)
     File.write!(Path.join(root, "spec.md"), "# Carts\n<!-- surfex: carts -->\n\nCarts.\n")

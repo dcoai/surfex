@@ -53,6 +53,7 @@ defmodule Surfex.CiteTest do
   describe "statuses" do
     @describetag verifies: "citation-status-kinds"
 
+    @tag verifies: ["citation-status-kinds", "citations"]
     test "each of the five, from one spec", %{tmp_dir: root} do
       write(root, "spec/01.md", """
       # 1. Sending
@@ -78,6 +79,7 @@ defmodule Surfex.CiteTest do
   describe "sections" do
     @describetag verifies: "citation-sections"
 
+    @tag verifies: ["citation-sections", "citations"]
     test "credited to the nearest heading, or the preamble", %{tmp_dir: root} do
       write(root, "spec/01.md", "`app_send`\n# 1. Intro\n## 1.2 Detail\n`app_recv`\n")
       cites = cite(root)
@@ -119,6 +121,7 @@ defmodule Surfex.CiteTest do
       assert [%{kind: :file}] = index["lib/x.ex"]
     end
 
+    @tag verifies: ["citation-resolves", "citation-resolution"]
     test "the rules apply in order: an absence and an external before a key, a key before an alias",
          %{tmp_dir: root} do
       write(root, "spec/01.md", "`app_gone` `app_daemon` `app_send`\n")
@@ -143,6 +146,7 @@ defmodule Surfex.CiteTest do
       assert [%{status: :resolved, items: ["app_send"]}] = one(cites, "app_send()")
     end
 
+    @tag verifies: ["citation-resolves", "citation-resolution"]
     test "a member is reached by its key, never its bare name", %{tmp_dir: root} do
       write(root, "spec/01.md", "`app_hdr.offset` and `offset`\n")
       cites = cite(root)
@@ -206,6 +210,7 @@ defmodule Surfex.CiteTest do
       assert [%{status: :ambiguous}] = one(cites, "app_twice")
     end
 
+    @tag verifies: ["citation-resolves", "citation-resolution"]
     test "an alias cites its whole family; a shared key is still ambiguous", %{tmp_dir: root} do
       write(root, "spec/01.md", "`app_fam` and `app_twice`, and `x(app_fam)`\n")
 

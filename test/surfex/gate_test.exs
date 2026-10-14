@@ -7,7 +7,7 @@ defmodule Surfex.GateTest do
 
   @old "| Item | Version |\n|---|---|\n| `a` | `1` |\n| `b` | `1` |\n"
 
-  @tag verifies: ["gate-drift", "gate-drift-rows"]
+  @tag verifies: ["gate-drift", "gate-drift-rows", "gate"]
   test "identical texts don't drift; changed, added and gone rows are named" do
     assert Gate.drift(@old, @old) == nil
 
@@ -18,7 +18,7 @@ defmodule Surfex.GateTest do
     assert message =~ "Gone:\n  b\n"
   end
 
-  @tag verifies: ["gate-drift", "gate-drift-rows"]
+  @tag verifies: ["gate-drift", "gate-drift-rows", "gate"]
   test "without Item, a row is keyed by its first column when that is unique, and compared whole" do
     old = "| Name | Note |\n|---|---|\n| `a` | x |\n| `b` | y |\n"
     new = "| Name | Note |\n|---|---|\n| `a` | x |\n| `b` | z |\n"
@@ -64,7 +64,7 @@ defmodule Surfex.GateTest do
   | `class x` | `code A.f/1` | `:current` | — |
   """
 
-  @tag verifies: ["gate-drift", "gate-drift-rows"]
+  @tag verifies: ["gate-drift", "gate-drift-rows", "gate"]
   test "a hand-edited cell of a row sharing its first cell is named, old and new" do
     edited =
       String.replace(@drift_relations, "`code A.g/1` | `:current`", "`code A.g/1` | `:retired`")
@@ -91,7 +91,7 @@ defmodule Surfex.GateTest do
              "out of date.\n\nNo row changed: the prose or a stats line did.\n"
   end
 
-  @tag verifies: ["gate-drift", "gate-drift-rows"]
+  @tag verifies: ["gate-drift", "gate-drift-rows", "gate"]
   test "an escaped \\| stays inside its cell, padded or not" do
     old = "| Item | Note |\n|---|---|\n| `a \\| b` | x |\n|`c\\|d`|y|\n"
     new = "| Item | Note |\n|---|---|\n| `a \\| b` | z |\n|`c\\|d`|w|\n"
@@ -106,6 +106,7 @@ defmodule Surfex.GateTest do
     assert Gate.drift(old, new) =~ "Gone:\n  a · x (2)\n"
   end
 
+  @tag verifies: ["gate-drift", "gate"]
   test "run writes, then checks: a missing file and a drift fail, naming what regenerates", %{
     tmp_dir: root
   } do
@@ -123,6 +124,7 @@ defmodule Surfex.GateTest do
     assert drift =~ "Regenerate with `mix g --write`"
   end
 
+  @tag verifies: ["gate-drift", "gate"]
   test "config!/1 evaluates a data file to a keyword list, or raises naming it", %{tmp_dir: root} do
     good = Path.join(root, "good.exs")
     File.write!(good, "[sources: [\"spec.md\"]]")

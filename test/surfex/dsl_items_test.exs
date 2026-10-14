@@ -14,6 +14,7 @@ defmodule Surfex.DslItemsTest do
   defp items(root \\ @project),
     do: Map.new(FixtureDsl.Scanner.items(root, []), &{Item.key(&1), &1})
 
+  @tag verifies: ["dsl-item-shape", "dsl-items"]
   test "one item per block, keyed Module.name, with its kind, parent, file and lines" do
     items = items()
     assert Map.keys(items) == ["Shop.Order.cancel", "Shop.Order.checkout", "Shop.Order.total"]
@@ -29,6 +30,7 @@ defmodule Surfex.DslItemsTest do
     assert %Item{kind: :attribute, shape: true, calls: []} = items["Shop.Order.total"]
   end
 
+  @tag verifies: ["dsl-item-shape", "dsl-items"]
   test "an action lists the functions and modules its block references" do
     assert items()["Shop.Order.checkout"].calls == [
              "Shop.Pricing",
@@ -39,6 +41,7 @@ defmodule Surfex.DslItemsTest do
   end
 
   @tag :tmp_dir
+  @tag verifies: ["dsl-item-shape", "dsl-items"]
   test "a block's hash changes with the block, not with a sibling or the layout",
        %{tmp_dir: root} do
     File.cp_r!(@project, root)
@@ -58,6 +61,7 @@ defmodule Surfex.DslItemsTest do
   end
 
   @tag :tmp_dir
+  @tag verifies: ["dsl-item-shape", "dsl-items"]
   test "beside the Elixir scanner, a DSL key is a code record and a citation of it resolves",
        %{tmp_dir: root} do
     File.cp_r!(@project, root)

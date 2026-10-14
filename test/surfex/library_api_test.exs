@@ -20,6 +20,7 @@ defmodule Surfex.LibraryApiTest do
         do: "#{name}/#{arity}"
   end
 
+  @tag verifies: ["library-api-stable", "library-api"]
   test "the documented functions and types of Golden and SourceScan are exactly the pinned ones" do
     assert Enum.sort(documented(Surfex.Golden, [:function, :macro])) == @golden_functions
     assert Enum.sort(documented(Surfex.Golden, [:type])) == @golden_types
@@ -34,7 +35,7 @@ defmodule Surfex.LibraryApiTest do
   end
 
   # #208: a project scanner, and a DSL plugin above all, is written against these two (§23.1).
-  @tag verifies: "scanner-api-stable"
+  @tag verifies: ["scanner-api-stable", "scanner-api"]
   test "Surfex.Scanner's callbacks and Surfex.Item's fields are exactly the pinned ones" do
     assert Enum.sort(Surfex.Scanner.behaviour_info(:callbacks)) == [calls: 3, items: 2]
     # calls/3 came later (#241), so it is optional: a scanner without it still works.
@@ -64,6 +65,7 @@ defmodule Surfex.LibraryApiTest do
     assert Surfex.Item.key(%{item | parent: "Shop.Order"}) == "Shop.Order.checkout"
   end
 
+  @tag verifies: ["library-api-stable", "library-api"]
   test "definition_hash/1's output is stable: the same code gives the same version, release to release" do
     assert Surfex.SourceScan.definition_hash("def f(x), do: x + 1") == "f9bc39cf"
   end

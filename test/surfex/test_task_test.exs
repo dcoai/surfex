@@ -67,6 +67,7 @@ defmodule Surfex.TestTaskTest do
     refute File.exists?(Path.join(root, "_build"))
   end
 
+  @tag verifies: ["test-selection", "scan-records"]
   test "it runs exactly the declaring tests by location, where --only selects none", %{
     tmp_dir: root
   } do
@@ -97,7 +98,7 @@ defmodule Surfex.TestTaskTest do
 
   # #224: a deviation test is skipped beside its tag; --deviations runs it anyway, so its
   # evidence can say the deviation is fixed.
-  @tag verifies: ["test-deviations", "test-selection"]
+  @tag verifies: ["test-deviations", "test-selection", "scan-records"]
   test "--deviations runs exactly the deviation tests, skips included", %{tmp_dir: root} do
     assert_raise Mix.Error, "no test declares a deviation", fn ->
       task(root, ["--deviations"])

@@ -98,7 +98,7 @@ defmodule Surfex.CompletenessOwnTextTest do
   defp spec_missing(report),
     do: for(%{kind: :spec, id: id, missing: m} <- report.incomplete, into: %{}, do: {id, m})
 
-  @tag verifies: "completeness-own-text"
+  @tag verifies: ["completeness-own-text", "own-text-score"]
   test "under claim_grain: a claim is complete only with its own evidence" do
     {_status, report} = report(tests(), claim_grain: true)
 
@@ -128,7 +128,7 @@ defmodule Surfex.CompletenessOwnTextTest do
     assert tagged.scores.spec.percent == 100.0
   end
 
-  @tag verifies: "claim-grain-switch"
+  @tag verifies: ["claim-grain-switch", "own-text-score"]
   test "without claim_grain: completeness reads as before, and the verdicts are still given" do
     {status, report} = report(tests(), [])
 

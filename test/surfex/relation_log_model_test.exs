@@ -959,7 +959,7 @@ if Code.ensure_loaded?(ExTLA.Spec) do
     @moduletag verifies: "log-model"
     @moduletag timeout: :infinity
 
-    @tag verifies: "log-model-recovery"
+    @tag verifies: ["log-model-recovery", "model"]
     test "recovery: whatever changes, a dangling relation whose test passes comes back" do
       assert_spec(Surfex.Model.Recovery, %{
         constants: %{changes: [:spec, :code, :test]},
@@ -968,7 +968,7 @@ if Code.ensure_loaded?(ExTLA.Spec) do
       })
     end
 
-    @tag verifies: "log-model-moves"
+    @tag verifies: ["log-model-moves", "model"]
     test "moves: renaming a section and a test loses no claim, retirement or red→green" do
       assert_spec(Surfex.Model.MovePath, %{
         constants: %{max_log: 5},
@@ -976,7 +976,7 @@ if Code.ensure_loaded?(ExTLA.Spec) do
       })
     end
 
-    @tag verifies: "log-model-validation"
+    @tag verifies: ["log-model-validation", "model"]
     test "the evidence path: code changes, runs and confirm --evidence keep the invariants" do
       assert_spec(Surfex.Model.EvidencePath, %{
         constants: %{max_runs: 3, max_log: 6},
@@ -984,7 +984,7 @@ if Code.ensure_loaded?(ExTLA.Spec) do
       })
     end
 
-    @tag verifies: "log-model-validation"
+    @tag verifies: ["log-model-validation", "model"]
     test "the review path: spec and test changes, reviews and judgements keep the invariants" do
       assert_spec(Surfex.Model.ReviewPath, %{
         constants: %{max_runs: 2, max_log: 5},
@@ -992,6 +992,7 @@ if Code.ensure_loaded?(ExTLA.Spec) do
       })
     end
 
+    @tag verifies: ["log-model", "model"]
     test "branches, merges and resolves keep the log's invariants in every reachable state" do
       assert_spec(Surfex.Model.RelationLog, %{
         constants: %{branches: MapSet.new([:a, :b]), max_entries: 2, max_log: 4},

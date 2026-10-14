@@ -92,6 +92,7 @@ defmodule Surfex.ClaimGrainTest do
   describe "require: spec rules judge claims" do
     @describetag verifies: "contained-unmet"
 
+    @tag verifies: ["contained-unmet", "status-config"]
     test "section: [:verifies] skips containers and names a contained section" do
       status = derive(section: [:verifies])
 
@@ -110,6 +111,7 @@ defmodule Surfex.ClaimGrainTest do
                "| `spec spec.md#contained` | `verifies` (contained) |"
     end
 
+    @tag verifies: ["contained-unmet", "status-config"]
     test "spec: [:verifies] judges every claim, rules and rows too, and no container" do
       status = derive(spec: [:verifies])
 
@@ -127,6 +129,7 @@ defmodule Surfex.ClaimGrainTest do
   describe "the claim_grain: switch" do
     @describetag verifies: "status-config-read"
 
+    @tag verifies: ["status-config-read", "status-config"]
     test "claim_grain: is a boolean, false by default, passed to derive only when set" do
       refute Config.claim_grain?([])
       assert Config.claim_grain?(claim_grain: true)
@@ -172,6 +175,7 @@ defmodule Surfex.ClaimGrainTest do
     @path "spec.md#Index/§Engine.13 Engine/run/2"
 
     @tag :tmp_dir
+    @tag verifies: ["fold-default", "claim-forms"]
     test "a path heading under an id'd heading folds where the spec writes ids", %{tmp_dir: dir} do
       refute @path in ids(dir, claim_grain: true, heading_ids: :section_sign)
       assert "spec.md#Engine.13" in ids(dir, claim_grain: true, heading_ids: :section_sign)

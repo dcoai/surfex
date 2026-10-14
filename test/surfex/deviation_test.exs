@@ -216,7 +216,7 @@ defmodule Surfex.DeviationTest do
       assert Status.failing?(untagged)
     end
 
-    @tag verifies: ["deviation-runs", "status-failing", "status-report-forms"]
+    @tag verifies: ["deviation-runs", "status-failing", "status-report-forms", "evidence"]
     test "a deviation test that passed is a stale deviation, and fails" do
       status =
         Status.derive(deviant_world(), deviant_log(), [], evidence: [ran(@deviant, :passed)])
@@ -267,6 +267,7 @@ defmodule Surfex.DeviationTest do
     defp missing_of(report, id),
       do: Enum.find_value(report.incomplete, &(&1.id == id && &1.missing))
 
+    @tag verifies: ["completeness-deviates", "completeness"]
     test "a deviating unit is incomplete, deviates, whatever validated its relations" do
       # Its verifies, recorded on the red run, is validated: alone it would count complete.
       report = Completeness.report(Status.derive(deviant_world(), deviant_log()))

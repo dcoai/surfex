@@ -80,7 +80,7 @@ defmodule Surfex.GoldensTest do
   describe "mix surfex.goldens" do
     @describetag verifies: "goldens-task"
 
-    @tag verifies: ["purpose", "goldens-task"]
+    @tag verifies: ["purpose", "goldens-task", "golden-tasks"]
     test "--write writes every golden, and a check then passes", %{root: root} do
       task(root, ["--write"])
       assert File.read!(Path.join(root, "RELATIONS.md")) =~ "| `code MyApp.Cart` |"
@@ -101,6 +101,7 @@ defmodule Surfex.GoldensTest do
     end
 
     # #84: regenerating is how a drift is resolved, so --write never fails for one.
+    @tag verifies: ["goldens-task", "golden-tasks"]
     test "--write after a drift regenerates every golden and succeeds; a check then passes",
          %{root: root} do
       task(root, ["--write"])
@@ -117,12 +118,14 @@ defmodule Surfex.GoldensTest do
       assert_received {:mix_shell, :info, ["checked 2 golden(s): all current, nothing failing"]}
     end
 
+    @tag verifies: ["goldens-task", "golden-tasks"]
     test "--config reads another definition", %{root: root} do
       File.rename!(Path.join(root, ".surfex.exs"), Path.join(root, "other.exs"))
       task(root, ["--config", "other.exs", "--write"])
       assert File.exists?(Path.join(root, "API.md"))
     end
 
+    @tag verifies: ["goldens-task", "golden-tasks"]
     test "every drifted golden is named in one run", %{root: root} do
       task(root, ["--write"])
       config(root, "CartController.index", "CartController.list")
@@ -141,6 +144,7 @@ defmodule Surfex.GoldensTest do
       end
     end
 
+    @tag verifies: ["goldens-task", "golden-tasks"]
     test "the built-in scanner reads source it could not compile", %{root: root} do
       # Valid syntax, but no compiler would accept it.
       File.write!(Path.join(root, "lib/broken.ex"), """
@@ -207,6 +211,7 @@ defmodule Surfex.GoldensTest do
   describe "project goldens" do
     @describetag verifies: ["project-golden", "goldens-entries"]
 
+    @tag verifies: ["project-golden", "goldens-entries", "project-goldens"]
     test "a Surface is a spec/1 callback, rendered and gated by run/6", %{tmp_dir: root} do
       assert Surfex.Surface.behaviour_info(:callbacks) == [spec: 1]
 
@@ -224,7 +229,7 @@ defmodule Surfex.GoldensTest do
       assert Goldens.entries!(sources: ["spec.md"]) == [:status]
     end
 
-    @tag verifies: ["traces", "goldens-entries"]
+    @tag verifies: ["traces", "goldens-entries", "all-goldens"]
     test "names a malformed entry, and the removed :trace with its reason" do
       assert_raise ArgumentError, ~r/goldens entry "API.md" is not :status/, fn ->
         Goldens.entries!(goldens: ["API.md"])
@@ -237,6 +242,7 @@ defmodule Surfex.GoldensTest do
       assert_raise ArgumentError, ~r/non-empty list/, fn -> Goldens.entries!(goldens: []) end
     end
 
+    @tag verifies: ["goldens-entries", "all-goldens"]
     test "two entries writing one file is an error" do
       assert_raise ArgumentError, ~r/two goldens write \["RELATIONS.md"\]/, fn ->
         Goldens.entries!(goldens: [:status, {"RELATIONS.md", Mod, []}])
@@ -248,6 +254,7 @@ defmodule Surfex.GoldensTest do
   describe "the :completeness golden" do
     @describetag verifies: "goldens-entries"
 
+    @tag verifies: ["goldens-entries", "all-goldens"]
     test "entries!/1 takes it, and run/6 writes COMPLETENESS.md, then checks it", %{
       tmp_dir: root
     } do
@@ -272,6 +279,7 @@ defmodule Surfex.GoldensTest do
   describe "needs_compile?/2" do
     @describetag verifies: "goldens-entries"
 
+    @tag verifies: ["goldens-entries", "all-goldens"]
     test "only project code needs a compile" do
       refute Goldens.needs_compile?([:status], [])
       refute Goldens.needs_compile?([:status], scanner: :elixir)

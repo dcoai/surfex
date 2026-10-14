@@ -681,7 +681,7 @@ defmodule Surfex.WalkthroughTest do
   end
 
   # #75: found work goes to the environment's own change process; surfex only drafts.
-  @tag verifies: "change-hand-off"
+  @tag verifies: ["change-hand-off", "hand-off"]
   test "mark prints its draft; mix surfex.draft prints, and hands off only with --file",
        %{root: root} do
     note = "totals ignore discounts in use"
@@ -844,7 +844,7 @@ defmodule Surfex.WalkthroughTest do
 
   # #249: put/3 and put/4 from one def are one definition; one review credits both under
   # one note, so validate says so and the note is written for the definition.
-  @tag verifies: "review-arities-named"
+  @tag verifies: ["review-arities-named", "review-arities"]
   test "validate names the arities one review credits as one definition", %{root: root} do
     File.write!(
       Path.join(root, ".surfex.exs"),

@@ -50,7 +50,7 @@ defmodule Surfex.MigrateTaskTest do
       end
     end
 
-    @tag verifies: "migrate-candidates"
+    @tag verifies: ["migrate-candidates", "migration"]
     test "lists a section's proposals, none first, and writes nothing", %{tmp_dir: root} do
       log = File.read!(Path.join(root, ".surfex/surfex.log"))
 

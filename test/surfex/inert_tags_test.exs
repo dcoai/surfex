@@ -68,6 +68,7 @@ defmodule Surfex.InertTagsTest do
   describe "inert tags" do
     @describetag verifies: "inert-tags"
 
+    @tag verifies: ["inert-tags", "declaration-place"]
     test "a tag no test takes, or any tag in test/support, is inert, with its file, line, ids and reason",
          %{tmp_dir: root} do
       inert = root |> project() |> Scan.ExUnit.inert(["test/*_test.exs"])
@@ -94,6 +95,7 @@ defmodule Surfex.InertTagsTest do
                for(%{file: "test/support/" <> _ = f, reason: r} <- inert, uniq: true, do: {f, r})
     end
 
+    @tag verifies: ["inert-tags", "declaration-place"]
     test "status lists them in its text, JSON and golden, and doesn't fail on them",
          %{tmp_dir: root} do
       config = [sources: ["spec.md"], tests: ["test/*_test.exs"]]
@@ -127,7 +129,7 @@ defmodule Surfex.InertTagsTest do
     end
   end
 
-  @tag verifies: "inert-no-evidence"
+  @tag verifies: ["inert-no-evidence", "asserting-evidence"]
   test "a module with a tag and no test, and a helper in test/support, give no test record",
        %{tmp_dir: root} do
     root = project(root)

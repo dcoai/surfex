@@ -23,6 +23,7 @@ defmodule Surfex.CoverageTest do
 
   defp verdict(item, cited \\ []), do: Coverage.verdict(item, MapSet.new(cited), profile())
 
+  @tag verifies: ["coverage-verdict", "coverage"]
   test "a cited item is cited, whatever the rules say" do
     assert verdict(item(:wire, "hdr"), ["hdr"]) == :cited
     assert verdict(item(:function, "do_x"), ["do_x"]) == :cited
@@ -42,7 +43,7 @@ defmodule Surfex.CoverageTest do
   end
 
   # #71: scaffolding is plumbing because of the module it lives in, not its name.
-  @tag verifies: ["rule-parent", "coverage-verdict"]
+  @tag verifies: ["rule-parent", "coverage-verdict", "profiles"]
   test "parent: excuses a module family's members, composed with the rule's other keys" do
     scaffolding =
       Profile.new!(
@@ -97,6 +98,7 @@ defmodule Surfex.CoverageTest do
     end
   end
 
+  @tag verifies: ["coverage-verdict", "coverage"]
   test "a never-excused kind is a gap, whatever the rules say" do
     assert verdict(item(:wire, "hdr")) == :gap
 
@@ -107,6 +109,7 @@ defmodule Surfex.CoverageTest do
              :gap
   end
 
+  @tag verifies: ["coverage-verdict", "coverage"]
   test "the first matching rule wins" do
     p = %{profile() | rules: Enum.reverse(profile().rules)}
     both = item(:function, "do_helper")
@@ -117,6 +120,7 @@ defmodule Surfex.CoverageTest do
   end
 
   # #15: two items sharing a key are judged each on its own: the gap stays a gap.
+  @tag verifies: ["coverage-verdict", "coverage"]
   test "two items sharing a key each keep their own verdict" do
     excused = item(:function, "do_twin")
     gap = item(:macro, "do_twin")
