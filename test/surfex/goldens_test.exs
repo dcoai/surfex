@@ -96,7 +96,7 @@ defmodule Surfex.GoldensTest do
 
       message = fails(root)
       assert message =~ "API.md: out of date."
-      assert message =~ "Changed:\n  /carts\n"
+      assert message =~ "Changed:\n  /carts — "
       refute message =~ "RELATIONS.md"
     end
 
