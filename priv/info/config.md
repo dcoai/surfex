@@ -16,7 +16,8 @@ A keyword list, evaluated as data. An unknown key is refused, naming it.
 - `namespace:`: the code's namespace (defaults to the app name).
 - `scanners: [:elixir, {MyApp.DslScanner, opts}]`: code scanners whose items are combined
   (`Surfex.Scanner`); one key from two scanners is an error. `scanner:` with
-  `scanner_opts:` is the one-element list.
+  `scanner_opts:` is the one-element list. A scanner for a DSL gives each block it declares
+  (an action, a policy) as an item keyed `Module.name` (`Surfex.Scanner`, spec §4.1).
 - Citation profile: `exclude`, `shape`, `token`, `known_shape`, `normalise`, `subjects`,
   `table_columns`, `file_targets`, `known_external`, `documented_absences`.
 - `classes: [{name, reason}]`, `rules: [%{class:, kinds:, name:, parent_cited:, parent:}]`,

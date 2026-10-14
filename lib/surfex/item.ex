@@ -10,6 +10,13 @@ defmodule Surfex.Item do
 
   A scanner decides what the kinds are. Surfex never interprets `:kind` beyond grouping
   and the rules a project writes in its `Surfex.Profile`.
+
+  A block a DSL declares is an item too (a DSL item, spec §4.1): its kind the DSL's, its
+  parent the declaring module, its hash over the block, and no `:hidden` or `:runs`. See
+  `Surfex.Scanner`.
+
+  The fields are supported API (spec §23.1): each keeps its name and meaning, a field
+  added later has a default, and `key/1` keeps its rule.
   """
 
   @enforce_keys [:kind, :name, :file, :hash]

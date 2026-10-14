@@ -33,6 +33,36 @@ defmodule Surfex.LibraryApiTest do
     assert function_exported?(Surfex.SourceScan, :project_root, 1)
   end
 
+  # #208: a project scanner, and a DSL plugin above all, is written against these two (§23.1).
+  @tag verifies: "scanner-api-stable"
+  test "Surfex.Scanner's callbacks and Surfex.Item's fields are exactly the pinned ones" do
+    assert Surfex.Scanner.behaviour_info(:callbacks) == [items: 2]
+    assert Surfex.Scanner.behaviour_info(:optional_callbacks) == []
+
+    fields = for %{field: f, required: r} <- Surfex.Item.__info__(:struct), do: {f, r}
+
+    assert Enum.sort(fields) == [
+             aliases: false,
+             calls: false,
+             detail: false,
+             file: true,
+             hash: true,
+             hidden: false,
+             kind: true,
+             lines: false,
+             name: true,
+             parent: false,
+             runs: false,
+             shape: false,
+             type: false,
+             value: false
+           ]
+
+    item = %Surfex.Item{kind: :action, name: "checkout", file: "f.ex", hash: "h"}
+    assert Surfex.Item.key(item) == "checkout"
+    assert Surfex.Item.key(%{item | parent: "Shop.Order"}) == "Shop.Order.checkout"
+  end
+
   test "definition_hash/1's output is stable: the same code gives the same version, release to release" do
     assert Surfex.SourceScan.definition_hash("def f(x), do: x + 1") == "f9bc39cf"
   end

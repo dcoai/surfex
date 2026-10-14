@@ -24,6 +24,8 @@ defmodule Surfex.MixProject do
       # Fixture data and sources, not tests.
       test_ignore_filters: [&String.starts_with?(&1, "test/fixtures/")],
       start_permanent: Mix.env() == :prod,
+      # The fixture DSL and its scanner (#208): test code, never published or depended on.
+      elixirc_paths: elixirc_paths(Mix.env()),
       # A true leaf at runtime. A runtime dependency is inherited by every project that scans
       # its own source, so the bar for one is: it cannot be done with the stdlib. Dev and
       # test dependencies aren't inherited: ex_doc builds the docs, and no consumer fetches it.
@@ -88,6 +90,9 @@ defmodule Surfex.MixProject do
   end
 
   def application, do: [extra_applications: [:logger]]
+
+  defp elixirc_paths(env) when env in [:test, :model], do: ["lib", "test/support"]
+  defp elixirc_paths(_env), do: ["lib"]
 
   @shown ~w(Surfex.ExUnitFormatter Surfex.Scanner Surfex.Item Surfex.Golden Surfex.SourceScan)
 

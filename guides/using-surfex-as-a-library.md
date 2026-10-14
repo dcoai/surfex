@@ -68,6 +68,11 @@ and the diff shows the reviewer exactly which definitions changed.
   release, listed in the CHANGELOG under "Changed" and marked for library users. One such
   change already: `lib_sources/1` started skipping `test/`, `tmp/` and hidden directories.
 
+A project scanner, such as one giving the blocks a DSL declares as items, is written against
+`Surfex.Scanner` and `Surfex.Item`, and the same promise covers them (spec §23.1): the
+callbacks and fields keep their names and shapes, and anything added is optional or has a
+default.
+
 ## This isn't adoption
 
 A surface golden says what the code declares. Surfex's purpose is keeping a spec, its tests
