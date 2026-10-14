@@ -49,7 +49,7 @@ defmodule Mix.Tasks.Surfex.Suggest do
     evidence = R.evidence!(root, opts)
     config = Config.read!(Path.join(root, opts[:config] || ".surfex.exs"))
     namespace = Mix.Project.config()[:app] |> to_string() |> Macro.camelize()
-    if Keyword.get(config, :scanner, :elixir) != :elixir, do: Mix.Task.run("compile")
+    if Config.project_scanner?(config), do: Mix.Task.run("compile")
 
     items = Config.items(config, root)
     profile = Config.profile!(config, namespace, items)

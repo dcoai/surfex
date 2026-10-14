@@ -10,6 +10,24 @@ defmodule Surfex.StatusTest.OneScanner do
     do: [%Surfex.Item{kind: :function, name: "one", file: "one.c", hash: "1"}]
 end
 
+defmodule Surfex.StatusTest.TwinScanner do
+  @moduledoc false
+  # A project scanner giving a key the Elixir scanner gives too.
+  @behaviour Surfex.Scanner
+
+  @impl true
+  def items(_root, opts),
+    do: [
+      %Surfex.Item{
+        kind: :action,
+        name: Keyword.get(opts, :name, "MyApp.Cart"),
+        file: "dsl/cart.ex",
+        hash: "twin",
+        lines: {3, 5}
+      }
+    ]
+end
+
 defmodule Surfex.StatusTest do
   use ExUnit.Case, async: true
 
@@ -1160,6 +1178,81 @@ defmodule Surfex.StatusTest do
 
     assert [%Surfex.Item{name: "one"}] =
              Surfex.Status.Config.items([scanner: Surfex.StatusTest.OneScanner], ".")
+  end
+
+  describe "several scanners (#208)" do
+    @describetag verifies: "scanners-combined"
+    @describetag :tmp_dir
+
+    alias Surfex.Status.Config
+
+    test "their items are combined, each as its scanner gave it", %{tmp_dir: root} do
+      File.cp_r!(Path.expand("../fixtures/elixir_project", __DIR__), root)
+
+      config = [
+        scanners: [:elixir, {Surfex.StatusTest.TwinScanner, name: "MyApp.Cart :checkout"}]
+      ]
+
+      items = Config.items(config, root)
+      assert "MyApp.Cart.add/2" in Enum.map(items, &Surfex.Item.key/1)
+
+      assert %Surfex.Item{kind: :action, file: "dsl/cart.ex", lines: {3, 5}, hash: "twin"} =
+               Enum.find(items, &(&1.name == "MyApp.Cart :checkout"))
+
+      elixir = Config.items([], root)
+      assert length(items) == length(elixir) + 1
+
+      assert Config.scanners!(config) == [
+               {:elixir, []},
+               {Surfex.StatusTest.TwinScanner, name: "MyApp.Cart :checkout"}
+             ]
+
+      assert Config.project_scanner?(config) and Config.elixir_scanner?(config)
+      assert Config.scanners!([]) == [{:elixir, []}]
+      refute Config.project_scanner?([])
+
+      # The Elixir profile defaults apply when :elixir is among them.
+      profile = Config.profile!([sources: ["spec.md"]] ++ config, "MyApp", items)
+      assert Regex.match?(profile.shape, "MyApp.Cart.add/2")
+    end
+
+    test "scanner: is the one-element list", %{tmp_dir: root} do
+      config = [scanner: Surfex.StatusTest.TwinScanner, scanner_opts: [name: "solo"]]
+      assert Config.scanners!(config) == [{Surfex.StatusTest.TwinScanner, [name: "solo"]}]
+      assert [%Surfex.Item{name: "solo"}] = Config.items(config, root)
+      refute Config.elixir_scanner?(config)
+      assert Config.scanners!(scanner: :elixir) == [{:elixir, []}]
+    end
+
+    test "both keys, a malformed list and a scanner named twice are refused" do
+      assert_raise ArgumentError, ~r/scanners: and scanner: are one setting/, fn ->
+        Config.scanners!(scanners: [:elixir], scanner: :elixir)
+      end
+
+      for bad <- [[], :elixir, [nil], ["Mod"], [{:elixir, :opts}], [{:elixir, [1]}]] do
+        assert_raise ArgumentError, ~r/scanners: must be a non-empty list/, fn ->
+          Config.scanners!(scanners: bad)
+        end
+      end
+
+      assert_raise ArgumentError, ~r/names :elixir twice/, fn ->
+        Config.scanners!(scanners: [:elixir, {:elixir, paths: []}])
+      end
+
+      assert_raise ArgumentError, ~r/scanner_opts: belongs to scanner:/, fn ->
+        Config.scanners!(scanners: [:elixir], scanner_opts: [])
+      end
+    end
+
+    test "one key from two scanners raises, naming both and the key", %{tmp_dir: root} do
+      File.cp_r!(Path.expand("../fixtures/elixir_project", __DIR__), root)
+
+      assert_raise ArgumentError,
+                   ~r/scanners :elixir and Surfex.StatusTest.TwinScanner both give the key "MyApp.Cart"/,
+                   fn ->
+                     Config.items([scanners: [:elixir, Surfex.StatusTest.TwinScanner]], root)
+                   end
+    end
   end
 
   describe "reading .surfex.exs" do

@@ -276,6 +276,9 @@ defmodule Surfex.GoldensTest do
       refute Goldens.needs_compile?([:status], [])
       refute Goldens.needs_compile?([:status], scanner: :elixir)
       assert Goldens.needs_compile?([:status], scanner: MyScanner)
+      # Several scanners (§5.3): any project scanner among them needs a compile.
+      refute Goldens.needs_compile?([:completeness], scanners: [:elixir])
+      assert Goldens.needs_compile?([:completeness], scanners: [:elixir, {MyScanner, []}])
       assert Goldens.needs_compile?([:status, {"A.md", Mod, []}], [])
     end
   end

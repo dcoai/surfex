@@ -16,7 +16,10 @@ defmodule Surfex.Status.Config do
     * `:unit_refs` — the project's own forms of citing a spec unit, as regexes with named
       captures `id` and `file` or `chapter` (a spec file's leading number):
       `~r/^§(?<chapter>\d\d)\.(?<id>[\w.]+)$/` reads `§03.4` (§11.1)
-    * `:scanner`, `:scanner_opts` — the code scanner (`:elixir` by default)
+    * `:scanners` — the code scanners whose items are combined (§5.3): each `:elixir`, a
+      module implementing `Surfex.Scanner`, or `{scanner, opts}`. `[:elixir]` by default
+    * `:scanner`, `:scanner_opts` — one code scanner and its options, the same as
+      `scanners: [{scanner, scanner_opts}]`
     * `:require` — `[key: [type, …]]`: a key is a kind (`:spec`, `:code`, `:test`, …) or
       a spec role (`:section`, `:block`, `:test_hint`, `:table`, `:row`, `:rule`, `:contract`), validated with the
       types
@@ -41,6 +44,7 @@ defmodule Surfex.Status.Config do
     :fold_paths,
     :scanner,
     :scanner_opts,
+    :scanners,
     :namespace,
     :goldens,
     :require,
@@ -96,25 +100,111 @@ defmodule Surfex.Status.Config do
   end
 
   @doc """
-  The items the code scanner finds under `root`: the built-in Elixir scanner, or the
-  project's `scanner:` module (`Surfex.Scanner`) with its `scanner_opts:`.
+  The items the code scanners find under `root`, combined (§5.3): each of `scanners!/1`
+  with its options, the built-in Elixir scanner for `:elixir`. Each item is as its
+  scanner gave it. Two scanners giving one key raise, naming both and the key: a key is
+  an item's identity, and two scanners can't both own it.
   """
   @spec items(keyword, String.t()) :: [Surfex.Item.t()]
   def items(config, root) do
-    opts = Keyword.get(config, :scanner_opts, [])
+    found =
+      for {scanner, opts} <- scanners!(config) do
+        module = module!(scanner)
+        {scanner, module.items(root, opts)}
+      end
 
-    case Keyword.get(config, :scanner, :elixir) do
-      :elixir ->
-        Surfex.Scanner.Elixir.items(root, opts)
+    found
+    |> Enum.flat_map(fn {scanner, items} ->
+      for key <- items |> Enum.map(&Surfex.Item.key/1) |> Enum.uniq(), do: {key, scanner}
+    end)
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+    |> Enum.sort()
+    |> Enum.find(fn {_key, scanners} -> length(scanners) > 1 end)
+    |> case do
+      nil ->
+        Enum.flat_map(found, &elem(&1, 1))
 
-      scanner ->
-        unless Code.ensure_loaded?(scanner) and function_exported?(scanner, :items, 2),
-          do:
-            raise(ArgumentError, "scanner #{inspect(scanner)} does not implement Surfex.Scanner")
-
-        scanner.items(root, opts)
+      {key, [first, second | _]} ->
+        raise ArgumentError,
+              "scanners #{inspect(first)} and #{inspect(second)} both give the key #{inspect(key)}"
     end
   end
+
+  defp module!(:elixir), do: Surfex.Scanner.Elixir
+
+  defp module!(scanner) do
+    unless Code.ensure_loaded?(scanner) and function_exported?(scanner, :items, 2),
+      do: raise(ArgumentError, "scanner #{inspect(scanner)} does not implement Surfex.Scanner")
+
+    scanner
+  end
+
+  @doc """
+  The code scanners (§5.3), each with its options: `scanners:`, or `scanner:` with
+  `scanner_opts:` as one, else `[{:elixir, []}]`. A scanner is `:elixir`, a module, or
+  `{scanner, opts}`. Giving both `scanner:` and `scanners:` raises, as does a list that is
+  empty or holds anything else, or one naming a scanner twice.
+  """
+  @spec scanners!(keyword) :: [{:elixir | module, keyword}]
+  def scanners!(config) do
+    scanners =
+      case {Keyword.fetch(config, :scanners), Keyword.fetch(config, :scanner)} do
+        {{:ok, _}, {:ok, _}} ->
+          raise ArgumentError, "scanners: and scanner: are one setting; give only scanners:"
+
+        {{:ok, [_ | _] = list}, :error} ->
+          if Keyword.has_key?(config, :scanner_opts),
+            do:
+              raise(
+                ArgumentError,
+                "scanner_opts: belongs to scanner:; with scanners: give {scanner, opts}"
+              )
+
+          Enum.map(list, &scanner_entry!/1)
+
+        {{:ok, other}, :error} ->
+          bad_scanners(other)
+
+        {:error, {:ok, scanner}} ->
+          [scanner_entry!({scanner, Keyword.get(config, :scanner_opts, [])})]
+
+        {:error, :error} ->
+          [{:elixir, Keyword.get(config, :scanner_opts, [])}]
+      end
+
+    case scanners |> Enum.frequencies_by(&elem(&1, 0)) |> Enum.filter(&(elem(&1, 1) > 1)) do
+      [] -> scanners
+      [{twice, _} | _] -> raise ArgumentError, "scanners: names #{inspect(twice)} twice"
+    end
+  end
+
+  defp scanner_entry!({scanner, opts}) when is_atom(scanner) and is_list(opts) do
+    if Keyword.keyword?(opts), do: {scanner, opts}, else: bad_scanners({scanner, opts})
+  end
+
+  defp scanner_entry!(scanner)
+       when is_atom(scanner) and not is_nil(scanner) and not is_boolean(scanner),
+       do: {scanner, []}
+
+  defp scanner_entry!(other), do: bad_scanners(other)
+
+  defp bad_scanners(value),
+    do:
+      raise(
+        ArgumentError,
+        "scanners: must be a non-empty list of :elixir, a module or {scanner, opts}, got #{inspect(value)}"
+      )
+
+  @doc """
+  Whether any of the code scanners is the project's own (`scanners!/1`): its module is
+  project code, so a task reading the code compiles the project first.
+  """
+  @spec project_scanner?(keyword) :: boolean
+  def project_scanner?(config), do: Enum.any?(scanners!(config), &(elem(&1, 0) != :elixir))
+
+  @doc "Whether the built-in Elixir scanner is among the code scanners (`scanners!/1`)."
+  @spec elixir_scanner?(keyword) :: boolean
+  def elixir_scanner?(config), do: Enum.any?(scanners!(config), &(elem(&1, 0) == :elixir))
 
   @doc """
   The options `Surfex.Status.derive/4` takes from `.surfex.exs`: `triangle:`, validated.
@@ -333,26 +423,25 @@ defmodule Surfex.Status.Config do
   The citation-reading profile of a config: its profile keys (`Surfex.Profile.keys/0`),
   over the Elixir scanner's defaults for its roots: its namespace (`namespace:` in the
   config, else the one given), and every top-level module the scanned `items` define (a
-  module whose name has no dot). A project scanner's config gives its own `shape:`.
+  module whose name has no dot), when the Elixir scanner is among the code scanners.
+  Without it, a project scanner's config gives its own `shape:`.
   """
   @spec profile!(keyword, String.t() | nil, [Surfex.Item.t()]) :: Surfex.Profile.t()
   def profile!(config, namespace, items \\ []) do
     defaults =
-      case Keyword.get(config, :scanner, :elixir) do
-        :elixir ->
-          ns =
-            Keyword.get(config, :namespace, namespace) ||
-              raise(ArgumentError, "reading citations needs namespace: for the Elixir scanner")
+      if elixir_scanner?(config) do
+        ns =
+          Keyword.get(config, :namespace, namespace) ||
+            raise(ArgumentError, "reading citations needs namespace: for the Elixir scanner")
 
-          roots =
-            for %Surfex.Item{kind: :module, name: name} <- items,
-                not String.contains?(name, "."),
-                do: name
+        roots =
+          for %Surfex.Item{kind: :module, name: name} <- items,
+              not String.contains?(name, "."),
+              do: name
 
-          Surfex.Scanner.Elixir.profile_defaults([ns | roots])
-
-        _project_scanner ->
-          []
+        Surfex.Scanner.Elixir.profile_defaults([ns | roots])
+      else
+        []
       end
 
     Surfex.Profile.new!(Keyword.merge(defaults, Keyword.take(config, Surfex.Profile.keys())))

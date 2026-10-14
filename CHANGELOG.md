@@ -64,6 +64,13 @@ milestone "Claims own their code" is in.
   (spec §11.1). `Surfex.Scan.resolver/2` takes them and `Surfex.Scan.resolve/2` tries them
   first; a test's `verifies:`, `mix surfex.test` and the recording tasks that take a unit
   accept the forms.
+- **Several code scanners, combined** (#208, #239). `scanners:` in `.surfex.exs` lists the
+  code scanners whose items are combined: `scanners: [:elixir, {MyApp.DslScanner, opts}]`
+  keeps every Elixir item and adds a project scanner's (spec §5.3). Each item keeps its own
+  scanner's file, lines, hash and kind. One key from two scanners is an error naming both.
+  `scanner:` with `scanner_opts:` keeps working as the one-element list, so nothing changes
+  for an existing config; giving both `scanner:` and `scanners:` is refused.
+  `Surfex.Status.Config.scanners!/1` reads the list.
 
 ## [0.9.1] — 2026-10-14
 

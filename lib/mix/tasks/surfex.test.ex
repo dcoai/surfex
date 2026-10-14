@@ -65,7 +65,7 @@ defmodule Mix.Tasks.Surfex.Test do
     if config[:tests] == nil,
       do: Mix.raise(".surfex.exs names no tests: to scan, so no test declares anything")
 
-    if Keyword.get(config, :scanner, :elixir) != :elixir, do: Mix.Task.run("compile")
+    if Config.project_scanner?(config), do: Mix.Task.run("compile")
 
     scans = Config.scans(config, root)
 
