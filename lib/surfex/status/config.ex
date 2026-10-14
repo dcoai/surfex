@@ -29,6 +29,9 @@ defmodule Surfex.Status.Config do
       triangle fail the check or are only reported
     * `:require_red` — `true` to refuse confirming a `tests` relation, by evidence or by
       hand, until its test's current version has failed first (`false` by default)
+    * `:claim_implements` — `true` to have `mix surfex.suggest` propose `implements` between
+      each claim and the code its verifying tests call directly (§15.1); `false` by
+      default until the release that completes claim grain
     * `:router` — the router module (or a list of them) whose routes a test's requests
       resolve through (§11); found from the project's endpoint when not given, and `false`
       turns route resolution off
@@ -55,6 +58,7 @@ defmodule Surfex.Status.Config do
     :triangle,
     :require_red,
     :router,
+    :claim_implements,
     :adoption,
     :process,
     :completeness
@@ -541,6 +545,22 @@ defmodule Surfex.Status.Config do
 
     spec ++
       code ++ declared(tests(config, root, code), spec, unit_refs!(config)) ++ classes(config)
+  end
+
+  @doc """
+  Whether `mix surfex.suggest` proposes a claim's `implements` from what its verifying
+  tests call (`claim_implements:`, §15.1): `false` by default; anything but a boolean is
+  refused.
+  """
+  @spec claim_implements?(keyword) :: boolean
+  def claim_implements?(config) do
+    case Keyword.get(config, :claim_implements, false) do
+      flag when is_boolean(flag) ->
+        flag
+
+      other ->
+        raise ArgumentError, "claim_implements: must be true or false, got #{inspect(other)}"
+    end
   end
 
   # `fold_paths:` is a boolean; anything else is refused, not read as false.

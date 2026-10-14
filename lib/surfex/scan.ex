@@ -142,6 +142,17 @@ defmodule Surfex.Scan do
   """
   @spec reach([t]) :: %{String.t() => [String.t()]}
   def reach(scans) do
+    from = reacher(scans)
+    for %__MODULE__{kind: :test, id: id, calls: calls} <- scans, into: %{}, do: {id, from.(calls)}
+  end
+
+  @doc """
+  What any calls reach, as `reach/1` follows a test's: a function from a list of call ids
+  to the code records they reach, sorted. The index is built once, so asking it about many
+  starting points (each code item a claim's tests call, §15.1) costs one closure each.
+  """
+  @spec reacher([t]) :: ([String.t()] -> [String.t()])
+  def reacher(scans) do
     code = for %__MODULE__{kind: :code, id: id, calls: calls} <- scans, into: %{}, do: {id, calls}
 
     # A hidden module's code is on every record running it, each time the same, and is
@@ -158,9 +169,7 @@ defmodule Surfex.Scan do
           into: ran,
           do: {key, {id, calls}}
 
-    for %__MODULE__{kind: :test, id: id, calls: calls} <- scans, into: %{} do
-      {id, calls |> closure({code, hidden}, {MapSet.new(), MapSet.new()}) |> Enum.sort()}
-    end
+    fn calls -> calls |> closure({code, hidden}, {MapSet.new(), MapSet.new()}) |> Enum.sort() end
   end
 
   # The records reached from `frontier`. Hidden code is passed through, never reached:

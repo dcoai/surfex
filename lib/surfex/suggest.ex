@@ -21,7 +21,20 @@ defmodule Surfex.Suggest do
   alias Surfex.{Cite, Profile, Record, Scan}
   alias Surfex.Log.Entry
 
-  @type candidate :: %{spec: Scan.t(), code: Scan.t(), cited_at: {String.t(), pos_integer}}
+  @typedoc """
+  A candidate `implements` relation: from a citation (`cited_at` its file and line), or,
+  with `claims: true`, from what a claim's verifying tests call (`cited_at` nil, `tests`
+  the tests that call it, §15.1).
+  """
+  @type candidate :: %{
+          required(:spec) => Scan.t(),
+          required(:code) => Scan.t(),
+          required(:cited_at) => {String.t(), pos_integer} | nil,
+          optional(:tests) => [String.t()]
+        }
+
+  # The spec units that are claims (§11.1, §15.1): what a claim's tests call relates to it.
+  @claim_roles [:block, :test_hint, :row, :rule, :contract]
 
   @doc """
   The candidates, sorted by section then item, one per pair: the first citation that
@@ -105,6 +118,7 @@ defmodule Surfex.Suggest do
           verifies: [pair],
           tests: [pair],
           excuses: [pair],
+          reached: [%{spec: String.t(), through: String.t(), count: pos_integer}],
           undeclared: [%{test: String.t(), spec: String.t()}],
           moved: [%{from: String.t(), to: String.t(), now: String.t()}],
           refresh: [%{type: atom, from: Scan.t(), to: Scan.t()}]
@@ -142,12 +156,19 @@ defmodule Surfex.Suggest do
 
   Refines and implements are computed as if the moves were already recorded, so a moved
   section's relations aren't suggested again under its new id.
+
+  With `claims: true` (`claim_implements: true` in `.surfex.exs`, §15.1), **implements**
+  also pairs each claim (a block, test hint, row, rule or contract) with the scanned code
+  its verifying tests call directly, and **reached** lists, per claim, each code item
+  those tests call that reaches more code: `%{spec, through, count}`, information for a
+  person to act on with `relate`, never recorded.
   """
   # Only for computing what the moves would leave; never recorded.
   @epoch "1970-01-01T00:00:00Z"
 
-  @spec all(Profile.t(), [Surfex.Item.t()], [Scan.t()], [Entry.t()], String.t()) :: suggestions
-  def all(profile, items, scans, entries, root) do
+  @spec all(Profile.t(), [Surfex.Item.t()], [Scan.t()], [Entry.t()], String.t(), keyword) ::
+          suggestions
+  def all(profile, items, scans, entries, root, opts \\ []) do
     {moves, ambiguous} = moves(scans, entries)
     {moves, ambiguous} = {ordered(moves), ordered(ambiguous)}
 
@@ -159,7 +180,14 @@ defmodule Surfex.Suggest do
         {:ok, acc ++ recorded}
       end)
 
-    implements = candidates(profile, items, scans, moved, root)
+    cited = candidates(profile, items, scans, moved, root)
+
+    {claimed, reached} =
+      if Keyword.get(opts, :claims, false),
+        do: claims(scans, moved, cited),
+        else: {[], []}
+
+    implements = cited ++ claimed
     status = Surfex.Status.derive(scans, moved)
 
     %{
@@ -168,6 +196,7 @@ defmodule Surfex.Suggest do
       refines: ordered(refinements(scans, moved)),
       implements: ordered(implements),
       excuses: ordered(excusals(profile, items, scans, moved, implements)),
+      reached: ordered(reached),
       verifies: ordered(verifications(scans, moved)),
       undeclared: ordered(status.undeclared),
       moved: ordered(status.moved),
@@ -367,6 +396,114 @@ defmodule Surfex.Suggest do
         news = Map.get(fresh_by_name, key, []),
         news != [],
         do: {Enum.sort(olds), Enum.sort_by(news, & &1.id)}
+  end
+
+  # Claim relations from a claim's tests (§15.1): each claim paired with the scanned code
+  # its verifying tests call directly, and, per claim, each such call that reaches more
+  # code, with how much. A verifying test is one with a live `verifies` relation to the
+  # claim or a unit inside it, or a declaration that resolves there. A hidden definition
+  # a call names (a LiveView's `mount/3`, a server's `handle_call/3`) is its module's
+  # code: the module is the item. A module named by itself is not proposed: a test names
+  # every module it calls into.
+  defp claims(scans, entries, cited) do
+    code = for %Scan{kind: :code} = s <- scans, s.role != :module, into: %{}, do: {s.id, s}
+
+    owner =
+      for %Scan{kind: :code, role: :module} = m <- scans,
+          key <- Map.keys(m.hidden),
+          into: %{},
+          do: {key, m}
+
+    tests = for %Scan{kind: :test} = t <- scans, into: %{}, do: {t.id, t}
+
+    claims =
+      for %Scan{kind: :spec, role: r} = s <- scans, r in @claim_roles, into: %{}, do: {s.id, s}
+
+    within = for %Scan{kind: :spec, within: w} = s <- scans, w != nil, into: %{}, do: {s.id, w}
+    related = MapSet.new(entries, &Entry.relation/1)
+    cited = MapSet.new(cited, &{&1.spec.id, &1.code.id})
+    resolver = Scan.resolver(scans)
+
+    verifies =
+      for(
+        %Entry{op: :relate, type: :verifies, ends: [%{id: t}, %{id: u}]} <- live_tips(entries),
+        do: {t, u}
+      ) ++
+        for %Scan{kind: :test, declares: declares} = t <- Map.values(tests),
+            {:verifies, ref} <- declares,
+            {:ok, unit} <- [Scan.resolve(resolver, ref)],
+            do: {t.id, unit.id}
+
+    verifying =
+      for {t, unit} <- Enum.uniq(verifies),
+          Map.has_key?(tests, t),
+          claim <- enclosing(unit, within),
+          Map.has_key?(claims, claim),
+          reduce: %{} do
+        acc -> Map.update(acc, claim, MapSet.new([t]), &MapSet.put(&1, t))
+      end
+
+    target = fn id -> Map.get(code, id) || Map.get(owner, id) end
+    reach = Scan.reacher(scans)
+
+    per_claim =
+      for {claim, ts} <- verifying do
+        called =
+          for t <- ts, id <- tests[t].calls, scan = target.(id), scan != nil, do: {id, scan, t}
+
+        {claim, called}
+      end
+
+    candidates =
+      for {claim, called} <- per_claim,
+          {code_id, group} <- Enum.group_by(called, &elem(&1, 1).id),
+          spec = claims[claim],
+          scan = elem(hd(group), 1),
+          not MapSet.member?(cited, {claim, code_id}),
+          not MapSet.member?(related, Entry.relation(:implements, spec, scan)),
+          do: %{
+            spec: spec,
+            code: scan,
+            cited_at: nil,
+            tests: group |> Enum.map(&elem(&1, 2)) |> Enum.uniq() |> Enum.sort()
+          }
+
+    # Each call's reach once, however many claims' tests make it.
+    reaches =
+      for {_claim, called} <- per_claim,
+          {id, _scan, _t} <- called,
+          uniq: true,
+          into: %{},
+          do: {id, reach.([id])}
+
+    reached =
+      for {claim, called} <- per_claim,
+          direct = MapSet.new(called, &elem(&1, 1).id),
+          calls = called |> Enum.map(&elem(&1, 0)) |> Enum.uniq(),
+          id <- calls,
+          beyond =
+            Enum.count(
+              reaches[id],
+              &(Map.has_key?(code, &1) and &1 != id and not MapSet.member?(direct, &1))
+            ),
+          beyond > 0,
+          do: %{spec: claim, through: id, count: beyond}
+
+    {candidates, reached}
+  end
+
+  # `unit` and every unit it sits in, innermost first.
+  defp enclosing(unit, within), do: enclosing(unit, within, [])
+
+  defp enclosing(unit, within, seen) do
+    if unit in seen do
+      Enum.reverse(seen)
+    else
+      case Map.fetch(within, unit) do
+        {:ok, parent} -> enclosing(parent, within, [unit | seen])
+        :error -> Enum.reverse([unit | seen])
+      end
+    end
   end
 
   defp excusals(profile, items, scans, entries, implements) do
