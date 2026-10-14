@@ -4,10 +4,14 @@ All notable changes to Surfex are recorded here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.9.1] — 2026-10-14
 
-`mix.exs` reads `0.9.1-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
-release it merely follows.
+What surfex writes now reads right. Spec pages published with ex_doc keep their headings
+and hide their markers, given the `test:ID` hint form and a heading id on the next line
+(#195). Golden cells holding `|` or a backtick render as one cell (#199), and a hand-edited
+golden row is reported by the column that changed (#215). `mix surfex.completeness
+--summary` prints just the scores for a gate step (#216). One upgrade step, for goldens
+with such cells: regenerate them.
 
 ### Added
 
