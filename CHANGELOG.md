@@ -27,6 +27,11 @@ release it merely follows.
   Switching a spec to them changes no id and no version: surfex's own spec moved every
   anchor and hint across with its relation log untouched. Spec §11 now says which forms
   each renderer shows, and a test renders each one through ex_doc so it stays true.
+- **`mix surfex.completeness --summary`** (#216, #233). It prints the score lines only,
+  overall and per kind, and still fails below `completeness: [min: N]` with the same
+  message. A gate step that enforces the floor no longer prints every incomplete item,
+  which `goldens: [:completeness]` already commits as `COMPLETENESS.md`. Without the flag
+  the output is unchanged. `Surfex.Completeness.summary/1` renders the lines.
 
 ### Fixed
 

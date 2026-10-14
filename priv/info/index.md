@@ -34,7 +34,7 @@ Ids: a spec unit is `spec.md#anchor` or `spec.md#Heading/Path`; code is `Mod`,
 
 Read the state:
 - `mix surfex.status [--format json] [--validated] [--evidence]`: every relation needing attention
-- `mix surfex.completeness [--format json]`: coverage by validated relations, and what's missing
+- `mix surfex.completeness [--format json | --summary]`: coverage by validated relations, and what's missing
 - `mix surfex.history ID`: every relation an id has had, from the log alone
 - `mix surfex.info [TOPIC]`: this directory, or a topic's page
 - `mix surfex.test UNIT [--within] [--list] [-- ARGS]`: run the tests declaring a unit, list tags included

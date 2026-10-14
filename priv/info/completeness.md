@@ -11,7 +11,9 @@ relations, per kind and overall, and lists each incomplete item with what it lac
 - A unit a test declares the code deviates from (`@tag deviation: "#119"`) is never
   complete: it lists `deviates (#119)` until the fix lands and the tag comes off.
 
-`completeness: [min: N]` in `.surfex.exs` makes `mix surfex.status` fail below N percent.
+`completeness: [min: N]` in `.surfex.exs` makes `mix surfex.status` fail below N percent,
+and `mix surfex.completeness` too. To gate the floor without the work list, run
+`mix surfex.completeness --summary`: the score lines only, failing below N as before.
 `goldens: [:completeness]` commits the report as `COMPLETENESS.md`.
 
 The JSON form is the work list: kind, id, what it lacks, location. Work it one item at a

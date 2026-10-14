@@ -2474,7 +2474,14 @@ scores 100.
   score. Off by default, since the score is information first.
 
 `Mix.Tasks.Surfex.Completeness` is `mix surfex.completeness [--format text|json]`. It prints
-the report, and fails below `completeness: [min: N]`.
+the report, and fails below `completeness: [min: N]`. With `--summary` it prints only the
+score lines (`Surfex.Completeness.summary/1`), for a gate step whose work list is already a
+golden; the floor holds as without it.
+
+```test:completeness-summary
+mix surfex.completeness --summary prints the overall and per-kind score lines and nothing
+else, and below completeness: [min: N] fails with the same message as without it
+```
 
 ```test:completeness-rules
 a spec unit is complete when a validated test verifies it (or a unit inside it) and any
