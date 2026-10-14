@@ -792,10 +792,23 @@ ambiguous or undeclared unit, and --list runs nothing
   `describe`'s to its tests and the helpers defined in it (not to another describe), and
   one in a test or helper body to that body, from its line on. A
   piped call counts the piped value, and a capture (`&Mod.fun/2`) is a call. A local
-  call the module doesn't define is listed under each module it imports. Setups are
+  call the module doesn't define comes from one of its imports, `import A` or `import
+  Base.{A, B}` (each member), whose `only:` or `except:` admits it. Given the project's
+  code records (`Surfex.Scan.ExUnit.records/3`), a call through an import of a scanned
+  module is a call to the function that module defines, and names the module too, as a
+  qualified call does; one it doesn't define (ExUnit's `assert`) comes from elsewhere
+  and isn't listed under it. Through a module that isn't scanned, it is listed as that
+  module's `Module.fun/arity`, which reaches nothing. Setups are
   left out: they prepare a test, and what a test tests is what it calls itself. These
   are facts about the source; which of them are code the project has is for
   `Surfex.Suggest` to find (§15).
+
+```test test-import-calls
+a local call resolves through an import in either form, A or Base.{A, B}, as its only:
+or except: admits it; through a scanned module only to a function it defines, naming the
+module too, and through one not scanned to the candidate; a function captured in a list
+is a call
+```
 
 ```test property-tests
 a property is scanned as a test: its id, its declarations, what it calls, and a version
@@ -1839,6 +1852,20 @@ runs aren't needed afterwards.
   (`tests`, `implements`, and `require_red`). The guards stay: the red and green runs
   were against different code, and the observation is for one test version only.
   `Surfex.Status.derive/4` lists the discriminated test versions (`discriminated`).
+- **A red→green that can't be credited is reported.** A test version that failed and
+  later passed against the **same** code versions, and never discriminated, showed a
+  change its reach doesn't hold: a call the scanner doesn't see, a change outside the
+  scanned code, or a flaky test (`Surfex.Evidence.uncredited/1`). Given evidence,
+  `Surfex.Status.derive/4` lists each scanned test version so (`uncredited`, with the
+  code its red run recorded) unless the log records it as discriminated, and `mix
+  surfex.status --evidence` reports it. It is information, never a failure: without it
+  the red→green would be lost in silence.
+
+```test evidence-uncredited
+a test version that failed and then passed against the same code versions, never
+discriminating, is listed as uncredited with the code it reached, without failing; one
+that discriminated, in the evidence or the log, or another version, is not
+```
 - `Surfex.Evidence.latest/3` is a test version's most recent record.
 
 `Surfex.ExUnitFormatter` records it. A project adds it beside the usual formatter

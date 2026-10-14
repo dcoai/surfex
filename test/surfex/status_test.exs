@@ -1168,6 +1168,33 @@ defmodule Surfex.StatusTest do
       assert [%{span: "MyApp.Cart.nothing/0", status: :unresolved}] = options[:citations]
       assert Regex.match?(Config.profile!(config, "MyApp").shape, "MyApp.Cart")
     end
+
+    # #194: the code is scanned once and the tests are read against it, so a test's call
+    # through an import resolves to what the imported module defines.
+    test "load/3 and scans/2 read the tests against the code they scanned", %{tmp_dir: root} do
+      File.cp_r!(Path.expand("../fixtures/elixir_project", __DIR__), root)
+      File.write!(Path.join(root, "spec.md"), "# Carts\n\nA cart.\n")
+      File.mkdir_p!(Path.join(root, "test"))
+
+      File.write!(Path.join(root, "test/cart_test.exs"), """
+      defmodule MyApp.CartTest do
+        use ExUnit.Case
+        import MyApp.{Cart}
+
+        test "totals", do: assert(total() == 0)
+      end
+      """)
+
+      config = [sources: ["spec.md"], tests: ["test/*_test.exs"]]
+      {loaded, _options} = Config.load(config, root, "MyApp")
+      tests_of = &for(%Scan{kind: :test} = t <- &1, do: {t.id, t.calls})
+
+      assert tests_of.(loaded) == [
+               {"MyApp.CartTest: totals", ["MyApp.Cart", "MyApp.Cart.total/0"]}
+             ]
+
+      assert tests_of.(Config.scans(config, root)) == tests_of.(loaded)
+    end
   end
 
   @tag verifies: ["status-states", "status-failing"]
@@ -1379,5 +1406,62 @@ defmodule Surfex.StatusTest do
     n = 400
     ratio = derive_work.(2 * n) / derive_work.(n)
     assert ratio < 3, "twice the project took #{Float.round(ratio, 2)}× the work"
+  end
+
+  # #194: a test whose red→green the code it reaches can't credit is listed, never failed:
+  # what made it pass is outside its reach (§17).
+  describe "uncredited" do
+    @describetag verifies: "evidence-uncredited"
+
+    defp uncredited_run(result, code, seq, test_hash \\ "t1") do
+      %{
+        test: "T: a",
+        test_hash: test_hash,
+        result: result,
+        at: "2026-09-28T10:00:0#{seq}Z",
+        run: "r#{seq}",
+        seq: 0,
+        code: %{@code_id => code}
+      }
+    end
+
+    test "a test version red then green against the same code is listed, not failing" do
+      scans = [scan(:test, "T: a", "t1") | scans()]
+      runs = [uncredited_run(:failed, "c1", 1), uncredited_run(:passed, "c1", 2)]
+      status = Status.derive(scans, [], [], evidence: runs)
+
+      assert status.uncredited == [%{test: "T: a", code: [@code_id]}]
+      refute Status.failing?(status)
+      assert Report.text(status) =~ "Uncredited ("
+      assert Report.text(status) =~ "test T: a (f:1-2): reached only #{@code_id}"
+      {json, :ok, _} = status |> Report.json() |> :json.decode(:ok, %{null: nil})
+      assert json["uncredited"] == [%{"test" => "T: a", "code" => [@code_id]}]
+
+      # Several jobs' runs are one history.
+      merged = Status.derive(scans, [], [], evidence: {:merged, [[hd(runs)], tl(runs)]})
+      assert merged.uncredited == status.uncredited
+
+      # Without evidence nothing is judged.
+      assert Status.derive(scans, [], []).uncredited == []
+    end
+
+    test "a version the log records as discriminated, or not the one scanned, is not listed" do
+      runs = [uncredited_run(:failed, "c1", 1), uncredited_run(:passed, "c1", 2)]
+
+      observed =
+        Entry.new!(
+          at: "2026-09-28T10:30:00Z",
+          op: :observe,
+          type: :red_green,
+          basis: :evidence,
+          ends: [%{kind: :test, id: "T: a", hash: "t1"}]
+        )
+
+      scans = [scan(:test, "T: a", "t1") | scans()]
+      assert Status.derive(scans, [observed], [], evidence: runs).uncredited == []
+
+      changed = [scan(:test, "T: a", "t2") | scans()]
+      assert Status.derive(changed, [], [], evidence: runs).uncredited == []
+    end
   end
 end

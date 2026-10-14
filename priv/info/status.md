@@ -43,6 +43,11 @@ checked here because this run excluded or skipped their test, and tests unselect
 string). The text counts them; the JSON's `unselectable` lists each test and its ids.
 `mix surfex.test ID` runs them by what they declare, so a list tag costs nothing there.
 
+**Uncredited** (with `--evidence`, not failing): a test that went red then green against
+the same code versions, so its red→green can't be credited. What made it pass is outside
+what it reaches: look for a call the scanner doesn't see (a dispatch by name, an
+unscanned module), a change outside the scanned code, or a flaky test.
+
 JSON, per relation: `type`, `state`, `impacted`, `tips`, and `ends`, each with `kind`, `id`,
 `recorded` and `now` (hashes), `changed`, `planned` and `location`. Work it one relation
 at a time.

@@ -71,6 +71,23 @@ defmodule Surfex.EvidenceTest do
     end
   end
 
+  # #194: a red→green against the same code is what a gap in a test's calls looks like.
+  describe "uncredited/1" do
+    @describetag verifies: "evidence-uncredited"
+
+    test "red then green against the same code, never discriminating, is uncredited" do
+      red = record(:failed, "c1", 1)
+      green = record(:passed, "c1", 2)
+      assert Evidence.uncredited([red, green]) == %{{"T: a", "t1"} => {red, green}}
+
+      # A version that also discriminated is credited.
+      assert Evidence.uncredited([red, green, record(:passed, "c2", 3)]) == %{}
+      # Green before red, or a pass at another version, is no red→green.
+      assert Evidence.uncredited([record(:passed, "c1", 1), record(:failed, "c1", 2)]) == %{}
+      assert Evidence.uncredited([red, record(:passed, "c1", 2, test_hash: "t2")]) == %{}
+    end
+  end
+
   # #154: recording reads the local run and other runs' evidence (CI's artifacts) as one
   # history, ordered by time: a test that needs an environment the local host lacks is
   # excluded here and passed there, and recording takes CI's word for it.
@@ -289,6 +306,55 @@ defmodule Surfex.EvidenceTest do
 
       assert Evidence.latest([record(:passed, "c1", 1), record(:skipped, nil, 2)], "T: a", "t1").result ==
                :passed
+    end
+
+    # #194: a call through a brace import reaches the imported module's code, so the run
+    # records its versions and a change to it can discriminate. It verifies the module's
+    # evidence-recorded: driving the formatter by its callbacks reaches none of the test
+    # scanner's code, so it can't verify the import hint inside §11 (the triangle).
+    test "a run records the versions of the code a test calls through a brace import", %{
+      tmp_dir: root
+    } do
+      file = Path.join(root, "test/import_test.exs")
+
+      File.write!(file, """
+      defmodule MyApp.ImportTest do
+        use ExUnit.Case
+        import MyApp.{Cart, Cart.Line}
+
+        test "imported" do
+          assert total() == 0
+          assert new(:apple) == {:apple, 1}
+        end
+      end
+      """)
+
+      {:ok, pid} = GenServer.start_link(Surfex.ExUnitFormatter, surfex_root: root)
+      GenServer.cast(pid, {:suite_started, []})
+
+      GenServer.cast(
+        pid,
+        {:test_finished,
+         %ExUnit.Test{
+           name: :t,
+           module: MyApp.ImportTest,
+           state: nil,
+           tags: %{file: file, line: 5}
+         }}
+      )
+
+      GenServer.cast(pid, {:suite_finished, %{}})
+      GenServer.stop(pid)
+
+      assert [%{test: "MyApp.ImportTest: imported", code: code}] =
+               Evidence.load(Evidence.path(root))
+
+      assert Map.keys(code) == [
+               "MyApp.Cart",
+               "MyApp.Cart.Line",
+               "MyApp.Cart.Line.new/1",
+               "MyApp.Cart.total/0"
+             ]
     end
 
     test "without tests: in .surfex.exs it raises", %{tmp_dir: root} do
