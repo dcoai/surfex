@@ -14,6 +14,30 @@ release it merely follows.
 - **`Surfex.Scan.resolver/1`** (#204, #220): the spec units indexed once, by full id and by
   bare id. `Surfex.Scan.resolve/2` takes it in place of the scans and resolves exactly as
   they do (unknown, ambiguous, `§`-ids), so code resolving many references builds it once.
+- **Known deviations: `@tag deviation: "<ref>"`** (#214, #223). A suite that passed while
+  the code deviated from its spec gets each deviation's test written from the spec; it
+  fails, so it is skipped with a reference to what will fix the code. surfex had no state
+  for that: the requirement's `proposed` relations failed the check until every deviation
+  was fixed, and a `verifies` recorded on the red run counted the requirement complete.
+  Now the tag (free text, beside the `skip:`; at test, `describe` or module level) makes
+  each unit the test declares **deviating**:
+  - `mix surfex.status` lists it under **Deviating** with its reference and test. A
+    `proposed` relation to it, or to a unit it sits in, is marked `deviates` and doesn't
+    fail. `--no-deviations` (`deviations: :fail`) fails on any deviation, for a release.
+  - A deviation test that **passed** at its version in the evidence is a **stale
+    deviation** and fails: drop the tag and validate. A skipped test never passed, so
+    only a run that includes it judges this.
+  - A deviation test that runs and fails is listed under Deviating, not under Failed.
+    Any other failed test still fails.
+  - A deviation tag on a test that declares no spec unit is broken.
+  - Completeness: a deviating unit is incomplete, missing `deviates (<ref>)`, whatever its
+    basis.
+  - `RELATIONS.md` gains a `deviating` group (unit, reference, test): the ledger of known
+    deviations. `COMPLETENESS.md` shows `deviates (<ref>)`. The JSON has `deviating`, and
+    each relation a `deviates` list.
+
+  `Surfex.Scan` gains `deviation`, a relation status `deviates`, and `Surfex.Status.derive/4`
+  `deviating` and the `deviations:` option. Nothing changes for a project without the tag.
 
 ### Changed
 

@@ -6,7 +6,9 @@ defmodule Surfex.Completeness do
 
     * **A spec unit** with text of its own is complete when a test verifies it, or a unit
       inside it, by a current, validated relation, and every `implements` relation to it
-      is current and validated. A unit no code implements needs its test alone.
+      is current and validated. A unit no code implements needs its test alone. A unit a
+      test declares the code deviates from (`@tag deviation:`, `Surfex.Status`) is never
+      complete: it misses `deviates`, with the references, whatever its basis.
     * **A test** is complete when it verifies a unit by a current, validated relation and
       exercises code; verifying only units no code implements, its `verifies` is enough.
     * **Code** is complete when it implements a unit by a current, validated relation, or
@@ -24,7 +26,7 @@ defmodule Surfex.Completeness do
   @type item :: %{
           kind: :spec | :test | :code,
           id: String.t(),
-          missing: [atom],
+          missing: [atom | {:deviates, [String.t()]}],
           location: map | nil
         }
   @type t :: %{
@@ -39,11 +41,20 @@ defmodule Surfex.Completeness do
     within = for {{:spec, id}, %Scan{within: w}} <- status.scans, w != nil, into: %{}, do: {id, w}
     scans = status.scans |> Map.values() |> Enum.sort_by(&{&1.kind, &1.id})
 
+    # A deviating unit's code doesn't meet it, whatever validated its relations (§20).
+    deviates =
+      status.deviating
+      |> Enum.group_by(& &1.spec, & &1.ref)
+      |> Map.new(fn {unit, refs} -> {unit, [{:deviates, refs |> Enum.uniq() |> Enum.sort()}]} end)
+
     units_and_tests =
       for %Scan{kind: kind} = scan <- scans,
           kind in [:spec, :test],
           kind != :spec or not Markdown.empty?(scan),
-          do: {kind, scan, missing(kind, scan, live, within, status)}
+          do:
+            {kind, scan,
+             missing(kind, scan, live, within, status) ++
+               if(kind == :spec, do: Map.get(deviates, scan.id, []), else: [])}
 
     # Code is one item per definition (`Scan.definition/1`), as it is to `require:`, the
     # triangle and validate: a function's default-argument arities are judged together,
@@ -190,7 +201,13 @@ defmodule Surfex.Completeness do
 
   defp percent(%{complete: c, total: t, percent: p}), do: "#{p}% (#{c}/#{t})"
 
-  defp item_text(i), do: "#{i.kind} #{i.id}#{at(i.location)}: #{Enum.join(i.missing, ", ")}"
+  defp item_text(i), do: "#{i.kind} #{i.id}#{at(i.location)}: #{missing_text(i.missing)}"
+
+  # What an item misses, as read: `deviates` names its references.
+  defp missing_text(missing), do: Enum.map_join(missing, ", ", &lack/1)
+
+  defp lack({:deviates, refs}), do: "deviates (#{Enum.join(refs, ", ")})"
+  defp lack(atom), do: Atom.to_string(atom)
 
   defp at(%{file: file, lines: {first, last}}), do: " (#{file}:#{first}-#{last})"
   defp at(%{file: file}), do: " (#{file})"
@@ -210,7 +227,7 @@ defmodule Surfex.Completeness do
         %{
           "kind" => Atom.to_string(i.kind),
           "id" => i.id,
-          "missing" => Enum.map(i.missing, &Atom.to_string/1),
+          "missing" => Enum.map(i.missing, &lack/1),
           "location" => location_json(i.location)
         }
       end)
@@ -248,7 +265,7 @@ defmodule Surfex.Completeness do
       columns: ["Item", "Missing"],
       rows:
         for i <- report.incomplete do
-          %{"Item" => {:code, "#{i.kind} #{i.id}"}, "Missing" => Enum.join(i.missing, ", ")}
+          %{"Item" => {:code, "#{i.kind} #{i.id}"}, "Missing" => missing_text(i.missing)}
         end
     }
   end

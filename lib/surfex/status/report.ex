@@ -40,6 +40,17 @@ defmodule Surfex.Status.Report do
       ),
       section("Impacted (an end depends on something not current)", status, & &1.impacted),
       section("Planned (an end doesn't exist yet)", status, &(&1.state == :planned)),
+      # Listed, not failing (§13.1): the declared state of a project fixing its code.
+      items(
+        "Deviating (a test declares the code doesn't meet the unit yet)",
+        Enum.reject(status.deviating, &(&1.run == :passed)),
+        &deviating_line(&1, status)
+      ),
+      items(
+        "Stale deviations (a deviation test passed: drop the tag and validate)",
+        Enum.filter(status.deviating, &(&1.run == :passed)),
+        &deviating_line(&1, status)
+      ),
       items(
         "Unimplemented (every implements relation is planned)",
         status.unimplemented,
@@ -199,6 +210,16 @@ defmodule Surfex.Status.Report do
         end),
       "moved" => Enum.map(status.moved, &%{"from" => &1.from, "to" => &1.to, "now" => &1.now}),
       "unselectable" => Enum.map(status.unselectable, &%{"test" => &1.test, "ids" => &1.ids}),
+      "deviating" =>
+        Enum.map(status.deviating, fn d ->
+          %{
+            "spec" => d.spec,
+            "test" => d.test,
+            "ref" => d.ref,
+            "run" => d.run && Atom.to_string(d.run),
+            "stale" => d.run == :passed
+          }
+        end),
       "baseline" => %{
         "relations" => Status.baseline_count(status),
         "adoption" => inspect(status.adoption)
@@ -277,6 +298,7 @@ defmodule Surfex.Status.Report do
       prose:
         "A row per relation. **dangling**: an end changed since it was confirmed (`mix surfex.confirm`). " <>
           "**orphaned**: an end is gone. **planned**: an end doesn't exist yet. **conflicted**: recorded on two branches (`mix surfex.resolve`). " <>
+          "**deviates**: proposed, to a unit a test declares the code doesn't meet yet (`@tag deviation:`), listed with its reference under `deviating`. " <>
           "For `depends_on`, `refines` and `tests` the first end depends on, refines or tests the " <>
           "other; the other types' ends are in sorted order. `mix surfex.status` is the check; " <>
           "this is the record.",
@@ -296,6 +318,7 @@ defmodule Surfex.Status.Report do
           {"undeclared", length(status.undeclared)},
           {"unrecorded", length(status.unrecorded)},
           {"moved", length(status.moved)},
+          {"deviating", length(status.deviating)},
           {"marks", length(status.marks)},
           {"baseline", Status.baseline_count(status)},
           {"broken citations", length(status.citations)},
@@ -343,6 +366,13 @@ defmodule Surfex.Status.Report do
               "Declares" => {:raw, "`spec #{u.spec}`: #{unrecorded_text(u)}"}
             }
           end) ++
+          id_group.("deviating", ["Item", "Deviation", "Test"], status.deviating, fn d ->
+            %{
+              "Item" => {:code, "spec #{d.spec}"},
+              "Deviation" => d.ref,
+              "Test" => {:code, "test #{d.test}"}
+            }
+          end) ++
           id_group.("moved", ["Item", "Refines"], status.moved, fn m ->
             %{
               "Item" => {:code, "spec #{m.from}"},
@@ -371,7 +401,13 @@ defmodule Surfex.Status.Report do
   end
 
   defp golden_row(%{relation: {_type, {ak, aid}, {bk, bid}}} = r) do
-    state = if r.impacted, do: {:raw, "`#{inspect(r.state)}` · impacted"}, else: {:atom, r.state}
+    flags =
+      for {true, flag} <- [{r.impacted, "impacted"}, {r.deviates != [], "deviates"}], do: flag
+
+    state =
+      if flags == [],
+        do: {:atom, r.state},
+        else: {:raw, Enum.join(["`#{inspect(r.state)}`" | flags], " · ")}
 
     %{
       "End" => {:code, "#{ak} #{aid}"},
@@ -404,7 +440,10 @@ defmodule Surfex.Status.Report do
             do: " (tips: #{Enum.map_join(r.tips, ", ", &String.slice(&1.id, 0, 12))})",
             else: ""
 
-        "#{type}  #{end_text(a)} ↔ #{end_text(b)}#{changed}#{tips}"
+        deviates =
+          if r.deviates == [], do: "", else: " (deviates: #{Enum.join(r.deviates, ", ")})"
+
+        "#{type}  #{end_text(a)} ↔ #{end_text(b)}#{changed}#{tips}#{deviates}"
       end
 
     items(title, rows, & &1)
@@ -417,6 +456,20 @@ defmodule Surfex.Status.Report do
   defp unrecorded_text(%{retired: %{note: note}}),
     do:
       "declared, but the relation was retired (#{note || "no note"}): remove the tag, or reinstate it"
+
+  # A deviating unit, its reference and test, and what the run says of it (§13.1).
+  defp deviating_line(d, status),
+    do:
+      "spec #{describe({:spec, d.spec}, status)}: #{d.ref}, declared by test #{d.test}" <>
+        deviation_run(d.run)
+
+  defp deviation_run(nil), do: ""
+  defp deviation_run(:failed), do: " (failed in this run, as declared)"
+
+  defp deviation_run(:passed),
+    do: " (passed in this run: the code meets it now, so drop the tag and validate)"
+
+  defp deviation_run(other), do: " (#{other} in this run)"
 
   # Where a moved unit sits now, and what settles it (§13.1).
   defp moved_text(%{now: now}),
@@ -499,6 +552,7 @@ defmodule Surfex.Status.Report do
   defp stale_text({:other_class, class}), do: "class #{class}'s rule matches it first"
 
   defp reason(:unknown), do: "no spec unit has that id"
+  defp reason(:no_unit), do: "the test declares no spec unit to deviate from"
   defp reason({:ambiguous, ids}), do: "more than one does: #{Enum.join(ids, ", ")}"
 
   defp units_stat(u),
@@ -541,6 +595,7 @@ defmodule Surfex.Status.Report do
       "type" => Atom.to_string(type),
       "state" => Atom.to_string(r.state),
       "impacted" => r.impacted,
+      "deviates" => r.deviates,
       "ends" =>
         Enum.map([a, b], fn {kind, id} = key ->
           scan = Map.get(status.scans, key)

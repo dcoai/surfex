@@ -223,6 +223,59 @@ defmodule Surfex.ScanExUnitTest do
     end
   end
 
+  # #214: a test whose requirement the code doesn't meet yet says so beside its skip. The
+  # reference merges level by level as ExUnit merges tags, on its own key.
+  @tag verifies: ["deviation-tag", "scan-records-pure"]
+  test "deviation: is read as the test's reference, at each level, apart from verifies" do
+    source = ~S'''
+    defmodule T do
+      use ExUnit.Case
+      @moduletag deviation: "#1"
+      @moduletag verifies: "m"
+
+      test "from the module", do: :ok
+
+      @tag verifies: "own", skip: "known deviation"
+      test "verifies only: the module's deviation stays", do: :ok
+
+      @tag deviation: "#2"
+      @tag verifies: "a"
+      test "its own, over two tags", do: :ok
+
+      describe "d" do
+        @describetag deviation: "#3"
+        test "from the describe", do: :ok
+
+        @tag deviation: nil
+        test "cleared", do: :ok
+
+        @tag %{deviation: "#4", verifies: "b"}
+        test "a map tag", do: :ok
+      end
+    end
+    '''
+
+    records = tests(source)
+
+    assert Map.new(records, &{&1.id, {&1.deviation, &1.declares}}) == %{
+             "T: from the module" => {"#1", [verifies: "m"]},
+             "T: verifies only: the module's deviation stays" => {"#1", [verifies: "own"]},
+             "T: its own, over two tags" => {"#2", [verifies: "a"]},
+             "T: d: from the describe" => {"#3", [verifies: "m"]},
+             "T: d: cleared" => {nil, [verifies: "m"]},
+             "T: d: a map tag" => {"#4", [verifies: "b"]}
+           }
+
+    # Without a tag, no deviation.
+    assert [%Scan{deviation: nil}] = tests("defmodule T do\n  test \"a\", do: :ok\nend\n")
+
+    bad = "defmodule T do\n  @tag deviation: 119\n  test \"a\", do: :ok\nend\n"
+
+    assert_raise ArgumentError, ~r"test/cart_test.exs:2: deviation: must be a string", fn ->
+      tests(bad)
+    end
+  end
+
   @tag :tmp_dir
   test "records/2 reads globs under a root", %{tmp_dir: root} do
     File.mkdir_p!(Path.join(root, "test"))

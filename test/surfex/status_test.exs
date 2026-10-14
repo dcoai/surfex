@@ -793,6 +793,29 @@ defmodule Surfex.StatusTest do
       Entry.new!(at: ok.at, op: :relate, type: :implements, ends: ok.ends, basis: :review)
 
     refute fails_with.(scans(), [validated], validated: true)
+
+    # A proposed relation to a unit a test declares a deviation from passes (#214), unless
+    # deviations: :fail.
+    deviant = %{
+      scan(:test, "T: deviant", "t1")
+      | declares: [verifies: @spec_id],
+        deviation: "#119"
+    }
+
+    declared =
+      Entry.new!(
+        at: ok.at,
+        op: :relate,
+        type: :verifies,
+        basis: :evidence,
+        ends: [
+          %{kind: :test, id: "T: deviant", hash: "t1"},
+          %{kind: :spec, id: @spec_id, hash: "s1"}
+        ]
+      )
+
+    refute fails.([deviant | scans()], [proposed, declared])
+    assert fails_with.([deviant | scans()], [proposed, declared], deviations: :fail)
   end
 
   describe "the report" do

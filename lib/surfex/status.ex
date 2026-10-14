@@ -56,6 +56,18 @@ defmodule Surfex.Status do
   list tag of several, §11) is **unselectable**, with those ids. A list is legitimate, so
   this is information, never a failure.
 
+  A spec unit a test declares with `@tag deviation: "<ref>"` (§11) is **deviating**: the
+  spec is right, the code doesn't meet it yet, and the reference names what will fix it.
+  Its test is red, and skipped to keep the suite green. Each is listed with its test and
+  reference, and, given evidence, the test's last result there. A proposed relation to a
+  deviating unit, or to a unit it sits in, is marked `deviates` (its references) and
+  doesn't fail: it is reported, as a planned one is. A deviation
+  test that failed is listed with its deviation, not as failed. One that **passed**, at
+  its version, is a stale deviation and fails: the code meets the unit now, so the tag
+  comes off and the relations are validated. A skipped test never passed, so without a
+  run that includes it nothing is judged stale. A deviation tag on a test that declares no
+  spec unit is broken.
+
   An `excuses` relation whose item its class no longer covers is **stale**: the item is
   now implemented, no rule matches it any more, or another class's rule matches it first.
   An excuse must stay true to its class's rules, not only to the versions it was confirmed
@@ -63,9 +75,10 @@ defmodule Surfex.Status do
 
   **Failing** means any dangling, orphaned or conflicted relation, any unmet id, any
   undeclared `verifies` relation, any moved `refines` relation, any unrecorded or broken
-  declaration, any stale excuse, or any broken citation. Planned relations fail too when derived with
+  declaration, any stale excuse or deviation, or any broken citation. Planned relations fail too when derived with
   `planned: :fail` (`mix surfex.status --no-planned`), for a check that everything planned
-  has been built, such as a release's.
+  has been built, such as a release's, and deviations with `deviations: :fail`
+  (`mix surfex.status --no-deviations`).
 
   ## The triangle
 
@@ -88,6 +101,7 @@ defmodule Surfex.Status do
           state: state,
           changed: [{atom, String.t()}],
           impacted: boolean,
+          deviates: [String.t()],
           tips: [Entry.t()],
           tip: Entry.t() | nil
         }
@@ -110,6 +124,14 @@ defmodule Surfex.Status do
           ],
           moved: [%{from: String.t(), to: String.t(), now: String.t()}],
           unselectable: [%{test: String.t(), ids: [String.t()]}],
+          deviating: [
+            %{
+              spec: String.t(),
+              test: String.t(),
+              ref: String.t(),
+              run: nil | :passed | :failed | :excluded | :skipped
+            }
+          ],
           failed: [%{relation: tuple, test: String.t()}],
           unproven: [%{relation: tuple, test: String.t() | nil, reason: atom}],
           unchecked: [%{relation: tuple, test: String.t(), reason: :excluded | :skipped}],
@@ -140,7 +162,8 @@ defmodule Surfex.Status do
             triangle: :report | :fail,
             validated: boolean,
             marks: :allow | :fail,
-            baseline: :allow | :fail
+            baseline: :allow | :fail,
+            deviations: :allow | :fail
           },
           unimplemented: [Scan.t()],
           planned: :allow | :fail,
@@ -179,6 +202,15 @@ defmodule Surfex.Status do
     unless marks_policy in [:allow, :fail],
       do: raise(ArgumentError, "marks: must be :allow or :fail, got #{inspect(marks_policy)}")
 
+    deviations_policy = Keyword.get(opts, :deviations, :allow)
+
+    unless deviations_policy in [:allow, :fail],
+      do:
+        raise(
+          ArgumentError,
+          "deviations: must be :allow or :fail, got #{inspect(deviations_policy)}"
+        )
+
     by_id = Map.new(scans, &{{&1.kind, &1.id}, &1})
     # Every test's declarations resolve against one index, built once (§13).
     resolver = Scan.resolver(scans)
@@ -204,11 +236,18 @@ defmodule Surfex.Status do
       |> Enum.map(fn {relation, group} -> judge(relation, group, by_id) end)
       |> Enum.sort_by(& &1.relation)
 
-    relations = impacted(relations)
-
+    within = for %Scan{kind: :spec, within: w} = s <- scans, w != nil, into: %{}, do: {s.id, w}
     runs = latest_runs(Keyword.get(opts, :evidence))
-    failed = failed(relations, runs)
-    failed_relations = MapSet.new(failed, & &1.relation)
+    deviating = deviating(scans, resolver, runs)
+
+    relations = relations |> impacted() |> deviates(deviating, within)
+
+    # A deviation test that fails is the state it declares: listed with its deviation, not
+    # as failed (§13.1). Any other test's failure fails its relations.
+    deviation_tests = MapSet.new(deviating, & &1.test)
+    all_failed = failed(relations, runs)
+    failed_relations = MapSet.new(all_failed, & &1.relation)
+    failed = Enum.reject(all_failed, &MapSet.member?(deviation_tests, &1.test))
 
     # A claim this run left its test out of is not checked here, not disproved (§17). One
     # whose test failed is reported once, as failed, whatever its basis.
@@ -229,6 +268,7 @@ defmodule Surfex.Status do
         |> Enum.sort_by(&{&1.kind, &1.id}),
       unmet: unmet(scans, relations, require),
       broken: broken(scans, resolver),
+      deviating: deviating,
       undeclared: undeclared(scans, relations, resolver),
       unrecorded: unrecorded(scans, relations, resolver),
       moved: moved(relations, by_id),
@@ -258,7 +298,8 @@ defmodule Surfex.Status do
         triangle: triangle,
         validated: validated,
         marks: marks_policy,
-        baseline: baseline_policy
+        baseline: baseline_policy,
+        deviations: deviations_policy
       },
       unimplemented: unimplemented(scans, relations),
       planned: planned,
@@ -269,12 +310,18 @@ defmodule Surfex.Status do
   @doc """
   Whether the status fails the check: any dangling, orphaned, conflicted or unmet, and any
   planned relation when it was derived with `planned: :fail`, any open or orphaned mark
-  with `marks: :fail`.
+  with `marks: :fail`. A proposed relation that deviates doesn't fail, unless derived with
+  `deviations: :fail`, which fails on any deviation; a stale deviation always fails.
   """
   @spec failing?(t) :: boolean
   def failing?(status) do
     failing = [:dangling, :orphaned, :conflicted, :proposed]
     failing = if status.planned == :fail, do: [:planned | failing], else: failing
+    deviations_fail = status.policy.deviations == :fail
+
+    excused? = fn r ->
+      not deviations_fail and r.state == :proposed and r.deviates != []
+    end
 
     status.unmet != [] or status.broken != [] or status.stale != [] or status.citations != [] or
       (status.policy.validated == true and status.unvalidated != []) or
@@ -286,7 +333,9 @@ defmodule Surfex.Status do
       (status.policy.triangle == :fail and status.triangle != []) or
       (status.policy.marks == :fail and status.marks != []) or
       (status.policy.baseline == :fail and baseline_count(status) > 0) or
-      Enum.any?(status.relations, &(&1.state in failing))
+      (deviations_fail and status.deviating != []) or
+      Enum.any?(status.deviating, &(&1.run == :passed)) or
+      Enum.any?(status.relations, &(&1.state in failing and not excused?.(&1)))
   end
 
   # The marks still standing (§13.1): open while the unit is at the version marked,
@@ -390,6 +439,7 @@ defmodule Surfex.Status do
       state: state,
       changed: changed,
       impacted: false,
+      deviates: [],
       tips: tips,
       tip: tip
     }
@@ -530,6 +580,64 @@ defmodule Surfex.Status do
         | impacted:
             r.type != :depends_on and (MapSet.member?(troubled, a) or MapSet.member?(troubled, b))
       }
+    end)
+  end
+
+  # Each spec unit a deviation test declares (§13.1), with the test, its reference and,
+  # given evidence, its latest result at its version there. Linear: each test's
+  # declarations resolve against the derive's one resolver.
+  defp deviating(scans, resolver, runs) do
+    for %Scan{kind: :test, deviation: ref} = test <- scans,
+        ref != nil,
+        unit <- Enum.uniq(declared(resolver, test)) do
+      %{spec: unit, test: test.id, ref: ref, run: run_of(runs, test.id, test.hash)}
+    end
+    |> Enum.sort_by(&{&1.spec, &1.test})
+  end
+
+  # A test's latest result at its version in the evidence, or nil when none was given or
+  # it has no record. With several jobs' runs, a pass in any wins (the deviation is
+  # stale), then a failure, then whatever a job recorded.
+  defp run_of(nil, _test, _hash), do: nil
+
+  defp run_of({:merged, runs}, test, hash) do
+    results = for run <- runs, %{result: result} <- [run[{test, hash}]], do: result
+    Enum.find([:passed, :failed], &(&1 in results)) || List.first(results)
+  end
+
+  defp run_of(latest, test, hash) do
+    case latest[{test, hash}] do
+      %{result: result} -> result
+      nil -> nil
+    end
+  end
+
+  # Marks each proposed relation that deviates with the references (§13.1): a spec end of
+  # it is a deviating unit or a unit one sits in, each deviating unit's `within` chain
+  # walked once. A deviation test's own verifies is to its deviating unit. Other relations
+  # are left as they are.
+  defp deviates(relations, [], _within), do: relations
+
+  defp deviates(relations, deviating, within) do
+    by_unit =
+      deviating
+      |> Enum.reduce(%{}, fn d, acc ->
+        Map.update(acc, d.spec, MapSet.new([d.ref]), &MapSet.put(&1, d.ref))
+      end)
+      |> verifying(within)
+
+    Enum.map(relations, fn
+      %{state: :proposed, relation: {_type, a, b}} = r ->
+        refs =
+          for {:spec, unit} <- [a, b],
+              ref <- Map.get(by_unit, unit, []),
+              uniq: true,
+              do: ref
+
+        %{r | deviates: Enum.sort(refs)}
+
+      r ->
+        r
     end)
   end
 
@@ -985,10 +1093,25 @@ defmodule Surfex.Status do
         do: unit.id
   end
 
+  # A declaration that names no spec unit, or an ambiguous bare id; and a deviation tag on
+  # a test that declares no unit, so deviates from nothing it names (§13.1).
   defp broken(scans, resolver) do
     for scan <- Enum.sort_by(scans, &{&1.kind, &1.id}),
-        {type, ref} <- scan.declares,
-        {:error, why} <- [Scan.resolve(resolver, ref)],
-        do: %{scan: scan, type: type, ref: ref, reason: why}
+        why <- declaration_errors(scan, resolver),
+        do: Map.put(why, :scan, scan)
+  end
+
+  defp declaration_errors(scan, resolver) do
+    unresolved =
+      for {type, ref} <- scan.declares,
+          {:error, why} <- [Scan.resolve(resolver, ref)],
+          do: %{type: type, ref: ref, reason: why}
+
+    deviation =
+      if scan.kind == :test and scan.deviation != nil and scan.declares == [],
+        do: [%{type: :deviation, ref: scan.deviation, reason: :no_unit}],
+        else: []
+
+    unresolved ++ deviation
   end
 end

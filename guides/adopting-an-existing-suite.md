@@ -66,6 +66,26 @@ basis `evidence`. Ordinary bug-fix work does this over time. Nothing has to be s
 When the backlog should end, `mix surfex.status --no-baseline` (or `baseline: :fail` in
 `.surfex.exs`) fails while any relation still rests on the baseline.
 
+## Code that deviates from the spec
+
+A suite that passed green can still pass while the code deviates from the spec. Writing
+the spec's tests turns those deviations up: the test is right, the code is wrong. Tag each
+such test with the reference to what will fix the code, beside the skip that keeps the
+suite green:
+
+```elixir
+@tag verifies: "free-over", deviation: "#119", skip: "known deviation (#119)"
+test "delivery is free over the threshold" do
+```
+
+Record its `verifies` on its red run as usual. Status lists the unit under **Deviating**
+with its reference, and its `proposed` relations don't fail. The gate can be joined while
+the deviations are fixed. Completeness counts the unit incomplete (`deviates (#119)`), and
+`RELATIONS.md` keeps the ledger. Run the deviation tests with their skips included now and
+then (`mix test --include skip`). A deviation test that passes fails the status as stale.
+When the fix lands, drop the tag and the skip, and validate as for any change. A release
+can hold every deviation with `mix surfex.status --no-deviations`.
+
 ## What changes cost afterwards
 
 | Change | Trusted test | Re-evaluated test |

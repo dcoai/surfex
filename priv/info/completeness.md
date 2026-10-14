@@ -8,6 +8,8 @@ relations, per kind and overall, and lists each incomplete item with what it lac
 - A **test** is complete when it verifies a unit and exercises code (or verifies only
   units no code implements).
 - **Code** is complete when validated and exercised by a test, or excused by a class.
+- A unit a test declares the code deviates from (`@tag deviation: "#119"`) is never
+  complete: it lists `deviates (#119)` until the fix lands and the tag comes off.
 
 `completeness: [min: N]` in `.surfex.exs` makes `mix surfex.status` fail below N percent.
 `goldens: [:completeness]` commits the report as `COMPLETENESS.md`.
