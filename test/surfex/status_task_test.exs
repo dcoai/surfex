@@ -117,7 +117,7 @@ defmodule Surfex.StatusTaskTest do
   end
 
   # #74: a score to move, and a floor a project may set.
-  @tag verifies: ["completeness-score", "status-report-forms"]
+  @tag verifies: ["completeness-score", "status-report-forms", "completeness"]
   test "below completeness: [min: N] the check fails; mix surfex.completeness reports",
        %{root: root} do
     File.write!(
@@ -139,7 +139,7 @@ defmodule Surfex.StatusTaskTest do
   end
 
   # #216: a gate step wants the scores, not the work list COMPLETENESS.md already holds.
-  @tag verifies: ["completeness-summary"]
+  @tag verifies: ["completeness-summary", "completeness"]
   test "mix surfex.completeness --summary prints the score lines only, and fails as before",
        %{root: root} do
     File.write!(Path.join(root, "open.exs"), ~s([sources: ["spec.md"], namespace: "MyApp"]))
@@ -231,7 +231,7 @@ defmodule Surfex.StatusTaskTest do
   end
 
   # #98: --merge reads each job's evidence file in a final job.
-  @tag verifies: "evidence-merged"
+  @tag verifies: ["evidence-merged", "evidence"]
   test "--merge reads the named evidence files, and a missing one fails", %{root: root} do
     files =
       for name <- ~w(main slow) do

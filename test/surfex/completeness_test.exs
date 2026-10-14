@@ -113,6 +113,7 @@ defmodule Surfex.CompletenessTest do
       refute Map.has_key?(missing(report, :spec), "spec.md#parent")
     end
 
+    @tag verifies: ["completeness-rules", "completeness"]
     test "spec units: verified through a hint, code validated; a policy needs a test alone" do
       assert missing(Completeness.report(status()), :spec) == %{
                # Its code M.e/0 is related, but not validated.
@@ -121,10 +122,12 @@ defmodule Surfex.CompletenessTest do
              }
     end
 
+    @tag verifies: ["completeness-rules", "completeness"]
     test "tests: verifying and exercising code, or verifying only code-less units" do
       assert missing(Completeness.report(status()), :test) == %{"T: stray" => [:no_relation]}
     end
 
+    @tag verifies: ["completeness-rules", "completeness"]
     test "code: validated and exercised, or excused" do
       assert missing(Completeness.report(status()), :code) == %{
                "M.c/0" => [:no_relation],
@@ -160,6 +163,7 @@ defmodule Surfex.CompletenessTest do
   describe "the score" do
     @describetag verifies: "completeness-score"
 
+    @tag verifies: ["completeness-score", "completeness"]
     test "complete over all, per kind and overall, to one decimal; 100 with nothing" do
       scores = Completeness.report(status()).scores
       assert scores.spec == %{complete: 2, total: 4, percent: 50.0}
@@ -177,6 +181,7 @@ defmodule Surfex.CompletenessTest do
       refute Completeness.below?(report, nil)
     end
 
+    @tag verifies: ["completeness-score", "completeness"]
     test "text, JSON and a golden with no hashes or times" do
       report = Completeness.report(status())
       text = Completeness.text(report)

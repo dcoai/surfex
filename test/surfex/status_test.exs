@@ -1052,7 +1052,7 @@ defmodule Surfex.StatusTest do
       assert Report.text(Status.derive(scans(), [])) =~ "(no relations)"
     end
 
-    @tag verifies: ["status-pure", "status-report-forms"]
+    @tag verifies: ["status-pure", "status-report-forms", "status"]
     test "the golden is the same whatever order the scans and the log's lines come in" do
       extra = scan(:code, "M.other/0", "o")
       first = relate("s1", "c1")
@@ -1077,6 +1077,7 @@ defmodule Surfex.StatusTest do
 
     alias Surfex.Status.Config
 
+    @tag verifies: ["status-config-read", "status-config"]
     test "require: is validated" do
       assert Config.require!(require: [code: [:implements]]) == [code: [:implements]]
 
@@ -1089,6 +1090,7 @@ defmodule Surfex.StatusTest do
       end
     end
 
+    @tag verifies: ["status-config-read", "status-config"]
     test "triangle: is :report by default, or :fail, and nothing else" do
       assert Config.options!([]) == [triangle: :report]
       assert Config.options!(triangle: :fail) == [triangle: :fail]
@@ -1132,7 +1134,7 @@ defmodule Surfex.StatusTest do
 
     # #68: one answer to which files are the spec, for its sections and its citations.
     @tag :tmp_dir
-    @tag verifies: "exclude-both"
+    @tag verifies: ["exclude-both", "profiles"]
     test "a file under exclude: contributes neither sections nor citations", %{tmp_dir: root} do
       File.mkdir_p!(Path.join(root, "spec"))
       File.write!(Path.join(root, "spec/01-cart.md"), "# Cart\n\n`MyApp.Cart.total/0` totals.\n")
@@ -1159,6 +1161,7 @@ defmodule Surfex.StatusTest do
     end
 
     @tag :tmp_dir
+    @tag verifies: ["status-config-read", "status-config"]
     test "no spec sections is an error, not a quiet empty status", %{tmp_dir: root} do
       assert_raise ArgumentError, ~r/no spec sections found/, fn ->
         Config.scans([sources: ["spec.md"]], root)
@@ -1168,7 +1171,7 @@ defmodule Surfex.StatusTest do
     end
   end
 
-  @tag verifies: "scanner-behaviour"
+  @tag verifies: ["scanner-behaviour", "scanner-contract"]
   test "a project scanner implements Surfex.Scanner; a module that doesn't is refused, named" do
     assert Enum.sort(Surfex.Scanner.behaviour_info(:callbacks)) == [calls: 3, items: 2]
 
@@ -1186,6 +1189,7 @@ defmodule Surfex.StatusTest do
 
     alias Surfex.Status.Config
 
+    @tag verifies: ["scanners-combined", "several-scanners"]
     test "their items are combined, each as its scanner gave it", %{tmp_dir: root} do
       File.cp_r!(Path.expand("../fixtures/elixir_project", __DIR__), root)
 
@@ -1216,6 +1220,7 @@ defmodule Surfex.StatusTest do
       assert Regex.match?(profile.shape, "MyApp.Cart.add/2")
     end
 
+    @tag verifies: ["scanners-combined", "several-scanners"]
     test "scanner: is the one-element list", %{tmp_dir: root} do
       config = [scanner: Surfex.StatusTest.TwinScanner, scanner_opts: [name: "solo"]]
       assert Config.scanners!(config) == [{Surfex.StatusTest.TwinScanner, [name: "solo"]}]
@@ -1224,6 +1229,7 @@ defmodule Surfex.StatusTest do
       assert Config.scanners!(scanner: :elixir) == [{:elixir, []}]
     end
 
+    @tag verifies: ["scanners-combined", "several-scanners"]
     test "both keys, a malformed list and a scanner named twice are refused" do
       assert_raise ArgumentError, ~r/scanners: and scanner: are one setting/, fn ->
         Config.scanners!(scanners: [:elixir], scanner: :elixir)
@@ -1244,6 +1250,7 @@ defmodule Surfex.StatusTest do
       end
     end
 
+    @tag verifies: ["scanners-combined", "several-scanners"]
     test "one key from two scanners raises, naming both and the key", %{tmp_dir: root} do
       File.cp_r!(Path.expand("../fixtures/elixir_project", __DIR__), root)
 
@@ -1261,7 +1268,7 @@ defmodule Surfex.StatusTest do
 
     alias Surfex.Status.Config
 
-    @tag verifies: ["traces", "status-config-read"]
+    @tag verifies: ["traces", "status-config-read", "status-config"]
     test "read!/1 refuses an unknown key, and a key of the removed trace with the reason",
          %{tmp_dir: root} do
       path = Path.join(root, ".surfex.exs")
@@ -1287,6 +1294,7 @@ defmodule Surfex.StatusTest do
                Config.read!(path)
     end
 
+    @tag verifies: ["status-config-read", "status-config"]
     test "status/4 derives the status as mix surfex.status does, with the caller's options",
          %{tmp_dir: root} do
       File.cp_r!(Path.expand("../fixtures/elixir_project", __DIR__), root)
@@ -1300,6 +1308,7 @@ defmodule Surfex.StatusTest do
       assert status.relations == []
     end
 
+    @tag verifies: ["status-config-read", "status-config"]
     test "items/2 and load/3 scan the code once; profile!/2 reads under the namespace",
          %{tmp_dir: root} do
       File.cp_r!(Path.expand("../fixtures/elixir_project", __DIR__), root)
@@ -1315,6 +1324,7 @@ defmodule Surfex.StatusTest do
 
     # #194: the code is scanned once and the tests are read against it, so a test's call
     # through an import resolves to what the imported module defines.
+    @tag verifies: ["status-config-read", "status-config"]
     test "load/3 and scans/2 read the tests against the code they scanned", %{tmp_dir: root} do
       File.cp_r!(Path.expand("../fixtures/elixir_project", __DIR__), root)
       File.write!(Path.join(root, "spec.md"), "# Carts\n\nA cart.\n")
@@ -1356,7 +1366,7 @@ defmodule Surfex.StatusTest do
   # exio's size it was cubic in the claims (each implements scanned every verifies against
   # every reached pair) and quadratic in the evidence (each candidate scanned the whole
   # run). Counted in reductions, not seconds, as suggest-linear is.
-  @tag verifies: "evidence-check-linear"
+  @tag verifies: ["evidence-check-linear", "evidence"]
   test "the evidence check's work over a project twice as large is about twice" do
     project = fn n ->
       scans =
@@ -1459,7 +1469,7 @@ defmodule Surfex.StatusTest do
   # filtering every scan, and the triangle walked every verifies unit's `within` chain for
   # each spec unit (and the baseline check every verifies pair for each implements).
   # Counted in reductions, as suggest-linear and evidence-check-linear are.
-  @tag verifies: "derive-linear"
+  @tag verifies: ["derive-linear", "status"]
   test "plain derive's work over a project twice as large is about twice" do
     linear_project = fn n ->
       unit = fn id, role, within, i ->
@@ -1569,6 +1579,7 @@ defmodule Surfex.StatusTest do
       }
     end
 
+    @tag verifies: ["evidence-uncredited", "evidence"]
     test "a test version red then green against the same code is listed, not failing" do
       scans = [scan(:test, "T: a", "t1") | scans()]
       runs = [uncredited_run(:failed, "c1", 1), uncredited_run(:passed, "c1", 2)]

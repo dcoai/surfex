@@ -50,7 +50,7 @@ defmodule Surfex.DeclaredFormsTest do
     |> Map.new(&{&1.id |> String.split(": ") |> List.last(), &1})
   end
 
-  @tag verifies: "declared-forms"
+  @tag verifies: ["declared-forms", "declared-forms-section"]
   test "a declared tag or attribute form is read as verifies declarations, its strip removed" do
     tests = by_name(@forms)
     ids = fn name -> for {:verifies, id} <- tests[name].declares, do: id end
@@ -92,7 +92,7 @@ defmodule Surfex.DeclaredFormsTest do
     assert error.message =~ "test/bad_test.exs:3: validates: must be a string or a list"
   end
 
-  @tag verifies: "declared-forms"
+  @tag verifies: ["declared-forms", "declared-forms-section"]
   test "a declared form no test takes is inert", %{tmp_dir: root} do
     File.mkdir_p!(Path.join(root, "test"))
 
@@ -115,7 +115,7 @@ defmodule Surfex.DeclaredFormsTest do
     assert Tests.inert(root, ["test/*_test.exs"]) == []
   end
 
-  @tag verifies: "declared-forms-config"
+  @tag verifies: ["declared-forms-config", "declared-forms-section"]
   test "declares: is read and validated; its ids resolve through unit_refs: and select", %{
     tmp_dir: root
   } do

@@ -56,6 +56,7 @@ defmodule Surfex.ScanExUnitTest do
 
   @closed "MyApp.CartTest: adding: rejects a closed cart"
 
+  @tag verifies: ["scan-records-pure", "scan-records"]
   test "one record per test: module, describe and name, in source order" do
     assert Enum.map(tests(), & &1.id) == [
              "MyApp.CartTest: starts empty",
@@ -71,6 +72,7 @@ defmodule Surfex.ScanExUnitTest do
   # #149: as ExUnit merges tags, the most specific level that sets `verifies` wins: a
   # test's own @tag replaces its describe's, which replaces its module's. A tag that doesn't
   # set it (@tag :slow) leaves it alone.
+  @tag verifies: ["scan-records-pure", "scan-records"]
   test "declarations come from @tag, @describetag and @moduletag" do
     assert by_id()[@closed].declares == [
              {:verifies, "cart-add-closed"},
@@ -86,7 +88,7 @@ defmodule Surfex.ScanExUnitTest do
   # #190: `mix test --only verifies:id` compares a list tag as one string, its ids run
   # together, so it selects a test by none of a list's several ids. ExUnit's own filter is
   # the judge here, so the record can't drift from what `--only` does.
-  @tag verifies: "unselectable-ids"
+  @tag verifies: ["unselectable-ids", "scan-records"]
   test "unselectable: the declared ids mix test --only can't select a test by" do
     source = ~S'''
     defmodule T do
@@ -144,7 +146,7 @@ defmodule Surfex.ScanExUnitTest do
            }
   end
 
-  @tag verifies: "test-versions"
+  @tag verifies: ["test-versions", "scan-records"]
   test "the version follows helpers, attributes, setups and a comprehension's generators" do
     assert changes?("length(cart) >= @limit", "length(cart) > @limit", @closed)
     assert changes?("@limit 3", "@limit 4", @closed)
@@ -186,7 +188,7 @@ defmodule Surfex.ScanExUnitTest do
   end
   '''
 
-  @tag verifies: ["property-tests", "scan-records-pure"]
+  @tag verifies: ["property-tests", "scan-records-pure", "scan-records"]
   test "a property is a test: its id, declarations, calls, and a version over its generators" do
     by_id = Map.new(Tests.tests(@property_source, "test/p_test.exs"), &{&1.id, &1})
 
@@ -215,6 +217,7 @@ defmodule Surfex.ScanExUnitTest do
     assert Enum.map(tests(twice), & &1.id) == ["T: a", "T: a~2"]
   end
 
+  @tag verifies: ["scan-records-pure", "scan-records"]
   test "a verifies value that isn't literal raises, naming the line" do
     bad = "defmodule T do\n  @tag verifies: some_ids()\n  test \"a\", do: :ok\nend\n"
 
@@ -225,7 +228,7 @@ defmodule Surfex.ScanExUnitTest do
 
   # #214: a test whose requirement the code doesn't meet yet says so beside its skip. The
   # reference merges level by level as ExUnit merges tags, on its own key.
-  @tag verifies: ["deviation-tag", "scan-records-pure"]
+  @tag verifies: ["deviation-tag", "scan-records-pure", "scan-records"]
   test "deviation: is read as the test's reference, at each level, apart from verifies" do
     source = ~S'''
     defmodule T do
@@ -356,6 +359,7 @@ defmodule Surfex.ScanExUnitTest do
       }
     ]
 
+    @tag verifies: ["scan-records-pure", "scan-records"]
     test "a full id, or a bare anchor, block or hint id" do
       assert {:ok, %{id: "spec.md#Carts/Adding items"}} =
                Scan.resolve(@scans, "spec.md#Carts/Adding items")
@@ -375,7 +379,7 @@ defmodule Surfex.ScanExUnitTest do
     end
 
     # #204: derive resolves every declaration against one index, not a scan per ref.
-    @tag verifies: "declaration-resolver"
+    @tag verifies: ["declaration-resolver", "scan-records"]
     test "a resolver built once resolves every reference as the scans do" do
       indexed = [
         spec("spec.md#Api.3.2", :section) |> Map.put(:named, true),
@@ -410,6 +414,7 @@ defmodule Surfex.ScanExUnitTest do
     end
   end
 
+  @tag verifies: ["scan-records-pure", "scan-records"]
   test "calls: aliases, pipes, captures and imports resolved, helpers followed, modules named" do
     source = ~S'''
     defmodule MyApp.CartTest do
@@ -498,6 +503,7 @@ defmodule Surfex.ScanExUnitTest do
 
     defp calls_of(source), do: Map.new(Tests.tests(source, "t.exs"), &{&1.id, &1.calls})
 
+    @tag verifies: ["test-alias-scope", "scan-records"]
     test "an alias in a test body applies to that test, from its line on" do
       calls =
         calls_of(~S"""
@@ -618,6 +624,7 @@ defmodule Surfex.ScanExUnitTest do
       hd(Tests.tests(source, "t.exs", code)).calls
     end
 
+    @tag verifies: ["test-import-calls", "scan-records"]
     test "a brace import imports each member, and a call names its module" do
       calls =
         import_calls(~S"""

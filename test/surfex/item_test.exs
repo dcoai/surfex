@@ -4,6 +4,7 @@ defmodule Surfex.ItemTest do
 
   alias Surfex.Item
 
+  @tag verifies: ["item-key", "items"]
   test "an item's key is its name, or parent.name when it has a parent" do
     assert Item.key(%Item{kind: :module, name: "MyApp.Cart", file: "c.ex", hash: "1"}) ==
              "MyApp.Cart"

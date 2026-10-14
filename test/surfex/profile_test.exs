@@ -8,6 +8,7 @@ defmodule Surfex.ProfileTest do
 
   defp new(extra), do: Profile.new!(@base ++ extra)
 
+  @tag verifies: ["profile-validated", "profiles"]
   test "defaults fill in, rules gain :name and :parent_cited" do
     p = new(classes: [{"c", "why"}], rules: [%{class: "c", kinds: [:f]}])
     assert Regex.match?(p.token, "abc")
@@ -19,6 +20,7 @@ defmodule Surfex.ProfileTest do
     assert_raise ArgumentError, ~r/:shape is required/, fn -> Profile.new!(sources: ["a"]) end
   end
 
+  @tag verifies: ["profile-validated", "profiles"]
   test "an unknown key is named" do
     assert_raise ArgumentError, ~r/unknown profile keys: \[:sorces\]/, fn -> new(sorces: []) end
   end
@@ -56,6 +58,7 @@ defmodule Surfex.ProfileTest do
     end
   end
 
+  @tag verifies: ["profile-validated", "profiles"]
   test "keys/0 lists every key new!/1 accepts" do
     assert Surfex.Profile.keys() ==
              ~w(sources exclude shape token known_shape normalise subjects table_columns

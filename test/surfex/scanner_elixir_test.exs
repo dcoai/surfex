@@ -9,6 +9,7 @@ defmodule Surfex.Scanner.ElixirTest do
 
   defp keys(items), do: Enum.map(items, &{Item.key(&1), &1.kind})
 
+  @tag verifies: ["elixir-scanner-items", "elixir-scanner"]
   test "a fixture project scans to exactly its public API" do
     assert keys(Scanner.items(@project)) == [
              {"MyApp.Cart", :module},
@@ -43,6 +44,7 @@ defmodule Surfex.Scanner.ElixirTest do
     assert items["MyApp.Cart"].aliases == []
   end
 
+  @tag verifies: ["elixir-scanner-items", "elixir-scanner"]
   test ":paths narrows the scan" do
     # Only hidden.ex: its @moduledoc false module is skipped, the module nested in it isn't.
     assert Scanner.items(@project, paths: ["lib/my_app/hidden.ex"]) |> Enum.map(&Item.key/1) ==
@@ -86,7 +88,7 @@ defmodule Surfex.Scanner.ElixirTest do
     end
 
     # #69: a name ends where a name ends; a root glued to more letters is another word.
-    @tag verifies: ["name-boundary", "elixir-scanner-items"]
+    @tag verifies: ["name-boundary", "elixir-scanner-items", "elixir-scanner"]
     test "a token ends at a name's end: a glued or hyphenated suffix is no name" do
       d = Scanner.profile_defaults("MyApp")
 
@@ -102,7 +104,7 @@ defmodule Surfex.Scanner.ElixirTest do
                [["MyApp.Units.convert/3"]]
     end
 
-    @tag verifies: ["name-boundary", "elixir-scanner-items"]
+    @tag verifies: ["name-boundary", "elixir-scanner-items", "elixir-scanner"]
     test "several roots: every top-level module the code has is a root" do
       d = Scanner.profile_defaults(["MyApp", "MyAppWeb"])
       assert Regex.match?(d[:shape], "MyAppWeb.DomainLive.Show")
@@ -163,6 +165,7 @@ defmodule Surfex.Scanner.ElixirTest do
                Surfex.Status.Config.broken_citations(config, items, root, "MyApp")
     end
 
+    @tag verifies: ["elixir-scanner-items", "elixir-scanner"]
     test "citing a function without its arity cites every arity; a call's arguments drop" do
       items = Scanner.items(@project)
       root = Path.join(System.tmp_dir!(), "surfex_elixir_#{System.unique_integer([:positive])}")
@@ -220,6 +223,7 @@ defmodule Surfex.Scanner.ElixirTest do
     end
     """
 
+    @tag verifies: ["code-calls", "elixir-scanner"]
     test "remote, aliased, piped, captured, through private helpers, local and delegated", %{
       tmp_dir: root
     } do
@@ -304,7 +308,7 @@ defmodule Surfex.Scanner.ElixirTest do
     defp changed(before, after_),
       do: for({key, hash} <- before, after_[key] != hash, do: key) |> Enum.sort()
 
-    @tag verifies: "hidden-versions"
+    @tag verifies: ["hidden-versions", "content-versions"]
     test "a hidden callback is in its module's version and in what dispatches through it",
          %{tmp_dir: root} do
       before = versions(scan(root, port: @port, plain: @plain))
@@ -378,7 +382,7 @@ defmodule Surfex.Scanner.ElixirTest do
              ]
     end
 
-    @tag verifies: ["hidden-reach", "code-calls"]
+    @tag verifies: ["hidden-reach", "code-calls", "elixir-scanner"]
     test "a hidden definition is named where it is called and listed with its calls on its module",
          %{tmp_dir: root} do
       items = scan(root, port: @port)
@@ -479,7 +483,7 @@ defmodule Surfex.Scanner.ElixirTest do
       String.replace(source, from, to)
     end
 
-    @tag verifies: ["hidden-module-versions", "elixir-scanner-items"]
+    @tag verifies: ["hidden-module-versions", "elixir-scanner-items", "content-versions"]
     test "a hidden module's code is in the version of each item that runs it, in any file, and stops at public code",
          %{tmp_dir: root} do
       before = hm_scan(root)
@@ -524,7 +528,7 @@ defmodule Surfex.Scanner.ElixirTest do
       refute before["Shop.Report.render/1"].hash == surface[:render]
     end
 
-    @tag verifies: ["hidden-module-reach", "code-calls"]
+    @tag verifies: ["hidden-module-reach", "code-calls", "elixir-scanner"]
     test "a call naming a hidden module's code reaches what it calls, never a record for it",
          %{tmp_dir: root} do
       items = hm_scan(root)
@@ -595,6 +599,7 @@ defmodule Surfex.Scanner.ElixirTest do
       root
     end
 
+    @tag verifies: ["elixir-scanner-items", "elixir-scanner"]
     test "each public @type and @opaque is an item, keyed t:Mod.name/arity" do
       items = Map.new(Scanner.items(shapes()), &{Item.key(&1), &1})
 
@@ -645,7 +650,7 @@ defmodule Surfex.Scanner.ElixirTest do
       assert other["t:Shapes.t/0"] == before["t:Shapes.t/0"]
     end
 
-    @tag verifies: "type-citations"
+    @tag verifies: ["type-citations", "elixir-scanner"]
     test "Mod.t() and t:Mod.t/0 cite a declared type; an undeclared or private one is unresolved" do
       root = shapes()
       items = Scanner.items(root)

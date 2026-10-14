@@ -34,6 +34,7 @@ defmodule Surfex.ClaimFormsTest do
   describe "rules" do
     @describetag verifies: ["rule-items"]
 
+    @tag verifies: ["rule-items", "claim-forms"]
     test "a marked list's items are rules, by their written ids or id comments" do
       units = claim_units(@claim_list, rule_ids: :section_sign)
 
@@ -130,6 +131,7 @@ defmodule Surfex.ClaimFormsTest do
     Closing text.
     """
 
+    @tag verifies: ["rule-paragraphs", "claim-forms"]
     test "an id comment on its own line before a paragraph, or starting it, names it" do
       units = claim_units(@claim_paragraphs)
 
@@ -204,6 +206,7 @@ defmodule Surfex.ClaimFormsTest do
     ```
     """
 
+    @tag verifies: ["no-positional-ids", "claim-forms"]
     test "inserting a claim at the top of every form changes no other unit" do
       opts = [rule_ids: :section_sign]
       plain = fn text -> String.replace(text, ~r/TOP-[A-Z]+\n/, "") end
@@ -281,6 +284,7 @@ defmodule Surfex.ClaimFormsTest do
     ```
     """
 
+    @tag verifies: ["contract-fences", "claim-forms"]
     test "a marked contract fence is one unit per function its signatures name" do
       units = for u <- claim_units(@claim_contract), u.role == :contract, do: u
 
@@ -395,6 +399,7 @@ defmodule Surfex.ClaimFormsTest do
         )
     end
 
+    @tag verifies: ["unit-refs", "claim-forms"]
     test "a project's citation forms resolve to file-scoped units, by chapter or file" do
       resolver = Surfex.Scan.resolver(chapter_scans(), @chapter_refs)
 
@@ -506,6 +511,7 @@ defmodule Surfex.ClaimFormsTest do
     defp folded(text \\ @claim_folding),
       do: claim_units(text, heading_ids: :section_sign, fold_paths: true)
 
+    @tag verifies: ["fold-paths", "claim-forms"]
     test "a path heading inside an id'd section is part of it, and what sits in it sits in the section" do
       assert for(u <- folded(), do: {u.id, u.role, u.within}) == [
                {"spec.md#Index", :section, nil},
@@ -585,6 +591,7 @@ defmodule Surfex.ClaimFormsTest do
     | render | :width | composite, not a list |
     """
 
+    @tag verifies: ["list-keys", "list-keys-section"]
     test "a row key holding a list separator is a warning under its table, and nothing else" do
       units = claim_units(@claim_keyed)
       status = Surfex.Status.derive(units, [])

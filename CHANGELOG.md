@@ -392,6 +392,17 @@ to claim grain, with a walkthrough in the new guide "Migrating to claim grain".
   `nothing_inside`: relate the code to a claim, not the empty container. Regenerate
   `RELATIONS.md` (`mix surfex.goldens --write`), which gains an `unearned` count.
 
+- **Surfex checks itself under claim grain** (#256, #263). Its own `.surfex.exs` sets
+  `claim_grain: true`, with `completeness: [min: 100]` and `require: code:` unchanged. The
+  switch left 58 of its sections `contained` (completeness 95.2%), each settled on its
+  own: 57 are now verified by tests that check their own prose, tagged with the section
+  beside the hint they already verified (270 `verifies`, each recorded on its test's red
+  run or reviewed one by one), and one, a single sentence naming a module over the claims
+  below it, is classed `informative` through `spec_classes:`, its one `implements` moved
+  to the hint inside with `mix surfex.migrate`. Nothing was renamed or removed from the
+  spec. This is the upgrade step of §20.1 done on a spec of 267 claims, as a reference
+  for the work it asks.
+
 ## [0.9.1] — 2026-10-14
 
 What surfex writes now reads right. Spec pages published with ex_doc keep their headings

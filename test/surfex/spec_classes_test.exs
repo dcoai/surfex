@@ -21,7 +21,7 @@ defmodule Surfex.SpecClassesTest do
   defp without_markers(text),
     do: text |> String.split("\n") |> Enum.reject(&(&1 =~ "surfex: class")) |> Enum.join("\n")
 
-  @tag verifies: "class-markers"
+  @tag verifies: ["class-markers", "spec-classes"]
   test "a class marker classes its section with both reasons and leaves its version alone" do
     text = """
     Preamble text.
@@ -55,7 +55,7 @@ defmodule Surfex.SpecClassesTest do
     for s <- scanned, do: assert(s.hash == unit(plain, s.id).hash)
   end
 
-  @tag verifies: "deferred-marker"
+  @tag verifies: ["deferred-marker", "spec-classes"]
   test "a deferral marker defers its section or block with reference and reason" do
     text = """
     # Views
@@ -85,7 +85,7 @@ defmodule Surfex.SpecClassesTest do
     for s <- scanned, do: assert(s.hash == unit(plain, s.id).hash)
   end
 
-  @tag verifies: "class-patterns"
+  @tag verifies: ["class-patterns", "spec-classes"]
   test "files: and headings: class by pattern; a marker beats one; the first match wins" do
     list = [
       {"decision", "a decision record", files: ["spec/1*-*.md"]},
@@ -127,7 +127,7 @@ defmodule Surfex.SpecClassesTest do
   end
 
   @tag :tmp_dir
-  @tag verifies: "class-patterns"
+  @tag verifies: ["class-patterns", "spec-classes"]
   test "a project's scans read its spec_classes: patterns, globs against its spec files", %{
     tmp_dir: dir
   } do
@@ -150,7 +150,7 @@ defmodule Surfex.SpecClassesTest do
     assert_raise ArgumentError, ~r/matches no spec file/, fn -> Config.scans(missing, dir) end
   end
 
-  @tag verifies: "class-marker-alias"
+  @tag verifies: ["class-marker-alias", "spec-classes"]
   test "a declared alias reads a project's own comment as the class marker" do
     text = """
     # Background
@@ -184,7 +184,7 @@ defmodule Surfex.SpecClassesTest do
     assert unit(unmarked, "spec.md#Background").hash == background.hash
   end
 
-  @tag verifies: "class-marker-errors"
+  @tag verifies: ["class-marker-errors", "spec-classes"]
   test "every misplaced or malformed marker raises naming the file and line" do
     for {text, line, why} <- [
           {"# A\n<!-- surfex: class informal -->\n", 2, "isn't declared"},

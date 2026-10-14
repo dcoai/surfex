@@ -15,6 +15,7 @@ defmodule Surfex.LogTaskTest do
     Mix.shell(Mix.Shell.IO)
   end
 
+  @tag verifies: ["log-append-only", "log-segments"]
   test "mix surfex.log takes exactly one of --init, --break, --verify, --rechain", %{
     tmp_dir: root
   } do

@@ -470,6 +470,7 @@ defmodule Surfex.LogTest do
   describe "the log" do
     @describetag verifies: "log-append-only"
 
+    @tag verifies: ["log-append-only", "log-segments"]
     test "init creates the log and the union merge, idempotently", %{tmp_dir: root} do
       File.write!(Path.join(root, ".gitattributes"), "*.bin binary")
       Log.init(root)
@@ -503,6 +504,7 @@ defmodule Surfex.LogTest do
       end
     end
 
+    @tag verifies: ["log-append-only", "log-segments"]
     test "segments load together, and duplicates are dropped", %{tmp_dir: root} do
       Log.init(root)
       Log.append(root, [entry(1), entry(2)])
@@ -544,6 +546,7 @@ defmodule Surfex.LogTest do
       assert Log.verify(root) == []
     end
 
+    @tag verifies: ["log-append-only", "log-segments"]
     test "an edited line is caught", %{tmp_dir: root} do
       path = Path.join(Log.dir(root), "surfex.log")
       File.write!(path, String.replace(File.read!(path), ~s("hash":"c3"), ~s("hash":"cX")))
@@ -552,6 +555,7 @@ defmodule Surfex.LogTest do
       assert problem =~ "does not match its content"
     end
 
+    @tag verifies: ["log-append-only", "log-segments"]
     test "a removed parent is caught", %{tmp_dir: root, first: first} do
       path = Path.join(Log.dir(root), "surfex_1.log")
 
@@ -566,6 +570,7 @@ defmodule Surfex.LogTest do
       assert Enum.any?(problems, &(&1 =~ "names parent #{String.slice(first.id, 0, 12)}"))
     end
 
+    @tag verifies: ["log-append-only", "log-segments"]
     test "a truncated segment breaks the chain, and rechain accepts the segments as they are",
          %{tmp_dir: root} do
       path = Path.join(Log.dir(root), "surfex_1.log")
@@ -581,7 +586,7 @@ defmodule Surfex.LogTest do
 
   # The claim the whole design leans on: git's union merge of two branches' appends loads
   # to the same state, with nothing lost and no conflict.
-  @tag verifies: "union-merge"
+  @tag verifies: ["union-merge", "log-segments"]
   test "two branches' appends merge without conflict and load to one state", %{tmp_dir: root} do
     git = fn args ->
       {out, 0} = System.cmd("git", args, cd: root, stderr_to_stdout: true)

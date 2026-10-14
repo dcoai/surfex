@@ -122,7 +122,7 @@ defmodule Surfex.ContainmentTest do
       ]
   end
 
-  @tag verifies: "containment-verdicts"
+  @tag verifies: ["containment-verdicts", "verified-means"]
   test "each unit gets one verdict, from the evidence aimed at its own text" do
     status = derive(fixture())
     v = &Status.verdict(status, "spec.md##{&1}")
@@ -155,7 +155,7 @@ defmodule Surfex.ContainmentTest do
     refute Status.failing?(status)
   end
 
-  @tag verifies: "containment-verdicts"
+  @tag verifies: ["containment-verdicts", "verified-means"]
   test "the verdicts read as text, JSON and the golden" do
     status = derive(fixture())
 
@@ -179,7 +179,7 @@ defmodule Surfex.ContainmentTest do
     assert golden =~ "| `spec spec.md#contained` | `spec.md#inner` |"
   end
 
-  @tag verifies: "verifies-on-container"
+  @tag verifies: ["verifies-on-container", "verified-means"]
   test "a verifies aimed at a container is listed, verifies nothing and doesn't fail" do
     scans = spec() ++ [test_scan("T: chapter", ["chapter"])]
     status = derive(scans)
@@ -205,7 +205,7 @@ defmodule Surfex.ContainmentTest do
     assert Surfex.Golden.render(Report.golden(status)) =~ "## on container"
   end
 
-  @tag verifies: "container-units"
+  @tag verifies: ["container-units", "verified-means"]
   test "naming a section's last prose paragraph turns it from a claim into a container" do
     before = """
     ## S

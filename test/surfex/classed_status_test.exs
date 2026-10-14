@@ -125,7 +125,7 @@ defmodule Surfex.ClassedStatusTest do
 
   defp unmet(status), do: status.unmet |> Enum.map(& &1.scan.id) |> Enum.sort()
 
-  @tag verifies: "classed-claims-stay"
+  @tag verifies: ["classed-claims-stay", "classed-units"]
   test "a class excuses a section's own text, never a named claim inside it" do
     scans = spec()
     status = derive(scans, [], [spec: [:verifies]], true)
@@ -175,7 +175,7 @@ defmodule Surfex.ClassedStatusTest do
              json["excused"]
   end
 
-  @tag verifies: "contradicted-relations"
+  @tag verifies: ["contradicted-relations", "classed-units"]
   test "a relation to an excused section is contradicted and fails until settled" do
     scans = spec()
     x = code("MyApp.X.f/1")
@@ -219,7 +219,7 @@ defmodule Surfex.ClassedStatusTest do
     assert derive(world, entries, [], false).contradicted == []
   end
 
-  @tag verifies: "deferred-units"
+  @tag verifies: ["deferred-units", "classed-units"]
   test "a deferred section and block are listed, not judged, and earn nothing" do
     scans = spec()
     x = code("MyApp.V.view/1")
@@ -244,7 +244,7 @@ defmodule Surfex.ClassedStatusTest do
   end
 
   @tag :tmp_dir
-  @tag verifies: "classed-citations"
+  @tag verifies: ["classed-citations", "classed-suggestions"]
   test "a classed section's citations propose no implements, and are still checked", %{
     tmp_dir: root
   } do
@@ -290,7 +290,7 @@ defmodule Surfex.ClassedStatusTest do
     assert Enum.any?(broken, &(&1.section =~ "Map" and &1.span =~ "gone"))
   end
 
-  @tag verifies: "classed-goldens"
+  @tag verifies: ["classed-goldens", "classed-record"]
   test "the status golden lists excusals by unit, counted, and moves only with them" do
     scans = spec()
     render = fn scans -> Surfex.Golden.render(Report.golden(derive(scans, [], [], true))) end
@@ -330,7 +330,7 @@ defmodule Surfex.ClassedStatusTest do
     assert header =~ "deferred 2"
   end
 
-  @tag verifies: "guide-classes"
+  @tag verifies: ["guide-classes", "guide-unverified-text"]
   test "the guide says how to treat text the spec doesn't verify" do
     guide = File.read!(Path.expand("../../guides/writing-specs.md", __DIR__))
     [_, section] = String.split(guide, "### Text the spec doesn't verify", parts: 2)
@@ -343,7 +343,7 @@ defmodule Surfex.ClassedStatusTest do
     assert section =~ "spec_classes:"
   end
 
-  @tag verifies: "classed-completeness"
+  @tag verifies: ["classed-completeness", "classed-score"]
   test "excused and deferred units are out of the score, counted on their own lines" do
     scans = spec()
     report = Completeness.report(derive(scans, [], [], true))

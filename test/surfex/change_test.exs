@@ -58,6 +58,7 @@ defmodule Surfex.ChangeTest do
   describe "drafts" do
     @describetag verifies: "change-drafts"
 
+    @tag verifies: ["change-drafts", "hand-off"]
     test "an open mark: its note, the unit's text, the tests and code it touches, the steps",
          %{tmp_dir: root} do
       [draft] = Change.drafts(world(root, [], [mark()]), root, [])
@@ -78,6 +79,7 @@ defmodule Surfex.ChangeTest do
       assert Enum.any?(draft.steps, &(&1 =~ "failing test"))
     end
 
+    @tag verifies: ["change-drafts", "hand-off"]
     test "an unmet id and a triangle gap each make a draft", %{tmp_dir: root} do
       status = world(root, [scan(:code, "M.other/0", "o1", {8, 8}, "lib/m.ex")])
       gap = %{spec: @unit, gap: :no_test, test: nil, code: nil}
@@ -107,6 +109,7 @@ defmodule Surfex.ChangeTest do
       end
     end
 
+    @tag verifies: ["change-drafts", "hand-off"]
     test "markdown for a person, JSON for tools", %{tmp_dir: root} do
       [draft] = Change.drafts(world(root, [], [mark()]), root, [])
       md = Change.markdown(draft)
@@ -158,7 +161,7 @@ defmodule Surfex.ChangeTest do
       assert md == Change.markdown(draft)
     end
 
-    @tag verifies: "change-hand-off"
+    @tag verifies: ["change-hand-off", "hand-off"]
     test "a command runs once per draft, with {title}, {file} and {body} substituted", %{
       tmp_dir: root
     } do
@@ -178,7 +181,7 @@ defmodule Surfex.ChangeTest do
       assert body == Change.markdown(hd(drafts))
     end
 
-    @tag verifies: "change-hand-off"
+    @tag verifies: ["change-hand-off", "hand-off"]
     test "a failing command stops the hand-off, with its output", %{tmp_dir: root} do
       [draft] = Change.drafts(world(root, [], [mark()]), root, [])
       assert {:error, message} = Change.hand_off([draft, draft], recorder(root, 3), root)
@@ -188,7 +191,7 @@ defmodule Surfex.ChangeTest do
       assert length(String.split(File.read!(Path.join(root, "calls.txt")), "===")) == 2
     end
 
-    @tag verifies: "status-config-read"
+    @tag verifies: ["status-config-read", "status-config"]
     test "process: is :print by default, or {:command, argv}, and nothing else" do
       assert Config.process!([]) == :print
 

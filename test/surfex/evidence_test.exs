@@ -21,6 +21,7 @@ defmodule Surfex.EvidenceTest do
     )
   end
 
+  @tag verifies: ["evidence-recorded", "evidence"]
   test "append then load, oldest first", %{tmp_dir: root} do
     path = Evidence.path(root)
     assert path == Path.join([root, "_build", "surfex", "evidence.jsonl"])
@@ -36,6 +37,7 @@ defmodule Surfex.EvidenceTest do
   describe "discriminating?/3" do
     @describetag verifies: "evidence-discriminates"
 
+    @tag verifies: ["evidence-discriminates", "evidence"]
     test "red against one version of the code, then green against another" do
       evidence = [record(:failed, "c1", 1), record(:passed, "c2", 2)]
       assert Evidence.discriminating?(evidence, "T: a", "t1")
@@ -94,6 +96,7 @@ defmodule Surfex.EvidenceTest do
   describe "combined/1" do
     @describetag verifies: "evidence-merged-recording"
 
+    @tag verifies: ["evidence-merged-recording", "evidence"]
     test "a test excluded here and passed in another run reads as passed" do
       here = [record(:excluded, nil, 2, code: %{})]
       ci = [record(:failed, "c0", 1), record(:passed, "c1", 3)]
@@ -157,6 +160,7 @@ defmodule Surfex.EvidenceTest do
            }}
         )
 
+    @tag verifies: ["evidence-recorded", "evidence"]
     test "records each test's result at its version, with the versions of what it calls",
          %{cart_test: file, tmp_dir: root} do
       {:ok, pid} = GenServer.start_link(Surfex.ExUnitFormatter, surfex_root: root)
@@ -230,7 +234,7 @@ defmodule Surfex.EvidenceTest do
     end
 
     # #183: the run records the versions of what a test reaches, not only what it calls.
-    @tag verifies: ["evidence-reach", "evidence-recorded"]
+    @tag verifies: ["evidence-reach", "evidence-recorded", "evidence"]
     test "a run records the versions of the code a test reaches through an entry point", %{
       tmp_dir: root
     } do
@@ -282,7 +286,7 @@ defmodule Surfex.EvidenceTest do
     end
 
     # #98: a job that excludes a tag says so, so an excluded test isn't one that didn't run.
-    @tag verifies: ["evidence-excluded", "evidence-recorded"]
+    @tag verifies: ["evidence-excluded", "evidence-recorded", "evidence"]
     test "an excluded or skipped test is recorded as such at its version, with no code",
          %{cart_test: file, tmp_dir: root} do
       {:ok, pid} = GenServer.start_link(Surfex.ExUnitFormatter, surfex_root: root)

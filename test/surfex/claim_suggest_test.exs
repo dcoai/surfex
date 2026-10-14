@@ -74,6 +74,7 @@ defmodule Surfex.ClaimSuggestTest do
 
   defp pairs(s), do: s.implements |> Enum.map(&{&1.spec.id, &1.code.id}) |> Enum.sort()
 
+  @tag verifies: ["claim-suggestions", "claim-implements"]
   test "a claim's tests' direct calls are proposed, a hidden callback as its module", %{
     tmp_dir: root
   } do
@@ -89,6 +90,7 @@ defmodule Surfex.ClaimSuggestTest do
              Enum.find(s.implements, &(&1.code.id == "M.entry/1"))
   end
 
+  @tag verifies: ["claim-suggestions", "claim-implements"]
   test "code reached only through other code gets one line, never a list", %{tmp_dir: root} do
     {s, _} = suggest(root, [])
 
@@ -100,6 +102,7 @@ defmodule Surfex.ClaimSuggestTest do
     refute Enum.any?(s.implements, &(&1.code.id in ["M.a/0", "M.b/0", "M.helper/1"]))
   end
 
+  @tag verifies: ["claim-suggestions", "claim-implements"]
   test "no verifying test, no proposal; the section gets none; off by default", %{
     tmp_dir: root
   } do

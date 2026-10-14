@@ -33,6 +33,7 @@ defmodule Surfex.ScanTest do
   describe "markdown sections" do
     @describetag verifies: ["scan-records-pure"]
 
+    @tag verifies: ["scan-records-pure", "scan-records"]
     test "one record per section, identified by file and heading path" do
       assert text_ids(@spec_md) == [
                "spec.md#(preamble)",
@@ -54,7 +55,7 @@ defmodule Surfex.ScanTest do
       assert sections["spec.md#(preamble)"].location.lines == {1, 1}
     end
 
-    @tag verifies: "section-versions"
+    @tag verifies: ["section-versions", "scan-records"]
     test "the hash is over the body: not the heading, not subsections, not whitespace" do
       base = by_id(@spec_md)
 
@@ -120,7 +121,7 @@ defmodule Surfex.ScanTest do
     ]
 
     for {name, body} <- @outside do
-      @tag verifies: "fence-rule"
+      @tag verifies: ["fence-rule", "scan-records"]
       test "outside: #{name}" do
         assert text_ids("# A\n\n" <> unquote(body) <> "\n") == ["spec.md#A", "spec.md#H"]
       end
@@ -130,7 +131,7 @@ defmodule Surfex.ScanTest do
   end
 
   describe "code records" do
-    @tag verifies: ["scan-records-pure"]
+    @tag verifies: ["scan-records-pure", "scan-records"]
     test "carry the item's key, version, location, kind and parent" do
       item = %Item{
         kind: :function,
@@ -165,7 +166,7 @@ defmodule Surfex.ScanTest do
     end
 
     # #60: two items sharing a key are two relation ends.
-    @tag verifies: ["scan-records-pure"]
+    @tag verifies: ["scan-records-pure", "scan-records"]
     test "items sharing a key get ids that carry their kind; a unique key keeps its own" do
       items = [
         %Item{kind: :function, name: "twin", file: "a.c", hash: "1"},
@@ -213,7 +214,7 @@ defmodule Surfex.ScanTest do
       assert [%Scan{id: "A.a/0", calls: ["B.b/0"]}] = Scan.code([item])
     end
 
-    @tag verifies: ["scan-records-pure"]
+    @tag verifies: ["scan-records-pure", "scan-records"]
     test "status refuses two records with one kind and id, naming where they are" do
       twin = %Scan{kind: :code, id: "twin", hash: "1", location: %{file: "a.c", lines: {1, 2}}}
 
@@ -235,7 +236,7 @@ defmodule Surfex.ScanTest do
       assert by_key["MyApp.Cart"].lines == {1, 28}
     end
 
-    @tag verifies: ["public-definitions"]
+    @tag verifies: ["public-definitions", "definitions"]
     test "line_range/1 spans a node, and is nil without metadata" do
       assert SourceScan.line_range(:atom) == nil
       {:ok, ast} = Code.string_to_quoted("def f do\n  1\nend", token_metadata: true)
@@ -362,6 +363,7 @@ defmodule Surfex.ScanTest do
     defp units(text \\ @units), do: Markdown.sections(text, "spec.md")
     defp unit(text \\ @units, id), do: Enum.find(units(text), &(&1.id == "spec.md#" <> id))
 
+    @tag verifies: ["scan-records-pure", "scan-records"]
     test "each unit is a record with its role and what it sits in, in order" do
       assert Enum.map(units(), &{&1.id, &1.role, &1.within}) == [
                {"spec.md#carts", :section, nil},
@@ -389,7 +391,7 @@ defmodule Surfex.ScanTest do
       assert unit(renamed, "Carts/Adding lines/Notes")
     end
 
-    @tag verifies: "unit-versions"
+    @tag verifies: ["unit-versions", "scan-records"]
     test "editing a block or a hint changes only its own version" do
       base = Map.new(units(), &{&1.id, &1.hash})
 
@@ -417,7 +419,7 @@ defmodule Surfex.ScanTest do
       assert Enum.map(units(quoted), & &1.id) == ["spec.md#S"]
     end
 
-    @tag verifies: "hint-info-forms"
+    @tag verifies: ["hint-info-forms", "scan-records"]
     test "a test:ID info string opens the hint ID, versioned as test ID is" do
       spaced = unit("cart-add-qty")
       colon = String.replace(@units, "```test cart-add-qty", "```test:cart-add-qty")
@@ -499,7 +501,7 @@ defmodule Surfex.ScanTest do
       assert {again.id, again.hash} == {section.id, section.hash}
     end
 
-    @tag verifies: "heading-id-after"
+    @tag verifies: ["heading-id-after", "scan-records"]
     test "an id comment on the line after a heading names it, unless a close makes it a block" do
       at_end =
         "# Carts\n\n## Adding items <!-- surfex: cart-add -->\n\nAdd one.\n\n### Notes\n\nn\n"
@@ -548,6 +550,7 @@ defmodule Surfex.ScanTest do
       end
     end
 
+    @tag verifies: ["heading-ids", "scan-records"]
     test "heading_ids: reads § ids, section numbers, or the project's regex; others keep their path" do
       signs = "## §Api.3.2 — Limits\n\ns\n\n## §Doc.4: Rules\n\nr\n\n## Notes\n\nn\n"
 
@@ -666,6 +669,7 @@ defmodule Surfex.ScanTest do
              ]
     end
 
+    @tag verifies: ["heading-ids", "scan-records"]
     test "a written id is never numbered: a repeat is an error naming both lines" do
       assert_raise ArgumentError, ~r/spec.md:5: spec.md#1 is already the id of line 1/, fn ->
         written_ids("## 1. A\n\na\n\n## 1. B\n\nb\n", heading_ids: :section_number)
@@ -743,6 +747,7 @@ defmodule Surfex.ScanTest do
     defp table_units(text), do: Markdown.sections(text, "spec.md")
     defp table_unit(text, id), do: Enum.find(table_units(text), &(&1.id == "spec.md#" <> id))
 
+    @tag verifies: ["table-rows", "scan-records"]
     test "the table and each row are units, keyed by the first column without code or emphasis" do
       assert [
                %{id: "spec.md#Selection", role: :section},
@@ -840,6 +845,7 @@ defmodule Surfex.ScanTest do
     defp row_hashes(text),
       do: Map.new(for %{role: :row} = r <- Markdown.sections(text, "spec.md"), do: {r.id, r.hash})
 
+    @tag verifies: ["table-columns", "scan-records"]
     test "key: [A, B] keys each row on several columns, joined by /" do
       text = """
       # Options

@@ -88,6 +88,7 @@ defmodule Surfex.UnearnedTest do
   describe "require: code: counts only earning implements" do
     @describetag verifies: "unearned-fails"
 
+    @tag verifies: ["unearned-fails", "unearned"]
     test "code related only to an unverified hint is unearned, unmet and failing" do
       status = grained([], [{"M.a/0", "feature-hint"}])
 
@@ -126,6 +127,7 @@ defmodule Surfex.UnearnedTest do
       assert Status.failing?(status)
     end
 
+    @tag verifies: ["unearned-fails", "unearned"]
     test "a spare unearned relation fails even when another relation meets the code" do
       status =
         grained(
@@ -140,6 +142,7 @@ defmodule Surfex.UnearnedTest do
       assert Status.failing?(status)
     end
 
+    @tag verifies: ["unearned-fails", "unearned"]
     test "without the rule the list is reported and doesn't fail" do
       status = grained([], [{"M.a/0", "feature-hint"}], [])
 
@@ -148,6 +151,7 @@ defmodule Surfex.UnearnedTest do
       refute Status.failing?(status)
     end
 
+    @tag verifies: ["unearned-fails", "unearned"]
     test "without claim_grain: nothing is unearned and the implements meets the rule" do
       status = derive([], [{"M.a/0", "feature-hint"}], @require, [])
 
@@ -157,7 +161,7 @@ defmodule Surfex.UnearnedTest do
     end
   end
 
-  @tag verifies: "unearned-report"
+  @tag verifies: ["unearned-report", "unearned"]
   test "the text, JSON and golden report unearned relations under claim_grain only" do
     status = grained([], [{"M.a/0", "feature-hint"}])
     text = Report.text(status)
@@ -182,7 +186,7 @@ defmodule Surfex.UnearnedTest do
     refute plain |> Report.golden("RELATIONS.md") |> Surfex.Golden.render() =~ "unearned"
   end
 
-  @tag verifies: "completeness-earned-code"
+  @tag verifies: ["completeness-earned-code", "earned-code-score"]
   test "completeness describes code only by an earning implements under claim_grain" do
     missing = fn status ->
       status

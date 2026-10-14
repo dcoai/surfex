@@ -98,7 +98,7 @@ defmodule Surfex.MigrateTest do
       ]
   end
 
-  @tag verifies: "migrate-candidates"
+  @tag verifies: ["migrate-candidates", "migration"]
   test "each section-grain implements is proposed to the claims that could own it" do
     proposals = Migrate.proposals(scans(), entries(), [@s])
 
@@ -157,7 +157,7 @@ defmodule Surfex.MigrateTest do
     assert {:error, _} = Migrate.sections(scans(), "other.md", within: true)
   end
 
-  @tag verifies: "migrate-report"
+  @tag verifies: ["migrate-report", "migration"]
   test "the report gives relations now and after, the marking, and each dangle width" do
     %{sections: [s, p], population: population} = Migrate.report(scans(), entries(), :all)
 
@@ -221,7 +221,7 @@ defmodule Surfex.MigrateTest do
       Enum.find(status.relations, &(&1.relation == relation))
     end
 
-    @tag verifies: "migrate-accept"
+    @tag verifies: ["migrate-accept", "migration"]
     test "--accept records each single proposal, proposed and migrating, failing nothing" do
       {:ok, recorded} = Migrate.accept(scans(), entries(), [@s], @meta)
 
@@ -253,7 +253,7 @@ defmodule Surfex.MigrateTest do
       assert {:ok, []} = Migrate.accept(scans(), entries() ++ recorded, [@s], @meta)
     end
 
-    @tag verifies: "migrate-accept"
+    @tag verifies: ["migrate-accept", "migration"]
     test "the section's relation is retired only once its claim's is validated" do
       {:ok, recorded} = Migrate.accept(scans(), entries(), [@s], @meta)
       log = entries() ++ recorded
@@ -301,7 +301,7 @@ defmodule Surfex.MigrateTest do
       assert {retire.op, retire.note} == {:retire, "moved to its claim #{@h2}"}
     end
 
-    @tag verifies: "migrate-accept"
+    @tag verifies: ["migrate-accept", "migration"]
     test "--code --to records a reviewer's choice; a claim already holding it retires the section's" do
       {:ok, [chosen]} = Migrate.choose(scans(), entries(), @s, "M.get/1", [@h1], @meta)
       assert {chosen.migrates, code_of(chosen), spec_of(chosen)} == {@s, "M.get/1", @h1}
@@ -367,7 +367,7 @@ defmodule Surfex.MigrateTest do
 
     @trust [adoption: %{setting: :trust, trusted: :all}]
 
-    @tag verifies: "migrate-baseline"
+    @tag verifies: ["migrate-baseline", "migration"]
     test "a baselined section relation carries its baseline to the claim its test verifies" do
       log = baselined(@t2)
       {:ok, recorded} = Migrate.accept(scans(), log, [@s], @meta, @trust)
@@ -403,7 +403,7 @@ defmodule Surfex.MigrateTest do
       assert list.basis == :proposed
     end
 
-    @tag verifies: "migrate-accept"
+    @tag verifies: ["migrate-accept", "migration"]
     test "the reports show what is migrating" do
       {:ok, recorded} = Migrate.accept(scans(), entries(), [@s], @meta)
       status = derive(entries() ++ recorded)
