@@ -33,6 +33,10 @@ defmodule Surfex.Scanner do
     * `hidden` and `runs` stay empty: a DSL item carries no hidden definitions. Its block
       is its whole definition and its hash covers it
 
+  Code reaches a DSL item through the DSL's entry functions, naming it in arguments, so a
+  DSL's scanner also implements the optional `c:calls/3`: asked about every remote call a
+  test or a function makes, it answers the keys of the items the call drives.
+
   Surfex depends on no DSL: the project, or a companion package, writes the scanner, with
   `Surfex.SourceScan` to read source.
 
@@ -49,4 +53,23 @@ defmodule Surfex.Scanner do
   `root`. `opts` is the scanner's own configuration.
   """
   @callback items(root :: String.t(), opts :: keyword) :: [Surfex.Item.t()]
+
+  @doc """
+  The keys of the items a remote call names, beyond the function it calls (spec §5.4).
+  Optional. A DSL's items are reached through its entry functions rather than called by
+  name: `MyDsl.run(MyApp.Order, :checkout, input)` drives the `checkout` action of
+  `MyApp.Order`. The test scanner and the Elixir scanner ask each configured scanner that
+  implements this about every remote call they read, and add the keys it answers to the
+  caller's `calls`, so reach goes into the DSL item and on through its own calls.
+
+  `call` is the call's AST as written, `{{:., _, [module, fun]}, meta, args}`, except that
+  a piped call has its piped value as its first argument. `aliases` maps each alias in
+  scope at the call (an atom, `:Order`) to the module it names (`"MyApp.Order"`), so the
+  scanner can resolve `{:__aliases__, _, parts}` itself. `opts` is the scanner's own
+  configuration. A call it doesn't recognise answers `[]`.
+  """
+  @callback calls(call :: Macro.t(), aliases :: %{atom => String.t()}, opts :: keyword) ::
+              [String.t()]
+
+  @optional_callbacks calls: 3
 end

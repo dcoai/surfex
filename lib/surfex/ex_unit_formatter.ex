@@ -51,7 +51,7 @@ defmodule Surfex.ExUnitFormatter do
               "Surfex.ExUnitFormatter needs tests: in .surfex.exs, to know the tests"
 
     scans = Scan.code(Config.items(config, state.root))
-    tests = Scan.ExUnit.records(state.root, globs, scans)
+    tests = Scan.ExUnit.records(state.root, globs, scans, Config.call_scanners(config))
     code = for s <- scans, into: %{}, do: {s.id, s.hash}
     index = Enum.group_by(tests, &Path.expand(&1.location.file, state.root))
     {:noreply, %{state | index: index, code: code, reach: Scan.reach(tests ++ scans)}}

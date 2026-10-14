@@ -78,6 +78,16 @@ milestone "Claims own their code" is in.
   the keys it references as calls, and `shape` for a pure declaration (spec §4.1). A DSL
   item carries no hidden definitions and runs no hidden code: its hash covers its block.
   Surfex depends on no DSL; its own tests prove the contract with a fixture DSL and scanner.
+- **Calls resolved to DSL items by a scanner** (#208, #241). `Surfex.Scanner` gains an
+  optional callback, `calls(call, aliases, opts)`: the test scanner and the Elixir scanner
+  ask each of the project's scanners implementing it about every remote call they read
+  (a piped call with its piped value as first argument), and add the item keys it answers
+  to the caller's calls (spec §5.4). A test driving `MyDsl.run(MyApp.Order, :checkout, …)`
+  then reaches the `checkout` item and, through its calls, the code its block references,
+  so evidence, the triangle and suggestions work for DSL items. A scanner without the
+  callback is never asked, so nothing changes for one; an answer that isn't a list of
+  keys raises naming the scanner. `Surfex.Status.Config.call_scanners/1` gives the
+  scanners asked, and `Surfex.Scan.ExUnit.records/4` takes them.
 - **`Surfex.Scanner` and `Surfex.Item` are supported API** (#150, #208, #240). The
   stability promise of `Surfex.Golden` and `Surfex.SourceScan` now covers them (spec
   §23.1): callbacks and fields keep their names and shapes, additions are optional or have

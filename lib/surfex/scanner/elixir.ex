@@ -40,6 +40,9 @@ defmodule Surfex.Scanner.Elixir do
     * `:paths` — globs relative to the root. Default: `["lib/**/*.ex"]`, one project's
       own source. A poncho lists its members (`["*/lib/**/*.ex"]`). A glob that guessed
       would also find test fixtures and scratch trees that happen to have a `lib/`.
+    * `:call_scanners` — `[{scanner, opts}]`: each implementing `Surfex.Scanner.c:calls/3`
+      is asked what a definition's remote calls name, and its answer joins the calls
+      (spec §5.4). `Surfex.Status.Config.items/2` gives it the project's scanners.
   """
 
   @behaviour Surfex.Scanner
@@ -54,6 +57,7 @@ defmodule Surfex.Scanner.Elixir do
   @impl Surfex.Scanner
   def items(root, opts \\ []) do
     root = Path.expand(root)
+    remote = Calls.remote(Keyword.get(opts, :call_scanners, []))
 
     # Every file is read before any version is made: a version covers the hidden code it
     # runs in any module, in any file.
@@ -67,7 +71,7 @@ defmodule Surfex.Scanner.Elixir do
         |> File.read!()
         |> Code.string_to_quoted!(file: file, token_metadata: true)
         |> modules([])
-        |> Enum.map(fn {parts, node} -> read_module(parts, node, rel) end)
+        |> Enum.map(fn {parts, node} -> read_module(parts, node, rel, remote) end)
       end)
 
     index = hidden_code(modules)
@@ -133,7 +137,7 @@ defmodule Surfex.Scanner.Elixir do
   # One module as read: its name, its hidden definitions, and what each of its public and
   # hidden definitions calls. A module under `@moduledoc false` is read the same way; it
   # makes no items, and all its definitions are hidden code (§3.3).
-  defp read_module(parts, node, file) do
+  defp read_module(parts, node, file, remote) do
     module = Enum.map_join(parts, ".", &Atom.to_string/1)
     hidden = SourceScan.hidden_definitions(node)
 
@@ -143,7 +147,7 @@ defmodule Surfex.Scanner.Elixir do
       node: node,
       hidden_module: SourceScan.hidden_module?(node),
       hidden: hidden,
-      calls: definition_calls(node, module, hidden)
+      calls: definition_calls(node, module, hidden, remote)
     }
   end
 
@@ -228,7 +232,7 @@ defmodule Surfex.Scanner.Elixir do
   # its target. A definition that calls a function of a module this one `use`s or declares
   # as its `@behaviour` (`GenServer.call`, `:gen_statem.call`) dispatches through it, so it
   # calls the module's hidden callbacks too.
-  defp definition_calls({:defmodule, _, [_aliases, [do: body]]} = node, module, hidden) do
+  defp definition_calls({:defmodule, _, [_aliases, [do: body]]} = node, module, hidden, remote) do
     names = Calls.names(exprs(body), module)
     public = node |> SourceScan.defs() |> MapSet.new(&{&1.name, &1.arity})
     behaviours = behaviours(exprs(body), names.aliases)
@@ -263,7 +267,7 @@ defmodule Surfex.Scanner.Elixir do
       {key,
        Enum.sort(
          Enum.uniq(
-           Calls.of(bodies, local) ++
+           Calls.of(bodies, local, remote) ++
              Enum.flat_map(delegates, &delegated(&1, names.aliases)) ++ dispatched
          )
        )}

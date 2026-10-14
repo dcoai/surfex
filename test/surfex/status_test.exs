@@ -1170,7 +1170,7 @@ defmodule Surfex.StatusTest do
 
   @tag verifies: "scanner-behaviour"
   test "a project scanner implements Surfex.Scanner; a module that doesn't is refused, named" do
-    assert Surfex.Scanner.behaviour_info(:callbacks) == [items: 2]
+    assert Enum.sort(Surfex.Scanner.behaviour_info(:callbacks)) == [calls: 3, items: 2]
 
     assert_raise ArgumentError, ~r/String does not implement Surfex.Scanner/, fn ->
       Surfex.Status.Config.items([scanner: String], ".")

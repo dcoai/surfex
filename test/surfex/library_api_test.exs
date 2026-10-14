@@ -36,8 +36,9 @@ defmodule Surfex.LibraryApiTest do
   # #208: a project scanner, and a DSL plugin above all, is written against these two (§23.1).
   @tag verifies: "scanner-api-stable"
   test "Surfex.Scanner's callbacks and Surfex.Item's fields are exactly the pinned ones" do
-    assert Surfex.Scanner.behaviour_info(:callbacks) == [items: 2]
-    assert Surfex.Scanner.behaviour_info(:optional_callbacks) == []
+    assert Enum.sort(Surfex.Scanner.behaviour_info(:callbacks)) == [calls: 3, items: 2]
+    # calls/3 came later (#241), so it is optional: a scanner without it still works.
+    assert Surfex.Scanner.behaviour_info(:optional_callbacks) == [calls: 3]
 
     fields = for %{field: f, required: r} <- Surfex.Item.__info__(:struct), do: {f, r}
 
