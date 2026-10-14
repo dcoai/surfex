@@ -252,9 +252,23 @@ to claim grain, with a walkthrough in the new guide "Migrating to claim grain".
   `.surfex.exs` (`Surfex.Status.Config.claim_grain?/1`, spec §13.2); that release makes
   it the only reading and refuses the key. What it changes so far: path headings fold by
   default wherever the spec writes ids (`heading_ids:` set and no `fold_paths:`, spec
-  §11.1); `fold_paths: false` keeps them units. Coming under the same key: completeness
-  counting own text (C.1), spec-unit classes (C.2, #257) and unearned `implements`
-  (#247).
+  §11.1); `fold_paths: false` keeps them units; and completeness counts own text (#261,
+  below). Coming under the same key: spec-unit classes (C.2, #257) and unearned
+  `implements` (#247).
+
+- **Completeness counts own text, under `claim_grain: true`** (#256, #261). A claim is
+  complete only with a validated `verifies` of its own; one inside it no longer completes
+  it (spec §20.1). A contained claim misses `contained (<unit>, …)`, naming the verified
+  claims inside it, in the text, JSON and `COMPLETENESS.md`; containers, marked tables
+  among them, aren't counted. Without the key completeness reads as before. **Upgrade
+  step, when the key is set (and for everyone in the release that completes claim
+  grain):** scores drop by the contained claims, so `completeness: [min: N]` can fail.
+  `mix surfex.completeness --format json` lists each one with the verified claims inside
+  it: add the claim to the tag of a test that really checks its prose, name the prose's
+  claims (spec §11.1) and migrate them (`mix surfex.migrate`), or class the prose as
+  asserting nothing (C.2, #257). Surfex's own spec has 49 contained sections: 79.7% of its
+  spec units are complete under the key, against 100% without it, and settling them is
+  its own upgrade (#263).
 
 ## [0.9.1] — 2026-10-14
 

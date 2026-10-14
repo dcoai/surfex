@@ -15,6 +15,11 @@ defmodule Surfex.Completeness do
       is excused by a current one; and, when implemented, a verifying test exercises it.
       Code is one item per definition: a function's default-argument arities are judged
       together and counted once.
+
+  Under `claim_grain: true` (§20.1) a spec unit is read as verification reads it
+  (`Surfex.Status.verdict/2`): only claims are counted, and a claim is complete only with
+  its own validated `verifies`. A contained claim misses `{:contained, units}`, naming the
+  verified claims inside it.
   """
 
   alias Surfex.{Golden, Scan}
@@ -26,7 +31,7 @@ defmodule Surfex.Completeness do
   @type item :: %{
           kind: :spec | :test | :code,
           id: String.t(),
-          missing: [atom | {:deviates, [String.t()]}],
+          missing: [atom | {:deviates, [String.t()]} | {:contained, [String.t()]}],
           location: map | nil
         }
   @type t :: %{
@@ -50,7 +55,7 @@ defmodule Surfex.Completeness do
     units_and_tests =
       for %Scan{kind: kind} = scan <- scans,
           kind in [:spec, :test],
-          kind != :spec or not Markdown.empty?(scan),
+          kind != :spec or counted?(scan, status),
           do:
             {kind, scan,
              missing(kind, scan, live, within, status) ++
@@ -99,10 +104,17 @@ defmodule Surfex.Completeness do
   end
 
   defp lacks(:spec, scan, touching, live, within, status) do
+    # At claim grain only the claim's own evidence completes it (§20.1); before it, a
+    # unit inside it does too.
+    verifies? =
+      if status.policy.claim_grain,
+        do: &(&1 == scan.id),
+        else: &inside?(&1, scan.id, within)
+
     verified =
       Enum.any?(live, fn
         %{relation: {:verifies, {kind, _}, {:spec, unit}}} = r when kind in [:test, :check] ->
-          validated?(status, r) and inside?(unit, scan.id, within)
+          validated?(status, r) and verifies?.(unit)
 
         _ ->
           false
@@ -110,7 +122,7 @@ defmodule Surfex.Completeness do
 
     implements = for %{relation: {:implements, _, _}} = r <- touching, do: r
 
-    if(verified, do: [], else: [:no_test]) ++
+    if(verified, do: [], else: [untested(scan, status)]) ++
       if Enum.all?(implements, &validated?(status, &1)), do: [], else: [:unvalidated]
   end
 
@@ -129,6 +141,24 @@ defmodule Surfex.Completeness do
     if(verifies == [], do: [:verifies_nothing], else: []) ++
       if exercises or code_less, do: [], else: [:exercises_nothing]
   end
+
+  # Why a unit lacks its test: at claim grain, a contained claim names the verified claims
+  # inside it (§20.1).
+  defp untested(scan, %{policy: %{claim_grain: true}} = status) do
+    case Enum.find(status.contained, &(&1.unit == scan.id)) do
+      nil -> :no_test
+      %{inside: inside} -> {:contained, inside}
+    end
+  end
+
+  defp untested(_scan, _status), do: :no_test
+
+  # Which spec units are counted: those with text of their own; at claim grain, the claims
+  # (§20.1), so a marked table, whose rows are its claims, isn't either.
+  defp counted?(scan, %{policy: %{claim_grain: true}} = status),
+    do: Surfex.Status.verdict(status, scan.id) in [:verified, :contained, :unverified]
+
+  defp counted?(scan, _status), do: not Markdown.empty?(scan)
 
   defp missing_code(group, live, status) do
     keys = for s <- group, do: {:code, s.id}
@@ -211,6 +241,7 @@ defmodule Surfex.Completeness do
   defp missing_text(missing), do: Enum.map_join(missing, ", ", &lack/1)
 
   defp lack({:deviates, refs}), do: "deviates (#{Enum.join(refs, ", ")})"
+  defp lack({:contained, units}), do: "contained (#{Enum.join(units, ", ")})"
   defp lack(atom), do: Atom.to_string(atom)
 
   defp at(%{file: file, lines: {first, last}}), do: " (#{file}:#{first}-#{last})"
