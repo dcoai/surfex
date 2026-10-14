@@ -2603,6 +2603,27 @@ a non-zero exit stops mix surfex.status --issues with its output; an unresolved 
 fails only under --issues; issues: is validated
 ```
 
+### 13.8 Excusals in the record
+<!-- surfex: classed-record -->
+
+A class or a deferral is reviewed where it is written, in the spec and in `.surfex.exs`,
+and recorded nowhere else: no log entry is written for one. So that a new excusal is
+still seen, the status golden (`Surfex.Status.Report.golden/2`, `RELATIONS.md`) holds an
+`excused` table (each classed unit, its class and how it was selected: `marker`,
+`pattern` or `alias`) and a `deferred` table (each deferred unit and its reference), keyed
+by unit id and ordered by it, plus `contradicted` and `stale deferrals` tables when there
+are any. Its header counts `excused`, `deferred`, `contradicted` and `stale deferrals`
+where a spec has any class or deferral, so a pattern that suddenly classes twenty units
+shows as twenty rows and a moved count. The completeness golden (`COMPLETENESS.md`)
+counts the units excused by class and deferred in its header (§20.2). Whether a growing
+excusal is right is the project's call: a decision log should grow.
+
+```test:classed-goldens
+the status golden's excused and deferred tables are keyed by unit, in id order whatever
+the scan order, counted in the header, and change only when a class or deferral does;
+a spec with neither renders as before; the completeness golden's header counts both
+```
+
 ## 14. Recording
 <!-- surfex: recording -->
 
@@ -3081,6 +3102,20 @@ Its worked example is a claim about Surfex's behaviour, so it is tested. The gui
 versions of a spec are scanned, related as `mix surfex.suggest --accept` would relate
 them, and then edited. The test asserts exactly the dangling, current and orphaned
 relations the guide describes.
+
+### 16.1 Text the spec doesn't verify
+<!-- surfex: guide-unverified-text -->
+
+Beside "Code the spec doesn't describe", the guide has "Text the spec doesn't verify":
+when to class a section (§11.7) rather than verify it, when to name a claim instead, that
+a class never hides a claim named inside its section (§13.6), that a rule a tool checks is
+verified by a check (§11.4) rather than classed, and when to defer a unit by its issue.
+
+```test:guide-classes
+the guide has a "Text the spec doesn't verify" section beside "Code the spec doesn't
+describe", saying a class never hides a named claim, pointing at checks for tool-verified
+rules and at deferrals by issue
+```
 
 ## 17. Test evidence
 <!-- surfex: evidence -->

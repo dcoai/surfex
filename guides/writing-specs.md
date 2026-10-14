@@ -421,6 +421,50 @@ rules: [
 Prefer a section whenever the code has behaviour a reader of the spec should
 know about. A class is for code whose only story is "it wires things together".
 
+### Text the spec doesn't verify
+
+Spec text has the same need. A decision record says why, not what; prior art says what
+others did; an architecture map orients a reader. None asserts anything a test could
+fail on, and a fake test or a fake claim to cover one is the wrong fix. **Class it**, in
+`.surfex.exs` (spec §11.7):
+
+```elixir
+spec_classes: [
+  {"decision", "a decision record: why, not what", files: ["spec/13-decisions.md"]},
+  {"informative", "explains or points; asserts nothing a test could fail on"}
+]
+```
+
+A pattern (`files:`, `headings:`) classes a whole family, such as a decision log that
+grows by one entry per change. A marker on its own line classes one section, with the
+author's own reason beside the class's:
+
+```markdown
+## 2. Architecture
+<!-- surfex: class informative: the module map is orientation -->
+```
+
+If your spec already marks such prose with a comment of its own, `marker:` reads that
+comment as the class's marker, and nothing is rewritten.
+
+- **A class never hides a named claim.** It excuses the section's own text and nothing
+  else. A rule, a row, a hint, a contract, a block or a subsection inside a classed
+  section stays a claim and needs its evidence. So if an architecture chapter holds a few
+  real MUSTs, name them as rules (§5) and class the rest: the pattern can't swallow them.
+- **A rule a tool checks isn't descriptive.** Verify it with a check (a declared gate, spec
+  §11.4) rather than classing it.
+- **Something not built yet is deferred, not classed.** `<!-- surfex: deferred #412:
+  past v1 -->` names the issue that will build it; under `mix surfex.status --issues` the
+  deferral goes stale when that issue closes, and it is stale as soon as the unit has a
+  test of its own.
+- **A relation to an excused section is contradicted** and fails: the class says the text
+  asserts nothing, the relation says something checks or realises it. Usually the relation
+  was narration and is retired; otherwise the class is wrong.
+
+Under `claim_grain: true` excused and deferred units leave the completeness score and are
+counted on lines of their own, and `RELATIONS.md` lists each one, so a growing excusal
+shows in review.
+
 ## 9. Working with an LLM
 
 Surfex exists so an agent keeps the spec, the tests and the code aligned **by doing the

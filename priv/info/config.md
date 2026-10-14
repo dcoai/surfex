@@ -51,6 +51,12 @@ A keyword list, evaluated as data. An unknown key is refused, naming it.
   only reading: path headings fold where the spec writes ids, and completeness counts a
   claim complete only with its own evidence. One switch for every breaking part, so a
   project can measure them together; that release refuses the key.
+- `spec_classes: [{name, reason} | {name, reason, files: globs, headings: regex, marker: regex}]`:
+  classes of spec text that asserts nothing, selected by a marker in the section, a
+  pattern, or the project's own comment (`mix surfex.info claims`).
+- `issues: [command: argv, state: key, project: name]`: how `mix surfex.status --issues`
+  asks the tracker whether a deferral's issue is open; `{ref}`, `{n}` and `{project}` are
+  substituted, no shell, nothing stored.
 - `triangle: :report | :fail`: whether a unit, its tests and its code must meet.
 - `require_red:`: whether a `tests` relation needs its test's red run.
 - `adoption: :reevaluate | :trust | [trust: globs, reevaluate: globs]` (`mix surfex.info adoption`).

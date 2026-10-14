@@ -56,6 +56,14 @@ says what each means and how a contained claim is settled. Under a `require:` sp
 contained claim's unmet line ends `contained: a unit inside it is verified, its own text
 isn't`.
 
+**Excused and deferred** units (spec classes and deferrals) are counted in one header
+line, `excused by class: N (M with claims inside) · deferred: N`, and listed in the JSON.
+Under `claim_grain: true` two lists fail: **Contradicted**, a relation to a section its
+class says asserts nothing (retire the relation, or remove the class), and **Stale
+deferrals**, a deferral whose unit has a test of its own, whose issue is closed, or that
+the tracker couldn't answer. `mix surfex.status --issues` asks the tracker through the
+`issues:` command; without it only a built unit is judged.
+
 **Inert** (not failing): a `verifies` tag that applies to no test or property block, so it
 verifies nothing: a `@tag` no test follows, a `@moduletag` or `@describetag` over no test,
 or any tag in `test/support/`. Move it onto the test that checks the claim, or delete it.

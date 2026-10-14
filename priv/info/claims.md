@@ -93,8 +93,20 @@ section's own prose (a verified hint says nothing of the paragraphs around it). 
 lists **Contained** claims and each `verifies` **on a container** (it verifies nothing:
 move the tag to what it checks). Neither fails on its own. A contained section is settled
 by tagging it on a test that really checks its prose, by naming its prose's claims and
-migrating them (the guide "Migrating to claim grain"), or, once spec-unit classes land,
-by classing prose that asserts nothing.
+migrating them (the guide "Migrating to claim grain"), or by classing prose that asserts
+nothing.
+
+**Spec text that asserts nothing is classed** (spec §11.7, §13.6). `spec_classes:` in
+`.surfex.exs` declares classes with reasons; a section is classed by
+`<!-- surfex: class NAME[: REASON] -->` on its own line, by a `files:` or `headings:`
+pattern, or by the project's own comment through `marker:`. A unit not built yet is
+deferred by its issue, `<!-- surfex: deferred #123[: REASON] -->`. Under
+`claim_grain: true` a classed section with no claim inside is **excused** and a deferred
+one **deferred**: neither is judged by `require:` spec rules nor counted in completeness.
+A class excuses the section's own text, never a claim named inside it. A `verifies` or
+`implements` to an excused section is **contradicted** and fails (retire it, or drop the
+class), and a deferral is **stale** once its unit has a test of its own or, under
+`mix surfex.status --issues`, its issue is closed.
 
 **Code earns through the claim that exercises it** (spec §13.5). An `implements` to a
 verified unit earns; one to a container or a contained section earns when a verified
