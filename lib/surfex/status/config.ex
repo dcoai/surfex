@@ -25,6 +25,10 @@ defmodule Surfex.Status.Config do
       types
     * `:tests` — globs of ExUnit test files, scanned for tests (`Surfex.Scan.ExUnit`)
       when present
+    * `:declares` — other forms the test scanner reads as `verifies` declarations, for a
+      project that already records them in its own (§11.6):
+      `[verifies: [{:tag, :validates, strip: ~r/@[0-9a-f]+$/}]]` reads
+      `@tag validates: ["Engine.15.2@abc123"]` as declaring `Engine.15.2`
     * `:triangle` — `:report` (the default) or `:fail`: whether gaps in the spec/test/code
       triangle fail the check or are only reported
     * `:require_red` — `true` to refuse confirming a `tests` relation, by evidence or by
@@ -58,6 +62,7 @@ defmodule Surfex.Status.Config do
     :goldens,
     :require,
     :tests,
+    :declares,
     :triangle,
     :require_red,
     :router,
@@ -487,7 +492,7 @@ defmodule Surfex.Status.Config do
     inert =
       case Keyword.get(config, :tests) do
         nil -> []
-        globs -> Scan.ExUnit.inert(root, globs)
+        globs -> Scan.ExUnit.inert(root, globs, declares!(config))
       end
 
     {scans(config, root, items),
@@ -588,6 +593,56 @@ defmodule Surfex.Status.Config do
   end
 
   @doc """
+  The project's own declaration forms (`declares:`, §11.6), each as
+  `%{kind: :tag | :attribute, name: atom, strip: Regex.t() | nil}`; `[]` without the key.
+  `declares: [verifies: [form, …]]`, each form `{:tag, KEY}` (an ExUnit tag key, read at
+  `@tag`, `@describetag` and `@moduletag` as `verifies:` is) or `{:attribute, NAME}` (a
+  module attribute before a test, applying to it as a `@tag` does), optionally with
+  `strip: REGEX` as a third element's option, removed from each id. Anything else is
+  refused, naming it: a form misread would silently declare nothing.
+  """
+  @spec declares!(keyword) :: [%{kind: :tag | :attribute, name: atom, strip: Regex.t() | nil}]
+  def declares!(config) do
+    case Keyword.get(config, :declares, []) do
+      [] ->
+        []
+
+      [verifies: [_ | _] = forms] ->
+        Enum.map(forms, &declared_form!/1)
+
+      other ->
+        raise ArgumentError,
+              "declares: must be [verifies: [form, …]], each form {:tag, key} or " <>
+                "{:attribute, name}, with [strip: regex] as an option, got #{inspect(other)}"
+    end
+  end
+
+  # ExUnit's own tag keys, and the attributes ExUnit reads, are no project's form.
+  @not_forms [:verifies, :tag, :describetag, :moduletag, :doc, :moduledoc]
+
+  defp declared_form!({kind, name}), do: declared_form!({kind, name, []})
+
+  defp declared_form!({kind, name, opts} = form)
+       when kind in [:tag, :attribute] and is_atom(name) and name not in @not_forms and
+              is_list(opts) do
+    case opts do
+      [] -> %{kind: kind, name: name, strip: nil}
+      [strip: %Regex{} = strip] -> %{kind: kind, name: name, strip: strip}
+      _ -> bad_form(form)
+    end
+  end
+
+  defp declared_form!(form), do: bad_form(form)
+
+  defp bad_form(form),
+    do:
+      raise(
+        ArgumentError,
+        "declares: a form is {:tag, key} or {:attribute, name}, a name other than ExUnit's " <>
+          "own, with [strip: regex] as its only option, got #{inspect(form)}"
+      )
+
+  @doc """
   Whether `mix surfex.suggest` proposes a claim's `implements` from what its verifying
   tests call (`claim_implements:`, §15.1): `false` by default; anything but a boolean is
   refused.
@@ -656,7 +711,14 @@ defmodule Surfex.Status.Config do
         if files == [],
           do: raise(ArgumentError, "tests: #{inspect(globs)} matches no file under #{root}")
 
-        Scan.ExUnit.records(root, globs, code, call_scanners(config), routes(config, root))
+        Scan.ExUnit.records(
+          root,
+          globs,
+          code,
+          call_scanners(config),
+          routes(config, root),
+          declares!(config)
+        )
     end
   end
 end

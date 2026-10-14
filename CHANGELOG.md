@@ -159,6 +159,14 @@ milestone "Claims own their code" is in.
   review of either credits both under one note. `mix surfex.validate` now says so after
   recording, naming them (`Surfex.Record.shared_definitions/2`, spec §18.4), so the note is
   written for the definition rather than for the arity the test calls.
+- **A project's own declaration forms** (#209, #250). `declares:` in `.surfex.exs` names
+  other forms the test scanner reads as `verifies` declarations, for a project that
+  already records them: `[verifies: [{:tag, :validates, strip: ~r/@[0-9a-f]+$/}]]` reads
+  `@tag validates: ["Engine.15.2@abc123"]` (at any tag level) as declaring `Engine.15.2`,
+  and `{:attribute, :validates}` reads `@validates [...]` before a test (spec §11.6). The
+  ids resolve through `unit_refs:` and are suggested and confirmed as any declaration; they
+  are counted unselectable by `mix test --only`, and `mix surfex.test` selects them. Opt-in:
+  without the key nothing changes.
 
 ## [0.9.1] — 2026-10-14
 
