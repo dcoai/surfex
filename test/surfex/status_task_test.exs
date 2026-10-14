@@ -138,6 +138,37 @@ defmodule Surfex.StatusTaskTest do
     assert %{"scores" => %{"overall" => %{"percent" => _}}} = :json.decode(output())
   end
 
+  # #216: a gate step wants the scores, not the work list COMPLETENESS.md already holds.
+  @tag verifies: ["completeness-summary"]
+  test "mix surfex.completeness --summary prints the score lines only, and fails as before",
+       %{root: root} do
+    File.write!(Path.join(root, "open.exs"), ~s([sources: ["spec.md"], namespace: "MyApp"]))
+    completeness(root, ["--config", "open.exs"])
+    assert output() =~ "\nIncomplete:\n"
+
+    completeness(root, ["--summary", "--config", "open.exs"])
+    summary = output()
+
+    assert [overall, "  spec units: " <> _, "  tests: " <> _, "  code: " <> _] =
+             String.split(summary, "\n", trim: true)
+
+    assert overall =~ ~r/^completeness: \d+\.\d% \(\d+\/\d+\)$/
+    refute summary =~ "Incomplete"
+
+    File.write!(
+      Path.join(root, ".surfex.exs"),
+      ~s([sources: ["spec.md"], namespace: "MyApp", completeness: [min: 100]])
+    )
+
+    error = assert_raise Mix.Error, fn -> completeness(root, ["--summary"]) end
+    assert error.message == "completeness 0.0% is below the minimum, 100"
+    assert output() == summary
+
+    assert_raise Mix.Error, ~r/--summary/, fn ->
+      completeness(root, ["--summary", "--format", "json"])
+    end
+  end
+
   defp completeness(root, args) do
     File.cd!(root, fn ->
       Mix.shell(Mix.Shell.Process)

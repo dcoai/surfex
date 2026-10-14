@@ -184,19 +184,23 @@ defmodule Surfex.Completeness do
 
   @doc "The report as text: the scores, then each incomplete item, what it lacks and where."
   @spec text(t) :: String.t()
-  def text(report) do
-    %{scores: s, incomplete: incomplete} = report
-
-    lines =
-      for {kind, label} <- @kinds,
-          do: "  #{label}: #{percent(s[kind])}\n"
-
+  def text(%{incomplete: incomplete} = report) do
     items =
       if incomplete == [],
         do: [],
         else: ["\nIncomplete:\n" | Enum.map(incomplete, &["  ", item_text(&1), "\n"])]
 
-    IO.iodata_to_binary(["completeness: #{percent(s.overall)}\n", lines, items])
+    IO.iodata_to_binary([summary(report), items])
+  end
+
+  @doc """
+  The score lines of `text/1` alone: overall, then one line per kind. What a gate step
+  prints, where the incomplete items would bury its other output.
+  """
+  @spec summary(t) :: String.t()
+  def summary(%{scores: s}) do
+    lines = for {kind, label} <- @kinds, do: "  #{label}: #{percent(s[kind])}\n"
+    IO.iodata_to_binary(["completeness: #{percent(s.overall)}\n", lines])
   end
 
   defp percent(%{complete: c, total: t, percent: p}), do: "#{p}% (#{c}/#{t})"
