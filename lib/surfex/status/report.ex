@@ -135,6 +135,7 @@ defmodule Surfex.Status.Report do
     tables = if u.table > 0, do: " · tables #{u.table} · rows #{u.row}", else: ""
     # Rules only where a spec names claims (§11.1).
     tables = if u.rule > 0, do: tables <> " · rules #{u.rule}", else: tables
+    tables = if u.contract > 0, do: tables <> " · contracts #{u.contract}", else: tables
 
     units =
       "  spec units: sections #{u.section} · blocks #{u.block} · test hints #{u.test_hint}#{tables}\n"
@@ -581,10 +582,11 @@ defmodule Surfex.Status.Report do
   defp units_stat(u),
     do:
       Surfex.Golden.stat(
-        "#{u.section + u.block + u.test_hint + u.table + u.row + u.rule} spec units",
+        "#{u.section + u.block + u.test_hint + u.table + u.row + u.rule + u.contract} spec units",
         [{"sections", u.section}, {"blocks", u.block}, {"test hints", u.test_hint}] ++
           if(u.table > 0, do: [{"tables", u.table}, {"rows", u.row}], else: []) ++
-          if(u.rule > 0, do: [{"rules", u.rule}], else: [])
+          if(u.rule > 0, do: [{"rules", u.rule}], else: []) ++
+          if(u.contract > 0, do: [{"contracts", u.contract}], else: [])
       )
 
   # A block or hint says what it sits in, so a list of them reads under their sections.

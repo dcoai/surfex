@@ -37,6 +37,15 @@ milestone "Claims own their code" is in.
   item after it, and a list item or paragraph already starting with `<!-- surfex: ID -->`
   becomes a rule, leaving its section's version.
 
+- **Contract fences** (#205, #235). A fenced block after `<!-- surfex: contract -->`, or
+  opened as ```` ```elixir contract ````, is one unit of role `:contract` per function its
+  `@spec`, `@callback` and `@macrocallback` lines name, keyed `file#name/arity`, so changing
+  one signature dangles only that function's relations (spec §11.1). The module is the
+  marker's `module:` option or the enclosing subject section's item (`subjects:`); a fence
+  with neither is an error. The new scan-record field `contract` holds the function,
+  `MyApp.Feed.feed/2`. ex_doc renders the marker as a comment, but an `elixir contract`
+  info string swallows the heading after it, as `test ID` does.
+
 ## [0.9.1] — 2026-10-14
 
 What surfex writes now reads right. Spec pages published with ex_doc keep their headings

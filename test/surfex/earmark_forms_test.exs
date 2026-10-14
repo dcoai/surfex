@@ -38,7 +38,10 @@ defmodule Surfex.EarmarkFormsTest do
      ["spec.md#Claims", "spec.md#no-override", "spec.md#Next"]},
     {"a marked list with written ids",
      "# Claims\n\n<!-- surfex: rules tenancy -->\n1. §T.1 A tenant reads its own rows.\n2. §T.2 Ids are never reused.\n\n# Next\n",
-     ["spec.md#Claims", "spec.md#T.1", "spec.md#T.2", "spec.md#Next"]}
+     ["spec.md#Claims", "spec.md#T.1", "spec.md#T.2", "spec.md#Next"]},
+    {"a marked contract fence",
+     "# Feeds\n\n<!-- surfex: contract module: MyApp.Feed -->\n```elixir\n@spec feed(t) :: t\n```\n\n# Next\n",
+     ["spec.md#Feeds", "spec.md#feed/1", "spec.md#Next"]}
   ]
 
   for {form, text, ids} <- @rendered do
@@ -85,6 +88,18 @@ defmodule Surfex.EarmarkFormsTest do
     inline = "# Claims\n\n<!-- surfex: unreachable --> **Unreachable.** More.\n\n# Next\n"
     assert Enum.any?(Markdown.sections(inline, "spec.md"), &(&1.id == "spec.md#unreachable"))
     assert earmark_headings(ExDoc.Markdown.Earmark.to_ast(inline, [])) == ["Claims"]
+  end
+
+  test "an elixir contract info string, holding a space, breaks as test ID does" do
+    text = "# Feeds\n\n```elixir contract\n@spec feed(t) :: t\n```\n\n# Next\n"
+    subjects = [%{file: "spec.md", heading: ~r/^Feeds$/, items: ["MyApp.Feed"]}]
+
+    assert Enum.any?(
+             Markdown.sections(text, "spec.md", subjects: subjects),
+             &(&1.id == "spec.md#feed/1")
+           )
+
+    assert earmark_headings(ExDoc.Markdown.Earmark.to_ast(text, [])) == ["Feeds"]
   end
 
   # The text a reader sees: every string outside an HTML comment, attributes left out.

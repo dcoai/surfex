@@ -925,7 +925,8 @@ defmodule Surfex.StatusTest do
                test_hint: 0,
                table: 0,
                row: 0,
-               rule: 0
+               rule: 0,
+               contract: 0
              }
 
       text = Report.text(status)
@@ -940,7 +941,8 @@ defmodule Surfex.StatusTest do
                "test_hint" => 0,
                "table" => 0,
                "row" => 0,
-               "rule" => 0
+               "rule" => 0,
+               "contract" => 0
              }
 
       assert %{"role" => "block", "within" => @spec_id} =

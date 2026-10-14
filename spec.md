@@ -528,7 +528,8 @@ A profile subject (a file, a heading pattern, item keys) declares that a section
 *about* those items. Its heading cites them. A bare member name anywhere in the section,
 until the next heading of the same or higher level, resolves as that item's member, and
 inside such a section the member wins over a global of the same name. A subject key
-that names nothing makes the heading's citation unresolved.
+that names nothing makes the heading's citation unresolved. A contract fence (§11.1) in a
+subject section is about the subject's one item, unless its marker names a module.
 
 ## 7. Coverage
 <!-- surfex: coverage -->
@@ -1074,10 +1075,10 @@ code block
 ```test:earmark-forms
 through ex_doc's markdown (ExDoc.Markdown.Earmark), the forms it is said to render (the id
 comment after a heading, test:ID hints, marked blocks and tables, an id comment of its own
-line before a paragraph or list item, a marked list of written ids) show no marker text,
-and every heading in the text is a heading; the id comment at the end of a heading, the
-anchor, test ID hints, an id comment inside a list item and one starting a paragraph are
-shown to break as said
+line before a paragraph or list item, a marked list of written ids, a marked contract
+fence) show no marker text, and every heading in the text is a heading; the id comment at
+the end of a heading, the anchor, test ID hints, an id comment inside a list item, one
+starting a paragraph and an elixir contract fence are shown to break as said
 ```
 
 ```test:section-versions
@@ -1150,11 +1151,32 @@ ordinal would dangle every claim after an insertion.
 - **Bold is never a claim.** A bold-lead sentence with no id comment is its section's
   text, whatever it says. Bold is emphasis far more often than it is a claim.
 
+**A contract fence** holds the one place where naming code in the spec is the contract: a
+module's signatures. A fenced block after the line `<!-- surfex: contract -->` (blank lines
+between are fine), or opened as ```` ```elixir contract ````, yields one unit of role
+`:contract` per function its `@spec`, `@callback` or `@macrocallback` lines name. A
+signature takes the lines indented under it.
+- **Its id** is `file#name/arity`, read by parsing the signature as Elixir:
+  `spec/17-public-api.md#feed/2`. Several signatures of one function (a multi-clause spec)
+  are one unit, at the first one's place.
+- **Its module** is the marker's `module:` option (`<!-- surfex: contract module:
+  MyApp.Feed -->`), else the one item of the nearest enclosing subject section (§6.6). The
+  record's `contract` is the function it is the contract of, `MyApp.Feed.feed/2`.
+- **Its version** is its signatures' text, so changing a signature dangles exactly that
+  unit's relations. The fence's other lines (comments, code) and its fence lines are the
+  text of what it sits in.
+
+The bare marker is a block's opening marker too, and stays a block where a
+`<!-- /surfex -->` closes it (§11). A fence with no module, a marker with no fence after it,
+a fence holding no signature, a signature that doesn't parse, and a function in two fences
+of one file are errors naming the line. Whether a contract unit's citation of its own
+function yields `implements` is plan item D.2's to decide.
+
 Rule ids share the file's namespace (§11), so a repeated one is the duplicate-id error.
-`Surfex.Status.units/1` counts rules with the other roles, and the reports show them once
-a spec names one. A spec that names no claim scans exactly as before. An id comment of its
-own line that was once an unclosed block is now a claim's id. When no paragraph or item
-follows it, it is still the error it was. Also an error, naming the line:
+`Surfex.Status.units/1` counts rules and contracts with the other roles, and the reports
+show them once a spec has one. A spec that names no claim scans exactly as before. An id
+comment of its own line that was once an unclosed block is now a claim's id. When no
+paragraph or item follows it, it is still the error it was. Also an error, naming the line:
 - an item of a marked list with no id, or a marker with no list after it;
 - a rule inside a rule;
 - a list item with two ids (a comment of its own line, and one starting it);
@@ -1167,7 +1189,19 @@ It shows an id comment anywhere inside a list item as text, and an id comment th
 a paragraph swallows the paragraph and the heading after it. A forge's CommonMark reads
 a line that starts with a comment as raw HTML, so the rest of that line loses its
 markdown. A spec names its claims with the comment on its own line, or with a marked list
-of written ids.
+of written ids. The contract marker renders as a comment; an `elixir contract` info string
+holds a space, and ex_doc renders it as a `test ID` hint: as text swallowing the heading
+after it.
+
+```test:contract-fences
+a contract fence (after the contract marker, or opened elixir contract) is one unit per
+function its @spec, @callback and @macrocallback lines name, keyed file#name/arity, with
+its module from module: or the enclosing subject section; changing one signature changes
+only its unit, the fence's other lines are its section's text; a bare marker a close marker
+follows is a block; a fence with no module or no signature, a marker with no fence, a
+signature that doesn't parse and a function in two fences are errors naming the line;
+status counts contracts
+```
 
 ```test:rule-items
 a marked list's top-level items are rules, each by its id comment or the id rule_ids: reads

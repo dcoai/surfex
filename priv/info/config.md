@@ -19,7 +19,7 @@ A keyword list, evaluated as data. An unknown key is refused, naming it.
 **Policy**
 - `require: [code: [:implements], test_hint: [:verifies]]`: what must take part in a
   relation of those types (keys: a kind, or a spec role `section`, `block`, `test_hint`,
-  `table`, `row`, `rule`).
+  `table`, `row`, `rule`, `contract`).
 - `triangle: :report | :fail`: whether a unit, its tests and its code must meet.
 - `require_red:`: whether a `tests` relation needs its test's red run.
 - `adoption: :reevaluate | :trust | [trust: globs, reevaluate: globs]` (`mix surfex.info adoption`).

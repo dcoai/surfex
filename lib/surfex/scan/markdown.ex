@@ -55,7 +55,7 @@ defmodule Surfex.Scan.Markdown do
   """
 
   alias Surfex.Scan
-  alias Surfex.Scan.Markdown.Fence
+  alias Surfex.Scan.Markdown.{Contract, Fence}
 
   @id "[A-Za-z0-9][A-Za-z0-9._:-]*"
   @anchor ~r/^(.*?)\s*\{#([^}\s]*)\}$/
@@ -105,7 +105,8 @@ defmodule Surfex.Scan.Markdown do
   The units of one markdown text (sections, marked blocks, test hints, tables, rows and
   rules), as records located in `file`, in the order they start. `heading_ids:` names the
   project's heading grammar (`heading_grammar/1`), and `rule_ids:` the grammar a marked
-  list's items are read by, in the same forms.
+  list's items are read by, in the same forms. `subjects:` (the profile's, §6.6) says
+  which module a contract fence in a subject section is about.
   """
   @spec sections(String.t(), String.t(), keyword) :: [Scan.t()]
   def sections(text, file, opts \\ []) do
@@ -113,7 +114,8 @@ defmodule Surfex.Scan.Markdown do
     rule_grammar = heading_grammars(Keyword.get(opts, :rule_ids), :rule_ids)
 
     lines = text |> String.split("\n") |> Enum.with_index(1)
-    {sections, units} = split(lines, file, {grammar, rule_grammar}, unclosed(lines))
+    subjects = Keyword.get(opts, :subjects, [])
+    {sections, units} = split(lines, file, {grammar, rule_grammar, subjects}, unclosed(lines))
 
     sections =
       sections
@@ -144,7 +146,10 @@ defmodule Surfex.Scan.Markdown do
             {:rule, id} -> "#{file}##{id}"
           end
 
-        record(file, "#{file}##{u.id}", u.body, {u.first, u.last}, u.role, within)
+        %{
+          record(file, "#{file}##{u.id}", u.body, {u.first, u.last}, u.role, within)
+          | contract: Map.get(u, :contract)
+        }
       end
 
     Enum.sort_by(section_records ++ unit_records, &elem(&1.location.lines, 0))
@@ -166,11 +171,13 @@ defmodule Surfex.Scan.Markdown do
   # hints (%{role, id, first, last, body, within}). A line belongs to exactly one body:
   # the open hint's, else the open rule's, else the open block's, else the current
   # section's. Markers and a hint's fences belong to none.
-  defp split(lines, file, {grammar, rule_grammar}, unclosed) do
+  defp split(lines, file, {grammar, rule_grammar, subjects}, unclosed) do
     start = %{
       file: file,
       grammar: grammar,
       rule_grammar: rule_grammar,
+      subjects: subjects,
+      contract: nil,
       unclosed: unclosed,
       done: [],
       cur: section(0, nil, nil, "(preamble)", 1),
@@ -196,6 +203,13 @@ defmodule Surfex.Scan.Markdown do
     if st.pending, do: names_nothing(st, st.pending)
 
     st = if st.rule, do: close_rule(st), else: st
+
+    st =
+      case st.contract do
+        nil -> st
+        %{open: true} -> close_contract(st)
+        marker -> fail(st, marker.first, "the contract marker has no fence after it")
+      end
 
     if st.rules && st.rules.kind == nil,
       do: fail(st, st.rules.first, "rules #{st.rules.name} has no list after its marker")
@@ -258,6 +272,16 @@ defmodule Surfex.Scan.Markdown do
 
   defp step(line, %{table: table} = st) when table != nil, do: table_step(line, st)
 
+  # Inside a contract fence: its lines are its own until it closes.
+  defp step({line, no}, %{contract: %{open: true} = contract} = st) do
+    {_prose?, fence} = Fence.step(line, st.fence)
+    st = %{st | fence: fence, cur: extend(st.cur, line, no)}
+
+    if fence == nil,
+      do: close_contract(%{st | contract: %{contract | close: line}}),
+      else: %{st | contract: %{contract | lines: [{line, no} | contract.lines]}}
+  end
+
   defp step({line, no}, %{rule: rule} = st) when rule != nil do
     if st.fence == nil and rule_ends?(rule, line),
       do: step({line, no}, close_rule(st)),
@@ -269,6 +293,22 @@ defmodule Surfex.Scan.Markdown do
     opened? = st.fence == nil and fence != nil
 
     cond do
+      # A contract marker's fence: blank lines may come between, nothing else.
+      st.contract != nil ->
+        cond do
+          opened? -> open_contract(%{st | fence: fence}, line, no)
+          String.trim(line) == "" -> st
+          true -> fail(st, st.contract.first, "the contract marker has no fence after it")
+        end
+
+      prose? and contract_marker(st, line, no) != :none ->
+        contract = %{module: contract_marker(st, line, no), first: no, within: within(st)}
+        %{st | contract: contract, cur: extend(st.cur, line, no)}
+
+      opened? and Contract.info?(Fence.info(line)) ->
+        contract = %{module: nil, first: no, within: within(st)}
+        open_contract(%{st | fence: fence, contract: contract}, line, no)
+
       opened? and hint_id(line) != nil ->
         id = checked_id!(st, no, hint_id(line), "test hint")
         hint = %{id: id, first: no, body: [], within: within(st)}
@@ -364,7 +404,7 @@ defmodule Surfex.Scan.Markdown do
     # it, or a {#anchor}. Then the project's heading grammar (heading_ids:). Neither: the
     # heading path.
     {text, explicit} = explicit_id(st, text, no)
-    after_id = with {id, _why} <- Map.get(st.unclosed, no + 1), do: id
+    after_id = with {id, _why} when id != "contract" <- Map.get(st.unclosed, no + 1), do: id
 
     if explicit && after_id,
       do: fail(st, no + 1, "heading of line #{no} already has a written id, #{explicit}")
@@ -668,6 +708,92 @@ defmodule Surfex.Scan.Markdown do
     text = cell |> String.replace("`", "") |> String.replace("\\|", "|") |> String.trim()
     stripped = Regex.replace(~r/^(\*\*|__|\*|_)(.+)\1$/, text, "\\2")
     if stripped == text, do: text |> String.split() |> Enum.join(" "), else: key_text(stripped)
+  end
+
+  # ── Contracts ───────────────────────────────────────────────────────────
+
+  # A contract marker's module (nil when it names none), or :none. The bare marker is
+  # also a block's opening marker, and stays one where a close marker makes it a block.
+  defp contract_marker(st, line, no) do
+    case Contract.marker(line) do
+      nil -> if Map.has_key?(st.unclosed, no), do: nil, else: :none
+      other -> other
+    end
+  end
+
+  # The fence opens: its module is the marker's, else its subject section's (§6.6).
+  defp open_contract(st, line, no) do
+    headings = Enum.map(st.stack, &elem(&1, 1))
+
+    module =
+      st.contract.module ||
+        case Contract.subject(st.subjects, st.file, headings) do
+          {:ok, module} ->
+            module
+
+          {:error, several} ->
+            fail(
+              st,
+              no,
+              "the contract fence's subject section names several items, #{Enum.join(several, ", ")}: give module:"
+            )
+
+          nil ->
+            fail(
+              st,
+              no,
+              "the contract fence has no module: give module: or put it in a subject section (§6.6)"
+            )
+        end
+
+    contract =
+      Map.merge(st.contract, %{module: module, open: true, open_line: line, lines: [], close: nil})
+
+    %{st | contract: contract, cur: extend(st.cur, line, no)}
+  end
+
+  # One unit per function the fence's signatures name; its other lines, and its fences,
+  # stay in the body around it.
+  defp close_contract(%{contract: contract} = st) do
+    lines = Enum.reverse(contract.lines)
+
+    sigs =
+      case Contract.signatures(lines) do
+        {:ok, [], _rest} ->
+          fail(
+            st,
+            contract.first,
+            "the contract fence holds no @spec, @callback or @macrocallback"
+          )
+
+        {:ok, sigs, rest} ->
+          {sigs, rest}
+
+        {:error, no, why} ->
+          fail(st, no, "the contract signature #{why}")
+      end
+
+    {sigs, rest} = sigs
+
+    units =
+      for sig <- sigs do
+        %{
+          role: :contract,
+          id: sig.key,
+          first: sig.first,
+          last: sig.last,
+          body: sig.body,
+          within: contract.within,
+          contract: "#{contract.module}.#{sig.key}"
+        }
+      end
+
+    around = [contract.open_line | Enum.map(rest, &elem(&1, 0))] ++ List.wrap(contract.close)
+    st = %{st | contract: nil, units: Enum.reverse(units) ++ st.units}
+
+    if st.block,
+      do: %{st | block: %{st.block | body: Enum.reverse(around) ++ st.block.body}},
+      else: %{st | cur: %{st.cur | body: Enum.reverse(around) ++ st.cur.body}}
   end
 
   # ── Rules ───────────────────────────────────────────────────────────────
