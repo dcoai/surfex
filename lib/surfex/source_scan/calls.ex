@@ -30,11 +30,17 @@ defmodule Surfex.SourceScan.Calls do
   aliases in scope where it is defined; its own `alias`es apply from their line on. A
   local call (`fun/arity` with no module) is `local`'s to resolve: it returns the ids the
   call names, if any. A remote call names its function, and whatever `remote` answers for
-  it (§5.4): a piped call is given with its piped value as its first argument.
+  it (§5.4): a piped call is given with its piped value as its first argument. `driven`
+  is asked about each whole body, with every alias it can see, for calls only the body as
+  a whole states (a request to a route, then an event to the view it mounted, #206).
   """
-  @spec of([{Macro.t(), aliases}], ({atom, non_neg_integer} -> [String.t()]), remote) ::
-          [String.t()]
-  def of(bodies, local, remote \\ none()) do
+  @spec of(
+          [{Macro.t(), aliases}],
+          ({atom, non_neg_integer} -> [String.t()]),
+          remote,
+          (Macro.t(), aliases -> [String.t()])
+        ) :: [String.t()]
+  def of(bodies, local, remote \\ none(), driven \\ fn _body, _aliases -> [] end) do
     bodies =
       for {node, scope} <- bodies, body = body(node), do: {body, scope, local_aliases(body)}
 
@@ -59,7 +65,12 @@ defmodule Surfex.SourceScan.Calls do
           {parts, line} <- aliases_in(body),
           do: expand(parts, visible(scope, own, line))
 
-    (functions ++ modules) |> Enum.uniq() |> Enum.sort()
+    stated =
+      for {body, scope, own} <- bodies,
+          id <- driven.(body, visible(scope, own, :infinity)),
+          do: id
+
+    (functions ++ modules ++ stated) |> Enum.uniq() |> Enum.sort()
   end
 
   @doc "A `t:remote/0` that names nothing: the calls of a project with no scanner answering."

@@ -50,12 +50,16 @@ defmodule Surfex.Scan.ExUnit do
   `code` is the project's code records (`Surfex.Scan.code/1`), which say what an imported
   module defines (`tests/4`). `scanners` are the project's code scanners
   (`Surfex.Status.Config.scanners!/1`): each implementing `Surfex.Scanner.c:calls/3` is
-  asked what a test's remote calls name (§5.4).
+  asked what a test's remote calls name (§5.4). `routes` are the project's router's
+  (`Surfex.Status.Config.routes/2`): a request a test makes to one of them is a call to
+  what it runs (§11).
   """
-  @spec records(String.t(), [String.t()], [Scan.t()], [{atom, keyword}]) :: [Scan.t()]
-  def records(root, globs, code \\ [], scanners \\ []) do
+  @spec records(String.t(), [String.t()], [Scan.t()], [{atom, keyword}], [
+          Surfex.SourceScan.Routes.route()
+        ]) :: [Scan.t()]
+  def records(root, globs, code \\ [], scanners \\ [], routes \\ []) do
     root = Path.expand(root)
-    known = known(code, scanners)
+    known = known(code, scanners, routes)
 
     globs
     |> Enum.flat_map(&Path.wildcard(Path.join(root, &1)))
@@ -74,11 +78,16 @@ defmodule Surfex.Scan.ExUnit do
   it doesn't define (ExUnit's `assert` beside `import MyApp.Fixtures`) comes from
   elsewhere, and isn't listed under it. A module that isn't scanned has its candidate
   listed, `Module.fun/arity`, which reaches nothing. A remote call also names the item
-  keys a scanner's `Surfex.Scanner.c:calls/3` answers for it (§5.4).
+  keys a scanner's `Surfex.Scanner.c:calls/3` answers for it (§5.4). The test's requests,
+  events and messages are calls too (§11): a request to one of `routes` calls what the
+  route runs, an event to a view a request mounted calls its `handle_event/3`, and a
+  `GenServer.call/cast` to a module calls its `handle_call/3` or `handle_cast/2`.
   """
-  @spec tests(String.t(), String.t(), [Scan.t()], [{atom, keyword}]) :: [Scan.t()]
-  def tests(text, file, code \\ [], scanners \\ []),
-    do: scan_text(text, file, known(code, scanners))
+  @spec tests(String.t(), String.t(), [Scan.t()], [{atom, keyword}], [
+          Surfex.SourceScan.Routes.route()
+        ]) :: [Scan.t()]
+  def tests(text, file, code \\ [], scanners \\ [], routes \\ []),
+    do: scan_text(text, file, known(code, scanners, routes))
 
   defp scan_text(text, file, known) do
     text
@@ -91,11 +100,12 @@ defmodule Surfex.Scan.ExUnit do
   # What the code records say an import can resolve to, indexed once: the scanned
   # modules, hidden ones included, and every id a call can name, an item's, a module's
   # hidden definition's or a hidden module's. And what the scanners say a remote call names.
-  defp known(code, scanners) do
+  defp known(code, scanners, routes) do
     ran = for %Scan{kind: :code, runs: runs} <- code, key <- Map.keys(runs), uniq: true, do: key
 
     %{
       remote: Calls.remote(scanners),
+      routes: routes,
       modules:
         MapSet.new(
           for(%Scan{kind: :code, role: :module, id: id} <- code, do: id) ++
@@ -189,7 +199,8 @@ defmodule Surfex.Scan.ExUnit do
             |> Calls.importing(local)
             |> Enum.flat_map(&imported(&1, fun, arity, known))
       end,
-      known.remote
+      known.remote,
+      &Surfex.SourceScan.Routes.calls(&1, &2, known.routes)
     )
   end
 
