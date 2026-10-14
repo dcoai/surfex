@@ -183,6 +183,10 @@ defmodule Surfex.Status do
             deviations: :allow | :fail
           },
           unimplemented: [Scan.t()],
+          verdicts: %{String.t() => Surfex.Status.Verdict.verdict()},
+          contained: [%{unit: String.t(), inside: [String.t()], location: map}],
+          on_container: [%{test: String.t(), unit: String.t(), inside: [String.t()]}],
+          containers: [%{unit: String.t(), claims: non_neg_integer, verified: non_neg_integer}],
           planned: :allow | :fail,
           scans: %{{atom, String.t()} => Scan.t()}
         }
@@ -283,8 +287,18 @@ defmodule Surfex.Status do
             do: {test.id, test.hash}
       )
 
+    # What verified means for each spec unit (§13.4), from one index of the units' `within`
+    # chains: no credit moves up, none into a unit's own text.
+    verdict = Surfex.Status.Verdict.index(scans, relations, &label/1)
+
     status = %{
       relations: relations,
+      verdicts: verdict.verdicts,
+      # Information, not a failure (§13.4): a claim green only through a claim inside it,
+      # and a verifies aimed at a unit with no text of its own.
+      contained: verdict.contained,
+      on_container: verdict.on_container,
+      containers: verdict.containers,
       new:
         scans
         |> Enum.reject(&MapSet.member?(related, {&1.kind, &1.id}))
@@ -448,6 +462,16 @@ defmodule Surfex.Status do
     |> Enum.group_by(& &1.type)
     |> Map.new(fn {type, rs} -> {type, Enum.frequencies_by(rs, & &1.state)} end)
   end
+
+  @doc """
+  The verdict of the spec unit `unit` (§13.4): `:verified` (a claim with a current
+  `verifies` of its own), `:contained` (a claim with none of its own, where a claim inside
+  it is verified: its own text isn't), `:unverified` (no `verifies`, own or inside) or
+  `:through_claims` (a container, a unit with no text of its own, whose claims answer for
+  themselves). `nil` for an id no spec unit has.
+  """
+  @spec verdict(t, String.t()) :: Surfex.Status.Verdict.verdict() | nil
+  def verdict(status, unit), do: Map.get(status.verdicts, unit)
 
   @doc """
   How many spec units were scanned, by role: sections, marked blocks, test hints, marked

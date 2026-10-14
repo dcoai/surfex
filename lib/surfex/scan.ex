@@ -25,6 +25,9 @@ defmodule Surfex.Scan do
     * `within` — what it sits in: the section or block of a block or hint, the parent of a
       code item (its module, for a function). `nil` when nothing encloses it. It is a
       fact about the source, not a relation.
+    * `under` — for a section, the section whose heading it sits under: the nearest
+      heading above it at a higher level (§13.4). `nil` for a top-level section and for
+      every other record.
 
   A test record (`Surfex.Scan.ExUnit`) can also **declare** what it relates to, in its
   own source: `declares` is a list of `{type, id}`, such as `{:verifies, "cart-add"}`
@@ -60,6 +63,7 @@ defmodule Surfex.Scan do
     :location,
     :role,
     :within,
+    :under,
     declares: [],
     unselectable: [],
     deviation: nil,
@@ -82,6 +86,8 @@ defmodule Surfex.Scan do
           location: location,
           role: role,
           within: String.t() | nil,
+          # A section's enclosing section, by heading level (§13.4).
+          under: String.t() | nil,
           declares: [{atom, String.t()}],
           # Declared ids the test's runner can't select it by (§11).
           unselectable: [String.t()],

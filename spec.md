@@ -2201,6 +2201,87 @@ the status reads as text for people, JSON for tools and a golden for review, the
 with no hashes or times
 ```
 
+### 13.4 What verified means
+<!-- surfex: verified-means -->
+
+Whether a unit's text is verified is a question about the spec, and only evidence aimed
+at that text answers it. A claim inside a section says nothing about the section's other
+text, and a section's own `verifies` says nothing about the claims inside it.
+
+**Own text, claims and containers.** A unit's **own text** is what its version covers
+(§11): its body without the finer units inside it (blocks, hints, rules, rows, contracts)
+and without markers, so empty exactly when `Surfex.Scan.Markdown.empty?/1` says so.
+
+- A **claim** is a unit with own text: a section or marked block whose own text isn't
+  empty, and every test hint, rule, row and contract.
+- A **container** is a unit with none: a heading over subsections, a section whose whole
+  body is named claims (a marked list, a marked table, hints), or a marked table, whose
+  rows are its claims (its version is its header, which is structure). A container
+  states nothing itself.
+
+A unit is **inside** what it sits in (`within`, §11) and, for a section, the section
+whose heading it sits under: the nearest heading above it at a higher level, a fact of
+the scan (`under`, `Surfex.Scan`, recorded by `Surfex.Scan.Markdown.sections/3`), at any
+depth. Fully decomposing a section's prose into named claims makes it a container: the
+claims then answer for the section's text, each for its own.
+
+```test:container-units
+naming a section's last prose paragraph as a rule turns the section from a claim into a
+container: the section's version and the rule's change, and no other unit's
+```
+
+**Verdicts.** `Surfex.Status.derive/4` gives every spec unit one **verdict**
+(`verdicts`, read one at a time with `Surfex.Status.verdict/2`), from the current
+`verifies` relations of tests and checks (§11.4):
+
+| Verdict | When | What it needs |
+|---|---|---|
+| `:verified` | a claim with a current `verifies` of its own | nothing |
+| `:contained` | a claim with no `verifies` of its own, where a claim inside it is `:verified` | its own evidence: its text is not verified |
+| `:unverified` | a claim with no `verifies`, own or inside | its own evidence |
+| `:through_claims` | a container, reported with how many of the claims inside it are verified | nothing of its own: its claims answer for themselves |
+
+Two more verdicts, `:excused` and `:deferred`, are reserved for classes of spec text, a
+section whose own text asserts nothing. A classed section with claims inside reads as a
+container.
+
+- **No credit moves upward.** A unit's own `verifies` says nothing about the claims
+  inside it, so each claim answers for itself.
+- **No credit moves into own text.** A claim inside a unit says nothing about the unit's
+  other text. `:contained` names that state, so a unit green only through containment is
+  a fact the status states, not something a reader infers.
+
+The verdicts come from one index of the units' `within` chains, built once per derive
+(§13), not a walk per unit.
+
+```test:containment-verdicts
+a section verified by its own tag is verified; one with prose and a verified hint inside
+but no tag of its own is contained, naming the hint; one with prose and nothing is
+unverified; a heading over two subsections, one verified, is a container with 1 of 2
+claims verified; a section whose body is only a marked rules list is a container; a
+marked table whose rows a check verifies is a container, through its rows
+```
+
+**On a container.** A `verifies` whose spec end is a container counts for nothing: the
+container has no text to verify, and its claims aren't verified by it. Each is listed
+**on a container** (`on_container`), with the claims inside it, so the tag can move to
+what it checks. The relation stays valid: moving the tag is the project's call, as with
+an inert tag (§11.5).
+
+```test:verifies-on-container
+a test tagging a heading-only section is listed on a container with the claims inside
+it; it doesn't fail the status, and it verifies none of those claims
+```
+
+**Reports.** None of this fails a status on its own. `Surfex.Status.Report.text/1`
+counts the claims by verdict and the containers in a header line (`claims: N · verified
+· contained · unverified · containers`) and lists each contained claim (with its location
+and the verified claims inside it) and each `verifies` on a container.
+`Surfex.Status.Report.json/1` gives `verdicts` (each unit's), `contained`, `on_container`
+and `containers` (each container's claims and how many are verified). The status golden
+(`Surfex.Status.Report.golden/2`) counts claims by verdict among its stats and holds a
+`contained` table and an `on container` table.
+
 ## 14. Recording
 <!-- surfex: recording -->
 
