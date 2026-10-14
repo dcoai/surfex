@@ -1554,6 +1554,33 @@ declaration's version with its inputs' versions, and fails when one failed; an u
 is an error; surfex.test --checks runs the checks verifying a unit, and --list names them
 ```
 
+### 11.5 Where a declaration counts
+<!-- surfex: declaration-place -->
+
+A `verifies` declaration counts only from the test or property block it applies to (§11),
+or from a declared check (§11.4). Nothing else asserts anything: a tag on a module with no
+test, or in a helper under `test/support/`, would credit a requirement for where a file
+sits. The test scanner gives a declaration only to the test records it applies to, so such
+a tag verifies nothing. It is still reported, so a misplaced tag is visible rather than
+silently ignored. `Surfex.Scan.ExUnit.inert/2` finds them:
+- in the files `tests:` names, a `@tag` setting `verifies` that no test follows in its
+  block (the module's, a describe's or a comprehension's), and a `@describetag` or
+  `@moduletag` setting it over a describe or module that defines no test;
+- every `verifies` tag, at any level, in a file under `test/support/`, which is compiled
+  as support code and never run as a test, unless `tests:` scans that file.
+
+Each is its file and line, the ids it names, and why. `Surfex.Status.Config.load/3` passes
+them to `Surfex.Status.derive/4` as `inert:`, and status lists them as **inert** in its
+text, its JSON (`inert`) and `RELATIONS.md` (by file, where there are any). It is
+information, never a failure: a tag that verifies nothing fails nothing, and the
+requirement it names is judged by the tests that do verify it.
+
+```test:inert-tags
+a verifies tag no test follows, a describetag or moduletag over no test, and any verifies
+tag under test/support is inert, listed with its file, line, ids and reason; a tag a test
+takes, a comprehension's included, is not; status lists them and doesn't fail on them
+```
+
 ## 12. The relation log
 <!-- surfex: relation-log -->
 
@@ -2737,6 +2764,20 @@ it; one that never failed, or failed and passed against the same inputs, confirm
 a claim a check's evidence confirmed is borne out by a run where the check passed against
 its inputs, and is unproven as not run without one, as failed when it failed, and as other
 code against other inputs; merged evidence from a checks job bears it out
+```
+
+### 17.2 Evidence comes from an asserting block
+<!-- surfex: asserting-evidence -->
+
+Evidence is a run of something that asserts: a test or property block, which the formatter
+matches by its lines (§17), or a declared check (§17.1). A tag outside such a block makes
+no test record (§11.5), so no run carries it. The formatter records nothing for a helper
+under `test/support/` or a module with no test, and nothing it records can credit the
+requirement such a tag names.
+
+```test:inert-no-evidence
+a module with a verifies tag and no test, and a helper under test/support, give no test
+record, so no run of them is evidence for the unit the tag names
 ```
 
 ## 18. Validation by process

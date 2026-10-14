@@ -97,6 +97,124 @@ defmodule Surfex.Scan.ExUnit do
     |> number_duplicates()
   end
 
+  # Where support code lives: compiled for the tests, never run as one (§11.5).
+  @support ["test/support/**/*.ex", "test/support/**/*.exs"]
+
+  @typedoc "A `verifies` tag that verifies nothing, and why (§11.5)."
+  @type inert :: %{
+          file: String.t(),
+          line: non_neg_integer,
+          ids: [String.t()],
+          reason: :no_test | :support
+        }
+
+  @doc """
+  The `verifies` tags that verify nothing (§11.5): a declaration counts only from a test or
+  property block it applies to. In the files `globs` match under `root`, that is a `@tag`
+  no test follows in its block, and a `@describetag` or `@moduletag` over a describe or
+  module with no test (`:no_test`). Every `verifies` tag in a file under `test/support`,
+  which is compiled as support code and never run as a test, is one too (`:support`),
+  unless `globs` scan that file as tests. In file and line order.
+  """
+  @spec inert(String.t(), [String.t()]) :: [inert]
+  def inert(root, globs) do
+    root = Path.expand(root)
+    tests = files(root, globs)
+
+    found =
+      Enum.flat_map(tests, fn path ->
+        file = Path.relative_to(path, root)
+        path |> quoted(file) |> SourceScan.defmodules() |> Enum.flat_map(&module_inert(&1, file))
+      end) ++
+        Enum.flat_map(files(root, @support) -- tests, fn path ->
+          file = Path.relative_to(path, root)
+          support_inert(quoted(path, file), file)
+        end)
+
+    Enum.sort_by(found, &{&1.file, &1.line})
+  end
+
+  defp files(root, globs),
+    do:
+      globs
+      |> Enum.flat_map(&Path.wildcard(Path.join(root, &1)))
+      |> Enum.uniq()
+      |> Enum.sort()
+
+  defp quoted(path, file),
+    do: path |> File.read!() |> Code.string_to_quoted!(file: file, token_metadata: true)
+
+  # A module's inert tags: its own tags over no test, and those in its blocks.
+  defp module_inert({:defmodule, _, [_aliases, [do: body]]}, file) do
+    {inert, pending, tested?} = block_inert(exprs(body), file, [])
+    module = if tested?, do: [], else: level_tags(exprs(body), :moduletag, file)
+    module ++ inert ++ pending
+  end
+
+  defp module_inert(_mod, _file), do: []
+
+  # A block's inert tags, the `@tag`s still waiting for a test at its end, and whether it
+  # defines any test. As `walk/3` reads them: a `@tag` applies to the next test, a
+  # comprehension's tests take the tags before it, and a describe starts afresh.
+  defp block_inert(exprs, file, pending) do
+    Enum.reduce(exprs, {[], pending, false}, fn expr, {inert, pending, tested?} ->
+      case expr do
+        {:@, _, [{:tag, _, [value]}]} ->
+          {inert, pending ++ verifies_tag(value, expr, file, :no_test), tested?}
+
+        {:describe, _, [_name, [do: block]]} ->
+          inner = exprs(block)
+          {more, left, inner_tested?} = block_inert(inner, file, [])
+          own = if inner_tested?, do: [], else: level_tags(inner, :describetag, file)
+          {inert ++ pending ++ own ++ more ++ left, [], tested? or inner_tested?}
+
+        {definer, _, [_name | _]} when definer in @definers ->
+          {inert, [], true}
+
+        {:for, _, args} when is_list(args) ->
+          {_generators, [[do: block]]} = Enum.split(args, -1)
+          {more, left, inner_tested?} = block_inert(exprs(block), file, pending)
+          {inert ++ more, left, tested? or inner_tested?}
+
+        _ ->
+          {inert, pending, tested?}
+      end
+    end)
+  end
+
+  defp level_tags(exprs, attribute, file) do
+    for {:@, _, [{^attribute, _, [value]}]} = expr <- exprs,
+        tag <- verifies_tag(value, expr, file, :no_test),
+        do: tag
+  end
+
+  # Every verifies tag in support code, at any level.
+  defp support_inert(ast, file) do
+    {_, found} =
+      Macro.prewalk(ast, [], fn
+        {:@, _, [{attribute, _, [value]}]} = expr, acc
+        when attribute in [:tag, :describetag, :moduletag] ->
+          {expr, acc ++ verifies_tag(value, expr, file, :support)}
+
+        node, acc ->
+          {node, acc}
+      end)
+
+    found
+  end
+
+  # A tag setting `verifies` to some id, as one inert entry; none otherwise.
+  defp verifies_tag(value, expr, file, reason) do
+    case read_tags(value, expr, file) do
+      %{verifies: ids} when ids != [] ->
+        {line, _} = SourceScan.line_range(expr) || {0, 0}
+        [%{file: file, line: line, ids: ids |> List.wrap() |> Enum.uniq(), reason: reason}]
+
+      _ ->
+        []
+    end
+  end
+
   # What the code records say an import can resolve to, indexed once: the scanned
   # modules, hidden ones included, and every id a call can name, an item's, a module's
   # hidden definition's or a hidden module's. And what the scanners say a remote call names.

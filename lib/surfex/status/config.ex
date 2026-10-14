@@ -476,15 +476,23 @@ defmodule Surfex.Status.Config do
 
   @doc """
   Everything `Surfex.Status.derive/4` needs, scanning the code once: the scans, and the
-  options (`options!/1`'s, plus the spec's broken citations, `broken_citations/3`).
+  options (`options!/1`'s, plus the spec's broken citations, `broken_citations/3`, and the
+  `verifies` tags that verify nothing, `Surfex.Scan.ExUnit.inert/2`).
   `namespace` is the Elixir scanner's root module when the config doesn't name one.
   """
   @spec load(keyword, String.t(), String.t() | nil) :: {[Scan.t()], keyword}
   def load(config, root, namespace) do
     items = items(config, root)
 
+    inert =
+      case Keyword.get(config, :tests) do
+        nil -> []
+        globs -> Scan.ExUnit.inert(root, globs)
+      end
+
     {scans(config, root, items),
-     options!(config) ++ [citations: broken_citations(config, items, root, namespace)]}
+     options!(config) ++
+       [citations: broken_citations(config, items, root, namespace), inert: inert]}
   end
 
   @doc """
