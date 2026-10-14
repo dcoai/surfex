@@ -248,6 +248,18 @@ dangles the relations that depend on it:
 - A documented callback is an item with its own version, so it isn't folded into anything;
   its own relations dangle when it changes.
 
+**A hidden module's code is versioned in what runs it, wherever that is.** A module under
+`@moduledoc false` has no items (§5.2), so none of its definitions, shown or hidden, has a
+version of its own. Each item's version also covers the hidden modules' code it runs: a
+function's, the code it calls, or that the hidden definitions it covers call; a module's,
+the code its hidden definitions call. It follows that code in any module and any file,
+transitively, through the private definitions it reaches and the attributes they read.
+It stops at code an item versions: a public definition has its own version, and a shown
+module's hidden definition is in its module's. So changing a helper module a Mix task's
+`run/1` hands its work to dangles the task's relations, and changing the public function
+the helper calls dangles only that function's. Code nothing public runs is in no version.
+An item running no hidden module's code keeps the version above.
+
 `Surfex.SourceScan.module_hash/1` and `Surfex.SourceScan.defs/1` are unchanged by this:
 they are library functions a project's own goldens use, and the scanner composes the item
 versions from them.
@@ -257,6 +269,13 @@ changing a hidden callback, or a private helper it reaches, changes its module's
 and that of each public function that dispatches through the module's behaviour or calls
 it, and no other function's; a @doc false definition is part of its module's version; a
 module with no hidden definition keeps its surface version
+```
+
+```test hidden-module-versions
+changing a hidden module's function, a private helper it reaches, or a hidden module it
+calls changes the version of each public function and module running it, in any file,
+and no other; changing a public function it calls changes that function's alone; a
+hidden module has no items, and a module nested in it is scanned
 ```
 
 ## 4. Items {#items}
@@ -278,6 +297,7 @@ source of a code record (§11).
 | `shape` | `true` for an item with no behaviour of its own (a type): no test run exercises it, so an `implements` relation to it is validated by judgement (§18). The scanner says so; surfex never infers it from a kind |
 | `calls` | the keys of the code it calls, as far as its source says (§5.2). A fact about the source, never part of its key or its hash. Empty when the scanner doesn't know: the item is then reached only by a test calling it (§13.1) |
 | `hidden` | code the item covers that isn't an item of its own (a module's hidden definitions, §3.3), keyed as a call names it (`Mix.Tasks.Foo.run/1`), each with its calls. Its version is in the item's; a call naming it reaches the item and goes on through its calls (§13.1). Empty for most items |
+| `runs` | the hidden modules' code the item runs (§3.3), keyed as a call names it, each with its calls. It is no item's own: its version is in each item running it, and each carries the same entry. A call naming it reaches no item and goes on through its calls (§13.1). Empty for most items |
 
 `Surfex.Item.key/1` is an item's identity: `parent.name` for a member, otherwise `name`.
 The hash is never part of the key, so an edit changes a row's version and not its
@@ -314,8 +334,11 @@ options) returns:
 | a public macro or guard | `:macro` | `MyApp.Cart.is_cart/1` | `MyApp.Cart.is_cart` |
 | a public type (`@type`, `@opaque`) | `:type` | `t:MyApp.Cart.t/0` | `MyApp.Cart.t` |
 
-- A module under `@moduledoc false` is skipped, with its functions. A module nested in it
-  is not, since Elixir documents it separately.
+- A module under `@moduledoc false` is no item, and neither are its functions. A module
+  nested in it is, since Elixir documents it separately. Its code is hidden code: each
+  item running it lists it in `runs` (§4), `Module.fun/arity` with its calls, and has it
+  in its version (§3.3). A test importing it is resolved against the definitions listed
+  so, as against a scanned module's (§11).
 - A type is keyed as ExDoc writes it, `t:` first, so a function of the same name keeps its
   own key; the alias it shares with that function cites both, as a family. A `@typep`,
   and a type under `@typedoc false`, is not public. A type is an item like any other: a
@@ -362,6 +385,11 @@ under any root is unresolved rather than suggested against the root module
 ```test elixir-scanner-items
 the Elixir scanner reports every public module, definition and type under the paths it
 is given, with nested modules named in full, and profile defaults for a namespace
+```
+
+```test hidden-module-reach
+an item running a hidden module's code lists it with its calls; a call naming it reaches
+what it calls and no record for it, through other hidden modules, and a cycle ends
 ```
 
 ```test code-calls

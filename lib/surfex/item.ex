@@ -26,7 +26,8 @@ defmodule Surfex.Item do
     aliases: [],
     shape: false,
     calls: [],
-    hidden: %{}
+    hidden: %{},
+    runs: %{}
   ]
 
   @type t :: %__MODULE__{
@@ -62,7 +63,12 @@ defmodule Surfex.Item do
           # definitions), by the key a call names it with (`Mix.Tasks.Foo.run/1`), each with
           # its calls. Its version is in this item's; a call naming it reaches this item and
           # goes on through its calls (§4, §13.1). Empty for most items.
-          hidden: %{String.t() => [String.t()]}
+          hidden: %{String.t() => [String.t()]},
+          # The code of hidden modules (`@moduledoc false`) the item runs, by the key a call
+          # names it with, each with its calls. It is no item's own: its version is in each
+          # item that runs it, and a call naming it reaches no item and goes on through its
+          # calls (§3.3, §4). Empty for most items.
+          runs: %{String.t() => [String.t()]}
         }
 
   @doc """

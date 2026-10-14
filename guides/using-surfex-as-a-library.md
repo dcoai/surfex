@@ -14,8 +14,9 @@ Both are **supported library API** (spec §23).
   - `defs/1` and `types/1`: the public definitions and types of a module, each with its
     version;
   - `module_hash/1`: a module's public surface as one version. The relation log's module
-    items also cover the module's hidden definitions (spec §3.3); this function doesn't,
-    so a surface golden changes only with the surface;
+    items also cover the module's hidden definitions, and each item the code of the
+    `@moduledoc false` modules it runs (spec §3.3); this function doesn't, so a surface
+    golden changes only with the surface;
   - `definition_hash/1`: the version of any node or snippet: a SHA-256 over its AST with
     metadata removed, so a blank line or a comment above it doesn't change it;
   - `project_root/1,2`, `line_range/1` and `hidden_module?/1`.

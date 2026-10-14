@@ -59,6 +59,7 @@ defmodule Surfex.Scan do
     skip: nil,
     calls: [],
     hidden: %{},
+    runs: %{},
     shape: false,
     named: false
   ]
@@ -82,6 +83,8 @@ defmodule Surfex.Scan do
           calls: [String.t()],
           # A code record's hidden code, by the key a call names it with (`Surfex.Item`).
           hidden: %{String.t() => [String.t()]},
+          # The hidden modules' code a code record runs, by key, with its calls (`Surfex.Item`).
+          runs: %{String.t() => [String.t()]},
           # A code record of a shape (`Surfex.Item` `:shape`): judged, never exercised.
           shape: boolean,
           # A spec section whose id the author wrote (an anchor, a heading comment or the
@@ -126,17 +129,27 @@ defmodule Surfex.Scan do
   What each test reaches (§13.1): the scanned code its `calls` name and, transitively, the
   scanned code that code calls, sorted by id. A call naming code a record covers without
   it being a record (a module's hidden definition, `Surfex.Item` `:hidden`) reaches that
-  record and goes on through the hidden code's calls. A call to code that isn't scanned (a
-  dependency, or code not written yet) reaches nothing. Pure: a function of the scans.
+  record and goes on through the hidden code's calls. A call naming a hidden module's code
+  (`Surfex.Item` `:runs`) reaches no record and goes on through its calls. A call to code
+  that isn't scanned (a dependency, or code not written yet) reaches nothing. Pure: a
+  function of the scans.
   """
   @spec reach([t]) :: %{String.t() => [String.t()]}
   def reach(scans) do
     code = for %__MODULE__{kind: :code, id: id, calls: calls} <- scans, into: %{}, do: {id, calls}
 
+    # A hidden module's code is on every record running it, each time the same, and is
+    # owned by none of them.
+    ran =
+      for %__MODULE__{kind: :code, runs: runs} <- scans,
+          {key, calls} <- runs,
+          into: %{},
+          do: {key, {nil, calls}}
+
     hidden =
       for %__MODULE__{kind: :code, id: id, hidden: hidden} <- scans,
           {key, calls} <- hidden,
-          into: %{},
+          into: ran,
           do: {key, {id, calls}}
 
     for %__MODULE__{kind: :test, id: id, calls: calls} <- scans, into: %{} do
@@ -158,7 +171,7 @@ defmodule Surfex.Scan do
       {:error, {:ok, {owner, calls}}} ->
         if id in via,
           do: closure(rest, index, {seen, via}),
-          else: closure([owner | calls] ++ rest, index, {seen, MapSet.put(via, id)})
+          else: closure(List.wrap(owner) ++ calls ++ rest, index, {seen, MapSet.put(via, id)})
 
       {:error, :error} ->
         closure(rest, index, {seen, via})
@@ -206,7 +219,8 @@ defmodule Surfex.Scan do
         within: item.parent,
         shape: item.shape,
         calls: item.calls,
-        hidden: item.hidden
+        hidden: item.hidden,
+        runs: item.runs
       }
     end)
     |> Enum.sort_by(& &1.id)
