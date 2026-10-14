@@ -86,4 +86,76 @@ defmodule Surfex.SelectTest do
 
     assert Select.args(twins) == ["test/t_test.exs:3"]
   end
+
+  # #224: the deviation tests, whatever they declare, in file and line order.
+  @tag verifies: ["test-deviations", "test-selection"]
+  test "deviations/1: every test declaring a deviation; none is an error" do
+    deviant = fn id, file, line, ref ->
+      %{test_scan(id, ["cart-add"], file, line) | deviation: ref}
+    end
+
+    tagged = [
+      deviant.("T: late", "test/u_test.exs", 3, "#2"),
+      deviant.("T: early", "test/t_test.exs", 30, "#1")
+      | world()
+    ]
+
+    assert {:ok, tests} = Select.deviations(tagged)
+    assert Enum.map(tests, & &1.id) == ["T: early", "T: late"]
+    assert Select.deviations(world()) == {:error, "no test declares a deviation"}
+  end
+
+  # #224: ExUnit includes a skipped test only by its reason, and a FILE:LINE location
+  # would replace every include, so each test goes by --only location: and each reason
+  # by --include skip:, and a reason another test in their files shares is refused.
+  @tag verifies: ["test-deviations", "test-selection"]
+  test "deviation_args/1: files, a location each, a skip reason each; a shared reason refused" do
+    deviant = fn id, line, skip ->
+      %{test_scan(id, ["cart-add"], "test/t_test.exs", line) | deviation: "#1", skip: skip}
+    end
+
+    one = deviant.("T: one deviates", 3, "known deviation (#1)")
+    two = deviant.("T: two deviate", 9, "true")
+    unskipped = deviant.("T: not skipped", 15, nil)
+
+    assert Select.deviation_args([one, two, unskipped]) == [
+             "test/t_test.exs",
+             "--only",
+             "location:test/t_test.exs:3",
+             "--only",
+             "location:test/t_test.exs:9",
+             "--only",
+             "location:test/t_test.exs:15",
+             "--include",
+             "skip:known deviation (#1)",
+             "--include",
+             "skip:true"
+           ]
+
+    # The filters agree with ExUnit's own: the deviation runs; a test at another line, or
+    # skipped for another reason, doesn't.
+    include = [{:skip, "known deviation (#1)"}, {:location, {"test/t_test.exs", 3}}]
+    tags = &Map.merge(%{file: "/p/test/t_test.exs", line: &1, describe_line: nil, test: true}, &2)
+    suite = [%ExUnit.Test{name: :one, tags: tags.(3, %{})}]
+    filter = &ExUnit.Filters.eval(include, [:test], &1, suite)
+
+    assert filter.(tags.(3, %{skip: "known deviation (#1)"})) == :ok
+    assert {:skipped, "parked"} = filter.(tags.(3, %{skip: "parked"}))
+    assert {:excluded, _} = filter.(tags.(30, %{}))
+
+    # Another test in their files skipped for a deviation's reason would run too: refused.
+    parked = %{test_scan("T: parked", [], "test/t_test.exs", 30) | skip: "known deviation (#1)"}
+    assert {:error, message} = Select.deviations([one, parked | world()])
+
+    assert message =~
+             ~s[T: parked is skipped for the reason "known deviation (#1)" as T: one deviates is]
+
+    # The same reason in a file the run doesn't load is no conflict.
+    elsewhere = %{parked | location: %{file: "test/u_test.exs", lines: {1, 2}}}
+    assert {:ok, [_]} = Select.deviations([one, elsewhere | world()])
+
+    # A reason computed at compile time can't be included by.
+    assert {:error, message} = Select.deviations([%{one | skip: :unreadable} | world()])
+    assert message =~ "T: one deviates's skip: isn't a literal"
+  end
 end

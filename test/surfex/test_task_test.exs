@@ -94,4 +94,54 @@ defmodule Surfex.TestTaskTest do
     assert_raise Mix.Error, ~r/name a spec unit/, fn -> task(root, []) end
     refute File.exists?(Path.join(root, "_build"))
   end
+
+  # #224: a deviation test is skipped beside its tag; --deviations runs it anyway, so its
+  # evidence can say the deviation is fixed.
+  @tag verifies: ["test-deviations", "test-selection"]
+  test "--deviations runs exactly the deviation tests, skips included", %{tmp_dir: root} do
+    assert_raise Mix.Error, "no test declares a deviation", fn ->
+      task(root, ["--deviations"])
+    end
+
+    # Beside the deviation, a test skipped for another reason: it must stay skipped.
+    deviant_source = fn other_reason ->
+      """
+      defmodule DeviantTest do
+        use ExUnit.Case
+
+        @tag verifies: "c", deviation: "#9", skip: "known deviation (#9): free over 50"
+        test "deviant", do: assert(Selected.one() == 1)
+
+        @tag skip: "#{other_reason}"
+        test "parked", do: flunk("a test skipped for another reason ran")
+      end
+      """
+    end
+
+    deviant_file = Path.join(root, "test/deviant_test.exs")
+    File.write!(deviant_file, deviant_source.("parked for now"))
+
+    assert_raise Mix.Error, ~r/name no unit/, fn -> task(root, ["--deviations", "a"]) end
+
+    task(root, ["--deviations", "--list"])
+    assert infos() == ["DeviantTest: deviant  test/deviant_test.exs:5"]
+    refute File.exists?(Path.join(root, "_build"))
+
+    run = capture_io(fn -> task(root, ["--deviations", "--", "--seed", "0"]) end)
+    assert run =~ "Result: 1 passed, 1 excluded"
+    refute run =~ "another reason ran"
+
+    assert infos() == [
+             "running 1 test declaring a deviation: " <>
+               "mix test test/deviant_test.exs --only location:test/deviant_test.exs:5 " <>
+               "--include skip:known deviation (#9): free over 50 --seed 0"
+           ]
+
+    # Skipped for the deviation's own reason, the other test would run too: refused.
+    File.write!(deviant_file, deviant_source.("known deviation (#9): free over 50"))
+
+    assert_raise Mix.Error, ~r/DeviantTest: parked is skipped for the reason/, fn ->
+      task(root, ["--deviations"])
+    end
+  end
 end

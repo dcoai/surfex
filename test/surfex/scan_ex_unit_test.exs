@@ -276,6 +276,44 @@ defmodule Surfex.ScanExUnitTest do
     end
   end
 
+  # #224: a skipped deviation test is included in a run by its skip reason, so the record
+  # carries it as ExUnit's filter matches it.
+  @tag verifies: ["test-deviations", "scan-records-pure"]
+  test "skip: is read as --include skip:REASON matches it, at each level" do
+    source = ~S'''
+    defmodule T do
+      use ExUnit.Case
+      @moduletag skip: "the module's"
+
+      test "from the module", do: :ok
+
+      @tag :skip
+      test "a bare atom", do: :ok
+
+      @tag skip: false
+      test "not skipped", do: :ok
+
+      @tag skip: "computed #{1 + 1}"
+      test "computed", do: :ok
+
+      describe "d" do
+        @describetag skip: "the describe's"
+        test "from the describe", do: :ok
+      end
+    end
+    '''
+
+    assert Map.new(tests(source), &{&1.id, &1.skip}) == %{
+             "T: from the module" => "the module's",
+             "T: a bare atom" => "true",
+             "T: not skipped" => nil,
+             "T: computed" => :unreadable,
+             "T: d: from the describe" => "the describe's"
+           }
+
+    assert [%Scan{skip: nil}] = tests("defmodule T do\n  test \"a\", do: :ok\nend\n")
+  end
+
   @tag :tmp_dir
   test "records/2 reads globs under a root", %{tmp_dir: root} do
     File.mkdir_p!(Path.join(root, "test"))

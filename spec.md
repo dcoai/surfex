@@ -757,6 +757,29 @@ would pass in silence. `--list` prints each selected test's id and location, and
 nothing. `Surfex.Select.tests/3` makes the selection and `Surfex.Select.args/1` the
 locations, both pure functions of the scans.
 
+`mix surfex.test --deviations` runs every test that declares a deviation (below,
+`Surfex.Select.deviations/1`, a pure function of the scans) in place of a unit's tests,
+skips included. A deviation test is skipped beside its tag, and the run must include it
+for its evidence to say whether it passes, which is how a stale deviation is found (§17).
+A project checks its deviations on demand, or in a scheduled job. ExUnit includes a
+skipped test only by a filter on its skip reason, and a location given as `FILE:LINE`
+replaces every include, so the run names each test's files, `--only location:FILE:LINE`
+for each test and `--include skip:REASON` for each reason among them
+(`Surfex.Select.deviation_args/1`). The test record's `skip` is that reason, read like
+`verifies`: a literal string, `"true"` for `@tag :skip`, or unreadable when computed. A
+reason filter would also run any other test skipped for the same reason, so another test
+in their files skipped for a deviation test's reason is an error naming both, as is a
+deviation test whose reason isn't a literal: either way the run wouldn't be exactly the
+deviation tests. It takes no unit (naming one is an error), and no test declaring a
+deviation is an error before anything runs. `--list` and `--` work as for a unit.
+
+```test test-deviations
+mix surfex.test --deviations runs exactly the tests declaring a deviation, with their skips
+included, so a skipped one runs and a test skipped for another reason doesn't; --list runs
+nothing; a unit with it, no deviation test, another test skipped for a deviation test's
+reason, or a reason that isn't a literal, is an error before anything runs
+```
+
 ```test test-selection
 mix surfex.test selects the tests declaring a unit, a list's members included, and with
 --within the tests of the units inside it; it runs them by location, refuses an unknown,
@@ -1933,7 +1956,8 @@ relations aren't failed. The deviating unit is listed with its result instead
 (§13.1). Only the tag does this: any other test's failure fails its relations as above.
 When it runs and passes, at its version, the deviation is **stale** and fails the check:
 the fix landed, and the tag must come off. Evidence of that needs a run that includes the
-test (`mix test --include skip`, or the skip removed): a skipped test is recorded as
+test (`mix surfex.test --deviations` runs exactly the deviation tests with their skips
+included; or `mix test --include skip`, or the skip removed): a skipped test is recorded as
 skipped, never as passed. With several jobs' evidence, a pass in any job makes it stale.
 
 ```test deviation-runs
