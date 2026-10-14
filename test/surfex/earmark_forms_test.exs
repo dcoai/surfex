@@ -102,6 +102,40 @@ defmodule Surfex.EarmarkFormsTest do
     assert earmark_headings(ExDoc.Markdown.Earmark.to_ast(text, [])) == ["Feeds"]
   end
 
+  # The class and deferral markers (§11.7), alone after a heading or after its id comment.
+  @class_forms [
+    "# Arch\n<!-- surfex: class informative: orientation -->\n\nThe map.\n\n# Next\n\nn\n",
+    "# Arch\n<!-- surfex: arch -->\n<!-- surfex: class informative -->\n\nThe map.\n\n# Next\n",
+    "# Views\n<!-- surfex: deferred #412: past v1 -->\n\nViews.\n\n# Next\n",
+    "# Views\n<!-- surfex: views -->\n<!-- surfex: deferred group/project#7 -->\nViews.\n# Next\n"
+  ]
+
+  @tag verifies: "class-markers-render"
+  test "class and deferral markers render as comments with every heading kept" do
+    classes =
+      Surfex.Status.Config.spec_classes!([spec_classes: [{"informative", "asserts nothing"}]], [
+        "spec.md"
+      ])
+
+    for text <- @class_forms do
+      units = Markdown.sections(text, "spec.md", spec_classes: classes)
+      assert Enum.any?(units, &(Map.get(&1, :class) || Map.get(&1, :deferred)))
+
+      ast = ExDoc.Markdown.Earmark.to_ast(text, [])
+      shown = ast |> earmark_shown() |> Enum.join(" ")
+      refute shown =~ "surfex"
+      refute shown =~ "<!--"
+
+      assert earmark_headings(ast) ==
+               Enum.map(Enum.filter(units, &(&1.role == :section)), &heading_of(&1, text))
+
+      assert List.last(earmark_headings(ast)) == "Next"
+    end
+  end
+
+  defp heading_of(%{location: %{lines: {first, _}}}, text),
+    do: text |> String.split("\n") |> Enum.at(first - 1) |> String.trim_leading("# ")
+
   # The text a reader sees: every string outside an HTML comment, attributes left out.
   defp earmark_shown(nodes) when is_list(nodes), do: Enum.flat_map(nodes, &earmark_shown/1)
   defp earmark_shown(text) when is_binary(text), do: [text]

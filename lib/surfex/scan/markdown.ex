@@ -70,6 +70,12 @@ defmodule Surfex.Scan.Markdown do
   @own_marker ~r/^\s*<!--\s*\/?surfex\b.*-->\s*$/
   @list_item ~r/^( *)([-*+]|\d{1,9}[.)])(?:([ \t]+)(.*))?$/
   @lead_comment ~r/^<!--\s*surfex:\s*(\S+)\s*-->\s*(.*)$/
+  @class_marker ~r/^ {0,3}<!--\s*surfex:\s*class\s+(\S.*?)\s*-->\s*$/
+  @deferred_marker ~r/^ {0,3}<!--\s*surfex:\s*deferred\s+(\S.*?)\s*-->\s*$/
+  @comment ~r/^ {0,3}<!--\s*(.*?)\s*-->\s*$/
+  @class_name ~r/^([A-Za-z0-9_-]+)(?:\s*:\s*(\S.*))?$/
+  @deferral ~r/^([^\s:]+)(?:\s*:\s*(\S.*))?$/
+  @issue_ref ~r/^(?:[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*)?#\d+$/
 
   @doc """
   Every unit of every markdown file of the spec under `root`, in order: the files
@@ -116,10 +122,15 @@ defmodule Surfex.Scan.Markdown do
 
     lines = text |> String.split("\n") |> Enum.with_index(1)
     subjects = Keyword.get(opts, :subjects, [])
-    {sections, units} = split(lines, file, {grammar, rule_grammar, subjects}, unclosed(lines))
+    classes = Keyword.get(opts, :spec_classes, [])
+
+    {sections, units} =
+      split(lines, file, {grammar, rule_grammar, subjects, classes}, unclosed(lines))
 
     {sections, owners} =
-      if Keyword.get(opts, :fold_paths, false) == true, do: fold(sections), else: {sections, %{}}
+      if Keyword.get(opts, :fold_paths, false) == true,
+        do: fold(sections, file),
+        else: {sections, %{}}
 
     sections =
       sections
@@ -141,7 +152,9 @@ defmodule Surfex.Scan.Markdown do
           do: %{
             record(file, s.id, s.body, {s.first, s.last}, :section, nil)
             | named: s.anchor != nil,
-              under: Map.get(s, :parent) && Map.fetch!(ids, s.parent)
+              under: Map.get(s, :parent) && Map.fetch!(ids, s.parent),
+              class: section_class(s, classes, file),
+              deferred: marked(s.deferred)
           }
 
     unit_records =
@@ -156,7 +169,8 @@ defmodule Surfex.Scan.Markdown do
 
         %{
           record(file, "#{file}##{u.id}", u.body, {u.first, u.last}, u.role, within)
-          | contract: Map.get(u, :contract)
+          | contract: Map.get(u, :contract),
+            deferred: marked(Map.get(u, :deferred))
         }
       end
 
@@ -179,12 +193,13 @@ defmodule Surfex.Scan.Markdown do
   # hints (%{role, id, first, last, body, within}). A line belongs to exactly one body:
   # the open hint's, else the open rule's, else the open block's, else the current
   # section's. Markers and a hint's fences belong to none.
-  defp split(lines, file, {grammar, rule_grammar, subjects}, unclosed) do
+  defp split(lines, file, {grammar, rule_grammar, subjects, classes}, unclosed) do
     start = %{
       file: file,
       grammar: grammar,
       rule_grammar: rule_grammar,
       subjects: subjects,
+      classes: classes,
       contract: nil,
       unclosed: unclosed,
       done: [],
@@ -205,7 +220,7 @@ defmodule Surfex.Scan.Markdown do
       Enum.reduce(lines, start, fn {line, _no} = numbered, st ->
         fence = st.fence
         st = step(numbered, st)
-        %{st | after_text: text_line?(line, fence, st.fence)}
+        %{st | after_text: text_line?(st, line, fence, st.fence)}
       end)
 
     if st.pending, do: names_nothing(st, st.pending)
@@ -249,7 +264,7 @@ defmodule Surfex.Scan.Markdown do
   # sections between), is part of that section: its heading line and body join the id'd
   # section's body, which runs to its last line. The sections left, and %{folded n =>
   # owner n} for what sat in a folded one.
-  defp fold(sections) do
+  defp fold(sections, file) do
     by_n = Map.new(sections, &{&1.n, &1})
 
     owner = fn s ->
@@ -271,6 +286,17 @@ defmodule Surfex.Scan.Markdown do
       |> Enum.filter(&Map.has_key?(owners, &1.n))
       |> Enum.group_by(&Map.fetch!(owners, &1.n))
 
+    # A class or deferral marker under a folded heading would class the unit it folds into,
+    # which its author didn't mark (§11.7).
+    for {owner, inside} <- folded,
+        s <- inside,
+        %{line: line} <- [s.class, s.deferred] do
+      raise ArgumentError,
+            "#{file}:#{line}: the marker sits under \"#{s.heading}\", which fold_paths: folds " <>
+              "into \"#{by_n[owner].heading}\": it would class that unit; give the heading an " <>
+              "id of its own or move the marker"
+    end
+
     kept =
       for s <- sections, not Map.has_key?(owners, s.n) do
         case Map.get(folded, s.n, []) do
@@ -287,7 +313,17 @@ defmodule Surfex.Scan.Markdown do
   end
 
   defp section(n, heading, anchor, path, first),
-    do: %{n: n, heading: heading, anchor: anchor, path: path, first: first, last: first, body: []}
+    do: %{
+      n: n,
+      heading: heading,
+      anchor: anchor,
+      path: path,
+      first: first,
+      last: first,
+      body: [],
+      class: nil,
+      deferred: nil
+    }
 
   # The line after an id comment of its own: the paragraph or list item it names.
   defp step({line, no}, %{pending: {_marker, id, _why} = pending} = st) when pending != nil do
@@ -332,7 +368,7 @@ defmodule Surfex.Scan.Markdown do
   end
 
   defp step({line, no}, %{rule: rule} = st) when rule != nil do
-    if st.fence == nil and rule_ends?(rule, line),
+    if st.fence == nil and rule_ends?(st, rule, line),
       do: step({line, no}, close_rule(st)),
       else: rule_line(st, line, no)
   end
@@ -340,6 +376,7 @@ defmodule Surfex.Scan.Markdown do
   defp step({line, no}, st) do
     {prose?, fence} = Fence.step(line, st.fence)
     opened? = st.fence == nil and fence != nil
+    classing = if prose?, do: class_line(st, line, no)
 
     cond do
       # A contract marker's fence: blank lines may come between, nothing else.
@@ -391,6 +428,9 @@ defmodule Surfex.Scan.Markdown do
         id = checked_id!(st, no, paragraph_lead(line), "rule")
         open_rule(st, id, %{indent: nil, content: nil, text: line}, no)
 
+      classing != nil ->
+        class_unit(%{st | cur: extend(st.cur, line, no)}, classing, no)
+
       prose? and heading(line) != nil ->
         if st.block,
           do: fail(st, no, "block #{st.block.id} (line #{st.block.first}) spans a heading")
@@ -421,7 +461,7 @@ defmodule Surfex.Scan.Markdown do
           do:
             fail(st, no, "block #{id} opens inside block #{st.block.id} (line #{st.block.first})")
 
-        block = %{id: id, first: no, body: [], within: within(st)}
+        block = %{id: id, first: no, body: [], within: within(st), deferred: nil}
         %{st | block: block, cur: extend(st.cur, line, no)}
 
       prose? and Regex.match?(@close_block, line) ->
@@ -609,6 +649,168 @@ defmodule Surfex.Scan.Markdown do
         ArgumentError,
         "heading_ids: must be :section_sign, :section_number, a regex with (?<id>…) or a list of them, got #{inspect(other)}"
       )
+
+  # ── Classes and deferrals (§11.7) ───────────────────────────────────────
+
+  # A class or deferral marker on this line: `{:class, name, note, by}` or
+  # `{:deferred, ref, reason}`, or nil. A malformed one is an error, never section text.
+  defp class_line(st, line, no) do
+    cond do
+      match = Regex.run(@class_marker, line, capture: :all_but_first) ->
+        [text] = match
+
+        case Regex.run(@class_name, text, capture: :all_but_first) do
+          [name] -> {:class, declared!(st, no, name), nil, :marker}
+          [name, note] -> {:class, declared!(st, no, name), note, :marker}
+          nil -> fail(st, no, "a class marker is <!-- surfex: class NAME[: REASON] -->")
+        end
+
+      match = Regex.run(@deferred_marker, line, capture: :all_but_first) ->
+        [text] = match
+
+        {ref, reason} =
+          case Regex.run(@deferral, text, capture: :all_but_first) do
+            [ref] -> {ref, nil}
+            [ref, reason] -> {ref, reason}
+            nil -> {text, nil}
+          end
+
+        unless Regex.match?(@issue_ref, ref),
+          do:
+            fail(
+              st,
+              no,
+              "a deferral names its issue: <!-- surfex: deferred #123[: REASON] --> or group/project#123, got #{inspect(ref)}"
+            )
+
+        {:deferred, ref, reason}
+
+      class = alias_class(st, line) ->
+        {:class, class, nil, :alias}
+
+      true ->
+        nil
+    end
+  end
+
+  defp declared!(st, no, name) do
+    Enum.find(st.classes, &(&1.name == name)) ||
+      fail(st, no, "class #{name} isn't declared in spec_classes:")
+  end
+
+  # The first class whose `marker:` reads this own-line comment.
+  defp alias_class(%{classes: []}, _line), do: nil
+
+  defp alias_class(st, line) do
+    case Regex.run(@comment, line, capture: :all_but_first) do
+      [inner] -> Enum.find(st.classes, &(&1.marker != nil and Regex.match?(&1.marker, inner)))
+      nil -> nil
+    end
+  end
+
+  # A marker classes or defers the unit it sits in: the open block (a deferral only), else
+  # the section. One class or deferral per unit.
+  defp class_unit(%{block: block} = st, {:class, _class, _note, _by}, no) when block != nil,
+    do:
+      fail(
+        st,
+        no,
+        "a class marker classes sections only: it can't sit in block #{block.id} (line #{block.first})"
+      )
+
+  defp class_unit(%{block: block} = st, {:deferred, ref, reason}, no) when block != nil do
+    if block.deferred,
+      do: fail(st, no, "block #{block.id} is already deferred (line #{block.deferred.line})")
+
+    %{st | block: %{block | deferred: %{ref: ref, reason: reason, line: no}}}
+  end
+
+  defp class_unit(%{cur: cur} = st, {:class, class, note, by}, no) do
+    marked_twice!(st, cur, no)
+    class = %{name: class.name, reason: class.reason, note: note, by: by, line: no}
+    %{st | cur: %{cur | class: class}}
+  end
+
+  defp class_unit(%{cur: cur} = st, {:deferred, ref, reason}, no) do
+    marked_twice!(st, cur, no)
+    %{st | cur: %{cur | deferred: %{ref: ref, reason: reason, line: no}}}
+  end
+
+  defp marked_twice!(st, cur, no) do
+    case cur.class || cur.deferred do
+      nil ->
+        :ok
+
+      %{line: line} ->
+        fail(
+          st,
+          no,
+          "the section is already classed or deferred by line #{line}: a unit takes one class or deferral"
+        )
+    end
+  end
+
+  # A section's class: its marker's, else the first pattern's that matches it. A deferral
+  # marker is the unit's own word too, so no pattern classes a deferred section.
+  defp section_class(%{class: nil, deferred: nil} = s, classes, file),
+    do: pattern_class(classes, file, s.heading)
+
+  defp section_class(s, _classes, _file), do: marked(s.class)
+
+  # What a record keeps of a marker: everything but its line.
+  defp marked(nil), do: nil
+  defp marked(marker), do: Map.delete(marker, :line)
+
+  # The first declared class whose pattern matches a section: `files:` its file, `headings:`
+  # its heading as written, both when both are given. A class with neither is no pattern.
+  defp pattern_class(classes, file, heading) do
+    Enum.find_value(classes, fn class ->
+      pattern? = class.files != nil or class.headings != nil
+
+      files? = class.files == nil or Enum.any?(class.files, &glob_match?(&1, file))
+
+      heading? =
+        class.headings == nil or (heading != nil and Regex.match?(class.headings, heading))
+
+      if pattern? and files? and heading?,
+        do: %{name: class.name, reason: class.reason, note: nil, by: :pattern}
+    end)
+  end
+
+  @doc false
+  # Whether a glob, as `Path.wildcard/1` reads one relative to the root, matches a relative
+  # path: `**` any directories, `*` and `?` within one name, `{a,b}` either, `[…]` a class.
+  @spec glob_match?(String.t(), String.t()) :: boolean
+  def glob_match?(glob, path), do: Regex.match?(glob_regex(glob), path)
+
+  defp glob_regex(glob) do
+    source =
+      glob
+      |> String.graphemes()
+      |> glob_source([])
+      |> IO.iodata_to_binary()
+
+    Regex.compile!("^" <> source <> "$")
+  end
+
+  defp glob_source([], acc), do: Enum.reverse(acc)
+  defp glob_source(["*", "*", "/" | rest], acc), do: glob_source(rest, ["(?:.*/)?" | acc])
+  defp glob_source(["*", "*" | rest], acc), do: glob_source(rest, [".*" | acc])
+  defp glob_source(["*" | rest], acc), do: glob_source(rest, ["[^/]*" | acc])
+  defp glob_source(["?" | rest], acc), do: glob_source(rest, ["[^/]" | acc])
+  defp glob_source(["{" | rest], acc), do: glob_source(rest, ["(?:" | acc], :alt)
+
+  defp glob_source(["[" | rest], acc) do
+    {class, ["]" | rest]} = Enum.split_while(rest, &(&1 != "]"))
+    glob_source(rest, ["[" <> Enum.join(class) <> "]" | acc])
+  end
+
+  defp glob_source([c | rest], acc), do: glob_source(rest, [Regex.escape(c) | acc])
+
+  defp glob_source(["}" | rest], acc, :alt), do: glob_source(rest, [")" | acc])
+  defp glob_source(["," | rest], acc, :alt), do: glob_source(rest, ["|" | acc], :alt)
+  defp glob_source(["*" | rest], acc, :alt), do: glob_source(rest, ["[^/]*" | acc], :alt)
+  defp glob_source([c | rest], acc, :alt), do: glob_source(rest, [Regex.escape(c) | acc], :alt)
 
   # ── Tables ──────────────────────────────────────────────────────────────
 
@@ -886,18 +1088,18 @@ defmodule Surfex.Scan.Markdown do
   # line indented to its content, and a lazy continuation of its text; a less indented
   # line after a blank one, another item at its level or above, a marker, a fence or a
   # heading ends it.
-  defp rule_ends?(%{content: nil}, line) do
-    String.trim(line) == "" or heading(line) != nil or own_marker?(line) or
+  defp rule_ends?(st, %{content: nil}, line) do
+    String.trim(line) == "" or heading(line) != nil or own_marker?(st, line) or
       Fence.info(line) != nil or list_item(line) != nil
   end
 
-  defp rule_ends?(rule, line) do
+  defp rule_ends?(st, rule, line) do
     cond do
       String.trim(line) == "" -> false
       heading(line) != nil -> true
       indent(line) >= rule.content -> false
       rule.blank -> true
-      true -> list_item(line) != nil or own_marker?(line) or Fence.info(line) != nil
+      true -> list_item(line) != nil or own_marker?(st, line) or Fence.info(line) != nil
     end
   end
 
@@ -914,6 +1116,13 @@ defmodule Surfex.Scan.Markdown do
 
       item != nil and lead(item.text) != nil ->
         fail(st, no, "rule #{rule.id} (line #{rule.first}) can't hold another rule")
+
+      st.fence == nil and class_line(st, line, no) != nil ->
+        fail(
+          st,
+          no,
+          "a class or deferral marker can't sit in rule #{rule.id} (line #{rule.first}): a rule is a claim"
+        )
 
       true ->
         blank? = String.trim(line) == ""
@@ -1021,16 +1230,19 @@ defmodule Surfex.Scan.Markdown do
 
   defp own_marker?(line), do: Regex.match?(@own_marker, line)
 
+  # A marker, or a comment a class reads as its marker (`marker:`, §11.7).
+  defp own_marker?(st, line), do: own_marker?(line) or alias_class(st, line) != nil
+
   defp indent(line) do
     [spaces] = Regex.run(~r/^[ \t]*/, line)
     spaces |> String.replace("\t", "    ") |> String.length()
   end
 
   # Whether a line continues a paragraph: prose text, not a heading, a marker or a fence.
-  defp text_line?(line, fence_before, fence_after),
+  defp text_line?(st, line, fence_before, fence_after),
     do:
       fence_before == nil and fence_after == nil and String.trim(line) != "" and
-        heading(line) == nil and not own_marker?(line)
+        heading(line) == nil and not own_marker?(st, line)
 
   # What a block or hint opened now sits in.
   defp within(%{rule: %{id: id}}), do: {:rule, id}
@@ -1044,7 +1256,8 @@ defmodule Surfex.Scan.Markdown do
       first: open.first,
       last: last,
       body: Enum.reverse(open.body),
-      within: open.within
+      within: open.within,
+      deferred: Map.get(open, :deferred)
     }
 
   # A section's last line is its last non-blank line, so trailing blank lines before the

@@ -28,6 +28,11 @@ defmodule Surfex.Scan do
     * `under` — for a section, the section whose heading it sits under: the nearest
       heading above it at a higher level (§13.4). `nil` for a top-level section and for
       every other record.
+    * `class` — for a section its spec class gives (§11.7), `%{name, reason, note, by}`:
+      the class's name and reason, the marker's own reason (`note`, or `nil`), and `by`
+      `:marker`, `:pattern` or `:alias`. `nil` for an unclassed unit.
+    * `deferred` — for a section or block a deferral marker defers (§11.7),
+      `%{ref, reason}`: the issue reference and the marker's reason, or `nil`.
 
   A test record (`Surfex.Scan.ExUnit`) can also **declare** what it relates to, in its
   own source: `declares` is a list of `{type, id}`, such as `{:verifies, "cart-add"}`
@@ -74,7 +79,9 @@ defmodule Surfex.Scan do
     shape: false,
     named: false,
     contract: nil,
-    check: nil
+    check: nil,
+    class: nil,
+    deferred: nil
   ]
 
   @type location :: %{file: String.t(), lines: {pos_integer, pos_integer} | nil}
@@ -110,7 +117,17 @@ defmodule Surfex.Scan do
           # A check's command, its declaration's version and its inputs' versions (§11.4).
           check:
             %{run: String.t(), declaration: String.t(), inputs: %{String.t() => String.t()}}
-            | nil
+            | nil,
+          # A spec unit's class and a unit's deferral (§11.7).
+          class:
+            %{
+              name: String.t(),
+              reason: String.t(),
+              note: String.t() | nil,
+              by: :marker | :pattern | :alias
+            }
+            | nil,
+          deferred: %{ref: String.t(), reason: String.t() | nil} | nil
         }
 
   @doc """
