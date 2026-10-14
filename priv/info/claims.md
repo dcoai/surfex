@@ -59,6 +59,11 @@ unit_refs: [~r/^§(?<chapter>\d\d)\.(?<id>[\w.]+)$/]
 Then `@tag verifies: "§03.4"`, `mix surfex.test §03.4` and `mix surfex.validate TEST §03.4`
 all name `spec/03-wire-format.md#4`.
 
+**Sub-headings as structure**: with `fold_paths: true`, a heading with no id inside one
+that has an id (`### run/2` under `## §Engine.13`) is part of that unit: its text counts in
+the id'd section's version, and its hints sit in that section. Give a sub-heading an id
+when it should be a unit of its own. Off by default until 0.8.
+
 **Not a claim**: bold. A bold-lead sentence without an id comment is its section's text.
 
 A claim's version is its text and nested lines, without the list marker or id comment, so

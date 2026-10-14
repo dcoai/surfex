@@ -11,6 +11,8 @@ defmodule Surfex.Status.Config do
     * `:rule_ids` — the ids written at the start of a marked list's items
       (`<!-- surfex: rules NAME -->`), in the forms `:heading_ids` takes: `:section_sign`
       reads `1. §Tenancy.1.4 …`, a regex `~r/^(?<id>P\d+)/` reads `P3` (§11.1)
+    * `:fold_paths` — `true` to make a heading with no id, inside one that has an id, part of
+      that unit rather than a unit of its own (§11.1); `false` by default until 0.8
     * `:unit_refs` — the project's own forms of citing a spec unit, as regexes with named
       captures `id` and `file` or `chapter` (a spec file's leading number):
       `~r/^§(?<chapter>\d\d)\.(?<id>[\w.]+)$/` reads `§03.4` (§11.1)
@@ -36,6 +38,7 @@ defmodule Surfex.Status.Config do
     :heading_ids,
     :rule_ids,
     :unit_refs,
+    :fold_paths,
     :scanner,
     :scanner_opts,
     :namespace,
@@ -364,7 +367,8 @@ defmodule Surfex.Status.Config do
       Scan.Markdown.records(root, sources, Keyword.get(config, :exclude, []),
         heading_ids: Keyword.get(config, :heading_ids),
         rule_ids: Keyword.get(config, :rule_ids),
-        subjects: Keyword.get(config, :subjects, [])
+        subjects: Keyword.get(config, :subjects, []),
+        fold_paths: fold_paths!(config)
       )
 
     if spec == [],
@@ -374,6 +378,14 @@ defmodule Surfex.Status.Config do
 
     spec ++
       code ++ declared(tests(config, root, code), spec, unit_refs!(config)) ++ classes(config)
+  end
+
+  # `fold_paths:` is a boolean; anything else is refused, not read as false.
+  defp fold_paths!(config) do
+    case Keyword.get(config, :fold_paths, false) do
+      flag when is_boolean(flag) -> flag
+      other -> raise ArgumentError, "fold_paths: must be true or false, got #{inspect(other)}"
+    end
   end
 
   @doc """

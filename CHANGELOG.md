@@ -46,6 +46,12 @@ milestone "Claims own their code" is in.
   `MyApp.Feed.feed/2`. ex_doc renders the marker as a comment, but an `elixir contract`
   info string swallows the heading after it, as `test ID` does.
 
+- **Path headings fold into an id'd section, opt-in** (#205, #237). With `fold_paths: true`,
+  a heading with no id inside a section that has one is part of that section's unit: its
+  text counts in the section's version and its hints, blocks, rules, rows and contracts sit
+  in that section (spec §11.1). **Upgrade step, when it becomes the default (0.8, with plan
+  item C.1):** a spec that writes ids keeps fewer units, and each folded heading's relations
+  move to the id'd section; until then nothing changes unless a project sets it.
 - **A project's citation forms** (#205, #236). `unit_refs:` in `.surfex.exs` lists the
   forms a project cites spec units in across files, each a regex with named captures `id`
   and `file` or `chapter` (a spec file's leading number):
