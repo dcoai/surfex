@@ -137,6 +137,21 @@ A checkable claim can be reviewed against the code, and a test can be written fr
 by a person or an agent, without guessing what was meant. A claim that can't be checked
 can't dangle usefully either: nobody can tell whether a code change still satisfies it.
 
+A section often holds several such claims. **Name each one** and it becomes a unit of its
+own, with its own version and its own tests (`spec.md` §11.1), so rewording one claim
+dangles only that claim's relations:
+
+- **One paragraph or list item**: an id comment on its own line directly before it,
+  `<!-- surfex: send-too-long -->`. It renders as a comment everywhere, ex_doc included.
+- **A list of rules whose ids the text already writes** (`1. §Send.3 …`, `P3 …`): mark the
+  list with `<!-- surfex: rules send -->` and tell `.surfex.exs` how the ids are written,
+  `rule_ids: :section_sign` or a regex such as `~r/^(?<id>P\d+)/`.
+- **A table of cases**: a marked table, one unit per row (`spec.md` §11).
+
+Bold is never a claim: it is emphasis far more often than it is a requirement, so a
+bold-lead sentence is its section's text until you name it. Never number claims by
+position: an id that is an ordinal dangles every claim after an insertion.
+
 ## 6. Give examples and invariants
 
 Where a requirement has concrete behaviour, show it:

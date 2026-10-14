@@ -9,6 +9,34 @@ All notable changes to Surfex are recorded here, following
 `mix.exs` reads `0.9.2-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
 release it merely follows.
 
+Plan v2's B.1 (#205, claim forms) is landing here piece by piece, unreleased until most of
+milestone "Claims own their code" is in.
+
+### Added
+
+- **Rules and paragraphs as claim units** (#205, #234). A claim smaller than a section is a
+  unit of its own, role `:rule`, once its author names it (spec §11.1):
+  - an id comment of its own line directly before a paragraph or list item,
+    `<!-- surfex: no-override -->`, names it `file#no-override`, as does one that starts
+    the item or paragraph;
+  - `<!-- surfex: rules NAME -->` before a list makes each top-level item a rule, its id
+    the item's id comment or what the new `rule_ids:` grammar reads from its text, in the
+    forms `heading_ids:` takes (`:section_sign` reads `1. §Tenancy.1.4 …`);
+  - a rule's version is its text and nested lines without the list marker or id comment,
+    so renumbering a list changes nothing, and it is left out of its section's version;
+  - an item of a marked list with no id is an error naming its line, never an ordinal.
+    Bold is never read as a claim.
+
+  `require:` takes the `:rule` role, and the status counts rules once a spec names one.
+  ex_doc renders the comment of its own line and the rules marker as comments, but shows
+  a comment inside a list item as text and lets one starting a paragraph swallow the
+  heading after it; §11.1 says which form to use.
+
+  A spec that names no claim scans as before. The one change for an existing spec: an id
+  comment of its own line that was an unclosed block's error now names the paragraph or
+  item after it, and a list item or paragraph already starting with `<!-- surfex: ID -->`
+  becomes a rule, leaving its section's version.
+
 ## [0.9.1] — 2026-10-14
 
 What surfex writes now reads right. Spec pages published with ex_doc keep their headings

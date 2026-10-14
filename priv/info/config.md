@@ -4,6 +4,9 @@ A keyword list, evaluated as data. An unknown key is refused, naming it.
 
 **What is scanned**
 - `sources: ["spec.md"]`: the spec files (required).
+- `heading_ids:`, `rule_ids:`: the ids authors write into headings and into a marked list's
+  items: `:section_sign` (`§ID`), `:section_number` (`1.2`), a regex with `(?<id>…)`, or a
+  list of them (`mix surfex.info claims`).
 - `tests: ["test/**/*_test.exs"]`: test files, scanned per test case. Add
   `Surfex.ExUnitFormatter` to `ExUnit.start(formatters: [...])` to record evidence.
 - `namespace:`: the code's namespace (defaults to the app name).
@@ -15,7 +18,8 @@ A keyword list, evaluated as data. An unknown key is refused, naming it.
 
 **Policy**
 - `require: [code: [:implements], test_hint: [:verifies]]`: what must take part in a
-  relation of those types (keys: a kind, or a spec role `section`, `block`, `test_hint`).
+  relation of those types (keys: a kind, or a spec role `section`, `block`, `test_hint`,
+  `table`, `row`, `rule`).
 - `triangle: :report | :fail`: whether a unit, its tests and its code must meet.
 - `require_red:`: whether a `tests` relation needs its test's red run.
 - `adoption: :reevaluate | :trust | [trust: globs, reevaluate: globs]` (`mix surfex.info adoption`).

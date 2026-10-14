@@ -8,9 +8,12 @@ defmodule Surfex.Status.Config do
       (`## §Api.3.2 — Limits`), `:section_number` (`## 1.2 Totals`, `## 2a. Checks`), a
       regex with a named capture `id`, or a list of these tried in order
       (`Surfex.Scan.Markdown.heading_grammar/1`)
+    * `:rule_ids` — the ids written at the start of a marked list's items
+      (`<!-- surfex: rules NAME -->`), in the forms `:heading_ids` takes: `:section_sign`
+      reads `1. §Tenancy.1.4 …`, a regex `~r/^(?<id>P\d+)/` reads `P3` (§11.1)
     * `:scanner`, `:scanner_opts` — the code scanner (`:elixir` by default)
     * `:require` — `[key: [type, …]]`: a key is a kind (`:spec`, `:code`, `:test`, …) or
-      a spec role (`:section`, `:block`, `:test_hint`, `:table`, `:row`), validated with the
+      a spec role (`:section`, `:block`, `:test_hint`, `:table`, `:row`, `:rule`), validated with the
       types
     * `:tests` — globs of ExUnit test files, scanned for tests (`Surfex.Scan.ExUnit`)
       when present
@@ -23,11 +26,12 @@ defmodule Surfex.Status.Config do
   alias Surfex.Log.Entry
   alias Surfex.Scan
 
-  @roles [:section, :block, :test_hint, :table, :row]
+  @roles [:section, :block, :test_hint, :table, :row, :rule]
 
   # The keys a `.surfex.exs` may hold, besides the profile's (`Surfex.Profile.keys/0`).
   @own [
     :heading_ids,
+    :rule_ids,
     :scanner,
     :scanner_opts,
     :namespace,
@@ -354,7 +358,8 @@ defmodule Surfex.Status.Config do
 
     spec =
       Scan.Markdown.records(root, sources, Keyword.get(config, :exclude, []),
-        heading_ids: Keyword.get(config, :heading_ids)
+        heading_ids: Keyword.get(config, :heading_ids),
+        rule_ids: Keyword.get(config, :rule_ids)
       )
 
     if spec == [],

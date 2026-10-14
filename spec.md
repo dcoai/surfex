@@ -1073,9 +1073,11 @@ code block
 
 ```test:earmark-forms
 through ex_doc's markdown (ExDoc.Markdown.Earmark), the forms it is said to render (the id
-comment after a heading, test:ID hints, marked blocks and tables) show no marker text, and
-every heading in the text is a heading; the id comment at the end of a heading, the anchor
-and test ID hints are shown to break as said
+comment after a heading, test:ID hints, marked blocks and tables, an id comment of its own
+line before a paragraph or list item, a marked list of written ids) show no marker text,
+and every heading in the text is a heading; the id comment at the end of a heading, the
+anchor, test ID hints, an id comment inside a list item and one starting a paragraph are
+shown to break as said
 ```
 
 ```test:section-versions
@@ -1111,6 +1113,81 @@ code items, tests and classes
 a test's calls resolve each alias where it's declared: a module's throughout, a describe's
 for its tests and helpers but not a sibling describe, a body's from its line on; every
 alias form
+```
+
+### 11.1 Claim forms
+<!-- surfex: claim-forms -->
+
+A claim is often smaller than a section: one rule in a list, one paragraph. Its author
+names it, and it is a unit of its own with role `:rule`, sitting in its section or block.
+A hint inside a rule sits in the rule. **No id ever comes from where a claim stands:** an
+ordinal would dangle every claim after an insertion.
+
+- **A named paragraph or list item.** An id comment on a line of its own, directly before
+  a paragraph or a list item, names it: `<!-- surfex: no-override -->` and then the item
+  or paragraph on the next line is `file#no-override`. The comment is a block's opening
+  marker too. It opens a block, as it always has, when a `<!-- /surfex -->` closes it
+  before the next marker, heading or the end of the file; on the line after a heading it
+  is the heading's id (§11); otherwise it names what follows it. An id comment that starts
+  an item or paragraph names it the same way: `- <!-- surfex: no-override --> Anonymous
+  requests never …`.
+- **A marked list.** `<!-- surfex: rules NAME -->` on its own line before a list (blank
+  lines between are fine) makes each of the list's top-level items a rule. An item's id is
+  its id comment, else the id the project's `rule_ids:` grammar reads from the start of its
+  text, in the forms `heading_ids:` takes (§11): `:section_sign` reads `1. §Tenancy.1.4 …`
+  as `Tenancy.1.4`, and `~r/^(?<id>P\d+)/` reads `P3`. NAME names the list in errors. The
+  list ends at the first line that is no part of its items, or an item of another list
+  (another bullet, or another ordered delimiter).
+- **Where a claim ends.** A paragraph runs to a blank line, a heading, a marker, a fence or
+  a list item. An item takes its nested lines (every line indented to its content) and a
+  lazy continuation of its text. It ends at a less indented line after a blank one,
+  another item at its level or above, a marker, a fence or a heading. A rule can't hold
+  another.
+- **Its version** covers its text and nested lines, without its list marker or id
+  comment, with whitespace collapsed, so renumbering a list changes none. Like every finer
+  unit, a rule is left out of the version of what it sits in, so rewording one changes
+  that rule's version and no other.
+- **Bold is never a claim.** A bold-lead sentence with no id comment is its section's
+  text, whatever it says. Bold is emphasis far more often than it is a claim.
+
+Rule ids share the file's namespace (§11), so a repeated one is the duplicate-id error.
+`Surfex.Status.units/1` counts rules with the other roles, and the reports show them once
+a spec names one. A spec that names no claim scans exactly as before. An id comment of its
+own line that was once an unclosed block is now a claim's id. When no paragraph or item
+follows it, it is still the error it was. Also an error, naming the line:
+- an item of a marked list with no id, or a marker with no list after it;
+- a rule inside a rule;
+- a list item with two ids (a comment of its own line, and one starting it);
+- a malformed id.
+
+**Where these render.** ex_doc's markdown renders an id comment of its own line before a
+paragraph or list item, and the rules marker, as comments. Before an item, the comment
+needs a blank line above it, which splits the list in two where it isn't the first item.
+It shows an id comment anywhere inside a list item as text, and an id comment that starts
+a paragraph swallows the paragraph and the heading after it. A forge's CommonMark reads
+a line that starts with a comment as raw HTML, so the rest of that line loses its
+markdown. A spec names its claims with the comment on its own line, or with a marked list
+of written ids.
+
+```test:rule-items
+a marked list's top-level items are rules, each by its id comment or the id rule_ids: reads
+(a § id, a regex, the first of a list), sitting in their section; an item starting with an
+id comment, or after one of its own line, is a rule in any list; a hint inside a rule sits
+in it; a rule's version is its text and nested lines without its list marker or id comment;
+an item with no id, a marker with no list, a repeated id, a rule inside a rule and an item
+with two ids are errors naming the line; status counts rules
+```
+
+```test:rule-paragraphs
+an id comment of its own line before a paragraph, or starting it, makes the paragraph a
+rule whose version is its own text, left out of its section's; bold with no id comment is
+the section's text; a comment a close marker follows is a block, and one naming nothing is
+the block error it was
+```
+
+```test:no-positional-ids
+inserting a claim at the top of every claim form (a named paragraph, a marked list, a named
+item) changes no other unit's id or version
 ```
 
 ## 12. The relation log
@@ -1549,17 +1626,18 @@ suggest --accept retires it
 <!-- surfex: status-config -->
 
 `Surfex.Status.Config` reads `.surfex.exs`. It holds the profile keys (§8) and the
-log's own: `heading_ids` (§11), `scanner`, `scanner_opts`, `namespace`, `goldens` (§10.3),
-`require`, `tests`, `triangle`, `require_red` (§17), `adoption` (§18.1), `process` (§19) and
-`completeness` (§20).
+log's own: `heading_ids` (§11), `rule_ids` (§11.1), `scanner`, `scanner_opts`,
+`namespace`, `goldens` (§10.3), `require`, `tests`, `triangle`, `require_red` (§17),
+`adoption` (§18.1), `process` (§19) and `completeness` (§20).
 - `Surfex.Status.Config.read!/1` reads and validates it. It raises on an unknown key, and
   on a key of the removed trace, saying so (§9). Every task reads its config through
   it, so a misspelt key is never silently ignored.
 - `Surfex.Status.Config.items/2` runs the code scanner: the built-in Elixir scanner, or
   the project's `scanner:` module (`Surfex.Scanner`) with its `scanner_opts:`.
 - `Surfex.Status.Config.scans/2` scans each markdown unit of `sources`, reading headings
-  by `heading_ids:` (§11), each item the code scanner (`scanner`, `scanner_opts`) finds,
-  and, when `tests:` names globs of test files, each test in them (`Surfex.Scan.ExUnit`).
+  by `heading_ids:` (§11) and marked lists by `rule_ids:` (§11.1), each item the code
+  scanner (`scanner`, `scanner_opts`) finds, and, when `tests:` names globs of test
+  files, each test in them (`Surfex.Scan.ExUnit`).
   A missing `sources`, or one that matches no section, raises. So does a `tests:` that
   matches no file.
 - `Surfex.Status.Config.options!/1` reads `triangle: :report | :fail` (`:report` by
@@ -1933,6 +2011,8 @@ precisely. It covers:
 - keeping headings stable
 - naming the code in the section that describes it
 - stating requirements as checkable claims
+- naming a claim smaller than a section (§11.1): which form for which claim, and
+  why bold is never one
 - examples and invariants
 - test-first work with Surfex
 - excusing code the spec shouldn't describe
