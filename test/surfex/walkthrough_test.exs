@@ -841,4 +841,54 @@ defmodule Surfex.WalkthroughTest do
                {["spec.md#free-over", @section], "retired"}
              ]
   end
+
+  # #249: put/3 and put/4 from one def are one definition; one review credits both under
+  # one note, so validate says so and the note is written for the definition.
+  @tag verifies: "review-arities-named"
+  test "validate names the arities one review credits as one definition", %{root: root} do
+    File.write!(
+      Path.join(root, ".surfex.exs"),
+      ~s([sources: ["spec.md"], tests: ["test/*_test.exs"]])
+    )
+
+    File.mkdir_p!(Path.join(root, "test"))
+
+    File.write!(Path.join(root, "test/cart_test.exs"), """
+    defmodule MyApp.CartTest do
+      use ExUnit.Case
+
+      @tag verifies: "spec.md#Totals"
+      test "adds an item" do
+        assert {:ok, [{:x, 1}]} = MyApp.Cart.add([], :x)
+      end
+    end
+    """)
+
+    for code <- ["MyApp.Cart.add/2", "MyApp.Cart.add/3"],
+        do: task(root, Mix.Tasks.Surfex.Relate, [@section, code, "--type", "implements"])
+
+    task(root, Mix.Tasks.Surfex.Suggest, ["--accept"])
+    run_test(root, nil)
+    drain()
+
+    task(root, Mix.Tasks.Surfex.Validate, [
+      "test:MyApp.CartTest: adds an item",
+      @section,
+      "--note",
+      "adding an item with the default quantity is the section's claim"
+    ])
+
+    out = drain()
+    assert Enum.count(out, &(&1 =~ "recorded relate implements")) == 2
+    assert Enum.any?(out, &(&1 =~ "one definition: MyApp.Cart.add/2, MyApp.Cart.add/3 share it"))
+
+    # One arity credited alone is no group.
+    scans = File.cd!(root, fn -> Surfex.Status.Config.scans([sources: ["spec.md"]], root) end)
+
+    [add2] =
+      Enum.filter(Surfex.Log.load(root), &match?(%{type: :implements, basis: :review}, &1))
+      |> Enum.filter(&Enum.any?(&1.ends, fn e -> e.id == "MyApp.Cart.add/2" end))
+
+    assert Surfex.Record.shared_definitions(scans, [add2]) == []
+  end
 end

@@ -44,6 +44,10 @@ The entry records `through`, `history` shows it, status counts these reviews, an
 triangle takes the review's word for the path. `--through` is refused for code the run
 reached, and without `--code`.
 
+**Several arities, one definition**: a function with default arguments (`put/3` and
+`put/4` from one `def`) is one definition, so one review credits both under its one note.
+`validate` names them when it does: write the note for the definition, not one arity.
+
 **Many at once**: `--file PATH` on `confirm` or `validate` records a file of relations in one
 run, one per line, tab-separated, each line ending with its own note (`FROM TO TYPE NOTE`,
 or `TEST UNIT NOTE`). The notes must be distinct; write each line after judging that

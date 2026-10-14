@@ -154,6 +154,11 @@ milestone "Claims own their code" is in.
   listed as **inert** (`Surfex.Scan.ExUnit.inert/2`; `inert` in the JSON and, where there
   are any, in `RELATIONS.md`), so a misplaced tag is visible rather than silently ignored.
   It never fails the check, and nothing it names was ever credited by it.
+- **`validate` names the arities one review credits** (#209, #249). A function with
+  default arguments is one definition under several arities (`put/3` and `put/4`), so a
+  review of either credits both under one note. `mix surfex.validate` now says so after
+  recording, naming them (`Surfex.Record.shared_definitions/2`, spec §18.4), so the note is
+  written for the definition rather than for the arity the test calls.
 
 ## [0.9.1] — 2026-10-14
 
