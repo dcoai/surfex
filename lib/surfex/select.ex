@@ -66,6 +66,65 @@ defmodule Surfex.Select do
   end
 
   @doc """
+  Every test that declares a deviation (`@tag deviation:`, §11), in file and line order:
+  what `mix surfex.test --deviations` runs, skips included, to check whether any is stale
+  (§17). ExUnit includes a skipped test only by a filter on its skip reason
+  (`deviation_args/1`), which would run any test skipped for the same reason as well; so a
+  test that isn't a deviation, in one of their files, skipped for a deviation test's
+  reason, is an error, naming both. So is a deviation test whose skip isn't a literal (it
+  can't be included), and none at all: selecting nothing would run nothing, and pass.
+  """
+  @spec deviations([Scan.t()]) :: {:ok, [Scan.t()]} | {:error, String.t()}
+  def deviations(scans) do
+    tests = for %Scan{kind: :test} = t <- scans, do: t
+    {deviant, others} = Enum.split_with(tests, &(&1.deviation != nil))
+    files = MapSet.new(deviant, & &1.location.file)
+    reasons = Map.new(for t <- deviant, is_binary(t.skip), do: {t.skip, t.id})
+
+    shared =
+      for t <- others,
+          MapSet.member?(files, t.location.file),
+          Map.has_key?(reasons, t.skip),
+          do: "#{t.id} is skipped for the reason #{inspect(t.skip)} as #{reasons[t.skip]} is"
+
+    unreadable =
+      for t <- deviant,
+          t.skip == :unreadable,
+          do: "#{t.id}'s skip: isn't a literal, so it can't be included by its reason"
+
+    cond do
+      deviant == [] ->
+        {:error, "no test declares a deviation"}
+
+      shared ++ unreadable != [] ->
+        {:error,
+         Enum.join(shared ++ unreadable, "; ") <>
+           ": give each deviation test a skip reason of its own, written literally"}
+
+      true ->
+        {:ok,
+         Enum.sort_by(deviant, fn %{location: %{file: f, lines: {first, _}}} -> {f, first} end)}
+    end
+  end
+
+  @doc """
+  The `mix test` arguments that run exactly the deviation tests `tests` (`deviations/1`),
+  skips included: their files, `--only location:FILE:LINE` for each, and `--include
+  skip:REASON` for each skip reason among them. A location given as `FILE:LINE` would
+  replace every `--include`, so a skipped test would stay skipped.
+  """
+  @spec deviation_args([Scan.t()]) :: [String.t()]
+  def deviation_args(tests) do
+    files = tests |> Enum.map(& &1.location.file) |> Enum.uniq()
+    locations = for loc <- args(tests), do: ["--only", "location:#{loc}"]
+
+    reasons =
+      for %Scan{skip: r} <- tests, is_binary(r), uniq: true, do: ["--include", "skip:#{r}"]
+
+    files ++ List.flatten(locations ++ reasons)
+  end
+
+  @doc """
   The `mix test` arguments that run exactly `tests`: each one's file and first line, once.
   Tests a comprehension defines share their line, and one location runs them all.
   """

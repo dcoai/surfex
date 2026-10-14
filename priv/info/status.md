@@ -33,8 +33,8 @@ marks), `--no-baseline` (fail on relations resting on an adoption baseline),
 the spec, watch it fail, and tag it `@tag deviation: "#119", skip: "known deviation
 (#119)"`. Its units are listed under **Deviating** with the reference; their `proposed`
 relations (marked `deviates`) don't fail, and a failed run of it isn't Failed. Check it
-with the skip included (`mix test --include skip`): once it passes, status fails it as a
-stale deviation.
+with the skip included (`mix surfex.test --deviations` runs exactly those): once it
+passes, status fails it as a stale deviation.
 
 Not failing: new, planned, impacted, deviating (unless `--no-deviations`), open marks (unless `--no-marks`), claims not
 checked here because this run excluded or skipped their test, and tests unselectable by

@@ -36,6 +36,14 @@ release it merely follows.
     deviations. `COMPLETENESS.md` shows `deviates (<ref>)`. The JSON has `deviating`, and
     each relation a `deviates` list.
 
+  `mix surfex.test --deviations` (#224) runs exactly the deviation tests, skips included,
+  so their evidence says whether any is stale: run it on demand or in a scheduled job, then
+  `mix surfex.status --evidence`. ExUnit includes a skipped test only by its reason, so it
+  runs `mix test FILES --only location:FILE:LINE … --include skip:REASON …`
+  (`Surfex.Select.deviations/1`, `Surfex.Select.deviation_args/1`), and refuses, before
+  running, another test in those files skipped for a deviation test's reason, or a reason
+  that isn't a literal. Test records gain `skip`, the reason as that filter matches it.
+
   `Surfex.Scan` gains `deviation`, a relation status `deviates`, and `Surfex.Status.derive/4`
   `deviating` and the `deviations:` option. Nothing changes for a project without the tag.
 

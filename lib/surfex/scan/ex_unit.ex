@@ -28,6 +28,10 @@ defmodule Surfex.Scan.ExUnit do
       `describe`'s or module's level, merged as `verifies` is): the code is known to
       deviate from what the test verifies, and the reference names what will fix it. Free
       text, `nil` when the test doesn't declare one.
+    * **skip** — ExUnit's `skip:` tag as `mix test --include skip:VALUE` matches it: its
+      literal reason, `"true"` for `@tag :skip`, `nil` when not skipped, `:unreadable` when
+      it isn't a literal. What `mix surfex.test --deviations` includes a skipped
+      deviation test by.
 
   A `verifies` value that isn't a literal string or list of strings, or a `deviation`
   that isn't a literal string, raises, naming the file and line: a declaration that can't
@@ -104,6 +108,7 @@ defmodule Surfex.Scan.ExUnit do
         declares: Enum.map(declares, &{:verifies, &1}),
         unselectable: unselectable(tag),
         deviation: Map.get(tags, :deviation),
+        skip: Map.get(tags, :skip),
         calls: calls(mod, t, names, scopes)
       }
     end
@@ -229,15 +234,17 @@ defmodule Surfex.Scan.ExUnit do
   end
 
   # The keys surfex reads from a tag value, as written: `verifies:` a string or a list of
-  # strings (its form matters to `unselectable/1`), `deviation:` a string or nil. A key the
-  # tag doesn't set is absent.
-  @read [:verifies, :deviation]
+  # strings (its form matters to `unselectable/1`), `deviation:` a string or nil, and
+  # ExUnit's own `skip:` (`skip/1`). A key the tag doesn't set is absent. A bare atom
+  # (`@tag :skip`) sets that key to true, as ExUnit reads it.
+  @read [:verifies, :deviation, :skip]
 
   defp read_tags(value, expr, file) do
     pairs =
       case value do
         list when is_list(list) -> if Keyword.keyword?(list), do: list, else: []
         {:%{}, _, pairs} -> pairs
+        atom when is_atom(atom) -> [{atom, true}]
         _ -> []
       end
 
@@ -248,6 +255,8 @@ defmodule Surfex.Scan.ExUnit do
 
   defp read(:verifies, value, expr, file), do: ids(value, expr, file)
   defp read(:deviation, ref, _expr, _file) when is_binary(ref) or is_nil(ref), do: ref
+
+  defp read(:skip, value, _expr, _file), do: skip(value)
 
   defp read(:deviation, _other, expr, file) do
     {line, _} = SourceScan.line_range(expr) || {0, 0}
@@ -262,6 +271,14 @@ defmodule Surfex.Scan.ExUnit do
   end
 
   defp ids(_other, expr, file), do: bad(expr, file)
+
+  # ExUnit's skip tag as `mix test --include skip:VALUE` matches it: a literal string or
+  # `true` by its text, `false` or nil as not skipped, anything else (computed when the
+  # module compiles) as unreadable.
+  defp skip(reason) when is_binary(reason), do: reason
+  defp skip(true), do: "true"
+  defp skip(none) when none in [false, nil], do: nil
+  defp skip(_computed), do: :unreadable
 
   # The declared ids `mix test --only verifies:id` can't select the test by (#190). ExUnit
   # compares a list tag as one string, its ids run together, so a list is selectable only
