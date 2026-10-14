@@ -13,6 +13,11 @@ A keyword list, evaluated as data. An unknown key is refused, naming it.
   a spec unit across files, read in `verifies:` tags and by the tasks (`mix surfex.info claims`).
 - `tests: ["test/**/*_test.exs"]`: test files, scanned per test case. Add
   `Surfex.ExUnitFormatter` to `ExUnit.start(formatters: [...])` to record evidence.
+- `declares: [verifies: [{:tag, :validates, strip: ~r/@[0-9a-f]+$/}]]`: a project's own
+  form of saying what a test verifies, read as `verifies` declarations: an ExUnit tag key
+  (`{:tag, KEY}`) or a module attribute before a test (`{:attribute, NAME}`), with `strip:`
+  removed from each id. `mix test --only` can't select by them; `mix surfex.test` does
+  (spec §11.6).
 - `namespace:`: the code's namespace (defaults to the app name).
 - `scanners: [:elixir, {MyApp.DslScanner, opts}]`: code scanners whose items are combined
   (`Surfex.Scanner`); one key from two scanners is an error. `scanner:` with

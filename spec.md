@@ -1581,6 +1581,52 @@ tag under test/support is inert, listed with its file, line, ids and reason; a t
 takes, a comprehension's included, is not; status lists them and doesn't fail on them
 ```
 
+### 11.6 A project's own declaration forms
+<!-- surfex: declared-forms-section -->
+
+A project may already record what its tests verify in a form of its own, an ExUnit tag of
+another name or a module attribute, often with something appended to each id, such as a
+hash of the section's text. Rewriting every tag as `verifies:` would be a one-shot import,
+redone whenever the form changes. Instead `declares:` in `.surfex.exs` names the forms the
+test scanner reads as `verifies` declarations:
+
+```elixir
+declares: [verifies: [{:tag, :validates, strip: ~r/@[0-9a-f]+$/}]]
+```
+
+- `{:tag, KEY}` is an ExUnit tag key, read at `@tag`, `@describetag` and `@moduletag` and
+  merged level by level as `verifies:` is (§11).
+- `{:attribute, NAME}` is a module attribute before a test, `@validates ["…"]`, applying
+  to the next test as a `@tag` does.
+- `strip: REGEX`, optional, is removed from each id, so `@tag validates:
+  ["Engine.15.2@abc123"]` declares `Engine.15.2`. Each id is then a declaration like any
+  other: in the project's citation form it resolves through `unit_refs:` (§11.1), it is
+  suggested, recorded and confirmed as one (§15, §17), and a form outside a test is inert
+  (§11.5).
+- Such ids can't be selected by `mix test --only verifies:id`, which reads the `verifies`
+  tag alone, so each is listed in the test's `unselectable` (§13.1). `mix surfex.test`
+  selects by declaration, so it runs them.
+- `Surfex.Status.Config.declares!/1` reads and validates the key: anything but
+  `[verifies: [form, …]]`, a form of another shape, a name ExUnit or surfex reads itself
+  (`verifies`, `tag`, `moduletag`, …), or an option other than a regex `strip:` is refused,
+  naming it.
+
+The form stays the project's: nothing is rewritten, and a change to it is a change to the
+config. A bare `§` mention in a test's prose or a string is **not** read: a mention is not
+a claim.
+
+```test:declared-forms
+a declared tag form at every level and a declared attribute form before a test are read as
+verifies declarations with their strip pattern removed, unselectable by --only; without
+the form they declare nothing; a bare § mention is no declaration; a form no test takes is
+inert; a value that can't be read raises naming its key
+```
+
+```test:declared-forms-config
+declares: is validated, refusing a malformed form; a declared id in the project's citation
+form resolves through unit_refs:, is counted unselectable, and is selected by surfex.test
+```
+
 ## 12. The relation log
 <!-- surfex: relation-log -->
 
@@ -2026,7 +2072,7 @@ suggest --accept retires it
 `Surfex.Status.Config` reads `.surfex.exs`. It holds the profile keys (§8) and the
 log's own: `heading_ids` (§11), `rule_ids`, `fold_paths` and `unit_refs` (§11.1),
 `scanners` (§5.3), `scanner`, `scanner_opts`, `namespace`, `goldens` (§10.3), `require`,
-`tests`, `triangle`,
+`tests`, `declares` (§11.6), `triangle`,
 `require_red` (§17), `router` (§11.3), `claim_implements` (§15.1), `adoption` (§18.1),
 `process` (§19) and
 `completeness` (§20).
