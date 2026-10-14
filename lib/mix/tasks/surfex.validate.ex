@@ -48,6 +48,11 @@ defmodule Mix.Tasks.Surfex.Validate do
   reached code in a single review. Evidence (`mix surfex.confirm --evidence`) credits
   reached code without naming, since a red-then-green run backs it.
 
+  A function with default arguments is one definition under several arities (`put/3` and
+  `put/4` from one `def put` with a default argument), so a review of either credits both,
+  and its note is recorded on each. The task says so, naming them, so the note is written
+  for the definition and not for the arity the test calls.
+
   Some tests exercise code by a path no call in the source shows: a route a router maps,
   a message to a process, a JavaScript hook, a capture handed to a helper. Relate the code
   to the claim it realises (`mix surfex.relate CODE CLAIM --type implements --note …`),
@@ -82,7 +87,7 @@ defmodule Mix.Tasks.Surfex.Validate do
       nil ->
         {test, unit} = R.two!(ids)
         [test, unit] = R.units([test, unit], scans, opts)
-        R.record(root, Surfex.Record.validate(scans, entries, test, unit, evidence, meta))
+        recorded(root, scans, Surfex.Record.validate(scans, entries, test, unit, evidence, meta))
 
       path ->
         if ids != [] or opts[:note] != nil or meta[:code] != [] or opts[:through] != nil,
@@ -95,8 +100,9 @@ defmodule Mix.Tasks.Surfex.Validate do
           for %{fields: [test, unit]} = l <- R.batch_lines!(path, 3),
               do: Map.merge(l, %{test: test, unit: hd(R.units([unit], scans, opts))})
 
-        R.record(
+        recorded(
           root,
+          scans,
           Surfex.Record.batch(entries, lines, fn so_far, l ->
             Surfex.Record.validate(
               scans,
@@ -109,5 +115,19 @@ defmodule Mix.Tasks.Surfex.Validate do
           end)
         )
     end
+  end
+
+  # Records what the review returned, then names each definition it credited under several
+  # arities: one note is on each, so it must speak for the definition (§18.4).
+  defp recorded(root, scans, result) do
+    R.record(root, result)
+    {:ok, entries} = result
+
+    for ids <- Surfex.Record.shared_definitions(scans, entries),
+        do:
+          Mix.shell().info(
+            "one definition: #{Enum.join(ids, ", ")} share it (default arguments), so this " <>
+              "review's note is recorded on each: write it for the definition, not one arity"
+          )
   end
 end

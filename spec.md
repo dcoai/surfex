@@ -3026,6 +3026,23 @@ version, with the note; without a green run, a relation or a note, or when alrea
 validated, it is refused
 ```
 
+### 18.4 A review of several arities
+<!-- surfex: review-arities -->
+
+A function with default arguments is one definition the scanner reports as several items
+(§11): `put/3` and `put/4` from one `def put` whose last argument has a default. A review
+credits code by definition, so a review of a test calling one credits every arity the
+unit's `implements` names, each under the review's one note. A note written about one
+arity ("put/3 is the arity with no options") is then wrong on the other's relation.
+`mix surfex.validate` says when it records several arities of one definition, naming them
+(`Surfex.Record.shared_definitions/2`), so the reviewer writes the note for the
+definition; `mix surfex.annotate` corrects one already written.
+
+```test:review-arities-named
+a review crediting a unit's implements to two arities of one definition records both, and
+validate names them as one definition; a review crediting one arity names none
+```
+
 ## 19. Handing off found work
 <!-- surfex: hand-off -->
 

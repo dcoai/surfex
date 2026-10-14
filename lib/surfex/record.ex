@@ -1335,6 +1335,30 @@ defmodule Surfex.Record do
   end
 
   @doc """
+  The code items among `recorded`'s `implements` entries that share a definition
+  (`Surfex.Scan.definition/1`), each group of two or more as its ids, sorted: a function's
+  default-argument arities, which one review credits together under one note (§18.4).
+  """
+  @spec shared_definitions([Scan.t()], [Entry.t()]) :: [[String.t()]]
+  def shared_definitions(scans, recorded) do
+    code = for %Scan{kind: :code} = s <- scans, into: %{}, do: {s.id, s}
+
+    for(
+      %Entry{op: :relate, type: :implements, ends: ends} <- recorded,
+      %{kind: :code, id: id} <- ends,
+      scan = code[id],
+      scan != nil,
+      uniq: true,
+      do: scan
+    )
+    |> Enum.group_by(&Scan.definition/1, & &1.id)
+    |> Map.values()
+    |> Enum.filter(&match?([_, _ | _], &1))
+    |> Enum.map(&Enum.sort/1)
+    |> Enum.sort()
+  end
+
+  @doc """
   Resolves a conflicted relation: the tip whose id starts with `pick` is recorded again
   with every tip as a parent. The relation is then judged by that entry. If the scans have
   moved since, it is dangling, and `confirm/4` is next.
