@@ -46,6 +46,7 @@ Record relations:
 - `mix surfex.retire FROM TO --type T --note N`: two things no longer relate, or a pair declined
 - `mix surfex.move OLD NEW --note N`: carry a renamed id's relations and records across
 - `mix surfex.resolve FROM TO --type T --pick TIP`: settle a conflicted relation
+- `mix surfex.migrate SECTION [--within] | --report [SECTION…]`: move a section's implements to its claims
 
 Validate relations:
 - `mix surfex.check [ID…] [--list]`: run the declared checks, recording their results as evidence

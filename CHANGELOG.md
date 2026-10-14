@@ -167,6 +167,18 @@ milestone "Claims own their code" is in.
   ids resolve through `unit_refs:` and are suggested and confirmed as any declaration; they
   are counted unselectable by `mix test --only`, and `mix surfex.test` selects them. Opt-in:
   without the key nothing changes.
+- **`mix surfex.migrate`: section grain to claim grain, one section at a time** (#209,
+  #251). For a section, each live `implements` between code and it (or a table in it) is
+  listed with the claims inside that could own the code (`Surfex.Migrate.proposals/3`,
+  spec §14.1): a row whose key names it (an arity-less key `Mod.fun` names every arity), a
+  contract unit for it, a claim whose verifying test calls it, or, failing those, one whose
+  test reaches it, naming through what. Arities of one definition are one proposal. Code no
+  claim owns is listed first, several candidates are listed and never decided. `--within
+  PREFIX` takes every section under a prefix. `--report` says what migrating buys: per
+  section, the relations an edit dangles now and after, the marking a prose section needs
+  first (one marker line re-versions the section), and each code item's dangle width; with
+  no section, every section worst first and the population split into sections whose
+  claims are already units and prose ones (`Surfex.Migrate.report/3`). Read-only.
 
 ## [0.9.1] — 2026-10-14
 

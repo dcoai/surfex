@@ -22,6 +22,15 @@ Create the log once with `mix surfex.log --init` (it also sets git's union merge
 - `mix surfex.resolve FROM TO --type T --pick TIP`: two branches recorded the same relation
   without seeing each other; pick the tip (by id prefix) to keep.
 - `mix surfex.history ID`: every relation an id has had.
+- `mix surfex.migrate SECTION [--within]`: moving a section's `implements` to the claims
+  inside it, one section at a time (spec §14.1). Each code item related to the section is
+  listed with the claims that could own it: a row whose key names it (`Mod.fun` names every
+  arity), a claim whose test calls it, or failing those reaches it. **none** comes first
+  (write its claim, or it doesn't belong), then **several** (yours to judge), then
+  **single**. Arities of one definition are one proposal. It writes nothing.
+  `--report [SECTION…]`: what migrating buys: relations an edit dangles now and after, the
+  marking a prose section needs first, each item's dangle width; with no section, every
+  section worst first, split into those whose claims are units and prose ones.
 
 Types: `implements`, `verifies`, `tests`, `refines`, `depends_on`, `excuses`.
 Ids: `spec.md#anchor` or `spec.md#Heading/Path`, a bare hint id, `Mod`, `Mod.fun/2`,
