@@ -469,6 +469,7 @@ defmodule Surfex.Status.Report do
           ] ++
             check_stat(status) ++
             if(status.inert == [], do: [], else: [{"inert tags", length(status.inert)}]) ++
+            classed_stat(status) ++
             [
               {"broken citations", length(status.citations)},
               {"triangle gaps", length(status.triangle)}
@@ -479,6 +480,7 @@ defmodule Surfex.Status.Report do
       ],
       columns: ["End", "Other end", "State", "Changed"],
       # By file, not line, so the golden doesn't drift when lines move.
+      # Keyed by unit (§13.6): a new excusal is a row a reviewer sees in the diff.
       groups:
         relation_groups ++
           id_group.("migrating", ["Item", "Moving"], status.migrating, fn m ->
@@ -502,6 +504,28 @@ defmodule Surfex.Status.Report do
           end) ++
           id_group.("on container", ["Item", "Container"], status.on_container, fn o ->
             %{"Item" => {:code, verifier(o.test)}, "Container" => {:code, "spec #{o.unit}"}}
+          end) ++
+          id_group.("excused", ["Item", "Class", "By"], status.excused, fn e ->
+            %{
+              "Item" => {:code, "spec #{e.unit}"},
+              "Class" => {:code, e.name},
+              "By" => Atom.to_string(e.by)
+            }
+          end) ++
+          id_group.("deferred", ["Item", "Reference"], status.deferred, fn d ->
+            %{"Item" => {:code, "spec #{d.unit}"}, "Reference" => {:raw, Span.text(d.ref)}}
+          end) ++
+          id_group.("contradicted", ["Item", "Relation"], status.contradicted, fn c ->
+            %{
+              "Item" => {:code, "spec #{c.unit}"},
+              "Relation" => {:raw, coded("#{c.type} #{c.from}", "its class excuses the unit")}
+            }
+          end) ++
+          id_group.("stale deferrals", ["Item", "Deferral"], status.stale_deferrals, fn d ->
+            %{
+              "Item" => {:code, "spec #{d.unit}"},
+              "Deferral" => {:raw, coded(d.ref, stale_deferral_text(d.reason))}
+            }
           end) ++
           id_group.(
             "unimplemented",
@@ -843,6 +867,17 @@ defmodule Surfex.Status.Report do
     {claims, counts} = verdict_counts(status)
     "  claims: #{claims} · " <> Enum.map_join(counts, " · ", fn {k, n} -> "#{k} #{n}" end) <> "\n"
   end
+
+  # The golden's counts of classed units, where a spec has any (§13.6).
+  defp classed_stat(%{excused: [], deferred: []}), do: []
+
+  defp classed_stat(status),
+    do: [
+      {"excused", length(status.excused)},
+      {"deferred", length(status.deferred)},
+      {"contradicted", length(status.contradicted)},
+      {"stale deferrals", length(status.stale_deferrals)}
+    ]
 
   # Classed and deferred units, counted where a spec has any (§13.6).
   defp classed_text(%{excused: [], deferred: []}), do: []

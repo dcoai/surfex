@@ -290,6 +290,59 @@ defmodule Surfex.ClassedStatusTest do
     assert Enum.any?(broken, &(&1.section =~ "Map" and &1.span =~ "gone"))
   end
 
+  @tag verifies: "classed-goldens"
+  test "the status golden lists excusals by unit, counted, and moves only with them" do
+    scans = spec()
+    render = fn scans -> Surfex.Golden.render(Report.golden(derive(scans, [], [], true))) end
+    golden = render.(scans)
+
+    assert golden =~ "## excused"
+    assert golden =~ "| `spec spec.md#arch` | `architecture` | pattern |"
+    assert golden =~ "| `spec spec.md#background` | `informative` | marker |"
+    assert golden =~ "## deferred"
+    assert golden =~ "| `spec spec.md#gate-block` | #13 |"
+    assert golden =~ "excused 2"
+    assert golden =~ "deferred 2"
+
+    # In id order whatever the scan order.
+    assert render.(Enum.reverse(scans)) == golden
+
+    # Changes only when a class does: dropping one class drops its row and count.
+    unclassed =
+      Enum.map(scans, &if(&1.id == "spec.md#background", do: %{&1 | class: nil}, else: &1))
+
+    changed = render.(unclassed)
+    refute changed =~ "spec.md#background` | `informative`"
+    assert changed =~ "excused 1"
+
+    # A spec with neither renders as before: no tables, no counts.
+    plain = Enum.map(scans, &%{&1 | class: nil, deferred: nil})
+    refute render.(plain) =~ "## excused"
+    refute render.(plain) =~ "excused 0"
+
+    header =
+      derive(scans, [], [], true)
+      |> Completeness.report()
+      |> Completeness.golden("COMPLETENESS.md")
+      |> Surfex.Golden.render()
+
+    assert header =~ "excused by class 1"
+    assert header =~ "deferred 2"
+  end
+
+  @tag verifies: "guide-classes"
+  test "the guide says how to treat text the spec doesn't verify" do
+    guide = File.read!(Path.expand("../../guides/writing-specs.md", __DIR__))
+    [_, section] = String.split(guide, "### Text the spec doesn't verify", parts: 2)
+    [section | _] = String.split(section, "\n## 9.", parts: 2)
+
+    assert guide =~ "## 8. Code the spec doesn't describe"
+    assert section =~ "A class never hides a named claim"
+    assert section =~ "check"
+    assert section =~ "deferred"
+    assert section =~ "spec_classes:"
+  end
+
   @tag verifies: "classed-completeness"
   test "excused and deferred units are out of the score, counted on their own lines" do
     scans = spec()

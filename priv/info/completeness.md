@@ -14,7 +14,9 @@ relations, per kind and overall, and lists each incomplete item with what it lac
 With `claim_grain: true`, a spec unit counts only with its **own** evidence: a section
 whose hint is verified but whose prose no test claims lists `contained (<hint>, …)`, and
 units with no text of their own (containers, marked tables) aren't counted
-(`mix surfex.info claims`).
+(`mix surfex.info claims`). Units excused by a spec class and deferred units are left out
+of the score and counted on lines of their own (`excused by class: N spec units`,
+`deferred: N spec units (#12, …)`).
 
 `completeness: [min: N]` in `.surfex.exs` makes `mix surfex.status` fail below N percent,
 and `mix surfex.completeness` too. To gate the floor without the work list, run

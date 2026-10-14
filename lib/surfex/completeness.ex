@@ -341,7 +341,8 @@ defmodule Surfex.Completeness do
         Golden.stat(
           "#{s.overall.total} items",
           [{"complete", s.overall.complete}, {"score", "#{s.overall.percent}%"}] ++
-            for({kind, label} <- @kinds, do: {label, "#{s[kind].complete}/#{s[kind].total}"})
+            for({kind, label} <- @kinds, do: {label, "#{s[kind].complete}/#{s[kind].total}"}) ++
+            outside_stat(report)
         )
       ],
       columns: ["Item", "Missing"],
@@ -350,6 +351,17 @@ defmodule Surfex.Completeness do
           %{"Item" => {:code, "#{i.kind} #{i.id}"}, "Missing" => missing_text(i.missing)}
         end
     }
+  end
+
+  # The units left out of the score, in the header where there are any (§20.2).
+  defp outside_stat(report) do
+    case {Map.get(report, :excused, []), Map.get(report, :deferred, [])} do
+      {[], []} ->
+        []
+
+      {excused, deferred} ->
+        [{"excused by class", length(excused)}, {"deferred", length(deferred)}]
+    end
   end
 
   @doc "Whether the report's overall score is below `min` (none when `min` is `nil`)."

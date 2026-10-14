@@ -335,6 +335,36 @@ to claim grain, with a walkthrough in the new guide "Migrating to claim grain".
   its output. Without `--issues` nothing runs and only `built` is judged. `.surfex.exs`
   takes the new keys `spec_classes` and `issues` (§13.2).
 
+- **Excusals in the record, the guide and the measurement** (#257, #267). `RELATIONS.md`
+  gains `excused` and `deferred` tables keyed by unit (and `contradicted` and `stale
+  deferrals` when any), with their counts in the header, and `COMPLETENESS.md`'s header
+  counts the units excused by class and deferred (spec §13.8). Both appear only where a
+  spec has a class or deferral, so other goldens render as before. "Writing specs" gains
+  "Text the spec doesn't verify" (§16.1): class prose that asserts nothing, name the real
+  claims inside it first, verify tool-checked rules with a check, defer what waits on an
+  issue. `mix surfex.info claims`, `status`, `config` and `completeness` say the same.
+
+  Measured read-only over the volunteer projects before release (#145, #267), classes
+  added in memory only. In the two relation logs measured with patterns or their own
+  unrelated-section lists, `require: [section: [:verifies]]` unmet sections fall from 75
+  to 35 and from 48 to 9, and spec completeness under `claim_grain: true` rises from 46.4%
+  to 62.5% and from 84.5% to 96.4%. Classing by pattern contradicts existing relations
+  where a classed section holds real claims: 5 relations to one decision record in one
+  project, 4 to one principles section in another; those are the relations to
+  re-home or the sections not to class. Across the specs without a log, an existing
+  informative comment read through `marker:` classes 200 sections (31 of them over
+  subsections, 185, that stay claims) and changes those 200 sections' versions once, and
+  file patterns class 49 to 210 sections per project, none of them over a named rule yet:
+  a chapter whose MUSTs aren't named as rules is excused whole, so name them first.
+
+  **Upgrade step, under `claim_grain: true` now and for everyone in the release that
+  completes claim grain:** declare `spec_classes:`; class descriptive sections by pattern
+  or marker (or point `marker:` at a comment you already write); name the real claims in
+  any section you class by pattern; defer what waits on an issue with
+  `<!-- surfex: deferred #N -->`; settle each contradicted relation, usually by retiring
+  narration; and add `issues:` and `mix surfex.status --issues` where your tracker can be
+  asked.
+
 ## [0.9.1] — 2026-10-14
 
 What surfex writes now reads right. Spec pages published with ex_doc keep their headings
