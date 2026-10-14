@@ -589,4 +589,105 @@ defmodule Surfex.ScanExUnitTest do
     [weakened] = Tests.tests(String.replace(source, "== 0", ">= 0"), "t.exs")
     refute weakened.hash == test.hash
   end
+
+  # #194: a local call resolves through an import in either form, as its only:/except:
+  # admits it; against the project's code, only to a function the imported module
+  # defines, crediting the module as a qualified call does.
+  describe "calls through imports" do
+    @describetag verifies: "test-import-calls"
+
+    # P.A defines f/1; P.B defines g/1, h/1 and, hidden, k/0. Ext isn't scanned.
+    defp import_calls(source) do
+      code =
+        for {role, id, hidden} <- [
+              {:module, "P.A", %{}},
+              {:function, "P.A.f/1", %{}},
+              {:module, "P.B", %{"P.B.k/0" => []}},
+              {:function, "P.B.g/1", %{}},
+              {:function, "P.B.h/1", %{}}
+            ],
+            do: %Scan{
+              kind: :code,
+              role: role,
+              id: id,
+              hash: "h",
+              location: %{file: "lib/p.ex", lines: {1, 2}},
+              hidden: hidden
+            }
+
+      hd(Tests.tests(source, "t.exs", code)).calls
+    end
+
+    test "a brace import imports each member, and a call names its module" do
+      calls =
+        import_calls(~S"""
+        defmodule T do
+          use ExUnit.Case
+          import P.{A, B}
+
+          test "a" do
+            assert f(1) == h(1)
+            k()
+          end
+        end
+        """)
+
+      # ExUnit's assert is neither module's: it isn't listed under them.
+      assert calls == ["P.A", "P.A.f/1", "P.B", "P.B.h/1", "P.B.k/0"]
+    end
+
+    test "only: and except: say which calls an import admits, in either form" do
+      calls =
+        import_calls(~S"""
+        defmodule T do
+          use ExUnit.Case
+          import P.{A}, only: [f: 1]
+          import P.B, except: [h: 1]
+          import Ext, only: [x: 0]
+
+          test "a" do
+            f(1)
+            g(1)
+            h(1)
+            x()
+            y()
+          end
+        end
+        """)
+
+      assert calls == ["Ext.x/0", "P.A", "P.A.f/1", "P.B", "P.B.g/1"]
+    end
+
+    test "an import of a module that isn't scanned lists the candidate, not the module" do
+      calls =
+        import_calls(~S"""
+        defmodule T do
+          use ExUnit.Case
+          alias Outside.Ext
+          import Ext
+
+          test "a", do: z(1)
+        end
+        """)
+
+      # The import names its module as an alias does.
+      assert calls == ["Outside.Ext.z/1"]
+    end
+
+    test "a function captured in a list is a call" do
+      calls =
+        import_calls(~S"""
+        defmodule T do
+          use ExUnit.Case
+          alias P.B
+
+          test "a" do
+            for {_name, fun} <- [{"h/1", &B.h/1}, {"g/1", &P.B.g/1}], do: fun.(1)
+          end
+        end
+        """)
+
+      assert calls == ["P.B", "P.B.g/1", "P.B.h/1"]
+    end
+  end
 end

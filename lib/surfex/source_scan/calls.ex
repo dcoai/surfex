@@ -11,6 +11,14 @@ defmodule Surfex.SourceScan.Calls do
   @typedoc "Short alias name => full module name."
   @type aliases :: %{atom => String.t()}
 
+  @typedoc """
+  An imported module and which of its functions the import brings in: all of them, only
+  those listed (`only: [fun: arity]`), or all but those listed (`except:`). `only:
+  :functions` (or `:macros`, `:sigils`) is read as all: telling a function from a macro
+  takes the module's own source.
+  """
+  @type import :: {String.t(), :all | {:only | :except, [{atom, non_neg_integer}]}}
+
   @doc """
   Every function and module `bodies` call or name, sorted. Each body is a node with the
   aliases in scope where it is defined; its own `alias`es apply from their line on. A
@@ -46,19 +54,21 @@ defmodule Surfex.SourceScan.Calls do
   end
 
   @doc """
-  A module's aliases (short name => full name), the modules it imports, and the
+  A module's aliases (short name => full name), its imports (`t:import/0`), and the
   `{name, arity}` of every function and macro it defines, from its own expressions.
-  `module`, when given, is what `__MODULE__` names.
+  `module`, when given, is what `__MODULE__` names. An import names its module as an alias
+  does (resolved through the module's aliases), and `import Base.{A, B}` imports each of
+  `Base.A` and `Base.B`, with the same `only:`/`except:` (#194).
   """
   @spec names([Macro.t()], String.t() | nil) :: %{
           aliases: aliases,
-          imports: [String.t()],
+          imports: [import],
           defined: [{atom, non_neg_integer}]
         }
   def names(exprs, module \\ nil) do
     aliases = aliases(exprs)
     aliases = if module, do: Map.put(aliases, :__MODULE__, module), else: aliases
-    imports = for {:import, _, [{:__aliases__, _, parts} | _]} <- exprs, do: join(parts)
+    imports = for {:import, _, args} <- exprs, import <- imports(args, aliases), do: import
 
     defined =
       for {definer, _, [head | _]} <- exprs,
@@ -68,6 +78,20 @@ defmodule Surfex.SourceScan.Calls do
 
     %{aliases: aliases, imports: imports, defined: defined}
   end
+
+  @doc """
+  The modules among `imports` (`names/2`) that a local call of `fun/arity` may come from:
+  each whose `only:` lists it, or whose `except:` doesn't. Which of them defines it is for
+  the caller to say, if it knows the module's code.
+  """
+  @spec importing([import], {atom, non_neg_integer}) :: [String.t()]
+  def importing(imports, call) do
+    for {module, filter} <- imports, admits?(filter, call), do: module
+  end
+
+  defp admits?(:all, _call), do: true
+  defp admits?({:only, listed}, call), do: call in listed
+  defp admits?({:except, listed}, call), do: call not in listed
 
   @doc "The module-level aliases at one level of expressions."
   @spec aliases([Macro.t()]) :: aliases
@@ -196,6 +220,36 @@ defmodule Surfex.SourceScan.Calls do
   end
 
   defp alias_pairs(_other), do: []
+
+  # An `import`'s modules, each with its filter: one for `import A`, one per member for
+  # `import Base.{A, B}`, every one with the options given.
+  defp imports([target | opts], aliases) do
+    filter = opts |> List.first([]) |> import_filter()
+
+    for parts <- import_targets(target), do: {expand(parts, aliases), filter}
+  end
+
+  defp import_targets({:__aliases__, _, parts}), do: [parts]
+
+  defp import_targets({{:., _, [{:__aliases__, _, base}, :{}]}, _, members}),
+    do: for({:__aliases__, _, parts} <- members, do: base ++ parts)
+
+  # An Erlang module (`import :lists`) or anything computed: no module surfex can name.
+  defp import_targets(_other), do: []
+
+  # `only:` or `except:` with a literal list of `fun: arity`; anything else imports all.
+  defp import_filter(opts) when is_list(opts) do
+    case {Keyword.get(opts, :only), Keyword.get(opts, :except)} do
+      {only, _} when is_list(only) -> {:only, pairs(only)}
+      {_, except} when is_list(except) -> {:except, pairs(except)}
+      _all -> :all
+    end
+  end
+
+  defp import_filter(_opts), do: :all
+
+  defp pairs(list),
+    do: for({fun, arity} <- list, is_atom(fun) and is_integer(arity), do: {fun, arity})
 
   defp join(parts), do: parts |> Enum.filter(&is_atom/1) |> Enum.map_join(".", &Atom.to_string/1)
 

@@ -68,6 +68,12 @@ defmodule Surfex.Status do
   run that includes it nothing is judged stale. A deviation tag on a test that declares no
   spec unit is broken.
 
+  A test version that, in the evidence given, failed and then passed against the same
+  code versions, and never discriminated, is **uncredited** (§17): its red→green can't be
+  credited, since what changed is outside the code it reaches (a call the scanner doesn't
+  see, a change outside the scanned code, or a flaky test). Each is listed with the code
+  it reached, as information, never a failure.
+
   An `excuses` relation whose item its class no longer covers is **stale**: the item is
   now implemented, no rule matches it any more, or another class's rule matches it first.
   An excuse must stay true to its class's rules, not only to the versions it was confirmed
@@ -134,6 +140,7 @@ defmodule Surfex.Status do
           ],
           failed: [%{relation: tuple, test: String.t()}],
           unproven: [%{relation: tuple, test: String.t() | nil, reason: atom}],
+          uncredited: [%{test: String.t(), code: [String.t()]}],
           unchecked: [%{relation: tuple, test: String.t(), reason: :excluded | :skipped}],
           citations: [Surfex.Cite.t()],
           stale: [
@@ -260,6 +267,12 @@ defmodule Surfex.Status do
     related =
       for r <- relations, {_type, a, b} = r.relation, end_ <- [a, b], into: MapSet.new(), do: end_
 
+    discriminated =
+      MapSet.new(
+        for %Entry{op: :observe, type: :red_green, ends: [test]} <- other_entries,
+            do: {test.id, test.hash}
+      )
+
     %{
       relations: relations,
       new:
@@ -289,11 +302,9 @@ defmodule Surfex.Status do
       baselined: baselined,
       adoption: adoption.setting,
       marks: marks(mark_entries, by_id),
-      discriminated:
-        MapSet.new(
-          for %Entry{op: :observe, type: :red_green, ends: [test]} <- other_entries,
-              do: {test.id, test.hash}
-        ),
+      discriminated: discriminated,
+      # Information, not a failure (§17): a gap in what the test's calls reach.
+      uncredited: uncredited(scans, Keyword.get(opts, :evidence), discriminated),
       policy: %{
         triangle: triangle,
         validated: validated,
@@ -851,6 +862,25 @@ defmodule Surfex.Status do
         where = Enum.map_join(group, ", ", &"#{&1.location.file}:#{inspect(&1.location.lines)}")
         raise ArgumentError, "two #{kind} records have the id #{inspect(id)} (#{where})"
     end
+  end
+
+  # Each scanned test, at its version, whose red→green the evidence can't credit
+  # (`Surfex.Evidence.uncredited/1`) and the log doesn't record as discriminated, with the
+  # code versions its red run recorded. Several jobs' runs are read as one history.
+  defp uncredited(_scans, nil, _discriminated), do: []
+
+  defp uncredited(scans, {:merged, runs}, discriminated),
+    do: uncredited(scans, Surfex.Evidence.combined(runs), discriminated)
+
+  defp uncredited(scans, evidence, discriminated) do
+    pairs = Surfex.Evidence.uncredited(evidence)
+
+    for %Scan{kind: :test, id: id, hash: hash} <- scans,
+        not MapSet.member?(discriminated, {id, hash}),
+        {:ok, {red, _green}} <- [Map.fetch(pairs, {id, hash})] do
+      %{test: id, code: red.code |> Map.keys() |> Enum.sort()}
+    end
+    |> Enum.sort_by(& &1.test)
   end
 
   # Why a claim isn't borne out, strongest first (§17).

@@ -47,6 +47,15 @@ release it merely follows.
   `Surfex.Scan` gains `deviation`, a relation status `deviates`, and `Surfex.Status.derive/4`
   `deviating` and the `deviations:` option. Nothing changes for a project without the tag.
 
+- **Uncredited red→green is reported** (#194, #225). A test version that failed and then
+  passed against the **same** code versions never discriminates, so `mix surfex.confirm
+  --evidence` credited nothing, and nothing said so: the change that made it pass was
+  outside what the test reaches (a call the scanner didn't see, a change outside the
+  scanned code, or a flaky test). `mix surfex.status --evidence` now lists each such test
+  under **Uncredited**, with the code its runs recorded, unless the log records the
+  version as discriminated. Information, never a failure. `Surfex.Evidence.uncredited/1`
+  finds them, `Surfex.Status.derive/4` returns `uncredited`, and the JSON has `uncredited`.
+
 ### Changed
 
 - **A test's declaration with no `verifies` relation fails the check: Unrecorded** (#203,
@@ -102,6 +111,27 @@ release it merely follows.
   about 2,900 records and 27,500 log entries derive fell from about 3 s to 0.65 s, with an
   identical status. `mix surfex.suggest`, `mix surfex.test` and the baseline resolve
   declarations through one resolver too.
+
+- **A test's calls resolve through brace imports, and credit the imported module** (#194,
+  #225). `import Base.{A, B}` imported nothing for surfex, so a test calling `f()` through
+  it reached none of `A`'s or `B`'s code: the run recorded no versions for it, and its
+  red→green against a change there was lost. Now each member is imported, and `only:` and
+  `except:` are honoured in either form. Given the project's code, a local call resolves
+  only to a function the imported module defines, and names the module too, as
+  `A.f()` would: a test calling a module's functions through an import exercises the
+  module, so a section the module implements no longer reports it as a triangle gap. A
+  call no scanned imported module defines (ExUnit's `assert` beside `import A`) is no
+  longer listed under it; through a module that isn't scanned, nothing changes.
+  `Surfex.Scan.ExUnit.records/3` and `tests/3` take the code records for this, and
+  `mix surfex.status` and `Surfex.ExUnitFormatter` pass them. Code calls read brace
+  imports and `only:`/`except:` too.
+
+  **Upgrade step:** none required, but run `mix surfex.suggest` after upgrading: tests
+  calling through imports gain `tests` proposals to the functions and modules they now
+  reach, each to be confirmed by evidence or review. Measured read-only on eight adopting projects: in two,
+  307 tests reach more code and 12 triangle gaps close; no test reaches less anywhere and
+  no gap opens. In six, the calls of 502 tests drop candidates no scanned module defines,
+  which reach nothing either way.
 
 ## [0.8.0] — 2026-10-13
 

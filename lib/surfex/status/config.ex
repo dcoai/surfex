@@ -360,7 +360,8 @@ defmodule Surfex.Status.Config do
     if spec == [],
       do: raise(ArgumentError, "no spec sections found in #{inspect(sources)} under #{root}")
 
-    spec ++ Scan.code(items) ++ tests(config, root) ++ classes(config)
+    code = Scan.code(items)
+    spec ++ code ++ tests(config, root, code) ++ classes(config)
   end
 
   # Classes (`classes:` and `rules:`, the profile's keys) are scanned when a project has
@@ -369,8 +370,9 @@ defmodule Surfex.Status.Config do
     do: if(Keyword.has_key?(config, :classes), do: Scan.Classes.records(config), else: [])
 
   # No `tests:` means no test scanning. Globs that match nothing raise, as `sources:` do: a
-  # misspelt glob would otherwise report every test relation orphaned.
-  defp tests(config, root) do
+  # misspelt glob would otherwise report every test relation orphaned. The code says what a
+  # test's imported modules define (`Surfex.Scan.ExUnit.tests/3`).
+  defp tests(config, root, code) do
     case Keyword.get(config, :tests) do
       nil ->
         []
@@ -381,7 +383,7 @@ defmodule Surfex.Status.Config do
         if files == [],
           do: raise(ArgumentError, "tests: #{inspect(globs)} matches no file under #{root}")
 
-        Scan.ExUnit.records(root, globs)
+        Scan.ExUnit.records(root, globs, code)
     end
   end
 end

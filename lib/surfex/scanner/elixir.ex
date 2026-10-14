@@ -166,7 +166,8 @@ defmodule Surfex.Scanner.Elixir do
   # What each public and hidden definition calls (§5.2), by `{name, arity}`: what its
   # clauses and the private helpers they reach call (`Surfex.SourceScan.Calls`). A local
   # call to one of the module's public or hidden definitions is a call to it; to anything
-  # the module doesn't define, a call under each module it imports. A `defdelegate` calls
+  # the module doesn't define, a call under each module whose import admits it (brace
+  # imports and `only:`/`except:` read, `Calls.importing/2`). A `defdelegate` calls
   # its target. A definition that calls a function of a module this one `use`s or declares
   # as its `@behaviour` (`GenServer.call`, `:gen_statem.call`) dispatches through it, so it
   # calls the module's hidden callbacks too.
@@ -185,7 +186,7 @@ defmodule Surfex.Scanner.Elixir do
           []
 
         true ->
-          Enum.map(names.imports, &Calls.call(&1, fun, arity))
+          names.imports |> Calls.importing(call) |> Enum.map(&Calls.call(&1, fun, arity))
       end
     end
 

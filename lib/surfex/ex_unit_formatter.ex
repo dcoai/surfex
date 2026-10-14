@@ -50,8 +50,8 @@ defmodule Surfex.ExUnitFormatter do
         raise ArgumentError,
               "Surfex.ExUnitFormatter needs tests: in .surfex.exs, to know the tests"
 
-    tests = Scan.ExUnit.records(state.root, globs)
     scans = Scan.code(Config.items(config, state.root))
+    tests = Scan.ExUnit.records(state.root, globs, scans)
     code = for s <- scans, into: %{}, do: {s.id, s.hash}
     index = Enum.group_by(tests, &Path.expand(&1.location.file, state.root))
     {:noreply, %{state | index: index, code: code, reach: Scan.reach(tests ++ scans)}}

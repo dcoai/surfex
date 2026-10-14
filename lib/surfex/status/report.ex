@@ -91,6 +91,12 @@ defmodule Surfex.Status.Report do
         status.unchecked,
         &claim_line/1
       ),
+      # Information, not a failure (§17): what made the test pass is outside its reach.
+      items(
+        "Uncredited (red then green against the same code: what changed is outside its reach)",
+        status.uncredited,
+        &uncredited_line(&1, status)
+      ),
       # Listed only where they fail: a project moving over has many (§13.3).
       section(
         "Unvalidated (current, but nothing has validated it)",
@@ -198,6 +204,7 @@ defmodule Surfex.Status.Report do
       "failed" => Enum.map(status.failed, &failed_json/1),
       "unproven" => Enum.map(status.unproven, &claim_json/1),
       "unchecked" => Enum.map(status.unchecked, &claim_json/1),
+      "uncredited" => Enum.map(status.uncredited, &%{"test" => &1.test, "code" => &1.code}),
       "undeclared" => Enum.map(status.undeclared, &%{"test" => &1.test, "spec" => &1.spec}),
       "unrecorded" =>
         Enum.map(status.unrecorded, fn u ->
@@ -456,6 +463,12 @@ defmodule Surfex.Status.Report do
   defp unrecorded_text(%{retired: %{note: note}}),
     do:
       "declared, but the relation was retired (#{note || "no note"}): remove the tag, or reinstate it"
+
+  # A test whose red→green can't be credited, and the code it reached in both runs (§17).
+  defp uncredited_line(%{test: test, code: code}, status) do
+    reached = if code == [], do: "no scanned code", else: "only #{Enum.join(code, ", ")}"
+    "test #{describe({:test, test}, status)}: reached #{reached}"
+  end
 
   # A deviating unit, its reference and test, and what the run says of it (§13.1).
   defp deviating_line(d, status),

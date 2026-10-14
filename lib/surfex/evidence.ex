@@ -97,12 +97,35 @@ defmodule Surfex.Evidence do
   @spec red_then_green([t], String.t(), String.t()) :: {t, t} | nil
   def red_then_green(evidence, test, test_hash) do
     runs = for r <- ran(evidence), r.test == test, r.test_hash == test_hash, do: r
+    red_green(runs, &(&1 != &2))
+  end
 
+  @doc """
+  The test versions whose red→green the evidence can't credit (#194): each failed and
+  later passed, unchanged itself, against the **same** code versions, and never
+  discriminated (`red_then_green/3`). Whatever made it pass is outside the code the test
+  reaches: a call the scanner doesn't see, a change outside the scanned code, or a flaky
+  test. Keyed by `{test, test_hash}`, with the first such red run and the pass after it.
+  """
+  @spec uncredited([t]) :: %{{String.t(), String.t()} => {t, t}}
+  def uncredited(evidence) do
+    for {key, runs} <- Enum.group_by(ran(evidence), &{&1.test, &1.test_hash}),
+        red_green(runs, &(&1 != &2)) == nil,
+        pair = red_green(runs, &(&1 == &2)),
+        pair != nil,
+        into: %{},
+        do: {key, pair}
+  end
+
+  # The first failure among one test version's `runs` and the first later pass whose code
+  # versions `compare` to the failure's as asked: differing for a red→green that
+  # discriminates, the same for one that can't be credited.
+  defp red_green(runs, compare) do
     Enum.find_value(runs, fn
       %{result: :failed} = red ->
         runs
         |> Enum.drop_while(&(&1 != red))
-        |> Enum.find(&(&1.result == :passed and &1.code != red.code))
+        |> Enum.find(&(&1.result == :passed and compare.(&1.code, red.code)))
         |> case do
           nil -> nil
           green -> {red, green}

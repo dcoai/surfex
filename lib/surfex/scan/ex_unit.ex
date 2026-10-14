@@ -45,31 +45,66 @@ defmodule Surfex.Scan.ExUnit do
   # as a test named "property …" (#141).
   @definers [:test, :property]
 
-  @doc "Every test in every file matching `globs` under `root`, in file then source order."
-  @spec records(String.t(), [String.t()]) :: [Scan.t()]
-  def records(root, globs) do
+  @doc """
+  Every test in every file matching `globs` under `root`, in file then source order.
+  `code` is the project's code records (`Surfex.Scan.code/1`), which say what an imported
+  module defines (`tests/3`).
+  """
+  @spec records(String.t(), [String.t()], [Scan.t()]) :: [Scan.t()]
+  def records(root, globs, code \\ []) do
     root = Path.expand(root)
+    known = known(code)
 
     globs
     |> Enum.flat_map(&Path.wildcard(Path.join(root, &1)))
     |> Enum.uniq()
     |> Enum.sort()
-    |> Enum.flat_map(fn path -> path |> File.read!() |> tests(Path.relative_to(path, root)) end)
+    |> Enum.flat_map(fn path ->
+      path |> File.read!() |> scan_text(Path.relative_to(path, root), known)
+    end)
   end
 
-  @doc "The tests in one source text, as records located in `file`."
-  @spec tests(String.t(), String.t()) :: [Scan.t()]
-  def tests(text, file) do
+  @doc """
+  The tests in one source text, as records located in `file`. A local call the test
+  module doesn't define comes from one of its imports (§11): given the project's `code`
+  records, a call through an import of a scanned module is a call to the function that
+  module defines, and names the module too, as a qualified call does; a call to a function
+  it doesn't define (ExUnit's `assert` beside `import MyApp.Fixtures`) comes from
+  elsewhere, and isn't listed under it. A module that isn't scanned has its candidate
+  listed, `Module.fun/arity`, which reaches nothing.
+  """
+  @spec tests(String.t(), String.t(), [Scan.t()]) :: [Scan.t()]
+  def tests(text, file, code \\ []), do: scan_text(text, file, known(code))
+
+  defp scan_text(text, file, known) do
     text
     |> Code.string_to_quoted!(file: file, token_metadata: true)
     |> SourceScan.defmodules()
-    |> Enum.flat_map(&module_tests(&1, file))
+    |> Enum.flat_map(&module_tests(&1, file, known))
     |> number_duplicates()
+  end
+
+  # What the code records say an import can resolve to, indexed once: the scanned
+  # modules, and every id a call can name, an item's or a module's hidden definition's.
+  defp known(code) do
+    %{
+      modules: MapSet.new(for %Scan{kind: :code, role: :module, id: id} <- code, do: id),
+      ids:
+        MapSet.new(
+          for %Scan{kind: :code, id: id, hidden: hidden} <- code,
+              key <- [id | Map.keys(hidden)],
+              do: key
+        )
+    }
   end
 
   # ── One module ──────────────────────────────────────────────────────────
 
-  defp module_tests({:defmodule, meta, [{:__aliases__, _, parts} = aliases, [do: body]]}, file) do
+  defp module_tests(
+         {:defmodule, meta, [{:__aliases__, _, parts} = aliases, [do: body]]},
+         file,
+         known
+       ) do
     # A `describe` block's helpers are the module's functions too: ExUnit compiles them at
     # the module's top level. Flattened, a test's version and calls follow them.
     mod = {:defmodule, meta, [aliases, [do: {:__block__, [], flatten(exprs(body))}]]}
@@ -109,21 +144,20 @@ defmodule Surfex.Scan.ExUnit do
         unselectable: unselectable(tag),
         deviation: Map.get(tags, :deviation),
         skip: Map.get(tags, :skip),
-        calls: calls(mod, t, names, scopes)
+        calls: calls(mod, t, names, scopes, known)
       }
     end
   end
 
-  defp module_tests(_mod, _file), do: []
+  defp module_tests(_mod, _file, _known), do: []
 
   # ── What a test calls ───────────────────────────────────────────────────
 
   # What a test exercises, from its body and the private helpers it reaches
   # (`Surfex.SourceScan.Calls`). A local call that the module doesn't define may come from
-  # an `import`: it is listed under each imported module, and whichever one the code
-  # scanner knows is the one that counts. Setups are left out: they prepare a test, and
-  # what a test tests is what it calls itself.
-  defp calls(mod, test, names, scopes) do
+  # an `import` whose `only:`/`except:` admits it (`imported/4`). Setups are left out: they
+  # prepare a test, and what a test tests is what it calls itself.
+  defp calls(mod, test, names, scopes, known) do
     # Each body with the aliases in scope where it is defined.
     bodies =
       for node <- SourceScan.closure_nodes(mod, [test.node]),
@@ -134,8 +168,25 @@ defmodule Surfex.Scan.ExUnit do
     Calls.of(bodies, fn {fun, arity} = local ->
       if local in names.defined,
         do: [],
-        else: Enum.map(names.imports, &Calls.call(&1, fun, arity))
+        else:
+          names.imports
+          |> Calls.importing(local)
+          |> Enum.flat_map(&imported(&1, fun, arity, known))
     end)
+  end
+
+  # A local call through an import of `module` (#194). A scanned module's code says whether
+  # it defines the function: a call to it names the module too, as `Module.fun()` would;
+  # one it doesn't define comes from another import (ExUnit's `assert`), so nothing. An
+  # unscanned module's code is unknown: the call is listed under it and reaches nothing.
+  defp imported(module, fun, arity, known) do
+    id = Calls.call(module, fun, arity)
+
+    cond do
+      not MapSet.member?(known.modules, module) -> [id]
+      MapSet.member?(known.ids, id) -> [id, module]
+      true -> []
+    end
   end
 
   # The module's own aliases, and `__MODULE__` as the module.
