@@ -213,6 +213,54 @@ defmodule Surfex.LogTest do
       assert entry(1).id == "3b1ab3f7ab2d842901c79e8a11f9d92d0bbd9be370123640ed59a1587adcf6b8"
     end
 
+    # #206: a review names how its test exercises code no call reaches.
+    @tag verifies: ["through-entry"]
+    test "through is written only when set, and only a reviewed implements carries it" do
+      plain = entry(1, basis: :review)
+      refute Entry.encode(plain) =~ "through"
+
+      via = entry(1, basis: :review, through: "route GET /settings")
+      line = Entry.encode(via)
+      assert line =~ ~s("basis":"review","through":"route GET /settings"})
+      assert Entry.decode!(line) == via
+      refute via.id == plain.id
+
+      for bad <- [[basis: :evidence], [basis: :proposed], [type: :verifies]] do
+        fields =
+          [
+            at: "2026-09-28T10:00:01Z",
+            op: :relate,
+            type: :implements,
+            basis: :review,
+            through: "route GET /settings",
+            ends: [
+              %{kind: :test, id: "T: t", hash: "t1"},
+              %{kind: :spec, id: "spec.md#S1", hash: "s1"}
+            ]
+          ]
+          |> Keyword.merge(bad)
+
+        fields =
+          if fields[:type] == :implements,
+            do: Keyword.put(fields, :ends, plain.ends),
+            else: fields
+
+        assert {:error, "only a reviewed implements carries through" <> _} = Entry.build(fields)
+      end
+
+      assert {:error, msg} =
+               Entry.build(
+                 at: plain.at,
+                 op: :relate,
+                 type: :implements,
+                 basis: :review,
+                 ends: plain.ends,
+                 through: " "
+               )
+
+      assert msg =~ ":through"
+    end
+
     @tag verifies: ["log-entries", "entry-canonical"]
     test "decode says why a line isn't an entry; text that isn't JSON raises" do
       line = Entry.encode(entry(1))

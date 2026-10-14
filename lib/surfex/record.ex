@@ -63,6 +63,11 @@ defmodule Surfex.Record do
   defp with_basis(meta, nil), do: Keyword.delete(meta, :basis)
   defp with_basis(meta, basis), do: Keyword.put(meta, :basis, basis)
 
+  # A relation re-recorded as its tip stands (a move, a resolve, a new note): what
+  # validated it, and how a review said its test exercises the code (§18), come along.
+  defp as_tip(meta, tip),
+    do: meta |> with_basis(tip.basis) |> Keyword.put(:through, tip.through)
+
   @doc """
   Relates `from` and `to` as `type` when one of them doesn't exist yet: a **planned**
   relation, the intent recorded before the code (or the section) is written. A scanned end
@@ -220,7 +225,7 @@ defmodule Surfex.Record do
                    type,
                    tip.ends,
                    Enum.map(tips, & &1.id),
-                   with_basis(meta, tip.basis)
+                   as_tip(meta, tip)
                  ),
                do: {:ok, [entry]}
 
@@ -655,7 +660,7 @@ defmodule Surfex.Record do
                tip.type,
                ends,
                parents(entries ++ acc, tip.type, hd(ends), List.last(ends)),
-               with_basis(meta, tip.basis)
+               as_tip(meta, tip)
              ) do
         {:cont, {:ok, acc ++ [retired, moved]}}
       else
@@ -1018,6 +1023,8 @@ defmodule Surfex.Record do
       # through other code counts when the reviewer names it.
       only_reached = only_reached(status, test)
       named = Map.new(List.wrap(meta[:code]), &{&1, named_definition(status, &1)})
+      through = meta[:through]
+      meta = Keyword.delete(meta, :through)
 
       candidates =
         for %{type: :implements, state: state, relation: {_, {:code, c}, {:spec, ^spec_id}}} = r <-
@@ -1042,9 +1049,13 @@ defmodule Surfex.Record do
       # What is validated already stays as it was: a verifies on its failing run keeps
       # that basis, so CI goes on checking it (§17), and a review re-records nothing.
       cond do
+        through != nil ->
+          through(status, test, unit, named, unreached, todo, through, meta)
+
         unreached != [] ->
           {:error,
-           Enum.map_join(unreached, "; ", &"#{&1} isn't code the green run of #{test.id} reached")}
+           Enum.map_join(unreached, "; ", &"#{&1} isn't code the green run of #{test.id} reached") <>
+             ": if the test exercises it in a way no call shows (a route, a message), say how with --through"}
 
         todo != [] ->
           confirm_each(todo, status, meta)
@@ -1058,6 +1069,68 @@ defmodule Surfex.Record do
         true ->
           {:error, "already validated: nothing to record (#{test.id} and #{unit.id})"}
       end
+    end
+  end
+
+  # A review naming how its test exercises code no call reaches (§18, `--through`): each
+  # named item the green run didn't reach is credited, its `implements` to the unit
+  # recording `through`, beside whatever the review records anyway. Named code must be
+  # scanned and related to the unit already, and `--through` is for unreached code only:
+  # code the run reached is credited without it.
+  defp through(status, test, unit, named, unreached, todo, how, meta) do
+    unknown = for {id, nil} <- named, do: id
+
+    pairs =
+      for id <- unreached, id not in unknown do
+        relation =
+          Entry.relation(:implements, %{kind: :code, id: id}, %{kind: :spec, id: unit.id})
+
+        {id, Enum.find(status.relations, &(&1.relation == relation))}
+      end
+
+    unrelated = for {id, r} <- pairs, r == nil or r.state in [:retired, :orphaned], do: id
+
+    cond do
+      not (is_binary(how) and String.trim(how) != "") ->
+        {:error, "--through needs a description of how the test exercises the code"}
+
+      named == %{} ->
+        {:error, "--through says how the test exercises code you name with --code: name it"}
+
+      unknown != [] ->
+        {:error, Enum.map_join(unknown, "; ", &"#{&1} isn't scanned code")}
+
+      unreached == [] ->
+        {:error,
+         "--through is for code the green run of #{test.id} didn't reach; " <>
+           Enum.join(Map.keys(named), ", ") <> " was reached: drop --through"}
+
+      unrelated != [] ->
+        {:error,
+         Enum.map_join(
+           unrelated,
+           "; ",
+           &"no implements relation between #{&1} and #{unit.id}: record it first (mix surfex.relate)"
+         )}
+
+      true ->
+        {via, plain} =
+          todo
+          |> Enum.concat(for {_id, r} <- pairs, do: r)
+          |> Enum.uniq_by(& &1.relation)
+          |> Enum.reject(&Status.validated?(status, &1))
+          |> Enum.split_with(fn %{relation: {_, a, b}} ->
+            Enum.any?(unreached, &({:code, &1} in [a, b]))
+          end)
+
+        if via == [] and plain == [] do
+          {:error, "already validated: nothing to record (#{test.id} and #{unit.id})"}
+        else
+          with {:ok, a} <- confirm_each(plain, status, meta),
+               {:ok, b} <-
+                 confirm_each(via, status, Keyword.put(meta, :through, String.trim(how))),
+               do: {:ok, a ++ b}
+        end
     end
   end
 
@@ -1178,7 +1251,7 @@ defmodule Surfex.Record do
             end),
          {:ok, chosen} <- choose(tips, pick),
          # Picking a side judges nothing new: the chosen tip keeps what validated it.
-         meta = with_basis(meta, chosen.basis),
+         meta = as_tip(meta, chosen),
          {:ok, entry} <-
            entry(chosen.op, type, chosen.ends, Enum.map(tips, & &1.id), meta, chosen.note) do
       {:ok, [entry]}
@@ -1320,7 +1393,8 @@ defmodule Surfex.Record do
       type: type,
       parents: parents,
       ends: ends,
-      basis: meta[:basis]
+      basis: meta[:basis],
+      through: if(op == :relate, do: meta[:through])
     )
   end
 

@@ -138,8 +138,9 @@ defmodule Surfex.Record.Mix do
     [a, b] = e.ends
     arrow = if e.type in Entry.directed(), do: "→", else: "↔"
     note = if e.note, do: " — #{e.note}", else: ""
+    through = if e.through, do: " (through #{e.through})", else: ""
 
-    "#{e.op} #{e.type}  #{end_text(a)} #{arrow} #{end_text(b)}  [#{String.slice(e.id, 0, 12)}]#{note}"
+    "#{e.op} #{e.type}  #{end_text(a)} #{arrow} #{end_text(b)}  [#{String.slice(e.id, 0, 12)}]#{through}#{note}"
   end
 
   defp end_text(%{hash: nil} = e), do: "#{e.kind} #{e.id}@planned"

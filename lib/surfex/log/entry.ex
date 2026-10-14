@@ -15,6 +15,7 @@ defmodule Surfex.Log.Entry do
   | `by` | who recorded it |
   | `note` | why, optionally |
   | `basis` | how it validates the relation: `:evidence`, `:review`, `:judgement`, `:baseline` or `:proposed`; absent when it validates nothing |
+  | `through` | how the reviewed test exercises code no call reaches (`route GET /settings`), on a reviewed `implements` only (`mix surfex.validate --through`, §18); absent otherwise |
 
   Which ends and bases each type and op may have is the grammar of spec §12.1, enforced by
   `build/1` and so by `decode/1`.
@@ -27,7 +28,7 @@ defmodule Surfex.Log.Entry do
   """
 
   @enforce_keys [:id, :at, :parents, :op, :type, :ends]
-  defstruct [:id, :at, :commit, :op, :type, :by, :note, :basis, parents: [], ends: []]
+  defstruct [:id, :at, :commit, :op, :type, :by, :note, :basis, :through, parents: [], ends: []]
 
   @ops [:relate, :retire, :mark, :observe]
   @bases [:evidence, :review, :judgement, :baseline, :proposed]
@@ -65,7 +66,8 @@ defmodule Surfex.Log.Entry do
           ends: [end_],
           by: String.t() | nil,
           note: String.t() | nil,
-          basis: :evidence | :review | :judgement | :baseline | :proposed | nil
+          basis: :evidence | :review | :judgement | :baseline | :proposed | nil,
+          through: String.t() | nil
         }
 
   @doc "The operations an entry may record."
@@ -128,7 +130,8 @@ defmodule Surfex.Log.Entry do
            ends: orient(fields[:type], ends),
            by: fields[:by],
            note: fields[:note],
-           basis: fields[:basis]
+           basis: fields[:basis],
+           through: fields[:through]
          },
          :ok <- check(entry) do
       {:ok, %{entry | id: id(entry)}}
@@ -190,7 +193,8 @@ defmodule Surfex.Log.Entry do
                  ends: ends,
                  by: map["by"],
                  note: map["note"],
-                 basis: basis
+                 basis: basis,
+                 through: map["through"]
                ) do
           if entry.id == id,
             do: {:ok, entry},
@@ -250,6 +254,8 @@ defmodule Surfex.Log.Entry do
 
     # Written only when set, so an entry recorded before bases existed keeps its line and id.
     fields = if entry.basis, do: fields ++ [{"basis", Atom.to_string(entry.basis)}], else: fields
+    # Likewise `through`, which only a review crediting unreached code carries (§12.1).
+    fields = if entry.through, do: fields ++ [{"through", entry.through}], else: fields
     fields = if with_id?, do: [{"id", entry.id} | fields], else: fields
     IO.iodata_to_binary(value({:object, fields}))
   end
@@ -367,6 +373,16 @@ defmodule Surfex.Log.Entry do
 
       not Enum.all?([e.commit, e.by, e.note], &(is_nil(&1) or is_binary(&1))) ->
         bad(:commit_by_note, {e.commit, e.by, e.note})
+
+      # How a test exercises code no call reaches is a review's statement about one
+      # implements: anywhere else it would be a claim nothing judged (§18).
+      e.through != nil and
+          not (e.op == :relate and e.type == :implements and e.basis == :review) ->
+        {:error,
+         "only a reviewed implements carries through, got #{e.op} #{e.type} with #{basis_name(e.basis)}"}
+
+      e.through != nil and not (is_binary(e.through) and String.trim(e.through) != "") ->
+        bad(:through, e.through)
 
       true ->
         :ok

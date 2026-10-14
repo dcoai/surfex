@@ -1431,6 +1431,7 @@ only state surfex keeps. Scanners never read or write it (§11).
 | `by` | who recorded it |
 | `note` | why, optionally |
 | `basis` | how the entry validates the relation (§18): `evidence`, `review`, `judgement`, `baseline` (§18.1) or `proposed` (`Surfex.Log.Entry.bases/0`); absent when it validates nothing, which keeps every older entry's canonical line and id |
+| `through` | how a reviewed test exercises code no call reaches (§18.2), free text; only on a `relate` of an `implements` with basis `review`, and absent otherwise, which keeps every other entry's line and id |
 
 - **An observation** is a fact the log keeps about one test version, not a relation:
   `op: observe`, type `red_green`, one `test` end at its version, basis `evidence`. It
@@ -1509,6 +1510,11 @@ spec end and an observation one test end; there is no config kind
 each type carries only its bases, with none admitted as legacy for implements, verifies
 and excuses; a tests relation is never reviewed; a retire and a mark carry no basis; an
 observation carries exactly its own
+```
+
+```test:through-entry
+through is written after basis only when set, so an entry without it keeps its line and
+id; an entry other than a reviewed implements carrying it, or a blank one, is refused
 ```
 
 ```test:grammar-loud
@@ -2230,7 +2236,9 @@ precisely. It covers:
 - what the scanner sees
 - sizing sections to what changes together
 - keeping headings stable
-- naming the code in the section that describes it
+- naming the code in the section that describes it, and relating code to the claim it
+  realises rather than to every section that mentions it, by hand where no citation
+  proposes the pair (`relate`, then `validate`, with `--through` for a path no call shows)
 - stating requirements as checkable claims
 - naming a claim smaller than a section (§11.1): which form for which claim, and
   why bold is never one
@@ -2351,7 +2359,7 @@ A review (§18) is narrower than evidence. Its note is a judgement about what wa
 it credits the code its test calls, and reached code only where the reviewer names it
 (`mix surfex.validate … --code ID`). Otherwise one note would stand for every function
 behind an entry point, including code nobody read. A named id the last green run didn't
-reach is an error.
+reach is an error, unless the review says how the test exercises it (§18.2).
 
 ```test:evidence-reach
 a test calling an entry point that calls the cited code carries the implements relation
@@ -2684,6 +2692,45 @@ adopted and the spec units left without one
 a baselined test re-confirms a refactor as baseline; its first red→green moves it to
 evidence; a changed test version, or narrowed trust, leaves its relations unvalidated;
 baseline relations are counted, and fail under baseline: :fail
+```
+
+### 18.2 Reviews through a path no call shows
+<!-- surfex: review-through-path -->
+
+Some tests exercise code by a path no call in the source states: a route a router maps to
+a controller, a message to a process, a JavaScript hook driven from Elixir, a capture
+handed to a helper. Reach (§13.1) can't follow it, so neither evidence nor a review that
+credits only reached code can validate the code's `implements`, though the test does
+exercise it. **The path is recorded by hand, and named.**
+
+Code relates to the claim it realises, not to every section that mentions it. Where no
+citation proposes the pair, `mix surfex.relate CODE CLAIM --type implements --note N`
+records it (proposed). Then
+`mix surfex.validate TEST CLAIM --code ID --through HOW --note N` reviews it: `HOW` says
+how the test exercises the named code (`route GET /settings`, `message {:feed, _}`,
+`js hook Canvas`, `capture via growth/3`).
+- Each named item the test's green run didn't reach is credited: its `implements` to the
+  unit is recorded with basis `review` and the entry's `through` (§12.1). Named code the
+  run did reach is credited as any review credits it, with no `through`.
+- The review still needs everything a review needs (§18): the `verifies` relation, green
+  evidence at the current versions, and a note. The named code must be scanned and
+  already related to the unit (in any live state); `--through` without `--code`, or with
+  every named item reached, is refused. A batch (`--file`) takes no `--through`, as it
+  takes no `--code`. Without `--through`, an unreached `--code` stays an error.
+- A move, a resolve and a new note (`annotate`) keep `through` with the basis.
+  `mix surfex.history` shows it. `Surfex.Status.through_count/1` counts the current
+  relations resting on such a review, and the status text, its JSON (`through`, and each
+  relation's) and `RELATIONS.md` (when there are any) report the count, so an audit can
+  find them.
+- The triangle (§13) takes the review's word: code whose current `implements` rests on a
+  `through` review counts as exercised by the unit's verifying tests. It dangles when the
+  code changes, like any relation, and is judged again by a review naming the path.
+
+```test:review-through
+a review naming how its test exercises code the green run didn't reach credits that code
+with through recorded, counted, shown and kept by a new note, and the triangle closes;
+without --through it is refused; --through without --code, for reached code, for code
+not scanned or not related to the unit, is refused
 ```
 
 ## 19. Handing off found work

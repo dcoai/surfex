@@ -35,6 +35,15 @@ hidden module's code is versioned in every function and module that runs it, in 
 A review's note speaks for what was read, so
 `validate` credits reached code only when you name it: `--code ID`, after reading it.
 
+**A path no call shows**: a test may exercise code through a route, a message to a
+process, a JavaScript hook or a capture handed to a helper, which no call in the source
+names. Relate the code to the claim it realises, not to every section that mentions it
+(`mix surfex.relate CODE CLAIM --type implements --note N`), then review it naming the
+path: `mix surfex.validate TEST CLAIM --code ID --through "message {:feed, _}" --note N`.
+The entry records `through`, `history` shows it, status counts these reviews, and the
+triangle takes the review's word for the path. `--through` is refused for code the run
+reached, and without `--code`.
+
 **Many at once**: `--file PATH` on `confirm` or `validate` records a file of relations in one
 run, one per line, tab-separated, each line ending with its own note (`FROM TO TYPE NOTE`,
 or `TEST UNIT NOTE`). The notes must be distinct; write each line after judging that

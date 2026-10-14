@@ -167,12 +167,21 @@ defmodule Surfex.Status.Report do
         n -> "  baseline: #{n} relations (adoption: #{inspect(status.adoption)})\n"
       end
 
+    # Reviews that named how their test exercises code no call reaches (§18).
+    through =
+      case Status.through_count(status) do
+        0 -> []
+        1 -> "  reviewed through a named path: 1 relation\n"
+        n -> "  reviewed through a named path: #{n} relations\n"
+      end
+
     IO.iodata_to_binary([
       "relation status: #{verdict}\n",
       Enum.map(counts, &[&1, "\n"]),
       unvalidated,
       unselectable,
       baseline,
+      through,
       units,
       lists
     ])
@@ -245,6 +254,7 @@ defmodule Surfex.Status.Report do
         "relations" => Status.baseline_count(status),
         "adoption" => inspect(status.adoption)
       },
+      "through" => Status.through_count(status),
       "marks" =>
         Enum.map(status.marks, fn m ->
           %{
@@ -324,27 +334,33 @@ defmodule Surfex.Status.Report do
           "other; the other types' ends are in sorted order. `mix surfex.status` is the check; " <>
           "this is the record.",
       stats: [
-        Surfex.Golden.stat("#{length(status.relations)} relations", [
-          {"current", Map.get(counts, :current, 0)},
-          {"dangling", Map.get(counts, :dangling, 0)},
-          {"orphaned", Map.get(counts, :orphaned, 0)},
-          {"conflicted", Map.get(counts, :conflicted, 0)},
-          {"retired", Map.get(counts, :retired, 0)},
-          {"planned", Map.get(counts, :planned, 0)},
-          {"unimplemented", length(status.unimplemented)},
-          {"new", length(status.new)},
-          {"unmet", length(status.unmet)},
-          {"broken", length(status.broken)},
-          {"stale", length(status.stale)},
-          {"undeclared", length(status.undeclared)},
-          {"unrecorded", length(status.unrecorded)},
-          {"moved", length(status.moved)},
-          {"deviating", length(status.deviating)},
-          {"marks", length(status.marks)},
-          {"baseline", Status.baseline_count(status)},
-          {"broken citations", length(status.citations)},
-          {"triangle gaps", length(status.triangle)}
-        ]),
+        Surfex.Golden.stat(
+          "#{length(status.relations)} relations",
+          [
+            {"current", Map.get(counts, :current, 0)},
+            {"dangling", Map.get(counts, :dangling, 0)},
+            {"orphaned", Map.get(counts, :orphaned, 0)},
+            {"conflicted", Map.get(counts, :conflicted, 0)},
+            {"retired", Map.get(counts, :retired, 0)},
+            {"planned", Map.get(counts, :planned, 0)},
+            {"unimplemented", length(status.unimplemented)},
+            {"new", length(status.new)},
+            {"unmet", length(status.unmet)},
+            {"broken", length(status.broken)},
+            {"stale", length(status.stale)},
+            {"undeclared", length(status.undeclared)},
+            {"unrecorded", length(status.unrecorded)},
+            {"moved", length(status.moved)},
+            {"deviating", length(status.deviating)},
+            {"marks", length(status.marks)},
+            {"baseline", Status.baseline_count(status)}
+            | through_stat(status)
+          ] ++
+            [
+              {"broken citations", length(status.citations)},
+              {"triangle gaps", length(status.triangle)}
+            ]
+        ),
         units_stat(Status.units(status))
       ],
       columns: ["End", "Other end", "State", "Changed"],
@@ -647,8 +663,18 @@ defmodule Surfex.Status.Report do
             "location" => scan && location_json(scan.location)
           }
         end),
-      "tips" => Enum.map(r.tips, & &1.id)
+      "tips" => Enum.map(r.tips, & &1.id),
+      "through" => r.tip && r.tip.through
     }
+  end
+
+  # A row only when some review named a path (§18), so a project with none keeps its
+  # golden as it was.
+  defp through_stat(status) do
+    case Status.through_count(status) do
+      0 -> []
+      n -> [{"reviewed through a named path", n}]
+    end
   end
 
   # The hashes the tip recorded for each end (none when conflicted: there is no one tip).

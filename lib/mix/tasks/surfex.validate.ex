@@ -47,6 +47,19 @@ defmodule Mix.Tasks.Surfex.Validate do
   record but reached code says which to name. A batch (`--file`) takes no `--code`: name
   reached code in a single review. Evidence (`mix surfex.confirm --evidence`) credits
   reached code without naming, since a red-then-green run backs it.
+
+  Some tests exercise code by a path no call in the source shows: a route a router maps,
+  a message to a process, a JavaScript hook, a capture handed to a helper. Relate the code
+  to the claim it realises (`mix surfex.relate CODE CLAIM --type implements --note …`),
+  then say how the test exercises it with `--through HOW`:
+
+      mix surfex.validate "MyApp.FeedTest: refreshes" spec.md#feed-refresh \\
+        --code MyApp.Feed.handle_info/2 --through "message {:feed, _} from the subscription" \\
+        --note "…"
+
+  It credits each named item the green run didn't reach, and the entry records `through`
+  (`mix surfex.history` shows it; status counts these reviews). `--through` needs `--code`,
+  and is refused when the run reached every named item: reached code needs no path named.
   """
 
   use Mix.Task
@@ -55,9 +68,14 @@ defmodule Mix.Tasks.Surfex.Validate do
 
   @impl Mix.Task
   def run(args) do
-    {opts, ids} = R.parse(args, file: :string, merge: :keep, code: :keep)
+    {opts, ids} = R.parse(args, file: :string, merge: :keep, code: :keep, through: :string)
     {root, scans, entries, meta} = R.context(opts)
-    meta = Keyword.put(meta, :code, Keyword.get_values(opts, :code))
+
+    meta =
+      meta
+      |> Keyword.put(:code, Keyword.get_values(opts, :code))
+      |> then(&if(opts[:through], do: Keyword.put(&1, :through, opts[:through]), else: &1))
+
     evidence = R.evidence!(root, opts)
 
     case opts[:file] do
@@ -67,10 +85,10 @@ defmodule Mix.Tasks.Surfex.Validate do
         R.record(root, Surfex.Record.validate(scans, entries, test, unit, evidence, meta))
 
       path ->
-        if ids != [] or opts[:note] != nil or meta[:code] != [],
+        if ids != [] or opts[:note] != nil or meta[:code] != [] or opts[:through] != nil,
           do:
             Mix.raise(
-              "--file reads every relation and its note from the file: name none, no --note, and no --code (name reached code in a single review)"
+              "--file reads every relation and its note from the file: name none, no --note, and no --code or --through (name reached code in a single review)"
             )
 
         lines =

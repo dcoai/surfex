@@ -92,6 +92,17 @@ milestone "Claims own their code" is in.
   stability promise of `Surfex.Golden` and `Surfex.SourceScan` now covers them (spec
   §23.1): callbacks and fields keep their names and shapes, additions are optional or have
   a default, and a change comes only in a minor release under "Changed". A test pins both.
+- **Reviews through a path no call shows** (#206, #242). `mix surfex.validate TEST UNIT
+  --code ID --through HOW --note N` credits named code the test's green run didn't reach,
+  with `HOW` saying how the test exercises it (`route GET /settings`, `message {:feed, _}`,
+  `js hook Canvas`). The log entry gains an optional `through` field, written only when
+  set and only on a reviewed `implements` (spec §12.1, §18.2); a move, a resolve and
+  `annotate` keep it, `mix surfex.history` shows it, and `Surfex.Status.through_count/1`
+  counts such reviews in the status text, JSON and, when there are any, `RELATIONS.md`.
+  The triangle counts the named code as exercised. Without `--through`, an unreached
+  `--code` is still an error. The guide and `mix surfex.info validation` say that code
+  relates to the claim it realises, and how to record that by hand. Every existing entry
+  keeps its line and id; a log holding a `through` entry needs this version to read it.
 
 ## [0.9.1] — 2026-10-14
 
