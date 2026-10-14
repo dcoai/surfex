@@ -49,6 +49,9 @@ defmodule Surfex.Status.Config do
     * `:spec_classes` — the spec's classes of text that asserts nothing, each
       `{name, reason}` or `{name, reason, files: globs, headings: regex, marker: regex}`
       (`spec_classes!/2`, §11.7)
+    * `:issues` — how to ask the project's tracker for an issue's state, so a deferral
+      goes stale when its issue closes: `[command: argv, state: key, project: name]`
+      (`issues!/1`, `Surfex.Issues`, §13.7)
   """
 
   alias Surfex.Log.Entry
@@ -76,6 +79,7 @@ defmodule Surfex.Status.Config do
     :claim_implements,
     :claim_grain,
     :spec_classes,
+    :issues,
     :checks,
     :adoption,
     :process,
@@ -361,13 +365,26 @@ defmodule Surfex.Status.Config do
   @doc """
   The status of the project at `root` under `config`, as `mix surfex.status` derives it:
   the scans, the log, the `require:` policy and the options, plus `extra` options. For the
-  tasks that need the whole status, so each derives it the same way.
+  tasks that need the whole status, so each derives it the same way. An `issues:` given
+  as a function is asked, once, for the states of the references the scanned spec's
+  deferrals name, and derive gets its answer (§13.7).
   """
   @spec status(keyword, String.t(), String.t(), keyword) :: Surfex.Status.t()
   def status(config, root, namespace, extra) do
     entries = if File.dir?(Surfex.Log.dir(root)), do: Surfex.Log.load(root), else: []
     {scans, options} = load(config, root, namespace)
     adoption = [adoption: adoption!(config, root)]
+
+    extra =
+      case Keyword.fetch(extra, :issues) do
+        {:ok, ask} when is_function(ask, 1) ->
+          refs = for %Scan{kind: :spec, deferred: %{ref: ref}} <- scans, uniq: true, do: ref
+          Keyword.put(extra, :issues, ask.(refs))
+
+        _ ->
+          extra
+      end
+
     Surfex.Status.derive(scans, entries, require!(config), extra ++ adoption ++ options)
   end
 
@@ -785,6 +802,51 @@ defmodule Surfex.Status.Config do
         ArgumentError,
         "spec_classes: a class is {name, reason} or {name, reason, files: [glob], " <>
           "headings: regex, marker: regex}, got #{inspect(class)}"
+      )
+
+  @doc """
+  The tracker resolver (`issues:`, §13.7) as `Surfex.Issues` takes it, or `nil` without
+  the key: `command:`, a non-empty list of strings run with no shell, with `{ref}`, `{n}`
+  and `{project}` substituted; `state:`, the JSON key holding the state when the output
+  is JSON; `project:`, the project of a bare `#123`. Anything else is refused, naming it.
+  """
+  @spec issues!(keyword) :: Surfex.Issues.resolver() | nil
+  def issues!(config) do
+    case Keyword.fetch(config, :issues) do
+      :error ->
+        nil
+
+      {:ok, opts} when is_list(opts) ->
+        unless Keyword.keyword?(opts) and Keyword.keys(opts) -- [:command, :state, :project] == [],
+          do: bad_issues(opts)
+
+        command = Keyword.get(opts, :command)
+
+        unless is_list(command) and command != [] and Enum.all?(command, &is_binary/1),
+          do: bad_issues(opts)
+
+        for key <- [:state, :project],
+            value = Keyword.get(opts, key),
+            not is_binary(value),
+            do: bad_issues(opts)
+
+        %{
+          command: command,
+          state: Keyword.get(opts, :state),
+          project: Keyword.get(opts, :project)
+        }
+
+      {:ok, other} ->
+        bad_issues(other)
+    end
+  end
+
+  defp bad_issues(value),
+    do:
+      raise(
+        ArgumentError,
+        "issues: must be [command: argv, state: key, project: name] with argv a non-empty " <>
+          "list of strings and state and project strings, got #{inspect(value)}"
       )
 
   # `fold_paths:` is a boolean; anything else is refused, not read as false. Without it,

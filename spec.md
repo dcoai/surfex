@@ -2206,7 +2206,7 @@ log's own: `heading_ids` (§11), `rule_ids`, `fold_paths` and `unit_refs` (§11.
 `scanners` (§5.3), `scanner`, `scanner_opts`, `namespace`, `goldens` (§10.3), `require`,
 `tests`, `declares` (§11.6), `triangle`,
 `require_red` (§17), `router` (§11.3), `claim_implements` (§15.1), `claim_grain`,
-`adoption` (§18.1),
+`spec_classes` (§11.7), `issues` (§13.7), `adoption` (§18.1),
 `process` (§19) and
 `completeness` (§20).
 - `Surfex.Status.Config.read!/1` reads and validates it. It raises on an unknown key, and
@@ -2549,6 +2549,59 @@ as unverified
 `Surfex.Status.Report.text/1` counts the excused units (and how many hold claims) and the
 deferred units in one header line, and lists each contradicted relation.
 `Surfex.Status.Report.json/1` gives `excused`, `deferred` and `contradicted`.
+
+### 13.7 Deferrals go stale
+<!-- surfex: stale-deferrals -->
+
+A deferral (§11.7) holds while its issue is open and the unit isn't built. Under
+`claim_grain: true` (§13.2) one that no longer holds is a **stale deferral**, and the
+status fails, as it does on a stale deviation (§13.1). `stale_deferrals` lists each with
+its reference and why:
+
+- `built`: the unit has a current `verifies` of its own (§13.4). It has its evidence now,
+  so the marker comes off. This is judged with or without issue states.
+- `closed`: its issue is closed. Remove the marker, or re-defer with the issue that now
+  holds the work.
+- `unresolved`: the caller asked the tracker and it couldn't say. A reference the tracker
+  can't answer could never go stale.
+
+```test:deferral-stale
+with issues: %{"#12" => :closed} a deferral by #12 is stale and fails; :open isn't; an
+unanswered reference is unresolved; without issues: the deferral is listed with no issue
+state and not judged closed; a deferred unit with a verifies of its own is stale as built,
+with or without issue states; without claim_grain: nothing is stale
+```
+
+**How surfex learns an issue's state.** Surfex knows no tracker (§19), and
+`Surfex.Status.derive/4` is pure (§13), so an issue's state is an input, like evidence
+(§17): derive takes `issues: %{ref => :open | :closed | :unresolved}`, and lists each
+deferral's state beside it (`issue`, `nil` when none was given).
+
+- `issues:` in `.surfex.exs` declares how to ask, in the shape of `process:`'s command:
+  `issues: [command: ["glab", "issue", "view", "{n}", "--output", "json"], state: "state",
+  project: "group/project"]`. `Surfex.Status.Config.issues!/1` validates it.
+- `Surfex.Issues.states/3` runs the command once per distinct reference, with no shell,
+  substituting `{ref}` (as written), `{n}` (its number) and `{project}` (the reference's
+  project, else `project:`). With `state:` the output is JSON and that key holds the
+  state; without it the trimmed output is. `open` or `opened`, in any case, is open;
+  `closed` is closed; anything else is unresolved. A command that exits non-zero stops the
+  asking with its output: a tooling failure is loud, never a state.
+- `mix surfex.status --issues` asks once per run, through
+  `Surfex.Status.Config.status/4`, for the references the scanned spec's deferrals name,
+  and passes the answer to derive. Without `--issues` nothing runs, and only `built` is
+  judged.
+- **Nothing is stored.** An issue's state is for the run that asked. A committed snapshot
+  would be stale the day after.
+
+Staleness is judged only where the command can run: a CI job whose token can't read the
+tracker leaves the judgement to a developer's check or a scheduled job that can.
+
+```test:issue-resolver
+a declared command printing opened, JSON {"state":"closed"} read with state:, and garbage
+give open, closed and unresolved; {n}, {ref} and {project} are substituted with no shell;
+a non-zero exit stops mix surfex.status --issues with its output; an unresolved reference
+fails only under --issues; issues: is validated
+```
 
 ## 14. Recording
 <!-- surfex: recording -->

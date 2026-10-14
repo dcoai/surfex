@@ -127,6 +127,12 @@ defmodule Surfex.Status.Report do
         status.contradicted,
         &contradicted_line/1
       ),
+      # Failing under claim_grain: true (§13.7): the deferral no longer holds.
+      items(
+        "Stale deferrals (built, its issue closed, or the tracker couldn't say: remove or re-defer)",
+        status.stale_deferrals,
+        &"spec #{&1.unit} deferred by #{&1.ref}: #{stale_deferral_text(&1.reason)}"
+      ),
       items("Stale (an excuse its class no longer covers)", status.stale, fn s ->
         "class #{s.class} ↔ code #{s.code}: #{stale_text(s.reason)}"
       end),
@@ -269,9 +275,15 @@ defmodule Surfex.Status.Report do
             "unit" => d.unit,
             "ref" => d.ref,
             "reason" => d.reason,
+            "issue" => d.issue && Atom.to_string(d.issue),
             "location" => location_json(d.location)
           }
         end),
+      "stale_deferrals" =>
+        Enum.map(
+          status.stale_deferrals,
+          &%{"unit" => &1.unit, "ref" => &1.ref, "reason" => Atom.to_string(&1.reason)}
+        ),
       "contradicted" =>
         Enum.map(
           status.contradicted,
@@ -841,6 +853,15 @@ defmodule Surfex.Status.Report do
     "  excused by class: #{length(status.excused)} (#{with_claims} with claims inside) · " <>
       "deferred: #{length(status.deferred)}\n"
   end
+
+  defp stale_deferral_text(:built),
+    do: "it has its own evidence now: remove the marker"
+
+  defp stale_deferral_text(:closed),
+    do: "its issue is closed: remove the marker, or re-defer with the issue that holds the work"
+
+  defp stale_deferral_text(:unresolved),
+    do: "the tracker couldn't say whether its issue is open"
 
   defp contradicted_line(%{type: :declares} = c),
     do: "verifies  #{verifier(c.from)} declares spec #{c.unit}, which its class excuses"

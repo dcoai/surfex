@@ -323,6 +323,18 @@ to claim grain, with a walkthrough in the new guide "Migrating to claim grain".
   your log relates to contradicts those relations; retire the ones that were narration,
   or don't class the section.
 
+- **Deferrals go stale: `issues:` and `mix surfex.status --issues`** (#257, #266). A
+  deferral holds while its issue is open and its unit isn't built (spec §13.7). Under
+  `claim_grain: true` the status lists and fails on each **stale deferral**: `built` (the
+  unit has its own `verifies` now), `closed` (its issue is closed) or `unresolved` (the
+  tracker couldn't say). Issue state is an input, never stored: `issues:` in `.surfex.exs`
+  declares the project's own command (`[command: argv, state: key, project: name]`, with
+  `{ref}`, `{n}` and `{project}` substituted, run with no shell), `Surfex.Issues.states/3`
+  runs it once per reference, and `mix surfex.status --issues` passes the answer to
+  `Surfex.Status.derive/4` as `issues:`. A command that exits non-zero stops the task with
+  its output. Without `--issues` nothing runs and only `built` is judged. `.surfex.exs`
+  takes the new keys `spec_classes` and `issues` (§13.2).
+
 ## [0.9.1] — 2026-10-14
 
 What surfex writes now reads right. Spec pages published with ex_doc keep their headings
