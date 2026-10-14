@@ -1297,8 +1297,17 @@ that section's unit**, through any such headings between them:
 
 A heading with no id'd heading above it stays a path unit, as before: an index page, or a
 project that writes no ids. A sub-heading meant as a unit of its own gets an id. Folding
-changes which units exist, so it is off by default until plan item C.1 decides how a
-section relates to the claims inside it; a value other than `true` or `false` is an error.
+changes which units exist, so it is off by default until the release that completes claim
+grain. Under `claim_grain: true` (§13.2) it is the default wherever the spec writes ids
+(`heading_ids:`): a path heading under an id'd heading is part of that unit's own text
+(§13.4). `fold_paths: false` keeps path sub-headings as units, and without `heading_ids:`
+nothing folds. A value other than `true` or `false` is an error.
+
+```test:fold-default
+under claim_grain: true with heading_ids: and no fold_paths:, a path heading under an
+id'd heading folds; fold_paths: false keeps it a unit; without heading_ids: nothing
+folds; without claim_grain: nothing folds unless fold_paths: true
+```
 
 ```test:fold-paths
 with fold_paths: true a heading with no id inside an id'd section is no unit: its text and
@@ -2080,7 +2089,8 @@ suggest --accept retires it
 log's own: `heading_ids` (§11), `rule_ids`, `fold_paths` and `unit_refs` (§11.1),
 `scanners` (§5.3), `scanner`, `scanner_opts`, `namespace`, `goldens` (§10.3), `require`,
 `tests`, `declares` (§11.6), `triangle`,
-`require_red` (§17), `router` (§11.3), `claim_implements` (§15.1), `adoption` (§18.1),
+`require_red` (§17), `router` (§11.3), `claim_implements` (§15.1), `claim_grain`,
+`adoption` (§18.1),
 `process` (§19) and
 `completeness` (§20).
 - `Surfex.Status.Config.read!/1` reads and validates it. It raises on an unknown key, and
@@ -2114,6 +2124,27 @@ log's own: `heading_ids` (§11), `rule_ids`, `fold_paths` and `unit_refs` (§11.
   `{:command, argv}` with a non-empty list of strings, and raises on anything else.
 - `Surfex.Status.Config.require!/1` validates the `require:` policy against the known
   kinds, spec roles and types, and raises naming what's wrong.
+- `Surfex.Status.Config.claim_grain?/1` reads `claim_grain: true | false` (`false` by
+  default), and raises on any other value. It is a transitional switch: a part of claim
+  grain that changes what an existing project's check reports is read only under it,
+  until the release that makes claim grain the only reading refuses the key. Each part
+  it gates says so where it is specified (folding path headings, §11.1).
+  `Surfex.Status.Config.options!/1` passes it to `Surfex.Status.derive/4` as
+  `claim_grain: true`, and the status holds it in its policy.
+
+A spec rule (a spec role's key such as `section:`, or the kind key `spec:`) judges claims
+only (§13.4). A container isn't judged: it has no text of its own, and its claims answer
+under their own roles. A claim is judged by its own relations, as any id is, so a
+`:contained` claim that a `verifies` rule fails is unmet and says why: `contained`
+(`why: :contained`, the JSON's `why`, and the report's `contained: a unit inside it is
+verified, its own text isn't`). `require: [spec: [:verifies]]` is then the one-line
+policy that every claim is verified.
+
+```test:contained-unmet
+under require: [section: [:verifies]] a container isn't unmet, a contained section is
+unmet with why contained, and a section with its own tag is met; spec: [:verifies] judges
+rules and rows and skips containers
+```
 
 ```test:status-config-read
 .surfex.exs is read and validated: unknown keys and keys of the removed trace are refused,

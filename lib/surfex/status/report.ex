@@ -66,12 +66,7 @@ defmodule Surfex.Status.Report do
       items("New (in no relation)", status.new, &unit_text/1),
       # Listed where a project declares any, so other reports read as before (§11.4).
       items("Checks (gates that verify claims)", checks(status), &check_line/1),
-      items("Unmet (required relation missing)", status.unmet, fn %{
-                                                                    scan: scan,
-                                                                    requires: requires
-                                                                  } ->
-        "#{scan.kind} #{scan.id} needs one of: #{Enum.join(requires, ", ")}#{at(scan)}"
-      end),
+      items("Unmet (required relation missing)", status.unmet, &unmet_line/1),
       items(
         "Triangle (a spec unit, its tests and its code don't meet)",
         status.triangle,
@@ -255,8 +250,10 @@ defmodule Surfex.Status.Report do
           &%{"unit" => &1.unit, "claims" => &1.claims, "verified" => &1.verified}
         ),
       "unmet" =>
-        Enum.map(status.unmet, fn %{scan: scan, requires: requires} ->
-          Map.put(scan_json(scan), "requires", Enum.map(requires, &Atom.to_string/1))
+        Enum.map(status.unmet, fn %{scan: scan, requires: requires} = u ->
+          scan_json(scan)
+          |> Map.put("requires", Enum.map(requires, &Atom.to_string/1))
+          |> Map.put("why", u.why && Atom.to_string(u.why))
         end),
       "triangle" =>
         Enum.map(status.triangle, fn g ->
@@ -537,10 +534,15 @@ defmodule Surfex.Status.Report do
               "Declares" => {:raw, coded("#{b.type} #{b.ref}", reason(b.reason))}
             }
           end) ++
-          id_group.("unmet", ["Item", "Needs"], status.unmet, fn %{scan: s, requires: r} ->
+          id_group.("unmet", ["Item", "Needs"], status.unmet, fn %{scan: s, requires: r} = u ->
             %{
               "Item" => {:code, "#{s.kind} #{s.id}"},
-              "Needs" => {:raw, Enum.map_intersperse(r, ", ", &Span.code(to_string(&1)))}
+              "Needs" =>
+                {:raw,
+                 [
+                   Enum.map_intersperse(r, ", ", &Span.code(to_string(&1))),
+                   if(u.why == :contained, do: Span.text(" (contained)"), else: [])
+                 ]}
             }
           end)
     }
@@ -762,6 +764,16 @@ defmodule Surfex.Status.Report do
           if(u.rule > 0, do: [{"rules", u.rule}], else: []) ++
           if(u.contract > 0, do: [{"contracts", u.contract}], else: [])
       )
+
+  # A contained claim's line says why its rule isn't met (§13.4).
+  defp unmet_line(%{scan: scan, requires: requires, why: why}) do
+    because =
+      if why == :contained,
+        do: ": contained: a unit inside it is verified, its own text isn't",
+        else: ""
+
+    "#{scan.kind} #{scan.id} needs one of: #{Enum.join(requires, ", ")}#{at(scan)}#{because}"
+  end
 
   # The spec units by verdict (§13.4): the claims, and the containers apart.
   defp verdict_counts(status) do

@@ -126,7 +126,7 @@ defmodule Surfex.Status do
   @type t :: %{
           relations: [relation_status],
           new: [Scan.t()],
-          unmet: [%{scan: Scan.t(), requires: [atom]}],
+          unmet: [%{scan: Scan.t(), requires: [atom], why: nil | :contained}],
           broken: [%{scan: Scan.t(), type: atom, ref: String.t(), reason: term}],
           triangle: [gap],
           unvalidated: [%{relation: tuple}],
@@ -180,7 +180,8 @@ defmodule Surfex.Status do
             validated: boolean,
             marks: :allow | :fail,
             baseline: :allow | :fail,
-            deviations: :allow | :fail
+            deviations: :allow | :fail,
+            claim_grain: boolean
           },
           unimplemented: [Scan.t()],
           verdicts: %{String.t() => Surfex.Status.Verdict.verdict()},
@@ -237,6 +238,11 @@ defmodule Surfex.Status do
           ArgumentError,
           "deviations: must be :allow or :fail, got #{inspect(deviations_policy)}"
         )
+
+    claim_grain = Keyword.get(opts, :claim_grain, false)
+
+    unless is_boolean(claim_grain),
+      do: raise(ArgumentError, "claim_grain: must be true or false, got #{inspect(claim_grain)}")
 
     by_id = Map.new(scans, &{{&1.kind, &1.id}, &1})
     # Every test's declarations resolve against one index, built once (§13).
@@ -322,7 +328,7 @@ defmodule Surfex.Status do
         scans
         |> Enum.reject(&MapSet.member?(related, {&1.kind, &1.id}))
         |> Enum.sort_by(&{&1.kind, &1.id}),
-      unmet: unmet(scans, relations, require),
+      unmet: unmet(scans, relations, require, verdict.verdicts),
       broken: broken(scans, resolver),
       deviating: deviating,
       undeclared: undeclared(scans, relations, resolver),
@@ -355,7 +361,8 @@ defmodule Surfex.Status do
         validated: validated,
         marks: marks_policy,
         baseline: baseline_policy,
-        deviations: deviations_policy
+        deviations: deviations_policy,
+        claim_grain: claim_grain
       },
       unimplemented: unimplemented(scans, relations),
       planned: planned,
@@ -1031,7 +1038,7 @@ defmodule Surfex.Status do
 
   # ── Policy ──────────────────────────────────────────────────────────────
 
-  defp unmet(scans, relations, require) do
+  defp unmet(scans, relations, require, verdicts) do
     live =
       for %{state: state, type: type, relation: {_, a, b}} <- relations,
           state != :retired,
@@ -1056,15 +1063,29 @@ defmodule Surfex.Status do
     end
 
     # A kind's rule applies to every scan of that kind; a spec role's rule (`test_hint:`)
-    # to every spec unit in that role. Each rule that isn't met is its own entry.
+    # to every spec unit in that role. Each rule that isn't met is its own entry. A spec
+    # rule judges claims only (§13.4): a container has no text of its own, and its claims
+    # answer under their own roles. A contained claim a `verifies` rule fails says why.
     for scan <- Enum.sort_by(scans, &{&1.kind, &1.id}),
+        claim?(scan, verdicts),
         key <- Enum.uniq([scan.kind, scan.role]),
         key != nil,
         requires = Keyword.get(require, key, []),
         requires != [],
         not Enum.any?(requires, &MapSet.member?(met.(scan), &1)),
-        do: %{scan: scan, requires: requires}
+        do: %{scan: scan, requires: requires, why: unmet_why(scan, requires, verdicts)}
   end
+
+  defp claim?(%Scan{kind: :spec, id: id}, verdicts),
+    do: Map.get(verdicts, id) in [:verified, :contained, :unverified]
+
+  defp claim?(_scan, _verdicts), do: true
+
+  defp unmet_why(%Scan{kind: :spec, id: id}, requires, verdicts) do
+    if :verifies in requires and Map.get(verdicts, id) == :contained, do: :contained
+  end
+
+  defp unmet_why(_scan, _requires, _verdicts), do: nil
 
   # A declaration in a test (`@tag verifies: "id"`) that names no spec unit, or a bare id
   # that more than one file has.

@@ -51,9 +51,11 @@ to claim grain, with a walkthrough in the new guide "Migrating to claim grain".
 - **Path headings fold into an id'd section, opt-in** (#205, #237). With `fold_paths: true`,
   a heading with no id inside a section that has one is part of that section's unit: its
   text counts in the section's version and its hints, blocks, rules, rows and contracts sit
-  in that section (spec §11.1). **Upgrade step, when it becomes the default (0.8, with plan
-  item C.1):** a spec that writes ids keeps fewer units, and each folded heading's relations
-  move to the id'd section; until then nothing changes unless a project sets it.
+  in that section (spec §11.1). **Upgrade step, when it becomes the default** (under
+  `claim_grain: true` now, for everyone in the release that completes claim grain, #260)
+  **wherever `heading_ids:` is set:** a spec that writes ids keeps fewer units, and each
+  folded heading's relations move to the id'd section (`mix surfex.suggest --accept`
+  carries them as moves), or set `fold_paths: false` to keep path headings as units.
 - **List-shaped table keys warn** (#205, #238). A marked table's row whose key reads as a
   list (`1001, 1005 legacy hilite`: it holds `, `, ` / ` or ` and `) is probably two things
   in one row. `Surfex.Status.list_keys/1` lists them, and the status reports them in a list
@@ -234,6 +236,25 @@ to claim grain, with a walkthrough in the new guide "Migrating to claim grain".
   `unverified`, `not_exercised` or `nothing_inside`. A section's own tag gives the claims
   inside it nothing. Additive: nothing reads it yet. B.3's unearned rule (#247) will fail
   `require: [code: [:implements]]` through it, in the same release.
+
+- **Spec rules judge claims, and name a contained one** (#256, #260). A `require:` rule on
+  a spec role (`section:`, …) or on the kind `spec:` no longer judges a container (a
+  heading over subsections, a section whose body is only named claims, a marked table):
+  its claims answer under their own roles (spec §13.2, §13.4). A `:contained` claim a
+  `verifies` rule fails is unmet and says why (`why: :contained`; the report line ends
+  `contained: a unit inside it is verified, its own text isn't`; the JSON's `why`; the
+  golden's `(contained)`). `require: [spec: [:verifies]]` is the one-line policy that every
+  claim is verified. Relief only: a container that was unmet no longer is, and nothing
+  that was met becomes unmet.
+- **`claim_grain: true`, the one switch for claim grain's breaking parts** (#256, #260).
+  Until the release that completes claim grain, every part of it that changes what an
+  existing project's check reports is read only under `claim_grain: true` in
+  `.surfex.exs` (`Surfex.Status.Config.claim_grain?/1`, spec §13.2); that release makes
+  it the only reading and refuses the key. What it changes so far: path headings fold by
+  default wherever the spec writes ids (`heading_ids:` set and no `fold_paths:`, spec
+  §11.1); `fold_paths: false` keeps them units. Coming under the same key: completeness
+  counting own text (C.1), spec-unit classes (C.2, #257) and unearned `implements`
+  (#247).
 
 ## [0.9.1] — 2026-10-14
 

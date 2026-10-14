@@ -36,6 +36,10 @@ defmodule Surfex.Status.Config do
     * `:claim_implements` — `true` to have `mix surfex.suggest` propose `implements` between
       each claim and the code its verifying tests call directly (§15.1); `false` by
       default until the release that completes claim grain
+    * `:claim_grain` — `true` to read the spec at claim grain before the release that makes
+      it the only reading (§13.2): one transitional switch for every breaking part of it,
+      such as folding path headings by default where `:heading_ids` is set. `false` by
+      default
     * `:router` — the router module (or a list of them) whose routes a test's requests
       resolve through (§11); found from the project's endpoint when not given, and `false`
       turns route resolution off
@@ -67,6 +71,7 @@ defmodule Surfex.Status.Config do
     :require_red,
     :router,
     :claim_implements,
+    :claim_grain,
     :checks,
     :adoption,
     :process,
@@ -294,8 +299,9 @@ defmodule Surfex.Status.Config do
   def elixir_scanner?(config), do: Enum.any?(scanners!(config), &(elem(&1, 0) == :elixir))
 
   @doc """
-  The options `Surfex.Status.derive/4` takes from `.surfex.exs`: `triangle:`, validated.
-  Raises `ArgumentError` naming what is wrong.
+  The options `Surfex.Status.derive/4` takes from `.surfex.exs`: `triangle:`, validated,
+  and `claim_grain: true` when the config sets it (`claim_grain?/1`). Raises
+  `ArgumentError` naming what is wrong.
   """
   @spec options!(keyword) :: keyword
   def options!(config) do
@@ -309,7 +315,9 @@ defmodule Surfex.Status.Config do
         do: [coverage: Surfex.Profile.coverage!(config)],
         else: []
 
-    [triangle: triangle] ++ coverage
+    grain = if claim_grain?(config), do: [claim_grain: true], else: []
+
+    [triangle: triangle] ++ grain ++ coverage
   end
 
   @doc "The `require_red:` policy (`false` by default), validated."
@@ -658,11 +666,32 @@ defmodule Surfex.Status.Config do
     end
   end
 
-  # `fold_paths:` is a boolean; anything else is refused, not read as false.
-  defp fold_paths!(config) do
-    case Keyword.get(config, :fold_paths, false) do
+  @doc """
+  Whether the spec is read at claim grain before the release that makes it the only
+  reading (`claim_grain:`, §13.2): `false` by default; anything but a boolean is refused.
+  It is one transitional switch for every breaking part of claim grain.
+  """
+  @spec claim_grain?(keyword) :: boolean
+  def claim_grain?(config) do
+    case Keyword.get(config, :claim_grain, false) do
       flag when is_boolean(flag) -> flag
-      other -> raise ArgumentError, "fold_paths: must be true or false, got #{inspect(other)}"
+      other -> raise ArgumentError, "claim_grain: must be true or false, got #{inspect(other)}"
+    end
+  end
+
+  # `fold_paths:` is a boolean; anything else is refused, not read as false. Without it,
+  # path headings fold under `claim_grain: true` wherever the spec writes ids
+  # (`heading_ids:`), and not otherwise (§11.1).
+  defp fold_paths!(config) do
+    case Keyword.fetch(config, :fold_paths) do
+      {:ok, flag} when is_boolean(flag) ->
+        flag
+
+      {:ok, other} ->
+        raise ArgumentError, "fold_paths: must be true or false, got #{inspect(other)}"
+
+      :error ->
+        claim_grain?(config) and Keyword.get(config, :heading_ids) != nil
     end
   end
 
