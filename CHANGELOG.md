@@ -4,10 +4,16 @@ All notable changes to Surfex are recorded here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.9.0] — 2026-10-14
 
-`mix.exs` reads `0.8.1-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
-release it merely follows.
+Status reports what it used to miss. A `verifies` tag the log doesn't record now fails
+(**Unrecorded**, #203), and so does a `refines` whose unit moved out of its section
+(**Moved**, #218). A known deviation, a test kept red against a tracked issue, has a state
+of its own that doesn't fail the gate until you ask (**Deviating**, #214). Tests calling
+through brace imports reach their code (#194), and the code of a `@moduledoc false`
+module is versioned in what runs it (#219). The status check also grows with the project
+in proportion again (#204). A minor release, because what fails and some versions change:
+**upgrade steps** under Changed, each with its measured cost.
 
 ### Added
 
