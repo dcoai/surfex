@@ -1636,6 +1636,122 @@ declares: is validated, refusing a malformed form; a declared id in the project'
 form resolves through unit_refs:, is counted unselectable, and is selected by surfex.test
 ```
 
+### 11.7 Spec-unit classes and deferrals
+<!-- surfex: spec-classes -->
+
+Code that is described elsewhere has an excusal: a class with a reason (§8). Spec text has
+its own: a unit that deliberately asserts nothing a test could fail on (a decision record,
+prior art, an architecture map, how to read the spec) is **classed**, and a unit that
+states what isn't built yet is **deferred** by the issue that will build it. Both are read
+from the source, never recorded in the log.
+
+**Classes, declared once.** `spec_classes:` in `.surfex.exs` names the project's classes,
+each with a reason, in the shape of code's `classes:`:
+
+```elixir
+spec_classes: [
+  {"informative", "explains or points; asserts nothing a test or check could fail on"},
+  {"decision", "a decision record: why, not what", files: ["spec/13-decisions.md"]},
+  {"process", "how the project is developed", headings: ~r/^Process\b/},
+  {"informative", "explains or points; asserts nothing a test or check could fail on",
+   marker: ~r/^spec-coverage: informative$/}
+]
+```
+
+- A class is a **name** (letters, digits, `-`, `_`) and a **reason**, both required. One
+  name may be declared several times, with one reason.
+- `files:` (globs, relative to the root) and `headings:` (a regex over a heading's text as
+  written, without its id comment or anchor) make it a **pattern class**: every section
+  that matches is classed, and with both, a section must match both.
+- `marker:` (a regex over an own-line HTML comment's inner text) reads a project's existing
+  comment as this class's marker, an **alias**. The comment then belongs to no unit's text,
+  like any marker.
+- A class with none of these is selected only by surfex's own marker.
+- `Surfex.Status.Config.spec_classes!/2` reads and validates the key. A malformed class, an
+  empty reason, a bad name, an option other than these three, one name with two reasons,
+  and a `files:` glob that matches no spec file are refused, naming them: a misspelt
+  pattern would otherwise class nothing in silence. `Surfex.Status.Config.scans/2` passes
+  the classes to `Surfex.Scan.Markdown.sections/3` as `spec_classes:`.
+
+**The markers,** each on a line of its own, in a unit's own text:
+
+```markdown
+## 2. Architecture
+<!-- surfex: arch -->
+<!-- surfex: class informative: the module map is orientation; the rules after it are claims -->
+
+## 6. View abstraction
+<!-- surfex: deferred #412: past v1 -->
+```
+
+- `<!-- surfex: class NAME -->` classes the section it sits in, with the class's reason.
+  `<!-- surfex: class NAME: REASON -->` adds the author's own reason for this unit.
+- `<!-- surfex: deferred REF -->` or `<!-- surfex: deferred REF: REASON -->` defers the
+  section or marked block it sits in. REF is an issue, `#123` or `group/project#123`: a
+  deferral with no issue would never end, and that is what a class is for. There is no
+  pattern form; each deferral names its own issue.
+- A marker may follow a heading's id comment on the next line. Like every marker it is
+  left out of the unit's version, so classing or deferring a unit changes no version.
+
+```test:class-markers
+an own-line class marker classes its section with the class's reason and its own; it may
+follow the heading's id comment; the section's version is the one it has without the
+marker; the preamble can be classed
+```
+
+```test:deferred-marker
+a deferral marker defers its section, or the marked block it sits in, with its reference
+and reason; a cross-project reference is read whole; the unit's version is unchanged
+```
+
+**Which class a section has.** A section's own marker wins, a deferral marker included:
+no pattern classes a deferred section. Otherwise the first declared pattern class that
+matches it, as code's `rules:` do (§7). An alias is a marker. `Surfex.Scan` holds the
+result on the record: `class` (`%{name, reason, note, by}`, `by` being `:marker`,
+`:pattern` or `:alias`, and `note` the marker's own reason) and `deferred`
+(`%{ref, reason}`).
+
+```test:class-patterns
+files: classes every section of the files it matches, headings: only the sections whose
+heading matches, and both only where both match; a marker beats a pattern; the first
+pattern declared that matches wins
+```
+
+```test:class-marker-alias
+with marker: ~r/^spec-coverage: informative$/ that comment classes its section by alias and
+leaves the version as it was; without the alias it is section text, as before
+```
+
+**Classes are for sections.** A rule, a row, a hint, a contract and a marked block are
+claims: the way to excuse one is not to name it. Every problem raises, naming the file and
+line:
+- a class marker naming a class `spec_classes:` doesn't declare;
+- a class marker in a marked block or in a rule, or a deferral marker in a rule;
+- two class or deferral markers in one unit, a class and a deferral among them;
+- a deferral whose reference isn't an issue;
+- a marker under a heading `fold_paths:` folds into its ancestor (§11.1), which would class
+  the ancestor its author didn't mark.
+
+```test:class-marker-errors
+an undeclared class; a class marker in a block or a rule; two markers in one section; a
+class and a deferral in one unit; a deferral without a well-formed reference; a marker
+under a folded heading: each raises naming the file and line; spec_classes: refuses a
+malformed class, an unknown option, two reasons for one name and a glob matching no spec
+file
+```
+
+**Where they render.** Both markers are own-line HTML comments, like the id comment after
+a heading, so ex_doc's markdown renders them as nothing, alone or after an id comment, and
+keeps every heading.
+
+```test:class-markers-render
+through ex_doc's markdown (ExDoc.Markdown.Earmark), a class marker and a deferral marker,
+alone after a heading or after its id comment, show no marker text and every heading
+stays a heading
+```
+
+What a class or a deferral changes in the status is §13.6's.
+
 ## 12. The relation log
 <!-- surfex: relation-log -->
 

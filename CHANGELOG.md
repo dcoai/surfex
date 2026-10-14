@@ -288,6 +288,23 @@ to claim grain, with a walkthrough in the new guide "Migrating to claim grain".
   default under the key changes one measured spec, 1,389 sections to 1,178 (211 path
   headings folded into their id'd sections), and three others by 0 to 3.
 
+- **Spec-unit classes and deferrals: the markers and patterns** (#257, #264). Plan item C.2
+  gives spec text the excusal code has. `spec_classes:` in `.surfex.exs` declares the
+  project's classes, each a name and a reason, selected by surfex's own marker
+  `<!-- surfex: class NAME[: REASON] -->` in a section, by a `files:` or `headings:`
+  pattern, or by a project's existing comment through `marker:` (an alias). A unit waiting
+  on an issue is deferred, `<!-- surfex: deferred #123[: REASON] -->`, in a section or a
+  marked block. Both markers are own-line comments that ex_doc renders as nothing, and they
+  sit outside every unit's version, so adding one dangles nothing. The scan records carry
+  `class` and `deferred` (spec §11.7). A class marker in a block or rule, an undeclared
+  class, two markers in one unit, a deferral without an issue and a marker under a folded
+  heading are errors naming the line; `spec_classes:` refuses a glob that matches no spec
+  file. Nothing in the status reads them yet: what a class excuses arrives with #265,
+  under `claim_grain: true`.
+
+  The one change for an existing spec: an own-line comment a declared `marker:` alias reads
+  leaves its section's text, so that section's version changes once.
+
 ## [0.9.1] — 2026-10-14
 
 What surfex writes now reads right. Spec pages published with ex_doc keep their headings

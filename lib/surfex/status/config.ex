@@ -46,6 +46,9 @@ defmodule Surfex.Status.Config do
     * `:checks` — gates that verify claims: each `[id:, run:, verifies:, inputs:]`, a
       command that can fail, the spec units it verifies, and the files it inspects
       (`Surfex.Scan.Checks`, §11.4)
+    * `:spec_classes` — the spec's classes of text that asserts nothing, each
+      `{name, reason}` or `{name, reason, files: globs, headings: regex, marker: regex}`
+      (`spec_classes!/2`, §11.7)
   """
 
   alias Surfex.Log.Entry
@@ -72,6 +75,7 @@ defmodule Surfex.Status.Config do
     :router,
     :claim_implements,
     :claim_grain,
+    :spec_classes,
     :checks,
     :adoption,
     :process,
@@ -555,12 +559,15 @@ defmodule Surfex.Status.Config do
       Keyword.get(config, :sources) ||
         raise(ArgumentError, ".surfex.exs needs sources: (the spec's globs)")
 
+    exclude = Keyword.get(config, :exclude, [])
+
     spec =
-      Scan.Markdown.records(root, sources, Keyword.get(config, :exclude, []),
+      Scan.Markdown.records(root, sources, exclude,
         heading_ids: Keyword.get(config, :heading_ids),
         rule_ids: Keyword.get(config, :rule_ids),
         subjects: Keyword.get(config, :subjects, []),
-        fold_paths: fold_paths!(config)
+        fold_paths: fold_paths!(config),
+        spec_classes: spec_classes!(config, Scan.Markdown.files(root, sources, exclude))
       )
 
     if spec == [],
@@ -678,6 +685,107 @@ defmodule Surfex.Status.Config do
       other -> raise ArgumentError, "claim_grain: must be true or false, got #{inspect(other)}"
     end
   end
+
+  @doc """
+  The spec's classes (`spec_classes:`, §11.7), each as
+  `%{name, reason, files, headings, marker}`, `[]` without the key. A class is
+  `{name, reason}`, or `{name, reason, opts}` with `files:` (globs relative to the root,
+  checked against the spec's `files`), `headings:` (a regex over a heading's text) and
+  `marker:` (a regex over an own-line comment's inner text). A name is letters, digits,
+  `-` and `_`, and its reason isn't empty. Refused, naming it: a malformed class, an option
+  other than these, one name with two reasons, and a glob matching none of `files`: a
+  misspelt pattern would otherwise class nothing in silence.
+  """
+  @spec spec_classes!(keyword, [String.t()]) :: [
+          %{
+            name: String.t(),
+            reason: String.t(),
+            files: [String.t()] | nil,
+            headings: Regex.t() | nil,
+            marker: Regex.t() | nil
+          }
+        ]
+  def spec_classes!(config, files) do
+    case Keyword.get(config, :spec_classes, []) do
+      list when is_list(list) ->
+        classes = Enum.map(list, &spec_class!(&1, files))
+
+        for {name, cs} <- Enum.group_by(classes, & &1.name),
+            reasons = cs |> Enum.map(& &1.reason) |> Enum.uniq(),
+            length(reasons) > 1,
+            do:
+              raise(
+                ArgumentError,
+                "spec_classes: #{name} is declared with different reasons: " <>
+                  Enum.map_join(reasons, " / ", &inspect/1)
+              )
+
+        classes
+
+      other ->
+        raise ArgumentError, "spec_classes: must be a list of classes, got #{inspect(other)}"
+    end
+  end
+
+  defp spec_class!({name, reason}, files), do: spec_class!({name, reason, []}, files)
+
+  defp spec_class!({name, reason, opts} = class, files)
+       when is_binary(name) and is_binary(reason) and is_list(opts) do
+    unless Regex.match?(~r/^[A-Za-z0-9_-]+$/, name),
+      do:
+        raise(
+          ArgumentError,
+          "spec_classes: a class name is letters, digits, - and _, got #{inspect(name)}"
+        )
+
+    if String.trim(reason) == "",
+      do: raise(ArgumentError, "spec_classes: class #{name} needs a reason")
+
+    case Keyword.keys(opts) -- [:files, :headings, :marker] do
+      [] ->
+        :ok
+
+      unknown ->
+        raise ArgumentError,
+              "spec_classes: class #{name} has unknown options #{inspect(unknown)}"
+    end
+
+    globs = Keyword.get(opts, :files)
+
+    unless globs == nil or (is_list(globs) and globs != [] and Enum.all?(globs, &is_binary/1)),
+      do: bad_spec_class(class)
+
+    for glob <- globs || [],
+        not Enum.any?(files, &Scan.Markdown.glob_match?(glob, &1)),
+        do:
+          raise(
+            ArgumentError,
+            "spec_classes: class #{name}'s files: #{inspect(glob)} matches no spec file"
+          )
+
+    for key <- [:headings, :marker],
+        value = Keyword.get(opts, key),
+        not is_struct(value, Regex),
+        do: bad_spec_class(class)
+
+    %{
+      name: name,
+      reason: reason,
+      files: globs,
+      headings: Keyword.get(opts, :headings),
+      marker: Keyword.get(opts, :marker)
+    }
+  end
+
+  defp spec_class!(other, _files), do: bad_spec_class(other)
+
+  defp bad_spec_class(class),
+    do:
+      raise(
+        ArgumentError,
+        "spec_classes: a class is {name, reason} or {name, reason, files: [glob], " <>
+          "headings: regex, marker: regex}, got #{inspect(class)}"
+      )
 
   # `fold_paths:` is a boolean; anything else is refused, not read as false. Without it,
   # path headings fold under `claim_grain: true` wherever the spec writes ids
