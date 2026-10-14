@@ -1408,6 +1408,74 @@ report and the JSON, and the status doesn't fail; a composite key or a plain one
 listed, and the rows are units as before
 ```
 
+### 11.3 Calls a test states through a framework
+<!-- surfex: framework-calls -->
+
+Some tests reach their code through a framework rather than by naming it: a request to a
+route the router maps, an event sent to the view a request mounted, a message sent to a
+named process. Each resolves deterministically from source, so it is a **call** in the
+test's record, beside the calls §11 lists, and reach, the triangle, evidence (§13.1, §17)
+and the suggestions (§15) follow it. These are a test's calls only: a definition's calls
+(§5.2), and so every code version, stay as they were.
+
+**Routes.** The project's router is read from source, never compiled
+(`Surfex.Status.Config.routes/2`): the router modules `router:` in `.surfex.exs` names
+(a module or a list), or, without it, each module an endpoint (`use Phoenix.Endpoint`)
+plugs that is a router (`use Phoenix.Router`, or `use App, :router`), from the Elixir
+scanner's `:paths`. `router: false` turns this off; a named router the source doesn't
+define, and a `router:` of any other shape, is refused. Its routes are read in order:
+`scope` joins paths and aliases as Phoenix does (`scope "/carts", MyAppWeb` then
+`live "/:id", CartLive.Show` is `MyAppWeb.CartLive.Show` at `/carts/:id`), and
+`live_session` and `pipe_through` change neither. A `live` route is a `GET`; `get`,
+`post`, `put`, `patch`, `delete`, `options` and `head` routes name a controller and an
+action. Other forms (`resources`, `forward`) aren't read.
+- `live(conn, PATH)` and each verb's request (`get(conn, PATH)`, …), local or qualified
+  (`Phoenix.LiveViewTest.live/2`) and piped or not, resolve to the first route, in the
+  router's order, of that verb whose path matches. A live route calls the LiveView
+  module, its `mount/3` and its `handle_params/3`; a controller route calls the
+  controller module and its action (`Controller.action/2`).
+- `PATH` is a literal string, or a string or `~p` with interpolations. A literal segment
+  matches the same segment or a param (`:id`); a segment holding an interpolation matches
+  only a param, since what it holds is known only when the test runs; a glob (`*path`)
+  takes the rest. The query string is no part of the match. A path in a variable, or one
+  no route matches, is no call.
+- `live_isolated(conn, Module, …)` calls `Module` and its `mount/3`.
+
+**LiveView events.** In one body (the test's, or a helper's), a variable bound by
+`{:ok, view, _html} = REQUEST`, where the request resolves to a LiveView, is that view.
+`render_click`, `render_submit`, `render_change`, `render_keydown`, `render_keyup`,
+`render_blur`, `render_focus` and `render_hook` given the view, or an `element/2,3` or
+`form/2,3` of it, call the view's `handle_event/3`. A component the element targets
+(`phx-target`) isn't known from the test, so the call names the view's.
+
+**Messages.** `GenServer.call(Module, msg)` and `GenServer.cast(Module, msg)`, with a
+module as the server, call that module's `handle_call/3` and `handle_cast/2`, and name
+`Module`. A server given any other way (a pid, a `{:global, …}` name) is no call.
+
+**Captures through a helper.** A capture handed to a helper (`growth(&MyApp.f/1, …)`)
+is already the test's own call (§11), so reach follows it whether or not the helper is
+scanned.
+
+`Surfex.Scan.ExUnit.records/5` and `Surfex.Scan.ExUnit.tests/5` take the routes;
+`Surfex.Status.Config.scans/2` and `Surfex.ExUnitFormatter` pass the project's.
+
+```test:route-calls
+the router is found from the endpoint or named by router:, its scopes joined in order;
+a request through a live route calls the view's mount and handle_params, through a
+controller route the action; a literal segment matches a param, an interpolated one only
+a param, a glob the rest; an unknown or variable path is no call; reach follows
+```
+
+```test:event-calls
+an event given a view bound from a resolved live request, or an element or form of it,
+calls the view's handle_event/3; one to any other view is no call
+```
+
+```test:message-calls
+GenServer.call and cast with a module call its handle_call/3 or handle_cast/2, and any
+other server is no call; a capture handed to a helper is the test's call
+```
+
 ## 12. The relation log
 <!-- surfex: relation-log -->
 
@@ -1853,7 +1921,8 @@ suggest --accept retires it
 log's own: `heading_ids` (§11), `rule_ids`, `fold_paths` and `unit_refs` (§11.1),
 `scanners` (§5.3), `scanner`, `scanner_opts`, `namespace`, `goldens` (§10.3), `require`,
 `tests`, `triangle`,
-`require_red` (§17), `adoption` (§18.1), `process` (§19) and `completeness` (§20).
+`require_red` (§17), `router` (§11.3), `adoption` (§18.1), `process` (§19) and
+`completeness` (§20).
 - `Surfex.Status.Config.read!/1` reads and validates it. It raises on an unknown key, and
   on a key of the removed trace, saying so (§9). Every task reads its config through
   it, so a misspelt key is never silently ignored.

@@ -20,6 +20,12 @@ A keyword list, evaluated as data. An unknown key is refused, naming it.
   (an action, a policy) as an item keyed `Module.name` (`Surfex.Scanner`, spec §4.1), and
   its `calls/3` says which item a call through the DSL's entry drives, so tests reach it
   (spec §5.4).
+- `router: MyAppWeb.Router` (or a list, or `false`): the router a test's requests resolve
+  through. Without it, the router an endpoint plugs is found from source. A test's
+  `live(conn, "/carts/1")`, `get(conn, …)` and the other verbs then call what the route
+  runs (a LiveView's `mount/3` and `handle_params/3`, or a controller action), its
+  `render_click(view, …)` and friends call the view's `handle_event/3`, and
+  `GenServer.call(Module, msg)` calls that module's `handle_call/3` (spec §11.3).
 - Citation profile: `exclude`, `shape`, `token`, `known_shape`, `normalise`, `subjects`,
   `table_columns`, `file_targets`, `known_external`, `documented_absences`.
 - `classes: [{name, reason}]`, `rules: [%{class:, kinds:, name:, parent_cited:, parent:}]`,

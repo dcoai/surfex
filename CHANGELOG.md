@@ -103,6 +103,20 @@ milestone "Claims own their code" is in.
   `--code` is still an error. The guide and `mix surfex.info validation` say that code
   relates to the claim it realises, and how to record that by hand. Every existing entry
   keeps its line and id; a log holding a `through` entry needs this version to read it.
+- **Routes, LiveView events and messages are a test's calls** (#206, #243). A test's
+  `live(conn, "/carts/1")`, `get/post/put/patch/delete(conn, PATH)` and
+  `live_isolated(conn, Module)` resolve through the project's router, read from source,
+  to the LiveView (`mount/3`, `handle_params/3`) or the controller action; an event
+  (`render_click`, `render_submit`, … given the view or an element or form of it) to the
+  mounted view's `handle_event/3`; and `GenServer.call/cast(Module, msg)` to
+  `Module.handle_call/3` or `handle_cast/2` (spec §11.3). The router is found from the
+  endpoint, or named with the new `router:` key (`false` turns it off). Literal paths and
+  `~p` paths with interpolated segments, matched against the route patterns in order.
+  `Surfex.Scan.ExUnit.records/5` and `tests/5` take the routes,
+  `Surfex.Status.Config.routes/2` gives them, and `Surfex.SourceScan.Calls.of/4` asks a
+  reader about each whole body. Only test records change: no code version moves. On
+  upgrade a Phoenix project's tests reach more code, so `mix surfex.suggest` proposes more
+  `tests` relations and the triangle reports fewer gaps; nothing that held stops holding.
 
 ## [0.9.1] — 2026-10-14
 

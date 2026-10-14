@@ -29,6 +29,9 @@ defmodule Surfex.Status.Config do
       triangle fail the check or are only reported
     * `:require_red` — `true` to refuse confirming a `tests` relation, by evidence or by
       hand, until its test's current version has failed first (`false` by default)
+    * `:router` — the router module (or a list of them) whose routes a test's requests
+      resolve through (§11); found from the project's endpoint when not given, and `false`
+      turns route resolution off
   """
 
   alias Surfex.Log.Entry
@@ -51,6 +54,7 @@ defmodule Surfex.Status.Config do
     :tests,
     :triangle,
     :require_red,
+    :router,
     :adoption,
     :process,
     :completeness
@@ -133,6 +137,62 @@ defmodule Surfex.Status.Config do
         raise ArgumentError,
               "scanners #{inspect(first)} and #{inspect(second)} both give the key #{inspect(key)}"
     end
+  end
+
+  @doc """
+  The routes a test's requests resolve through (§11, `Surfex.SourceScan.Routes`): those
+  of the routers `router:` names, or, without it, of each router an endpoint in the
+  project plugs (`use Phoenix.Endpoint`, then `plug MyAppWeb.Router`). Read from the
+  Elixir scanner's source (its `:paths`), never compiled. None when `router: false`, or
+  when the Elixir scanner isn't among the scanners and no router is named. A named router
+  that the source doesn't define raises, as does a `router:` of any other shape.
+  """
+  @spec routes(keyword, String.t()) :: [Surfex.SourceScan.Routes.route()]
+  def routes(config, root) do
+    paths =
+      case List.keyfind(scanners!(config), :elixir, 0) do
+        {:elixir, opts} -> Keyword.get(opts, :paths, ["lib/**/*.ex"])
+        nil -> ["lib/**/*.ex"]
+      end
+
+    case Keyword.get(config, :router) do
+      false ->
+        []
+
+      nil ->
+        if elixir_scanner?(config),
+          do: Surfex.SourceScan.Routes.read(router_files(root, paths, []), :discover),
+          else: []
+
+      named ->
+        names = router_names!(named)
+        Surfex.SourceScan.Routes.read(router_files(root, paths, names), names)
+    end
+  end
+
+  defp router_names!(named) do
+    list = List.wrap(named)
+
+    if list != [] and Enum.all?(list, &(is_atom(&1) and &1 not in [nil, true, false])),
+      do: Enum.map(list, &inspect/1),
+      else:
+        raise(
+          ArgumentError,
+          "router: must be a module, a list of modules, or false, got #{inspect(named)}"
+        )
+  end
+
+  # The source files that may hold an endpoint or a router, parsed: only those that say
+  # so, so the rest of the code is never read twice.
+  defp router_files(root, paths, names) do
+    marks = ["Phoenix.Endpoint", "Phoenix.Router", ":router" | names]
+
+    for glob <- paths,
+        file <- Path.wildcard(Path.join(root, glob)),
+        text = File.read!(file),
+        Enum.any?(marks, &String.contains?(text, &1)),
+        uniq: true,
+        do: {file, Code.string_to_quoted!(text, file: file)}
   end
 
   @doc """
@@ -536,7 +596,7 @@ defmodule Surfex.Status.Config do
         if files == [],
           do: raise(ArgumentError, "tests: #{inspect(globs)} matches no file under #{root}")
 
-        Scan.ExUnit.records(root, globs, code, call_scanners(config))
+        Scan.ExUnit.records(root, globs, code, call_scanners(config), routes(config, root))
     end
   end
 end
