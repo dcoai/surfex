@@ -36,7 +36,7 @@ Create the log once with `mix surfex.log --init` (it also sets git's union merge
   Validate the claim's relation (evidence or `mix surfex.validate`); once it holds, the
   next `--accept` or `mix surfex.suggest --accept` retires the section's, noting the claim.
   `--code ID --to CLAIM` records your choice for several, or for none once its claim is
-  written.
+  written. The walkthrough: the guide "Migrating to claim grain".
   A section relation on the baseline (`mix surfex.info adoption`) keeps basis `baseline`
   on the claim when the same baselined test verifies the claim and exercises the code,
   and the section's retires at once.
