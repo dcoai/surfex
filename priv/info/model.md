@@ -3,7 +3,7 @@
 **Ends.** Surfex scans four kinds of thing, each with an id and a content hash (its
 version):
 - `spec`: a markdown section (`spec.md#anchor`, or `spec.md#Heading/Path`), a fenced
-  block, or a test hint (```` ```test hint-id ```` in the spec: a claim a test must verify).
+  block, or a test hint (```` ```test:hint-id ```` in the spec: a claim a test must verify).
 - `code`: a module or function (`MyApp.Cart`, `MyApp.Cart.add/2`).
 - `test`: one test case (`test:MyApp.CartTest: totals: an empty cart totals nothing`).
   A `describe` group is not an end; each test in it is.

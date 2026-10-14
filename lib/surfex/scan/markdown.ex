@@ -7,9 +7,10 @@ defmodule Surfex.Scan.Markdown do
   Its subsections are sections of their own, so an edit to §3.2 changes §3.2's version and
   not §3's. Text before the first heading is the section `(preamble)`, when it has any.
 
-    * **id** — the one its author wrote, when there is one: an id comment
-      (`## Adding items <!-- surfex: cart-add -->`), an anchor (`{#cart-add}`), or what the
-      project's heading grammars read (`heading_ids:`, `heading_grammar/1`), giving
+    * **id** — the one its author wrote, when there is one: an id comment on the line
+      after the heading or at its end (`## Adding items <!-- surfex: cart-add -->`), an
+      anchor (`{#cart-add}`), or what the project's heading grammars read (`heading_ids:`,
+      `heading_grammar/1`), giving
       `spec.md#cart-add`. A written id survives renaming the heading or any heading above
       it. Otherwise the file and the path of headings down to it,
       `spec.md#Carts/Adding items`; two sections with the same path in one file are told
@@ -27,7 +28,8 @@ defmodule Surfex.Scan.Markdown do
       `<!-- /surfex -->`, each marker on a line of its own. Its id is `file#ID`. A block
       can't nest in another or span a heading, and one left open is an error.
     * A **test hint** says how to test something: a fenced block whose info string is
-      exactly `test ID`. Its id is `file#ID` and its version covers the fence's content.
+      exactly `test:ID` or `test ID`. Its id is `file#ID` and its version covers the
+      fence's content. ex_doc renders only the first (§11).
       A `test` fence without an id is an ordinary code block.
     * A **marked table** (`<!-- surfex: table ID -->` before a table) is a unit, and so is
       each of its rows, `file#ID/KEY`. The marker may name the key column, or several
@@ -53,7 +55,7 @@ defmodule Surfex.Scan.Markdown do
   @heading_comment ~r/^(.*?)\s*<!--\s*surfex:\s*(\S+)\s*-->$/
   @open_block ~r/^ {0,3}<!--\s*surfex:\s*(\S+)\s*-->\s*$/
   @close_block ~r/^ {0,3}<!--\s*\/surfex\s*-->\s*$/
-  @hint ~r/^test\s+(\S+)$/
+  @hint ~r/^test(?:\s+|:)(\S+)$/
   @table_marker ~r/^ {0,3}<!--\s*surfex:\s*table\s+(\S+)(.*?)\s*-->\s*$/
   @table_line ~r/^ {0,3}\|/
   @separator ~r/^ {0,3}\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/
@@ -97,11 +99,8 @@ defmodule Surfex.Scan.Markdown do
   def sections(text, file, opts \\ []) do
     grammar = heading_grammars(Keyword.get(opts, :heading_ids))
 
-    {sections, units} =
-      text
-      |> String.split("\n")
-      |> Enum.with_index(1)
-      |> split(file, grammar)
+    lines = text |> String.split("\n") |> Enum.with_index(1)
+    {sections, units} = split(lines, file, grammar, ids_after(lines))
 
     sections =
       sections
@@ -153,10 +152,11 @@ defmodule Surfex.Scan.Markdown do
   # hints (%{role, id, first, last, body, within}). A line belongs to exactly one body:
   # the open hint's, else the open block's, else the current section's. Markers and a
   # hint's fences belong to none.
-  defp split(lines, file, grammar) do
+  defp split(lines, file, grammar, ids_after) do
     start = %{
       file: file,
       grammar: grammar,
+      ids_after: ids_after,
       done: [],
       cur: section(0, nil, nil, "(preamble)", 1),
       stack: [],
@@ -217,6 +217,10 @@ defmodule Surfex.Scan.Markdown do
         hint = %{id: id, first: no, body: [], within: within(st)}
         %{st | fence: fence, hint: hint, cur: extend(st.cur, line, no)}
 
+      # A heading's id comment on the line after it belongs to no body, like a marker.
+      prose? and Map.has_key?(st.ids_after, no - 1) ->
+        %{st | cur: extend(st.cur, line, no)}
+
       prose? and heading(line) != nil ->
         if st.block,
           do: fail(st, no, "block #{st.block.id} (line #{st.block.first}) spans a heading")
@@ -275,16 +279,67 @@ defmodule Surfex.Scan.Markdown do
   end
 
   defp new_section(st, {level, text}, no) do
-    # An id the author wrote wins: a comment at the end of the heading, or a {#anchor}. Then
-    # the project's heading grammar (heading_ids:). Neither: the heading path.
+    # An id the author wrote wins: a comment at the end of the heading or on the line after
+    # it, or a {#anchor}. Then the project's heading grammar (heading_ids:). Neither: the
+    # heading path.
     {text, explicit} = explicit_id(st, text, no)
-    anchor = explicit || grammar_id(st, text, no)
+    after_id = Map.get(st.ids_after, no)
+
+    if explicit && after_id,
+      do: fail(st, no + 1, "heading of line #{no} already has a written id, #{explicit}")
+
+    written = explicit || (after_id && checked_id!(st, no + 1, after_id, "heading"))
+    anchor = written || grammar_id(st, text, no)
 
     stack = [{level, text} | Enum.drop_while(st.stack, fn {l, _} -> l >= level end)]
     path = stack |> Enum.reverse() |> Enum.map_join("/", &elem(&1, 1))
     next = section(st.cur.n + 1, text, anchor, path, no)
     %{st | done: [st.cur | st.done], cur: next, stack: stack}
   end
+
+  # The headings whose id comment is on the line after them, as %{heading line => id}. That
+  # line is also a block's opening marker, so it is the heading's id only when no close
+  # marker makes it a block: when the next marker, heading or the end of the text comes
+  # first. Read so, it is a block exactly where it was before, and an id only where it was
+  # an error (a block left open, spanning a heading or opening inside itself).
+  defp ids_after(lines) do
+    start = %{fence: nil, heading: nil, pending: nil, ids: %{}}
+
+    st =
+      Enum.reduce(lines, start, fn {line, no}, st ->
+        {prose?, fence} = Fence.step(line, st.fence)
+        st = %{st | fence: fence}
+
+        cond do
+          not prose? ->
+            %{st | heading: nil}
+
+          heading(line) != nil ->
+            %{after_marker(st, :id) | heading: no}
+
+          st.heading == no - 1 and Regex.match?(@open_block, line) ->
+            [id] = Regex.run(@open_block, line, capture: :all_but_first)
+            %{st | heading: nil, pending: {no - 1, id}}
+
+          Regex.match?(@open_block, line) ->
+            %{after_marker(st, :id) | heading: nil}
+
+          Regex.match?(@close_block, line) ->
+            %{after_marker(st, :block) | heading: nil}
+
+          true ->
+            %{st | heading: nil}
+        end
+      end)
+
+    after_marker(st, :id).ids
+  end
+
+  defp after_marker(%{pending: nil} = st, _read), do: st
+  defp after_marker(st, :block), do: %{st | pending: nil}
+
+  defp after_marker(%{pending: {heading, id}} = st, :id),
+    do: %{st | pending: nil, ids: Map.put(st.ids, heading, id)}
 
   defp explicit_id(st, text, no) do
     cond do

@@ -30,10 +30,15 @@ defmodule Surfex.GuideTest do
     }
   ]
 
-  # A fenced example named by its info string, `markdown NAME`, at any fence length.
+  # A fenced example named by the comment before it, `<!-- example: NAME -->`, at any fence
+  # length. Not by its info string: ex_doc renders a fence whose info string holds a space
+  # as a line of text (#195).
   defp example(name) do
     [_, _fence, body] =
-      Regex.run(~r/^(`{3,})markdown #{name}\n(.*?)^\1$/ms, File.read!(@guide))
+      Regex.run(
+        ~r/^<!-- example: #{name} -->\n(`{3,})markdown\n(.*?)^\1$/ms,
+        File.read!(@guide)
+      )
 
     body
   end

@@ -58,8 +58,10 @@ subsections, and editing the overview dangles nothing that relates to a requirem
 **When a heading per requirement is too many headings, mark the requirement instead.**
 A marked block is a unit of its own, inside its section:
 
-````markdown wren-block
-## Limits {#limits}
+<!-- example: wren-block -->
+````markdown
+## Limits
+<!-- surfex: limits -->
 
 Messages are bounded so a slow peer can't exhaust memory.
 
@@ -82,9 +84,19 @@ A section's id is its heading path, so a renamed heading orphans every relation 
 section, and of every section below it. The version survives the rename (the heading
 isn't hashed), which is how Surfex tells a move from a rewrite.
 
-**Give sections that others relate to an anchor**: `## Limits {#limits}`. The id is then
-`spec.md#limits`, whatever the heading says and wherever the section moves. Anchors are
-lowercase letters, digits and `-`, unique in their file.
+**Give sections that others relate to an id of their own**: an id comment on the line after
+the heading,
+
+```markdown
+## Limits
+<!-- surfex: limits -->
+```
+
+The id is then `spec.md#limits`, whatever the heading says and wherever the section moves.
+Ids are letters, digits and `. _ - :`, unique in their file. The comment renders nowhere,
+on a forge or in ex_doc. The id may instead go at the end of the heading,
+`## Limits <!-- surfex: limits -->`, or be an anchor, `## Limits {#limits}`, but ex_doc
+shows both as heading text (spec §11 lists the forms each renderer shows).
 
 - **Name sections; don't summarise them.** "Sending" survives rewording, "Messages are
   queued, never sent synchronously" doesn't.
@@ -143,10 +155,11 @@ message received was sent, and none is received twice". An invariant is written 
 property test, which checks it over many generated inputs instead of a few chosen ones.
 
 **Say how to test it, where that isn't obvious**, in a test hint: a fenced block whose
-info string is `test` and an id.
+info string is `test:` and an id.
 
-````markdown wren-hint
-```test max-len-test
+<!-- example: wren-hint -->
+````markdown
+```test:max-len-test
 given a 513-byte message
 when it is sent
 then {:error, :too_long}, and nothing is queued
@@ -158,7 +171,8 @@ out of the version of the section or block around it. Editing how a requirement 
 tested therefore doesn't dangle the code that implements it. Write what to check (the
 cases, the boundaries, what must stay unchanged) rather than test code, unless a test
 is the clearest statement of the requirement. A `test` block with no id is an
-ordinary code block.
+ordinary code block. `test max-len-test`, with a space, is read the same, but ex_doc
+renders it as a line of text that swallows the heading after it.
 
 ## 7. Test-first, with Surfex
 
@@ -191,11 +205,12 @@ ExUnit.start(formatters: [ExUnit.CLIFormatter, Surfex.ExUnitFormatter])
 1. **Write the requirement and its test hint.** Plan the code if you like:
 
    ````markdown
-   ## Sending {#sending}
+   ## Sending
+   <!-- surfex: sending -->
 
    `Wren.send/3` queues a message for a peer.
 
-   ```test sending-queues
+   ```test:sending-queues
    given an empty queue, when a message is sent, recv/1 returns it
    ```
    ````
@@ -391,7 +406,8 @@ only way through. An agent working in it should:
 
 Wren is a small, made-up messaging library. Here is its spec written in one section:
 
-```markdown wren-before
+<!-- example: wren-before -->
+```markdown
 # Messaging
 
 `Wren.send/3` queues a message for a peer and `Wren.recv/1` takes the next one, in the
@@ -409,7 +425,8 @@ fine.
 
 The same spec, sized to what changes together:
 
-```markdown wren-after
+<!-- example: wren-after -->
+```markdown
 # Messaging
 
 `Wren.Queue` holds the messages a peer has been sent and not yet taken.

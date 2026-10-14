@@ -18,12 +18,16 @@ stages:
   before_script:
     - mix local.hex --force
     - mix local.rebar --force
+    # ex_doc, a test dependency too: the tests render the spec's unit forms through its
+    # markdown as the docs will (#195). The docs and model jobs fetch their own.
+    - if [ "$MIX_ENV" = test ]; then mix deps.get --only test; fi
   cache:
     key:
       files:
         - mix.exs
     paths:
       - _build
+      - deps
 
 format:
   extends: .elixir

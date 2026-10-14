@@ -9,6 +9,33 @@ All notable changes to Surfex are recorded here, following
 `mix.exs` reads `0.9.1-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
 release it merely follows.
 
+### Added
+
+- **Spec forms ex_doc renders** (#195, #228). ex_doc's markdown (EarmarkParser) shows a
+  heading's id comment and anchor as heading text, and renders a ```` ```test ID ```` hint,
+  whose info string holds a space, as a line of text that swallows the heading after it.
+  Two spellings it renders cleanly are now read as well:
+  - a test hint whose info string is `test:ID`, ```` ```test:totals-counts ````, read
+    exactly as `test ID` is, with the same id and version;
+  - a heading's id comment on the line after it, `## Totals` then `<!-- surfex: totals -->`.
+    That line is also a block's opening marker, and it still opens a block wherever a
+    `<!-- /surfex -->` closes it before the next marker or heading. It is the heading's id
+    only where it used to be an error (a block never closed, spanning a heading or opening
+    inside itself), so no spec that scanned before changes meaning. A heading with an id
+    on both lines is an error.
+
+  Switching a spec to them changes no id and no version: surfex's own spec moved every
+  anchor and hint across with its relation log untouched. Spec §11 now says which forms
+  each renderer shows, and a test renders each one through ex_doc so it stays true.
+
+### Fixed
+
+- **The claim that heading id comments suit ex_doc** (#195). 0.7.0 said an id comment at
+  the end of a heading "doesn't render, so it suits ex_doc extras". It renders as heading
+  text there and leaks into the anchor link. Put it on the line after the heading.
+- **surfex's own published spec and guides** (#195, #228) lost a heading after every test
+  hint and showed every anchor as text on hexdocs. They use the forms ex_doc renders.
+
 ## [0.9.0] — 2026-10-14
 
 Status reports what it used to miss. A `verifies` tag the log doesn't record now fails
@@ -308,7 +335,8 @@ come in a later release.
 
 - **Headings keep the ids their authors write** (#179, #180). A section's id is, in order:
   - an id comment at the end of the heading, `## Totals <!-- surfex: totals -->`, which
-    doesn't render, so it suits ex_doc extras where `{#id}` shows as text;
+    doesn't render on a forge (ex_doc does show it as text: put it on the line after the
+    heading instead, #195);
   - an anchor, `{#totals}`;
   - what the project's heading grammar reads, set by `heading_ids:` in `.surfex.exs`:
     `:section_sign` for `## §Api.3.2 — Limits`, `:section_number` for `## 1.2 Totals`, or

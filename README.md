@@ -112,7 +112,7 @@ Then work by the process, one spec unit at a time. Say `Totals` is new:
 1. **The spec says what to check.** A test hint under the section:
 
    ````markdown
-   ```test totals-counts
+   ```test:totals-counts
    an empty cart totals 0; a cart holding 2 of one item and 1 of another totals 3
    ```
    ````
