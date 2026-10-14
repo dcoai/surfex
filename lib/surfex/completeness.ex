@@ -19,7 +19,9 @@ defmodule Surfex.Completeness do
   Under `claim_grain: true` (§20.1) a spec unit is read as verification reads it
   (`Surfex.Status.verdict/2`): only claims are counted, and a claim is complete only with
   its own validated `verifies`. A contained claim misses `{:contained, units}`, naming the
-  verified claims inside it.
+  verified claims inside it. Code is described only by an `implements` that earns
+  (`Surfex.Status.earning/2`, §20.3): code whose implements all earn nothing misses
+  `unearned`.
   """
 
   alias Surfex.{Golden, Scan}
@@ -199,10 +201,19 @@ defmodule Surfex.Completeness do
       true ->
         untested = Enum.any?(status.triangle, &(&1.gap == :code_untested and &1.code in ids))
 
-        if(Enum.all?(implements, &validated?(status, &1)), do: [], else: [:unvalidated]) ++
+        unearned(implements, status) ++
+          if(Enum.all?(implements, &validated?(status, &1)), do: [], else: [:unvalidated]) ++
           if untested, do: [:untested], else: []
     end
   end
+
+  # At claim grain code is described only by an implements that earns (§20.3): with none,
+  # it misses `unearned`, whatever validated the relations.
+  defp unearned(implements, %{policy: %{claim_grain: true}} = status) do
+    if Enum.any?(implements, &Surfex.Status.earned?(status, &1)), do: [], else: [:unearned]
+  end
+
+  defp unearned(_implements, _status), do: []
 
   defp ends(%{relation: {_type, a, b}}), do: [a, b]
 

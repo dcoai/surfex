@@ -2624,6 +2624,53 @@ the scan order, counted in the header, and change only when a class or deferral 
 a spec with neither renders as before; the completeness golden's header counts both
 ```
 
+### 13.9 Unearned implements
+<!-- surfex: unearned -->
+
+Under `claim_grain: true` (§13.2) an `implements` counts for a `require: code:` rule only
+when it earns (§13.5). A claim written only to own code, with nothing that could fail
+behind it, satisfies nothing: the code it names is judged by the relations that do earn.
+
+- `Surfex.Status.derive/4` lists every `implements` that doesn't earn as `unearned`: its
+  code, its spec unit and why (`unverified`, `not_exercised` or `nothing_inside`). A
+  retired, orphaned or planned relation is judged by its state instead.
+- An unearned `implements` meets no `require:` rule. Code whose only `implements` are
+  unearned fails `require: [code: [:implements]]` as unmet, and its entry says
+  `why: :unearned`.
+- Where the policy asks code for an `implements` (`require: [code: [:implements]]`),
+  every unearned relation fails the status, including one from code another relation
+  already meets: the spare claim is what the rule guards against. Without that rule the
+  list is reported and doesn't fail.
+- Credit never flows up from an enclosing unit: a claim inside a verified section earns
+  nothing through the section's tag, and code earns through a verified unit, or through a
+  verified claim inside the unit whose test exercises it (§13.5).
+
+The fix for each depends on its why. `unverified` needs a test or check that verifies the
+unit, or the relation retired; `not_exercised` usually means the code belongs to another
+claim, and `mix surfex.migrate --report` shows which (§14.1); `nothing_inside` names a
+container with no claims to earn through.
+
+```test:unearned-fails
+under claim_grain: true with require: [code: [:implements]], code related only to an
+unverified hint is unearned and unmet with why unearned, and the status fails; verifying
+the hint clears both; code related to a contained section earns through a verified hint
+whose test reaches it, and is unearned as not_exercised when the test reaches other code;
+a spare unearned relation fails even when another relation meets the code; without the
+rule the list is reported and passes; without claim_grain: nothing is unearned
+```
+
+`Surfex.Status.Report.text/1` counts the unearned relations in a header line under
+`claim_grain: true` (marking it failing under `require: code:`) and lists each with its
+why; `Surfex.Status.Report.json/1` gives `unearned` (`code`, `unit`, `why`); and the status
+golden (`Surfex.Status.Report.golden/2`, `RELATIONS.md`) holds an `unearned` table keyed by code and counts it in its
+header. Without `claim_grain:` none of these appear, and reports read as before.
+
+```test:unearned-report
+under claim_grain: true the text counts unearned relations in its header and lists each
+with its why, the JSON gives code, unit and why, and the golden has an unearned table and
+header count; without claim_grain: no count, line or table appears
+```
+
 ## 14. Recording
 <!-- surfex: recording -->
 
@@ -3855,6 +3902,22 @@ the key both are empty and the score reads as before.
 under claim_grain: true an excused section and a deferred section are out of the spec
 total and counted on their own lines in text and JSON, while a rule inside a classed
 section is counted; without claim_grain: they are counted as before
+```
+
+### 20.3 Code described by an earning implements
+<!-- surfex: earned-code-score -->
+
+Under `claim_grain: true` (§13.2) completeness (`Surfex.Completeness.report/1`) reads code
+as `require:` does (§13.9): code is described only by an `implements` that earns (§13.5).
+Code with `implements` relations of which none earns misses `unearned`, whatever
+validated them; one earning relation describes it. Code with no `implements` misses
+`not_described`, as before, and an `excuses` still describes code nothing implements.
+Without `claim_grain:` an `implements` describes code whether or not it earns.
+
+```test:completeness-earned-code
+under claim_grain: true code whose only implements is to an unverified hint misses
+unearned, and no longer does once a test verifying the hint reaches it; without
+claim_grain: the same code doesn't miss unearned
 ```
 
 ## 21. Discovering the tool

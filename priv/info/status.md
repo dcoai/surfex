@@ -64,6 +64,12 @@ deferrals**, a deferral whose unit has a test of its own, whose issue is closed,
 the tracker couldn't answer. `mix surfex.status --issues` asks the tracker through the
 `issues:` command; without it only a built unit is judged.
 
+**Unearned** (under `claim_grain: true`, counted in the header): an `implements` no
+verified claim's test or check exercises, with why (`unverified`, `not_exercised`,
+`nothing_inside`; `mix surfex.info claims`). It meets no `require: code:` rule, and the
+list fails where `require: [code: [:implements]]` is set. `not_exercised` usually means
+the code belongs to another claim: `mix surfex.migrate --report` shows which.
+
 **Inert** (not failing): a `verifies` tag that applies to no test or property block, so it
 verifies nothing: a `@tag` no test follows, a `@moduletag` or `@describetag` over no test,
 or any tag in `test/support/`. Move it onto the test that checks the claim, or delete it.
