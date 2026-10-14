@@ -29,13 +29,22 @@ defmodule Surfex.EarmarkFormsTest do
      ["spec.md#Carts", "spec.md#rule", "spec.md#Next"]},
     {"a marked table",
      "# Modes\n<!-- surfex: modes -->\n\n<!-- surfex: table mode-table key: Mode -->\n| Mode | Means |\n|---|---|\n| `:open` | takes items |\n# Next\n",
-     ["spec.md#modes", "spec.md#mode-table", "spec.md#mode-table/:open", "spec.md#Next"]}
+     ["spec.md#modes", "spec.md#mode-table", "spec.md#mode-table/:open", "spec.md#Next"]},
+    {"an id comment on its own line before a paragraph",
+     "# Claims\n\nIntro.\n\n<!-- surfex: unreachable -->\n**A retired schema is unreachable.** More.\n\n# Next\n",
+     ["spec.md#Claims", "spec.md#unreachable", "spec.md#Next"]},
+    {"an id comment on its own line before a list item",
+     "# Claims\n\n- plain\n\n<!-- surfex: no-override -->\n- Anonymous requests never honour it.\n\n# Next\n",
+     ["spec.md#Claims", "spec.md#no-override", "spec.md#Next"]},
+    {"a marked list with written ids",
+     "# Claims\n\n<!-- surfex: rules tenancy -->\n1. §T.1 A tenant reads its own rows.\n2. §T.2 Ids are never reused.\n\n# Next\n",
+     ["spec.md#Claims", "spec.md#T.1", "spec.md#T.2", "spec.md#Next"]}
   ]
 
   for {form, text, ids} <- @rendered do
     test "#{form} renders with no marker text and every heading kept" do
       text = unquote(text)
-      units = Markdown.sections(text, "spec.md")
+      units = Markdown.sections(text, "spec.md", rule_ids: :section_sign)
       assert Enum.map(units, & &1.id) -- unquote(ids) == []
       assert unquote(ids) -- Enum.map(units, & &1.id) == []
 
@@ -60,6 +69,22 @@ defmodule Surfex.EarmarkFormsTest do
     spaced = "# Carts\n\n```test cart-empty\nan empty cart totals 0\n```\n\n## Next\n"
     assert Enum.any?(Markdown.sections(spaced, "spec.md"), &(&1.id == "spec.md#cart-empty"))
     assert earmark_headings(ExDoc.Markdown.Earmark.to_ast(spaced, [])) == ["Carts"]
+  end
+
+  test "the claim forms said to break do: a comment in a list item shows, one starting a paragraph swallows a heading" do
+    for item <- [
+          "- <!-- surfex: no-override --> Never honour it.\n",
+          "- <!-- surfex: no-override -->\n  Never honour it.\n"
+        ] do
+      text = "# Claims\n\n" <> item <> "\n# Next\n"
+      assert Enum.any?(Markdown.sections(text, "spec.md"), &(&1.id == "spec.md#no-override"))
+      ast = ExDoc.Markdown.Earmark.to_ast(text, [])
+      assert ast |> earmark_shown() |> Enum.join(" ") =~ "surfex: no-override"
+    end
+
+    inline = "# Claims\n\n<!-- surfex: unreachable --> **Unreachable.** More.\n\n# Next\n"
+    assert Enum.any?(Markdown.sections(inline, "spec.md"), &(&1.id == "spec.md#unreachable"))
+    assert earmark_headings(ExDoc.Markdown.Earmark.to_ast(inline, [])) == ["Claims"]
   end
 
   # The text a reader sees: every string outside an HTML comment, attributes left out.

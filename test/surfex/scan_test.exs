@@ -450,7 +450,7 @@ defmodule Surfex.ScanTest do
     # A marker straight after a heading may be the heading's id (heading-id-after), so these
     # open their block a line further down.
     @errors [
-      {"an unclosed block", "# A\n\n<!-- surfex: a -->\ntext\n",
+      {"an unclosed block", "# A\n\n<!-- surfex: a -->\n\ntext\n",
        "spec.md:3: block a is never closed"},
       {"a block spanning a heading", "# A\n\n<!-- surfex: a -->\n# B\n<!-- /surfex -->\n",
        "spec.md:4: block a (line 3) spans a heading"},

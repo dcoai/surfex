@@ -35,6 +35,13 @@ defmodule Surfex.Scan.Markdown do
       each of its rows, `file#ID/KEY`. The marker may name the key column, or several
       (`key: [Function, Key]`, joined by `/`), and columns left out of a row's version
       (`ignore: [Measured]`).
+    * A **rule** is one claim, role `:rule`: a list item or paragraph its author named. An
+      id comment on its own line directly before a paragraph or list item names it, as does
+      one that starts the item or paragraph (`- <!-- surfex: ID --> text`). A marked list
+      (`<!-- surfex: rules NAME -->` before it) makes every top-level item a rule, its id
+      its id comment or what the project's `rule_ids:` grammar reads from the item's text.
+      A rule's version is its text and nested lines, without its list marker or id comment,
+      so renumbering a list changes none. Bold is never read as a claim.
 
   Written ids and block, hint and table ids share one namespace per file with the section
   ids: letters, digits and `. _ - :`, starting with a letter or digit. A duplicate is an
@@ -59,6 +66,10 @@ defmodule Surfex.Scan.Markdown do
   @table_marker ~r/^ {0,3}<!--\s*surfex:\s*table\s+(\S+)(.*?)\s*-->\s*$/
   @table_line ~r/^ {0,3}\|/
   @separator ~r/^ {0,3}\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/
+  @rules_marker ~r/^ {0,3}<!--\s*surfex:\s*rules\s+(\S+)\s*-->\s*$/
+  @own_marker ~r/^\s*<!--\s*\/?surfex\b.*-->\s*$/
+  @list_item ~r/^( *)([-*+]|\d{1,9}[.)])(?:([ \t]+)(.*))?$/
+  @lead_comment ~r/^<!--\s*surfex:\s*(\S+)\s*-->\s*(.*)$/
 
   @doc """
   Every unit of every markdown file of the spec under `root`, in order: the files
@@ -91,16 +102,18 @@ defmodule Surfex.Scan.Markdown do
   end
 
   @doc """
-  The units of one markdown text (sections, marked blocks and test hints), as records
-  located in `file`, in the order they start. `heading_ids:` names the project's heading
-  grammar (`heading_grammar/1`).
+  The units of one markdown text (sections, marked blocks, test hints, tables, rows and
+  rules), as records located in `file`, in the order they start. `heading_ids:` names the
+  project's heading grammar (`heading_grammar/1`), and `rule_ids:` the grammar a marked
+  list's items are read by, in the same forms.
   """
   @spec sections(String.t(), String.t(), keyword) :: [Scan.t()]
   def sections(text, file, opts \\ []) do
-    grammar = heading_grammars(Keyword.get(opts, :heading_ids))
+    grammar = heading_grammars(Keyword.get(opts, :heading_ids), :heading_ids)
+    rule_grammar = heading_grammars(Keyword.get(opts, :rule_ids), :rule_ids)
 
     lines = text |> String.split("\n") |> Enum.with_index(1)
-    {sections, units} = split(lines, file, grammar, ids_after(lines))
+    {sections, units} = split(lines, file, {grammar, rule_grammar}, unclosed(lines))
 
     sections =
       sections
@@ -128,6 +141,7 @@ defmodule Surfex.Scan.Markdown do
             {:section, n} -> Map.fetch!(ids, n)
             {:block, id} -> "#{file}##{id}"
             {:table, id} -> "#{file}##{id}"
+            {:rule, id} -> "#{file}##{id}"
           end
 
         record(file, "#{file}##{u.id}", u.body, {u.first, u.last}, u.role, within)
@@ -150,13 +164,14 @@ defmodule Surfex.Scan.Markdown do
 
   # Sections in order (%{n, heading, anchor, path, first, last, body}), and the blocks and
   # hints (%{role, id, first, last, body, within}). A line belongs to exactly one body:
-  # the open hint's, else the open block's, else the current section's. Markers and a
-  # hint's fences belong to none.
-  defp split(lines, file, grammar, ids_after) do
+  # the open hint's, else the open rule's, else the open block's, else the current
+  # section's. Markers and a hint's fences belong to none.
+  defp split(lines, file, {grammar, rule_grammar}, unclosed) do
     start = %{
       file: file,
       grammar: grammar,
-      ids_after: ids_after,
+      rule_grammar: rule_grammar,
+      unclosed: unclosed,
       done: [],
       cur: section(0, nil, nil, "(preamble)", 1),
       stack: [],
@@ -164,10 +179,26 @@ defmodule Surfex.Scan.Markdown do
       block: nil,
       hint: nil,
       table: nil,
+      rule: nil,
+      rules: nil,
+      pending: nil,
+      after_text: false,
       units: []
     }
 
-    st = Enum.reduce(lines, start, &step/2)
+    st =
+      Enum.reduce(lines, start, fn {line, _no} = numbered, st ->
+        fence = st.fence
+        st = step(numbered, st)
+        %{st | after_text: text_line?(line, fence, st.fence)}
+      end)
+
+    if st.pending, do: names_nothing(st, st.pending)
+
+    st = if st.rule, do: close_rule(st), else: st
+
+    if st.rules && st.rules.kind == nil,
+      do: fail(st, st.rules.first, "rules #{st.rules.name} has no list after its marker")
 
     st =
       cond do
@@ -195,6 +226,26 @@ defmodule Surfex.Scan.Markdown do
   defp section(n, heading, anchor, path, first),
     do: %{n: n, heading: heading, anchor: anchor, path: path, first: first, last: first, body: []}
 
+  # The line after an id comment of its own: the paragraph or list item it names.
+  defp step({line, no}, %{pending: {_marker, id, _why} = pending} = st) when pending != nil do
+    st = %{st | pending: nil}
+
+    cond do
+      Fence.info(line) != nil or own_marker?(line) or heading(line) != nil ->
+        names_nothing(st, pending)
+
+      item = list_item(line) ->
+        if lead(item.text), do: fail(st, no, "the list item has two ids, #{id} and its own")
+        open_rule(st, id, item, no)
+
+      String.trim(line) != "" and not Regex.match?(@table_line, line) ->
+        open_rule(st, id, %{indent: nil, content: nil, text: line}, no)
+
+      true ->
+        names_nothing(st, pending)
+    end
+  end
+
   # Inside a test hint: every line is its content until its fence closes.
   defp step({line, no}, %{hint: hint} = st) when hint != nil do
     {_prose?, fence} = Fence.step(line, st.fence)
@@ -207,6 +258,12 @@ defmodule Surfex.Scan.Markdown do
 
   defp step(line, %{table: table} = st) when table != nil, do: table_step(line, st)
 
+  defp step({line, no}, %{rule: rule} = st) when rule != nil do
+    if st.fence == nil and rule_ends?(rule, line),
+      do: step({line, no}, close_rule(st)),
+      else: rule_line(st, line, no)
+  end
+
   defp step({line, no}, st) do
     {prose?, fence} = Fence.step(line, st.fence)
     opened? = st.fence == nil and fence != nil
@@ -218,8 +275,32 @@ defmodule Surfex.Scan.Markdown do
         %{st | fence: fence, hint: hint, cur: extend(st.cur, line, no)}
 
       # A heading's id comment on the line after it belongs to no body, like a marker.
-      prose? and Map.has_key?(st.ids_after, no - 1) ->
+      prose? and Map.has_key?(st.unclosed, no) and st.cur.heading != nil and
+          st.cur.first == no - 1 ->
         %{st | cur: extend(st.cur, line, no)}
+
+      # Any other id comment of its own names the paragraph or list item after it.
+      prose? and Map.has_key?(st.unclosed, no) ->
+        {id, why} = Map.fetch!(st.unclosed, no)
+        id = checked_id!(st, no, id, "rule")
+        %{st | pending: {no, id, why}, cur: extend(st.cur, line, no)}
+
+      # A marked list: its items are rules, until something that isn't one of them.
+      prose? and st.rules != nil ->
+        rules_step({line, no}, st)
+
+      prose? and Regex.match?(@rules_marker, line) ->
+        [name] = Regex.run(@rules_marker, line, capture: :all_but_first)
+        name = checked_id!(st, no, name, "rules")
+        %{st | rules: %{name: name, first: no, kind: nil}, cur: extend(st.cur, line, no)}
+
+      prose? and item_lead(line) != nil ->
+        {item, id} = item_lead(line)
+        open_rule(st, checked_id!(st, no, id, "rule"), item, no)
+
+      prose? and not st.after_text and list_item(line) == nil and paragraph_lead(line) != nil ->
+        id = checked_id!(st, no, paragraph_lead(line), "rule")
+        open_rule(st, id, %{indent: nil, content: nil, text: line}, no)
 
       prose? and heading(line) != nil ->
         if st.block,
@@ -283,7 +364,7 @@ defmodule Surfex.Scan.Markdown do
     # it, or a {#anchor}. Then the project's heading grammar (heading_ids:). Neither: the
     # heading path.
     {text, explicit} = explicit_id(st, text, no)
-    after_id = Map.get(st.ids_after, no)
+    after_id = with {id, _why} <- Map.get(st.unclosed, no + 1), do: id
 
     if explicit && after_id,
       do: fail(st, no + 1, "heading of line #{no} already has a written id, #{explicit}")
@@ -297,13 +378,15 @@ defmodule Surfex.Scan.Markdown do
     %{st | done: [st.cur | st.done], cur: next, stack: stack}
   end
 
-  # The headings whose id comment is on the line after them, as %{heading line => id}. That
-  # line is also a block's opening marker, so it is the heading's id only when no close
-  # marker makes it a block: when the next marker, heading or the end of the text comes
-  # first. Read so, it is a block exactly where it was before, and an id only where it was
-  # an error (a block left open, spanning a heading or opening inside itself).
-  defp ids_after(lines) do
-    start = %{fence: nil, heading: nil, pending: nil, ids: %{}}
+  # The id comments of their own line that open no block, as %{line => {id, why}}: why is
+  # what came before any close marker, `{:heading, line}`, `{:marker, line, id}` (another
+  # opening marker) or `:eof`. Such a comment is a heading's id on the line after the
+  # heading, and otherwise names the paragraph or list item after it. A marker a close
+  # marker follows first opens a block, exactly as before, so a comment is an id only
+  # where it was once an error (a block left open, spanning a heading or opening inside
+  # another).
+  defp unclosed(lines) do
+    start = %{fence: nil, pending: nil, ids: %{}}
 
     st =
       Enum.reduce(lines, start, fn {line, no}, st ->
@@ -312,34 +395,47 @@ defmodule Surfex.Scan.Markdown do
 
         cond do
           not prose? ->
-            %{st | heading: nil}
+            st
 
           heading(line) != nil ->
-            %{after_marker(st, :id) | heading: no}
-
-          st.heading == no - 1 and Regex.match?(@open_block, line) ->
-            [id] = Regex.run(@open_block, line, capture: :all_but_first)
-            %{st | heading: nil, pending: {no - 1, id}}
+            resolved(st, {:heading, no})
 
           Regex.match?(@open_block, line) ->
-            %{after_marker(st, :id) | heading: nil}
+            [id] = Regex.run(@open_block, line, capture: :all_but_first)
+            %{resolved(st, {:marker, no, id}) | pending: {no, id}}
 
           Regex.match?(@close_block, line) ->
-            %{after_marker(st, :block) | heading: nil}
+            %{st | pending: nil}
 
           true ->
-            %{st | heading: nil}
+            st
         end
       end)
 
-    after_marker(st, :id).ids
+    resolved(st, :eof).ids
   end
 
-  defp after_marker(%{pending: nil} = st, _read), do: st
-  defp after_marker(st, :block), do: %{st | pending: nil}
+  defp resolved(%{pending: nil} = st, _why), do: st
 
-  defp after_marker(%{pending: {heading, id}} = st, :id),
-    do: %{st | pending: nil, ids: Map.put(st.ids, heading, id)}
+  defp resolved(%{pending: {no, id}} = st, why),
+    do: %{st | pending: nil, ids: Map.put(st.ids, no, {id, why})}
+
+  # An id comment of its own with no paragraph or list item after it: as a block's opening
+  # marker, the error it always was.
+  defp names_nothing(st, {marker, id, why}) do
+    named = "; an id comment of its own line names the paragraph or list item after it"
+
+    case why do
+      {:heading, no} ->
+        fail(st, no, "block #{id} (line #{marker}) spans a heading#{named}")
+
+      {:marker, no, other} ->
+        fail(st, no, "block #{other} opens inside block #{id} (line #{marker})#{named}")
+
+      :eof ->
+        fail(st, marker, "block #{id} is never closed#{named}")
+    end
+  end
 
   defp explicit_id(st, text, no) do
     cond do
@@ -357,22 +453,41 @@ defmodule Surfex.Scan.Markdown do
   end
 
   # The first grammar that matches the heading reads its id.
-  defp grammar_id(%{grammar: grammars} = st, text, no) do
+  defp grammar_id(%{grammar: grammars} = st, text, no),
+    do: read_id(grammars, st, text, no, "heading")
+
+  defp read_id(grammars, st, text, no, what) do
     Enum.find_value(grammars, fn grammar ->
       case Regex.named_captures(grammar, text) do
-        %{"id" => id} -> checked_id!(st, no, id, "heading")
+        %{"id" => id} -> checked_id!(st, no, id, what)
         nil -> nil
       end
     end)
   end
 
-  # `heading_ids:` is one grammar or a list of them, tried in order.
-  defp heading_grammars(nil), do: []
-  defp heading_grammars(list) when is_list(list), do: Enum.map(list, &heading_grammar!/1)
-  defp heading_grammars(one), do: [heading_grammar!(one)]
+  # `heading_ids:` (or `rule_ids:`, read the same way) is one grammar or a list of them,
+  # tried in order.
+  defp heading_grammars(nil, _key), do: []
+  defp heading_grammars(list, key) when is_list(list), do: Enum.map(list, &grammar!(&1, key))
+  defp heading_grammars(one, key), do: [grammar!(one, key)]
 
-  defp heading_grammar!(grammar),
-    do: heading_grammar(grammar) || raise(ArgumentError, "heading_ids: a list can't hold nil")
+  defp grammar!(nil, key), do: raise(ArgumentError, "#{key}: a list can't hold nil")
+
+  defp grammar!(named, _key) when named in [:section_sign, :section_number],
+    do: heading_grammar(named)
+
+  defp grammar!(%Regex{} = regex, key) do
+    if "id" in Regex.names(regex),
+      do: regex,
+      else: raise(ArgumentError, "#{key}: #{inspect(regex)} needs a named capture (?<id>…)")
+  end
+
+  defp grammar!(other, key),
+    do:
+      raise(
+        ArgumentError,
+        "#{key}: must be :section_sign, :section_number, a regex with (?<id>…) or a list of them, got #{inspect(other)}"
+      )
 
   @doc """
   The regex a `heading_ids:` setting names, with a named capture `id`: `:section_sign` for
@@ -555,7 +670,182 @@ defmodule Surfex.Scan.Markdown do
     if stripped == text, do: text |> String.split() |> Enum.join(" "), else: key_text(stripped)
   end
 
+  # ── Rules ───────────────────────────────────────────────────────────────
+
+  # A rule opens on its first line: a list item (with its content's indent) or a paragraph
+  # (`content: nil`). Its version is its text without the list marker or the id comment.
+  defp open_rule(st, id, item, no) do
+    text =
+      case lead(item.text) do
+        {_id, rest} -> rest
+        nil -> item.text
+      end
+
+    rule = %{
+      id: id,
+      first: no,
+      last: no,
+      body: [text],
+      within: within(st),
+      content: item.content,
+      blank: false
+    }
+
+    %{st | rule: rule, cur: %{st.cur | last: no}}
+  end
+
+  # A paragraph ends at a blank line or anything that interrupts it. An item takes every
+  # line indented to its content, and a lazy continuation of its text; a less indented
+  # line after a blank one, another item at its level or above, a marker, a fence or a
+  # heading ends it.
+  defp rule_ends?(%{content: nil}, line) do
+    String.trim(line) == "" or heading(line) != nil or own_marker?(line) or
+      Fence.info(line) != nil or list_item(line) != nil
+  end
+
+  defp rule_ends?(rule, line) do
+    cond do
+      String.trim(line) == "" -> false
+      heading(line) != nil -> true
+      indent(line) >= rule.content -> false
+      rule.blank -> true
+      true -> list_item(line) != nil or own_marker?(line) or Fence.info(line) != nil
+    end
+  end
+
+  defp rule_line(%{rule: rule} = st, line, no) do
+    {_prose?, fence} = Fence.step(line, st.fence)
+    opened? = st.fence == nil and fence != nil
+    item = if st.fence == nil, do: list_item(line)
+
+    cond do
+      opened? and hint_id(line) != nil ->
+        id = checked_id!(st, no, hint_id(line), "test hint")
+        hint = %{id: id, first: no, body: [], within: within(st)}
+        %{st | fence: fence, hint: hint, cur: extend(st.cur, line, no)}
+
+      item != nil and lead(item.text) != nil ->
+        fail(st, no, "rule #{rule.id} (line #{rule.first}) can't hold another rule")
+
+      true ->
+        blank? = String.trim(line) == ""
+        last = if blank?, do: rule.last, else: no
+        rule = %{rule | body: [line | rule.body], last: last, blank: blank? and fence == nil}
+        %{st | fence: fence, rule: rule, cur: extend(st.cur, line, no)}
+    end
+  end
+
+  defp close_rule(%{rule: rule} = st),
+    do: %{st | rule: nil, units: [unit(rule, :rule, rule.last) | st.units]}
+
+  # A marked list's items, each a rule whose id it writes: its id comment, or what the
+  # project's rule_ids: grammar reads from its text. Anything else ends the list.
+  defp rules_step({line, no}, %{rules: rules} = st) do
+    item = list_item(line)
+
+    cond do
+      item != nil and rules.kind in [nil, item.kind] ->
+        id =
+          case lead(item.text) do
+            {id, _rest} ->
+              id
+
+            nil ->
+              read_id(st.rule_grammar, st, String.trim(item.text), no, "rule") ||
+                fail(
+                  st,
+                  no,
+                  "an item of rules #{rules.name} has no id: it needs an id comment or an id rule_ids: reads"
+                )
+          end
+
+        st = %{st | rules: %{rules | kind: item.kind}}
+        open_rule(st, checked_id!(st, no, id, "rule"), item, no)
+
+      rules.kind == nil and String.trim(line) == "" ->
+        %{st | cur: extend(st.cur, line, no)}
+
+      rules.kind == nil ->
+        fail(st, rules.first, "rules #{rules.name} has no list after its marker")
+
+      true ->
+        step({line, no}, %{st | rules: nil})
+    end
+  end
+
+  # A list item's line: its indent, its content's indent, its kind and its text. A thematic break
+  # (`- - -`) isn't one.
+  defp list_item(line) do
+    if Regex.match?(~r/^ {0,3}([-*_])( *\1){2,} *$/, line) do
+      nil
+    else
+      case Regex.run(@list_item, line) do
+        [_, spaces, marker] ->
+          %{
+            indent: String.length(spaces),
+            content: String.length(spaces <> marker) + 1,
+            kind: list_kind(marker),
+            text: ""
+          }
+
+        [_, spaces, marker, gap, text] ->
+          gap = if String.length(gap) > 4, do: 1, else: String.length(gap)
+
+          %{
+            indent: String.length(spaces),
+            content: String.length(spaces <> marker) + gap,
+            kind: list_kind(marker),
+            text: text
+          }
+
+        nil ->
+          nil
+      end
+    end
+  end
+
+  # Items of one list share a bullet, or an ordered delimiter; another starts a new list.
+  defp list_kind(marker), do: if(marker in ["-", "*", "+"], do: marker, else: String.last(marker))
+
+  # An id comment starting a text, `<!-- surfex: ID --> …`: `{id, the rest}`.
+  defp lead(text) do
+    case Regex.run(@lead_comment, String.trim_leading(text), capture: :all_but_first) do
+      [id, rest] -> {id, rest}
+      nil -> nil
+    end
+  end
+
+  # A list item that starts with an id comment: `{item, id}`.
+  defp item_lead(line) do
+    with %{} = item <- list_item(line),
+         {id, _rest} <- lead(item.text),
+         do: {item, id},
+         else: (_ -> nil)
+  end
+
+  # A paragraph whose first token is an id comment, with text after it on the line.
+  defp paragraph_lead(line) do
+    case indent(line) <= 3 && lead(line) do
+      {id, rest} when rest != "" -> id
+      _ -> nil
+    end
+  end
+
+  defp own_marker?(line), do: Regex.match?(@own_marker, line)
+
+  defp indent(line) do
+    [spaces] = Regex.run(~r/^[ \t]*/, line)
+    spaces |> String.replace("\t", "    ") |> String.length()
+  end
+
+  # Whether a line continues a paragraph: prose text, not a heading, a marker or a fence.
+  defp text_line?(line, fence_before, fence_after),
+    do:
+      fence_before == nil and fence_after == nil and String.trim(line) != "" and
+        heading(line) == nil and not own_marker?(line)
+
   # What a block or hint opened now sits in.
+  defp within(%{rule: %{id: id}}), do: {:rule, id}
   defp within(%{block: %{id: id}}), do: {:block, id}
   defp within(%{cur: %{n: n}}), do: {:section, n}
 

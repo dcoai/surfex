@@ -20,6 +20,7 @@ Read one with `mix surfex.info TOPIC`.
 - `mix surfex.info status`: reading the status report and choosing what to fix
 - `mix surfex.info recording`: relate, retire, move, resolve, history: writing the log
 - `mix surfex.info validation`: evidence, review and judgement; when each applies
+- `mix surfex.info claims`: naming claims smaller than a section: paragraphs, items, rule lists
 - `mix surfex.info marks`: a spec unit that is itself wrong: mark and withdraw
 - `mix surfex.info adoption`: adopting an established suite: trust or re-evaluate
 - `mix surfex.info completeness`: the coverage score and what each item lacks

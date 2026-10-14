@@ -919,7 +919,15 @@ defmodule Surfex.StatusTest do
       section = %{scan(:spec, @spec_id, "s1") | role: :section}
       status = Status.derive([section, block, scan(:code, @code_id, "c1")], [])
 
-      assert Status.units(status) == %{section: 1, block: 1, test_hint: 0, table: 0, row: 0}
+      assert Status.units(status) == %{
+               section: 1,
+               block: 1,
+               test_hint: 0,
+               table: 0,
+               row: 0,
+               rule: 0
+             }
+
       text = Report.text(status)
       assert text =~ "  spec units: sections 1 · blocks 1 · test hints 0\n"
       assert text =~ "spec spec.md#rule (block in #{@spec_id}) (f:1-2)"
@@ -931,7 +939,8 @@ defmodule Surfex.StatusTest do
                "block" => 1,
                "test_hint" => 0,
                "table" => 0,
-               "row" => 0
+               "row" => 0,
+               "rule" => 0
              }
 
       assert %{"role" => "block", "within" => @spec_id} =
@@ -1172,6 +1181,15 @@ defmodule Surfex.StatusTest do
 
       File.write!(path, ~s([sources: ["spec.md"]]))
       assert Config.read!(path) == [sources: ["spec.md"]]
+
+      # The log's own keys include the spec's id grammars (§11, §11.1).
+      File.write!(
+        path,
+        ~S|[sources: ["spec.md"], heading_ids: :section_number, rule_ids: ~r/^(?<id>P\d+)/]|
+      )
+
+      assert [sources: ["spec.md"], heading_ids: :section_number, rule_ids: %Regex{}] =
+               Config.read!(path)
     end
 
     test "status/4 derives the status as mix surfex.status does, with the caller's options",
