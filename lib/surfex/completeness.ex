@@ -36,7 +36,9 @@ defmodule Surfex.Completeness do
         }
   @type t :: %{
           scores: %{spec: score, test: score, code: score, overall: score},
-          incomplete: [item]
+          incomplete: [item],
+          excused: [String.t()],
+          deferred: [%{unit: String.t(), ref: String.t()}]
         }
 
   @doc "The completeness report of a status."
@@ -87,7 +89,23 @@ defmodule Surfex.Completeness do
       for {kind, scan, [_ | _] = missing} <- judged,
           do: %{kind: kind, id: scan.id, missing: missing, location: scan.location}
 
-    %{scores: Map.put(scores, :overall, overall), incomplete: incomplete}
+    # Out of the score, and counted on lines of their own (§20.2): the units a class
+    # excuses and the units a deferral defers, as verification reads them.
+    outside = fn verdict ->
+      for {{:spec, id}, _} <- status.scans,
+          Surfex.Status.verdict(status, id) == verdict,
+          do: id
+    end
+
+    deferred =
+      for d <- status.deferred, d.unit in outside.(:deferred), do: %{unit: d.unit, ref: d.ref}
+
+    %{
+      scores: Map.put(scores, :overall, overall),
+      incomplete: incomplete,
+      excused: Enum.sort(outside.(:excused)),
+      deferred: deferred
+    }
   end
 
   defp score(complete, total) do
@@ -228,9 +246,30 @@ defmodule Surfex.Completeness do
   prints, where the incomplete items would bury its other output.
   """
   @spec summary(t) :: String.t()
-  def summary(%{scores: s}) do
+  def summary(%{scores: s} = report) do
     lines = for {kind, label} <- @kinds, do: "  #{label}: #{percent(s[kind])}\n"
-    IO.iodata_to_binary(["completeness: #{percent(s.overall)}\n", lines])
+    IO.iodata_to_binary(["completeness: #{percent(s.overall)}\n", lines, outside_text(report)])
+  end
+
+  # The units left out of the score, where there are any (§20.2).
+  defp outside_text(report) do
+    excused =
+      case length(Map.get(report, :excused, [])) do
+        0 -> []
+        n -> "  excused by class: #{n} spec units, out of the score\n"
+      end
+
+    deferred =
+      case Map.get(report, :deferred, []) do
+        [] ->
+          []
+
+        list ->
+          refs = list |> Enum.map(& &1.ref) |> Enum.uniq() |> Enum.sort() |> Enum.join(", ")
+          "  deferred: #{length(list)} spec units (#{refs}), out of the score\n"
+      end
+
+    [excused, deferred]
   end
 
   defp percent(%{complete: c, total: t, percent: p}), do: "#{p}% (#{c}/#{t})"
@@ -267,7 +306,15 @@ defmodule Surfex.Completeness do
         }
       end)
 
-    %{"scores" => scores, "incomplete" => incomplete} |> :json.encode() |> IO.iodata_to_binary()
+    %{
+      "scores" => scores,
+      "incomplete" => incomplete,
+      "excused" => Map.get(report, :excused, []),
+      "deferred" =>
+        Enum.map(Map.get(report, :deferred, []), &%{"unit" => &1.unit, "ref" => &1.ref})
+    }
+    |> :json.encode()
+    |> IO.iodata_to_binary()
   end
 
   defp location_json(%{file: file, lines: {first, last}}),

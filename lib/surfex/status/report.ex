@@ -121,6 +121,12 @@ defmodule Surfex.Status.Report do
         status.moved,
         &"refines  spec #{describe({:spec, &1.from}, status)} → spec #{&1.to}: #{moved_text(&1)}"
       ),
+      # Failing under claim_grain: true (§13.6): one of the class and the relation is wrong.
+      items(
+        "Contradicted (a relation to a unit its class says asserts nothing: retire the relation, or remove the class)",
+        status.contradicted,
+        &contradicted_line/1
+      ),
       items("Stale (an excuse its class no longer covers)", status.stale, fn s ->
         "class #{s.class} ↔ code #{s.code}: #{stale_text(s.reason)}"
       end),
@@ -204,6 +210,7 @@ defmodule Surfex.Status.Report do
       through,
       units,
       claims_text(status),
+      classed_text(status),
       lists
     ])
   end
@@ -243,6 +250,32 @@ defmodule Surfex.Status.Report do
         Enum.map(
           status.on_container,
           &%{"test" => &1.test, "unit" => &1.unit, "inside" => &1.inside}
+        ),
+      "excused" =>
+        Enum.map(status.excused, fn e ->
+          %{
+            "unit" => e.unit,
+            "class" => e.name,
+            "reason" => e.reason,
+            "note" => e.note,
+            "by" => Atom.to_string(e.by),
+            "claims" => e.claims,
+            "location" => location_json(e.location)
+          }
+        end),
+      "deferred" =>
+        Enum.map(status.deferred, fn d ->
+          %{
+            "unit" => d.unit,
+            "ref" => d.ref,
+            "reason" => d.reason,
+            "location" => location_json(d.location)
+          }
+        end),
+      "contradicted" =>
+        Enum.map(
+          status.contradicted,
+          &%{"type" => Atom.to_string(&1.type), "from" => &1.from, "unit" => &1.unit}
         ),
       "containers" =>
         Enum.map(
@@ -798,6 +831,25 @@ defmodule Surfex.Status.Report do
     {claims, counts} = verdict_counts(status)
     "  claims: #{claims} · " <> Enum.map_join(counts, " · ", fn {k, n} -> "#{k} #{n}" end) <> "\n"
   end
+
+  # Classed and deferred units, counted where a spec has any (§13.6).
+  defp classed_text(%{excused: [], deferred: []}), do: []
+
+  defp classed_text(status) do
+    with_claims = Enum.count(status.excused, &(&1.claims != []))
+
+    "  excused by class: #{length(status.excused)} (#{with_claims} with claims inside) · " <>
+      "deferred: #{length(status.deferred)}\n"
+  end
+
+  defp contradicted_line(%{type: :declares} = c),
+    do: "verifies  #{verifier(c.from)} declares spec #{c.unit}, which its class excuses"
+
+  defp contradicted_line(%{type: :verifies} = c),
+    do: "verifies  #{verifier(c.from)} → spec #{c.unit}, which its class excuses"
+
+  defp contradicted_line(%{type: :implements} = c),
+    do: "implements  code #{c.from} → spec #{c.unit}, which its class excuses"
 
   defp contained_line(c, status),
     do:
