@@ -591,6 +591,19 @@ defmodule Surfex.Status do
 
   def validated?(_status, _relation), do: false
 
+  @doc """
+  How many current relations rest on a review that named how its test exercises code no
+  call reaches (`mix surfex.validate --through`, §18): a distinct kind of review, counted
+  so an audit can find them.
+  """
+  @spec through_count(t) :: non_neg_integer
+  def through_count(status),
+    do:
+      Enum.count(
+        status.relations,
+        &match?(%{state: :current, tip: %Entry{through: how}} when how != nil, &1)
+      )
+
   @doc "How many current relations rest on the baseline (§18.1)."
   @spec baseline_count(t) :: non_neg_integer
   def baseline_count(status),
@@ -698,9 +711,28 @@ defmodule Surfex.Status do
 
       verifying = verifying(verifies, within)
 
+      # A review that named how its test exercises code no call reaches (`--through`, §18)
+      # stands for the path the source doesn't show: that code counts as exercised by the
+      # unit's verifying tests while the review is current.
+      through =
+        for %{type: :implements, state: :current, tip: %Entry{through: how}} = r <- live,
+            how != nil,
+            {_, {:code, c}, {:spec, s}} = r.relation,
+            reduce: %{},
+            do: (acc ->
+                   Map.update(
+                     acc,
+                     s,
+                     MapSet.new([definition.(c)]),
+                     &MapSet.put(&1, definition.(c))
+                   ))
+
       for {spec, codes} <- Enum.sort(implements),
           tests = Map.get(verifying, spec, MapSet.new()),
-          gap <- gaps(spec, codes, tests, exercises, definition),
+          stated = Map.get(through, spec, MapSet.new()),
+          exercised =
+            Map.new(tests, &{&1, MapSet.union(Map.get(exercises, &1, MapSet.new()), stated)}),
+          gap <- gaps(spec, codes, tests, exercised, definition),
           do: gap
     else
       []

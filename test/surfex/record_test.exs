@@ -1162,6 +1162,93 @@ defmodule Surfex.RecordTest do
     end
   end
 
+  # #206 (B.2): a test can exercise code by a path no call in the source shows (a route, a
+  # message, a JavaScript hook). A review names that path, and the entry keeps it.
+  describe "a review through a path no call shows" do
+    @describetag verifies: "review-through"
+
+    @how "message {:add, _} to the cart server"
+
+    # The entry point calls nothing: the test's green run never reaches M.add/2.
+    defp through_world, do: reach_world("c2", [])
+    defp unreached_ev, do: %{reach_ev(:passed, "c2", 2) | code: %{@entry => "e1"}}
+
+    defp through_review(world, evidence, extra),
+      do:
+        Record.validate(
+          world,
+          review_log(false),
+          @driver,
+          @spec_id,
+          evidence,
+          @meta ++ [note: "the server's reply checks the section's claim"] ++ extra
+        )
+
+    test "named code the run didn't reach is credited with how the test exercises it" do
+      assert {:error, refused} =
+               through_review(through_world(), [unreached_ev()], code: [@code_id])
+
+      assert refused =~ "#{@code_id} isn't code the green run of #{@driver} reached"
+      assert refused =~ "--through"
+
+      {:ok, [credited]} =
+        through_review(through_world(), [unreached_ev()], code: [@code_id], through: @how)
+
+      assert %Entry{type: :implements, basis: :review, through: @how} = credited
+      assert {:code, @code_id} in Enum.map(credited.ends, &{&1.kind, &1.id})
+
+      before = Status.derive(through_world(), review_log(false))
+      status = Status.derive(through_world(), review_log(false) ++ [credited])
+      assert status.unvalidated == []
+      assert Status.through_count(before) == 0
+      assert Status.through_count(status) == 1
+
+      # The triangle took the review's word for the path the source doesn't show.
+      assert Enum.any?(before.triangle, &(&1.gap == :code_untested and &1.code == @code_id))
+      assert Enum.any?(before.triangle, &(&1.gap == :test_misses_code))
+      refute Enum.any?(status.triangle, &(&1.spec == @spec_id))
+
+      # History shows it, and a new note keeps it.
+      assert Surfex.Record.Mix.describe(credited) =~ "(through #{@how})"
+
+      {:ok, [noted]} =
+        Record.annotate(
+          through_world(),
+          review_log(false) ++ [credited],
+          @spec_id,
+          @code_id,
+          :implements,
+          Keyword.put(later(@meta, 3), :note, "re-read the server's reply")
+        )
+
+      assert noted.through == @how
+    end
+
+    test "--through needs named code the run didn't reach, scanned and related" do
+      assert {:error, "--through says how the test exercises code you name" <> _} =
+               through_review(through_world(), [unreached_ev()], through: @how)
+
+      assert {:error, reached} =
+               through_review(reach_world(), [reach_ev(:passed, "c2", 2)],
+                 code: [@code_id],
+                 through: @how
+               )
+
+      assert reached =~ "drop --through"
+
+      assert {:error, "M.gone/1 isn't scanned code"} =
+               through_review(through_world(), [unreached_ev()],
+                 code: ["M.gone/1"],
+                 through: @how
+               )
+
+      unrelated = through_world() ++ [scan(:code, "M.other/0", "o1")]
+
+      assert {:error, "no implements relation between M.other/0" <> _} =
+               through_review(unrelated, [unreached_ev()], code: ["M.other/0"], through: @how)
+    end
+  end
+
   describe "shapes" do
     @describetag verifies: "shapes-by-judgement"
 

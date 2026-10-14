@@ -123,6 +123,22 @@ names its code relates itself.
   an overview relates the overview.
 - A name inside a fenced code block is an example, not a claim, and is not suggested.
 
+**Code relates to the claim it realises**, not to every section that mentions it. Naming
+a function in prose is one way to find the relation, not the reason for it: once a
+section's claims are named (§5 below), relate the code to the claim whose tests exercise
+it. When no citation proposes the pair, record it by hand, and validate it with the
+test that checks the claim:
+
+```
+mix surfex.relate Wren.Queue.push/2 spec.md#send-queued --type implements --note "queues the message"
+mix surfex.validate "WrenTest: queues a message" spec.md#send-queued --note "…"
+```
+
+Some tests exercise code by a path the source never states as a call: a route, a message
+to a process, a JavaScript hook, a capture handed to a helper. Say how with `--through`,
+naming the code you read (`--code Wren.Queue.handle_cast/2 --through "cast {:push, _}"`):
+the review records the path, and status counts such reviews.
+
 ## 5. State requirements as checkable claims
 
 A requirement someone can check says what is **returned**, what is **rejected**, and what
