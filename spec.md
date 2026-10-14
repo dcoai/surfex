@@ -332,6 +332,42 @@ identity.
 an item's key is its name, or parent.name when it has a parent
 ```
 
+### 4.1 DSL items
+<!-- surfex: dsl-items -->
+
+In a project built with a DSL, much of the behaviour a spec describes is declared in
+blocks inside a module (an action, a policy, a calculation) rather than written as `def`s,
+so no Elixir item names it. Such a block is a **DSL item**: a `Surfex.Item` like any other,
+given by a project scanner for the DSL beside the Elixir scanner's items (§5.3). Surfex
+depends on no DSL: the project, or a companion package, writes that scanner with the
+supported library API (§23). The contract fixes what it fills, so citations, relations,
+reach, evidence and the triangle work for DSL items unchanged:
+
+| Field | A DSL item's |
+|---|---|
+| `kind` | the DSL's own (`:action`, `:policy`, `:calculation`, …), read only for grouping and a profile's rules |
+| `parent` | the module that declares the block |
+| `name` | the DSL's name for the block, so its key is `Module.name` (§4). It is unique within the module and stable across edits that rename nothing: a block the DSL leaves unnamed takes a name from its own text (what it applies to), never from its position, or inserting a block renames its siblings |
+| `file`, `lines` | the file declaring it, and the block's first and last line |
+| `hash` | `Surfex.SourceScan.definition_hash/1` over the block's AST, so a change to the block changes its version and no sibling's, and moving it changes neither |
+| `calls` | the keys of the functions and modules the block references (the changes, validations and preparations it names), so reach goes on from the block into them (§13.1) |
+| `shape` | `true` for a pure declaration with no behaviour of its own, such as an attribute |
+| `hidden`, `runs` | empty. **A DSL item carries no hidden definitions and runs no hidden code** (§3.3): its block is its whole definition and its `hash` covers it, and the code it uses has items of its own, reached through `calls` |
+
+A key written as Elixir names a function without its arity (`MyApp.Shop.Order.checkout`)
+is read under the Elixir scanner's profile (§5.2) with no profile keys of its own, and a
+citation of it resolves as any item's key does (§6.4), so a subject section and a
+contract fence can name a DSL item too. A key is an identity: a block named as a function
+of its module (`checkout` beside `def checkout/1`) makes a citation of the name ambiguous,
+and a key another scanner also gives is an error (§5.3).
+
+```test:dsl-item-shape
+a fixture DSL's scanner gives one item per block, keyed Module.name, with its kind, parent,
+file and lines and no hidden code; its hash changes with the block, not with a sibling or
+the layout; an action lists what its block references; a declaration is a shape; beside the
+Elixir scanner its key is a code record and a citation of it resolves
+```
+
 ## 5. Scanners
 <!-- surfex: scanners -->
 
@@ -2868,4 +2904,25 @@ A test pins the documented surface of both, so a change is always deliberate.
 the documented functions and types of Surfex.Golden and Surfex.SourceScan are exactly the
 pinned ones, the one-argument project_root stays callable, and definition_hash gives the
 same version for the same code
+```
+
+### 23.1 The scanner contract
+<!-- surfex: scanner-api -->
+
+A project scanner, and above all a DSL plugin (§4.1), is code another project writes
+against surfex, often in a package of its own. `Surfex.Scanner` and `Surfex.Item` are
+therefore supported API too, under §23's promise:
+- **`Surfex.Scanner`'s callbacks keep their names, arities and argument and return
+  shapes.** A callback added later is optional, so an existing scanner keeps working.
+- **`Surfex.Item`'s fields keep their names and meanings**, a field added later has a
+  default, and `Surfex.Item.key/1` keeps its rule, so a plugin's keys, and every relation
+  recorded against them, survive an upgrade.
+- **A change to either never comes in a patch release.** It comes in a minor release,
+  listed under "Changed" in the CHANGELOG and marked for scanner authors.
+
+A test pins both.
+
+```test:scanner-api-stable
+Surfex.Scanner's callbacks and Surfex.Item's fields are exactly the pinned ones, only kind,
+name, file and hash are enforced, and key/1 keeps its rule
 ```

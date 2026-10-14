@@ -71,6 +71,17 @@ milestone "Claims own their code" is in.
   `scanner:` with `scanner_opts:` keeps working as the one-element list, so nothing changes
   for an existing config; giving both `scanner:` and `scanners:` is refused.
   `Surfex.Status.Config.scanners!/1` reads the list.
+- **DSL items, as a contract** (#208, #240). A block a DSL declares inside a module (an
+  action, a policy) can be an item: a project scanner for the DSL gives it as a
+  `Surfex.Item` with the DSL's kind, the declaring module as parent, the DSL's name (key
+  `Module.name`), `Surfex.SourceScan.definition_hash/1` over the block, the block's lines,
+  the keys it references as calls, and `shape` for a pure declaration (spec §4.1). A DSL
+  item carries no hidden definitions and runs no hidden code: its hash covers its block.
+  Surfex depends on no DSL; its own tests prove the contract with a fixture DSL and scanner.
+- **`Surfex.Scanner` and `Surfex.Item` are supported API** (#150, #208, #240). The
+  stability promise of `Surfex.Golden` and `Surfex.SourceScan` now covers them (spec
+  §23.1): callbacks and fields keep their names and shapes, additions are optional or have
+  a default, and a change comes only in a minor release under "Changed". A test pins both.
 
 ## [0.9.1] — 2026-10-14
 
