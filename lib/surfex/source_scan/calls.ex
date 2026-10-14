@@ -19,14 +19,22 @@ defmodule Surfex.SourceScan.Calls do
   """
   @type import :: {String.t(), :all | {:only | :except, [{atom, non_neg_integer}]}}
 
+  @typedoc """
+  What a remote call names beyond its function (`Surfex.Scanner.c:calls/3`): given the
+  call's AST and the aliases in scope, the item keys.
+  """
+  @type remote :: (Macro.t(), aliases -> [String.t()])
+
   @doc """
   Every function and module `bodies` call or name, sorted. Each body is a node with the
   aliases in scope where it is defined; its own `alias`es apply from their line on. A
   local call (`fun/arity` with no module) is `local`'s to resolve: it returns the ids the
-  call names, if any.
+  call names, if any. A remote call names its function, and whatever `remote` answers for
+  it (§5.4): a piped call is given with its piped value as its first argument.
   """
-  @spec of([{Macro.t(), aliases}], ({atom, non_neg_integer} -> [String.t()])) :: [String.t()]
-  def of(bodies, local) do
+  @spec of([{Macro.t(), aliases}], ({atom, non_neg_integer} -> [String.t()]), remote) ::
+          [String.t()]
+  def of(bodies, local, remote \\ none()) do
     bodies =
       for {node, scope} <- bodies, body = body(node), do: {body, scope, local_aliases(body)}
 
@@ -35,8 +43,9 @@ defmodule Surfex.SourceScan.Calls do
         body
         |> calls()
         |> Enum.flat_map(fn
-          {:remote, parts, fun, arity, line} ->
-            [call(expand(parts, visible(scope, own, line)), fun, arity)]
+          {:remote, parts, fun, arity, line, node} ->
+            aliases = visible(scope, own, line)
+            [call(expand(parts, aliases), fun, arity) | named(remote, node, aliases)]
 
           {:local, fun, arity} ->
             local.({fun, arity})
@@ -52,6 +61,50 @@ defmodule Surfex.SourceScan.Calls do
 
     (functions ++ modules) |> Enum.uniq() |> Enum.sort()
   end
+
+  @doc "A `t:remote/0` that names nothing: the calls of a project with no scanner answering."
+  @spec none() :: remote
+  def none, do: fn _call, _aliases -> [] end
+
+  @doc """
+  The `t:remote/0` of `scanners` (`[{module, opts}]`, `Surfex.Status.Config.scanners!/1`):
+  each that implements `Surfex.Scanner.c:calls/3` is asked, and the keys they answer are
+  joined. A scanner answering anything but a list of strings raises, naming it.
+  """
+  @spec remote([{module, keyword}]) :: remote
+  def remote(scanners) do
+    case for {m, opts} <- scanners,
+             Code.ensure_loaded?(m),
+             function_exported?(m, :calls, 3),
+             do: {m, opts} do
+      [] ->
+        none()
+
+      asked ->
+        fn call, aliases ->
+          Enum.flat_map(asked, fn {m, opts} ->
+            case m.calls(call, aliases, opts) do
+              keys when is_list(keys) ->
+                if Enum.all?(keys, &is_binary/1), do: keys, else: bad_answer(m, keys)
+
+              other ->
+                bad_answer(m, other)
+            end
+          end)
+        end
+    end
+  end
+
+  defp bad_answer(scanner, answer),
+    do:
+      raise(
+        ArgumentError,
+        "#{inspect(scanner)}.calls/3 must answer a list of item keys, got #{inspect(answer)}"
+      )
+
+  # A capture names a function without calling it: there is no call to ask about.
+  defp named(_remote, nil, _aliases), do: []
+  defp named(remote, node, aliases), do: remote.(node, aliases)
 
   @doc """
   A module's aliases (short name => full name), its imports (`t:import/0`), and the
@@ -168,20 +221,20 @@ defmodule Surfex.SourceScan.Calls do
   # Every call in `ast`: `{:remote, alias_parts, fun, arity, line}` or `{:local, fun, arity}`. A
   # piped call's arity counts the piped value, and a capture (`&Mod.fun/2`) is a call.
   # `__MODULE__.fun()` is a remote call to the module itself.
-  defp calls({:|>, _, [lhs, rhs]}), do: calls(lhs) ++ piped(rhs)
+  defp calls({:|>, _, [lhs, rhs]}), do: calls(lhs) ++ piped(lhs, rhs)
 
   defp calls({:&, meta, [{:/, _, [{{:., _, [target, fun]}, _, []}, arity]}]})
        when is_atom(fun) and is_integer(arity) do
     case target(target) do
       nil -> []
-      parts -> [{:remote, parts, fun, arity, line(meta)}]
+      parts -> [{:remote, parts, fun, arity, line(meta), nil}]
     end
   end
 
   defp calls({{:., _, [target, fun]}, meta, args} = node) when is_atom(fun) and is_list(args) do
     case target(target) do
       nil -> calls_in(node)
-      parts -> [{:remote, parts, fun, length(args), line(meta)} | calls(args)]
+      parts -> [{:remote, parts, fun, length(args), line(meta), node} | calls(args)]
     end
   end
 
@@ -201,17 +254,25 @@ defmodule Surfex.SourceScan.Calls do
   # A call through anything but an alias (a variable, an Erlang module): only its parts.
   defp calls_in({{:., _, [target, _fun]}, _, args}), do: calls(target) ++ calls(args)
 
-  defp piped({{:., _, [target, fun]}, meta, args} = node) when is_atom(fun) and is_list(args) do
+  # A piped call is asked about with its piped value as its first argument, as it runs.
+  defp piped(lhs, {{:., _, [target, fun]} = dot, meta, args} = node)
+       when is_atom(fun) and is_list(args) do
     case target(target) do
-      nil -> calls(node)
-      parts -> [{:remote, parts, fun, length(args) + 1, line(meta)} | calls(args)]
+      nil ->
+        calls(node)
+
+      parts ->
+        [
+          {:remote, parts, fun, length(args) + 1, line(meta), {dot, meta, [lhs | args]}}
+          | calls(args)
+        ]
     end
   end
 
-  defp piped({fun, _, args}) when is_atom(fun) and is_list(args),
+  defp piped(_lhs, {fun, _, args}) when is_atom(fun) and is_list(args),
     do: [{:local, fun, length(args) + 1} | calls(args)]
 
-  defp piped(other), do: calls(other)
+  defp piped(_lhs, other), do: calls(other)
 
   defp target({:__aliases__, _, parts}), do: parts
   defp target({:__MODULE__, _, ctx}) when is_atom(ctx), do: [:__MODULE__]

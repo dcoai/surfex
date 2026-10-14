@@ -107,10 +107,15 @@ defmodule Surfex.Status.Config do
   """
   @spec items(keyword, String.t()) :: [Surfex.Item.t()]
   def items(config, root) do
+    scanners = scanners!(config)
+    asked = project_scanners(scanners)
+
     found =
-      for {scanner, opts} <- scanners!(config) do
-        module = module!(scanner)
-        {scanner, module.items(root, opts)}
+      for {scanner, opts} <- scanners do
+        case scanner do
+          :elixir -> {scanner, Surfex.Scanner.Elixir.items(root, opts ++ [call_scanners: asked])}
+          module -> {scanner, module!(module).items(root, opts)}
+        end
       end
 
     found
@@ -130,7 +135,16 @@ defmodule Surfex.Status.Config do
     end
   end
 
-  defp module!(:elixir), do: Surfex.Scanner.Elixir
+  @doc """
+  The project's scanners (`scanners!/1`) other than the built-in one, each with its
+  options: those `Surfex.Scanner.c:calls/3` may be asked of (§5.4). Each is checked to
+  implement `Surfex.Scanner`.
+  """
+  @spec call_scanners(keyword) :: [{module, keyword}]
+  def call_scanners(config), do: config |> scanners!() |> project_scanners()
+
+  defp project_scanners(scanners),
+    do: for({scanner, opts} <- scanners, scanner != :elixir, do: {module!(scanner), opts})
 
   defp module!(scanner) do
     unless Code.ensure_loaded?(scanner) and function_exported?(scanner, :items, 2),
@@ -522,7 +536,7 @@ defmodule Surfex.Status.Config do
         if files == [],
           do: raise(ArgumentError, "tests: #{inspect(globs)} matches no file under #{root}")
 
-        Scan.ExUnit.records(root, globs, code)
+        Scan.ExUnit.records(root, globs, code, call_scanners(config))
     end
   end
 end

@@ -9,6 +9,8 @@ defmodule Surfex.Test.FixtureDsl.Scanner do
   #   * `attribute :name, type` — kind `:attribute`, a shape: a declaration with no
   #     behaviour of its own
   #
+  # It answers `calls/3` for the DSL's entry, so a call driving an action reaches it.
+  #
   # Options: `:paths`, globs relative to the root (`["lib/**/*.ex"]` by default).
   @behaviour Surfex.Scanner
 
@@ -32,6 +34,22 @@ defmodule Surfex.Test.FixtureDsl.Scanner do
         item <- blocks(exprs, Enum.map_join(parts, ".", &Atom.to_string/1), aliases(exprs)),
         do: %{item | file: Path.relative_to(path, root)}
   end
+
+  # The DSL's entry names an action: `FixtureDsl.run(Shop.Order, :checkout, input)`, piped
+  # or not, the entry and the resource read through the caller's aliases (spec §5.4).
+  @impl Surfex.Scanner
+  def calls(
+        {{:., _, [{:__aliases__, _, entry}, :run]}, _, [{:__aliases__, _, resource}, action | _]},
+        aliases,
+        _opts
+      )
+      when is_atom(action) do
+    if expand(entry, aliases) == Enum.map_join(@dsl, ".", &Atom.to_string/1),
+      do: ["#{expand(resource, aliases)}.#{action}"],
+      else: []
+  end
+
+  def calls(_call, _aliases, _opts), do: []
 
   defp blocks(exprs, module, aliases) do
     for expr <- exprs, item = block(expr, module, aliases), do: item

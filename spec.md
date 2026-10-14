@@ -350,7 +350,7 @@ reach, evidence and the triangle work for DSL items unchanged:
 | `name` | the DSL's name for the block, so its key is `Module.name` (§4). It is unique within the module and stable across edits that rename nothing: a block the DSL leaves unnamed takes a name from its own text (what it applies to), never from its position, or inserting a block renames its siblings |
 | `file`, `lines` | the file declaring it, and the block's first and last line |
 | `hash` | `Surfex.SourceScan.definition_hash/1` over the block's AST, so a change to the block changes its version and no sibling's, and moving it changes neither |
-| `calls` | the keys of the functions and modules the block references (the changes, validations and preparations it names), so reach goes on from the block into them (§13.1) |
+| `calls` | the keys of the functions and modules the block references (the changes, validations and preparations it names), so reach goes on from the block into them (§13.1). A call that drives the block, through the DSL's entry or a function it generates, is the scanner's to resolve to the block's key (§5.4) |
 | `shape` | `true` for a pure declaration with no behaviour of its own, such as an attribute |
 | `hidden`, `runs` | empty. **A DSL item carries no hidden definitions and runs no hidden code** (§3.3): its block is its whole definition and its `hash` covers it, and the code it uses has items of its own, reached through `calls` |
 
@@ -502,6 +502,46 @@ say whether the project's own scanner, or the Elixir one, is among them.
 the items of several scanners are combined, each keeping its scanner's file, lines, hash
 and kind; scanner: is a one-element list; both keys, a malformed list or a scanner named
 twice is refused; one key from two scanners raises naming both
+```
+
+### 5.4 Calls a scanner resolves
+<!-- surfex: scanner-calls -->
+
+A DSL item has no function name a call could carry: code reaches it through the DSL's
+entry functions, naming the module and the block as arguments
+(`MyDsl.run(MyApp.Shop.Order, :checkout, input)`), or through functions the DSL generates
+for it. A call's id is `Module.fun/arity` (§11), so without help a test driving an action
+reaches the entry and never the action. `Surfex.Scanner` has an optional callback for it:
+
+```elixir
+@callback calls(call :: Macro.t(), aliases :: %{atom => String.t()}, opts :: keyword) ::
+            [item_key :: String.t()]
+```
+
+- The test scanner (§11) and the Elixir scanner (§5.2) ask each of the project's scanners
+  that implements it (§5.3) about **every remote call they read**, and add the keys it
+  answers to the caller's `calls`, beside the call's own `Module.fun/arity`. A scanner
+  without it is never asked, so it changes nothing.
+- `call` is the call's AST as written, except that a piped call has its piped value as
+  its first argument, as it runs. A capture (`&MyDsl.run/3`) calls nothing and is not
+  asked about. `aliases` maps each alias in scope at the call to the module it names, so
+  the scanner resolves the module argument itself; `opts` is its own configuration.
+- An answer is a list of item keys. A key no item has reaches nothing, as any call to
+  unscanned code does. An answer of any other shape raises, naming the scanner.
+
+So a test that drives an action reaches the action item, and through the item's own
+`calls` the code its block references (§13.1). Reach, evidence (§17), the triangle and the
+suggestions (§15) then follow for DSL items with no special case.
+`Surfex.Status.Config.call_scanners/1` gives the scanners asked. The test scanner takes
+them as `Surfex.Scan.ExUnit.records/4` and `Surfex.Scan.ExUnit.tests/4` do, and
+`Surfex.Status.Config.items/2` hands them to `Surfex.Scanner.Elixir.items/2` (its
+`:call_scanners` option); `Surfex.ExUnitFormatter` asks them when it records a run.
+
+```test:dsl-calls
+a test's call through a DSL's entry, piped or not, names the action a scanner's calls/3
+answers, and a capture names none; a function's call does too; reach goes on through the
+action's calls; a run records the action's version; the triangle closes for a claim
+related to it, and doesn't without calls/3; a malformed answer raises naming the scanner
 ```
 
 ## 6. Citations

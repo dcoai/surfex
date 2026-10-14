@@ -48,12 +48,14 @@ defmodule Surfex.Scan.ExUnit do
   @doc """
   Every test in every file matching `globs` under `root`, in file then source order.
   `code` is the project's code records (`Surfex.Scan.code/1`), which say what an imported
-  module defines (`tests/3`).
+  module defines (`tests/4`). `scanners` are the project's code scanners
+  (`Surfex.Status.Config.scanners!/1`): each implementing `Surfex.Scanner.c:calls/3` is
+  asked what a test's remote calls name (§5.4).
   """
-  @spec records(String.t(), [String.t()], [Scan.t()]) :: [Scan.t()]
-  def records(root, globs, code \\ []) do
+  @spec records(String.t(), [String.t()], [Scan.t()], [{atom, keyword}]) :: [Scan.t()]
+  def records(root, globs, code \\ [], scanners \\ []) do
     root = Path.expand(root)
-    known = known(code)
+    known = known(code, scanners)
 
     globs
     |> Enum.flat_map(&Path.wildcard(Path.join(root, &1)))
@@ -71,10 +73,12 @@ defmodule Surfex.Scan.ExUnit do
   module defines, and names the module too, as a qualified call does; a call to a function
   it doesn't define (ExUnit's `assert` beside `import MyApp.Fixtures`) comes from
   elsewhere, and isn't listed under it. A module that isn't scanned has its candidate
-  listed, `Module.fun/arity`, which reaches nothing.
+  listed, `Module.fun/arity`, which reaches nothing. A remote call also names the item
+  keys a scanner's `Surfex.Scanner.c:calls/3` answers for it (§5.4).
   """
-  @spec tests(String.t(), String.t(), [Scan.t()]) :: [Scan.t()]
-  def tests(text, file, code \\ []), do: scan_text(text, file, known(code))
+  @spec tests(String.t(), String.t(), [Scan.t()], [{atom, keyword}]) :: [Scan.t()]
+  def tests(text, file, code \\ [], scanners \\ []),
+    do: scan_text(text, file, known(code, scanners))
 
   defp scan_text(text, file, known) do
     text
@@ -86,11 +90,12 @@ defmodule Surfex.Scan.ExUnit do
 
   # What the code records say an import can resolve to, indexed once: the scanned
   # modules, hidden ones included, and every id a call can name, an item's, a module's
-  # hidden definition's or a hidden module's.
-  defp known(code) do
+  # hidden definition's or a hidden module's. And what the scanners say a remote call names.
+  defp known(code, scanners) do
     ran = for %Scan{kind: :code, runs: runs} <- code, key <- Map.keys(runs), uniq: true, do: key
 
     %{
+      remote: Calls.remote(scanners),
       modules:
         MapSet.new(
           for(%Scan{kind: :code, role: :module, id: id} <- code, do: id) ++
@@ -174,14 +179,18 @@ defmodule Surfex.Scan.ExUnit do
             {node,
              if(node == test.node, do: test.aliases, else: Map.get(scopes, node, names.aliases))}
 
-    Calls.of(bodies, fn {fun, arity} = local ->
-      if local in names.defined,
-        do: [],
-        else:
-          names.imports
-          |> Calls.importing(local)
-          |> Enum.flat_map(&imported(&1, fun, arity, known))
-    end)
+    Calls.of(
+      bodies,
+      fn {fun, arity} = local ->
+        if local in names.defined,
+          do: [],
+          else:
+            names.imports
+            |> Calls.importing(local)
+            |> Enum.flat_map(&imported(&1, fun, arity, known))
+      end,
+      known.remote
+    )
   end
 
   # A local call through an import of `module` (#194). A scanned module's code says whether
