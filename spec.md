@@ -1921,7 +1921,8 @@ suggest --accept retires it
 log's own: `heading_ids` (§11), `rule_ids`, `fold_paths` and `unit_refs` (§11.1),
 `scanners` (§5.3), `scanner`, `scanner_opts`, `namespace`, `goldens` (§10.3), `require`,
 `tests`, `triangle`,
-`require_red` (§17), `router` (§11.3), `adoption` (§18.1), `process` (§19) and
+`require_red` (§17), `router` (§11.3), `claim_implements` (§15.1), `adoption` (§18.1),
+`process` (§19) and
 `completeness` (§20).
 - `Surfex.Status.Config.read!/1` reads and validates it. It raises on an unknown key, and
   on a key of the removed trace, saying so (§9). Every task reads its config through
@@ -2294,6 +2295,55 @@ whose test no longer calls it is not, and a dangling implements relation never i
 ```test:suggest-proposes
 suggest proposes relations the spec and tests already imply and records them only on
 --accept
+```
+
+### 15.1 Claim relations from a claim's tests
+<!-- surfex: claim-implements -->
+
+A citation is how a spec names code, not why code belongs to a claim. Code realises a
+claim (§11.1) when the claim's tests exercise it, so `suggest` also proposes `implements`
+from what a claim's tests call. It is **opt-in until the release that completes claim
+grain**: `claim_implements: true` in `.surfex.exs` (`Surfex.Status.Config.claim_implements?/1`,
+`false` by default; anything but a boolean is refused), passed as `claims: true` to
+`Surfex.Suggest.all/6`. Off, nothing below is proposed and `reached` is empty.
+
+- **A claim** is a spec unit of role block, test hint, row, rule or contract. A section is
+  not one.
+- **Its verifying tests** are the tests with a live `verifies` relation to it or to a unit
+  inside it, and the tests whose declaration (§11) resolves there.
+- **Proposed**: each scanned code item a verifying test **calls directly**, its own
+  `calls` (§11): its body's and its private helpers' calls, and the requests, events and
+  messages §11.3 resolves. A call naming a hidden definition (a LiveView's `mount/3`, a
+  server's `handle_call/3`) proposes its module, the item that versions it (§3.3). A
+  module the test names by itself is not proposed: a test names every module it calls
+  into. Each candidate lists its tests (`tests`), and the task prints how many and its
+  decline command (§15).
+- **Reached code isn't proposed item by item.** For each code a claim's tests call that
+  reaches further code (§13.1) the test doesn't call itself, `reached` lists one line,
+  `%{spec, through, count}`: `reached spec.md#x through MyApp.Protocol.handle/2: 41 more
+  items; name the ones that realise this claim with mix surfex.relate`. It is information
+  for the person relating the claim, never recorded and not counted as a suggestion. A
+  single-dispatch core is one line, not every module behind it. What a call reaches is
+  `Surfex.Scan.reacher/1`'s answer, the closure `Surfex.Scan.reach/1` follows for a test,
+  asked once per called item.
+- **A claim with no verifying test gets nothing**: a claim without evidence earns no
+  relation.
+- A pair related in any state, a declined (retired) one included, is left out, as are
+  the pairs a citation already proposes. Accepting records each as proposed, as for any
+  `implements` (§18).
+
+**The filter is the direct-call rule, not the section.** Decided at #206's evaluation: a
+claim's proposals are bounded by what its test author wrote, plus the one-line reached
+summary. A section keeps no permanent coarse `implements` as the pool its claims draw
+from: that would keep both grains alive, and with them the section-wide dangling waves
+a section-grained relation causes. A migration aid may read a section's existing
+relations as its input while the section is migrated; that ends with the migration.
+
+```test:claim-suggestions
+a claim's verifying tests' direct calls are proposed, a hidden callback as its module and
+a module named alone not at all; code reached only through a called item is one reached
+line with its count; a claim with no verifying test, or a section, gets nothing; a
+declined pair isn't proposed again; nothing without claim_implements: true
 ```
 
 ## 16. The specification guide

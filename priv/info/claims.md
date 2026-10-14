@@ -74,3 +74,11 @@ A claim's version is its text and nested lines, without the list marker or id co
 renumbering a list changes nothing. A test verifies a claim by its id
 (`@tag verifies: "no-override"`), and `require: [rule: [:verifies]]` asks that every claim
 be verified. Spec §11.1 has the details.
+
+**Code relates to the claim it realises.** With `claim_implements: true` in `.surfex.exs`
+(off by default until claim grain is released), `mix surfex.suggest` proposes
+`implements` between each claim and the code its verifying tests call directly (their
+own calls, private helpers, and resolved routes, events and messages), and prints one
+`reached … through X: N more items` line where a called function reaches more: name the
+ones that realise the claim with `mix surfex.relate`. A claim with no verifying test gets
+nothing, and a section gets no proposals of its own (spec §15.1).

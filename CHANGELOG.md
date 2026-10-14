@@ -117,6 +117,18 @@ milestone "Claims own their code" is in.
   reader about each whole body. Only test records change: no code version moves. On
   upgrade a Phoenix project's tests reach more code, so `mix surfex.suggest` proposes more
   `tests` relations and the triangle reports fewer gaps; nothing that held stops holding.
+- **A claim's implements suggested from its tests, opt-in** (#206, #244). With
+  `claim_implements: true` in `.surfex.exs`, `mix surfex.suggest` proposes `implements`
+  between each claim (block, test hint, row, rule, contract) and the scanned code its
+  verifying tests call directly; a hidden callback a route or message names proposes its
+  module. Code reached only through a called function is one `reached … through X: N more
+  items` line per claim and entry, never a list (`reached` in `Surfex.Suggest.all/6`'s
+  result; new `Surfex.Scan.reacher/1`). A claim with no verifying test, and a section, get
+  nothing: the filter is the direct-call rule, decided at evaluation, with no section pool
+  (spec §15.1). **Upgrade step, when it becomes the default (with the release that
+  completes claim grain):** `suggest --accept` will then record these as proposed
+  `implements`, which fail the check until validated; until then nothing changes unless
+  a project sets it.
 
 ## [0.9.1] — 2026-10-14
 

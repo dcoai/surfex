@@ -18,6 +18,11 @@ defmodule Mix.Tasks.Surfex.Suggest do
     * **excuses** — each code item nothing implements, paired with the class of the first
       rule in `.surfex.exs` it matches.
 
+  With `claim_implements: true` in `.surfex.exs`, **implements** also pairs each claim (a
+  block, test hint, row, rule or contract) with the code its verifying tests call
+  directly, and a `reached` line says, per claim, which called item reaches more code and
+  how much: name the ones that realise the claim with `mix surfex.relate` (spec §15.1).
+
   Pairs already related, in any state, are left out.
 
       mix surfex.suggest                         # list them; nothing is written
@@ -55,7 +60,9 @@ defmodule Mix.Tasks.Surfex.Suggest do
     profile = Config.profile!(config, namespace, items)
     scans = Config.scans(config, root)
     entries = if File.dir?(Log.dir(root)), do: Log.load(root), else: []
-    suggestions = Suggest.all(profile, items, scans, entries, root)
+
+    suggestions =
+      Suggest.all(profile, items, scans, entries, root, claims: Config.claim_implements?(config))
 
     for m <- suggestions.moves, do: Mix.shell().info("move        #{m.from} → #{m.to.id}")
 
@@ -89,8 +96,7 @@ defmodule Mix.Tasks.Surfex.Suggest do
     end
 
     for c <- suggestions.implements do
-      {file, line} = c.cited_at
-      Mix.shell().info("implements  #{c.spec.id} ↔ #{c.code.id}  (cited at #{file}:#{line})")
+      Mix.shell().info("implements  #{c.spec.id} ↔ #{c.code.id}  (#{why(c)})")
 
       Mix.shell().info(
         "  decline: " <> Suggest.decline_command(:implements, c.spec.id, c.code.id)
@@ -104,7 +110,16 @@ defmodule Mix.Tasks.Surfex.Suggest do
             "(a later relate revives it)"
         )
 
-    count = suggestions |> Map.values() |> Enum.map(&length/1) |> Enum.sum()
+    # What a claim's tests reach only through other code is a pointer, not a suggestion.
+    for r <- suggestions.reached,
+        do:
+          Mix.shell().info(
+            "reached     #{r.spec} through #{r.through}: #{r.count} more items; " <>
+              "name the ones that realise this claim with mix surfex.relate"
+          )
+
+    count =
+      suggestions |> Map.delete(:reached) |> Map.values() |> Enum.map(&length/1) |> Enum.sum()
 
     cond do
       count == 0 ->
@@ -118,4 +133,9 @@ defmodule Mix.Tasks.Surfex.Suggest do
         Mix.shell().info("#{count} suggested; `mix surfex.suggest --accept` records them")
     end
   end
+
+  defp why(%{cited_at: {file, line}}), do: "cited at #{file}:#{line}"
+
+  defp why(%{tests: [test]}), do: "called by its test #{test}"
+  defp why(%{tests: [test | more]}), do: "called by its test #{test} and #{length(more)} more"
 end
