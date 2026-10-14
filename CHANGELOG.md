@@ -35,6 +35,27 @@ release it merely follows.
   text there and leaks into the anchor link. Put it on the line after the heading.
 - **surfex's own published spec and guides** (#195, #228) lost a heading after every test
   hint and showed every anchor as text on hexdocs. They use the forms ex_doc renders.
+- **Golden cells holding `|` or a backtick** (#199, #229). `Surfex.Golden` wrapped every
+  `:code`, `:atom`, `:locus` and `:version` cell in single backticks with nothing escaped.
+  Under GFM, which is how GitLab and GitHub render a golden, a `|` split the cell even
+  inside the span (an extra column, the rest of the row shifted), and a backtick closed the
+  span early or left it open. The golden stayed byte-stable, so its gate passed; it was
+  only wrong when read. Every backticked cell is now a code span that reads back as its
+  text: `|` is escaped as `\|`, the delimiter is one backtick longer than the longest
+  backtick run in the text, and the text is padded with a space when it starts or ends
+  with a backtick, or starts and ends with a space. No API changes. The status golden
+  (`RELATIONS.md`) builds its composite cells by the same rule and escapes `|` in their
+  free text, so an id that holds a pipe (an operator such as `|>`, a test name) or a
+  backtick keeps its row whole, and the gate's drift report names such an item by its
+  text. A `{:raw, …}` or plain-string cell is still written verbatim: a caller composing
+  one escapes it.
+
+  **Upgrade step:** a golden changes only where a backticked cell holds `|` or a backtick
+  (or, in the status golden, a note or reference holds `|`);
+  run its `--write` task (`mix surfex.goldens --write` for the status and completeness
+  goldens) once after upgrading, and commit what changes. Those rows were rendering wrong.
+  In the local checkouts of the projects using surfex, 3 of 31 committed goldens have
+  rows broken this way (25 rows in all).
 
 ## [0.9.0] — 2026-10-14
 

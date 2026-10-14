@@ -120,6 +120,20 @@ defmodule Surfex.Gate do
     |> Enum.map(&String.trim/1)
   end
 
-  defp unquote_code("`" <> rest), do: String.trim_trailing(rest, "`")
-  defp unquote_code(text), do: text
+  # A code span as `Surfex.Golden.code/1` writes it, read back to its text: the N-backtick
+  # delimiters, the one-space padding and the `\|` escape undone.
+  defp unquote_code(text) do
+    case Regex.run(~r/\A(`+)(.*)\1\z/s, text) do
+      [_, _fence, inner] -> inner |> unpad() |> String.replace("\\|", "|")
+      nil -> text
+    end
+  end
+
+  defp unpad(" " <> rest = inner) do
+    if String.ends_with?(rest, " ") and String.trim(inner, " ") != "",
+      do: String.slice(rest, 0..-2//1),
+      else: inner
+  end
+
+  defp unpad(inner), do: inner
 end

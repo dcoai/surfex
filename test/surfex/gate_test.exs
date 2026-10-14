@@ -25,6 +25,16 @@ defmodule Surfex.GateTest do
     refute message =~ "  a\n"
   end
 
+  # #199: Surfex.Golden writes an item holding `|` or a backtick as a longer-fenced span with
+  # `\|`; the drift names the item by its text.
+  test "a row is named by its item's text, read back from the code span" do
+    old = "| Item | Version |\n|---|---|\n| `` a\\|` `` | `1` |\n| ``` b`` ``` | `1` |\n"
+    new = "| Item | Version |\n|---|---|\n| `` a\\|` `` | `2` |\n"
+    message = Gate.drift(old, new)
+    assert message =~ "Changed:\n  a|`\n"
+    assert message =~ "Gone:\n  b``\n"
+  end
+
   test "a change outside every row says the prose or a stats line changed" do
     assert Gate.drift("# A\nold\n" <> @old, "# A\nnew\n" <> @old) =~ "No row changed"
   end

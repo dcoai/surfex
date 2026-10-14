@@ -741,6 +741,37 @@ defmodule Surfex.StatusTest do
     end
   end
 
+  # #199: the status golden's own composite cells name items by Surfex.Golden.code/1, so an
+  # id holding a pipe or a backtick (an operator, a test name) keeps its row's columns.
+  @tag verifies: ["golden-code-spans"]
+  test "the status golden keeps a row whole when an id holds a pipe or a backtick" do
+    pipe_id = "M.|>/2"
+    tick_spec = "spec.md#Quoting `x`"
+
+    entry =
+      Entry.new!(
+        at: "2026-09-28T10:00:00Z",
+        op: :relate,
+        type: :implements,
+        ends: [%{kind: :spec, id: tick_spec, hash: "s1"}, %{kind: :code, id: pipe_id, hash: "c1"}]
+      )
+
+    status =
+      Status.derive([scan(:spec, tick_spec, "s1"), scan(:code, pipe_id, "c2")], [entry])
+
+    [row] =
+      status
+      |> Report.golden()
+      |> Surfex.Golden.render()
+      |> String.split("\n")
+      |> Enum.filter(&String.contains?(&1, "M.\\|>/2"))
+
+    assert row ==
+             "| `code M.\\|>/2` | `` spec spec.md#Quoting `x` `` | `:dangling` | `code M.\\|>/2` |"
+
+    assert row |> String.split(~r/(?<!\\)\|/) |> length() == 6
+  end
+
   @tag verifies: ["status-pure", "status-failing"]
   test "failing: each failing state, and nothing else by default; planned: :fail and validated: true add theirs" do
     ok = relate("s1", "c1")

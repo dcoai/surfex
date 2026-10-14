@@ -50,10 +50,13 @@ defmodule Surfex.Golden do
   > that serves more than one project.
   """
 
+  alias Surfex.Golden.Span
+
   @typedoc """
   A typed table cell — the renderer formats it, so notation is central, not per-caller:
 
-    * `{:code, io}` → `` `io` `` (the backticked-item rule)
+    * `{:code, io}` → `` `io` `` (the backticked-item rule; every backticked cell is a GFM code
+      span that reads back as its content, `|` and backticks included)
     * `{:atom, a}` → `` `:a` `` (atoms always backticked, e.g. an effect class `:local`)
     * `{:locus, file, line}` → `` `file:line` `` (a `nil` file ⇒ `—`; a `nil` line drops the
       `:line`, so a hashed-locus surface passes `{:locus, file, nil}` for a bare-path Locus)
@@ -204,13 +207,14 @@ defmodule Surfex.Golden do
     ["| ", Enum.intersperse(cells, " | "), " |\n"]
   end
 
-  defp cell({:code, io}), do: ["`", io, "`"]
-  defp cell({:atom, a}), do: ["`", inspect(a), "`"]
+  # Every backticked cell is a GFM code span that reads back as its content (§2.2, #199).
+  defp cell({:code, io}), do: Span.code(io)
+  defp cell({:atom, a}), do: Span.code(inspect(a))
   defp cell({:locus, nil, _line}), do: "—"
-  defp cell({:locus, file, nil}), do: ["`", file, "`"]
-  defp cell({:locus, file, line}), do: ["`", file, ":", to_string(line), "`"]
+  defp cell({:locus, file, nil}), do: Span.code(file)
+  defp cell({:locus, file, line}), do: Span.code([file, ":", to_string(line)])
   defp cell({:version, nil}), do: "—"
-  defp cell({:version, hash}), do: ["`", hash, "`"]
+  defp cell({:version, hash}), do: Span.code(hash)
   defp cell({:raw, io}), do: io
   defp cell(:absent), do: "—"
   defp cell(nil), do: "—"
@@ -223,6 +227,7 @@ defmodule Surfex.Golden do
     Enum.sort_by(rows, key)
   end
 
+  # The sort key reads a cell's CONTENT, unescaped: rows order by what they name, not by notation.
   defp first_cell_text(row, [first | _]), do: cell_text(Map.get(row, first, :absent))
 
   defp cell_text({:code, io}), do: IO.iodata_to_binary(io)
