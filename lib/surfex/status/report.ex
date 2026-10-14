@@ -67,6 +67,13 @@ defmodule Surfex.Status.Report do
       # Listed where a project declares any, so other reports read as before (§11.4).
       items("Checks (gates that verify claims)", checks(status), &check_line/1),
       items("Unmet (required relation missing)", status.unmet, &unmet_line/1),
+      # Under claim_grain: true (§13.9): failing where `require: code:` asks for an
+      # implements, listed otherwise.
+      items(
+        "Unearned (an implements no verified claim's test or check exercises: it meets no require: code: rule)",
+        status.unearned,
+        &"implements  code #{&1.code} → spec #{&1.unit}: #{unearned_text(&1.why)}"
+      ),
       items(
         "Triangle (a spec unit, its tests and its code don't meet)",
         status.triangle,
@@ -216,6 +223,7 @@ defmodule Surfex.Status.Report do
       through,
       units,
       claims_text(status),
+      unearned_count(status),
       classed_text(status),
       lists
     ])
@@ -293,6 +301,11 @@ defmodule Surfex.Status.Report do
         Enum.map(
           status.containers,
           &%{"unit" => &1.unit, "claims" => &1.claims, "verified" => &1.verified}
+        ),
+      "unearned" =>
+        Enum.map(
+          status.unearned,
+          &%{"code" => &1.code, "unit" => &1.unit, "why" => Atom.to_string(&1.why)}
         ),
       "unmet" =>
         Enum.map(status.unmet, fn %{scan: scan, requires: requires} = u ->
@@ -470,6 +483,7 @@ defmodule Surfex.Status.Report do
             check_stat(status) ++
             if(status.inert == [], do: [], else: [{"inert tags", length(status.inert)}]) ++
             classed_stat(status) ++
+            unearned_stat(status) ++
             [
               {"broken citations", length(status.citations)},
               {"triangle gaps", length(status.triangle)}
@@ -494,6 +508,12 @@ defmodule Surfex.Status.Report do
                    Enum.map_intersperse(m.claims, ", ", &Span.code/1),
                    if(m.settled, do: " (settled)", else: "")
                  ]}
+            }
+          end) ++
+          id_group.("unearned", ["Item", "Implements"], status.unearned, fn u ->
+            %{
+              "Item" => {:code, "code #{u.code}"},
+              "Implements" => {:raw, coded("spec #{u.unit}", Atom.to_string(u.why))}
             }
           end) ++
           id_group.("contained", ["Item", "Verified inside"], status.contained, fn c ->
@@ -610,7 +630,7 @@ defmodule Surfex.Status.Report do
                 {:raw,
                  [
                    Enum.map_intersperse(r, ", ", &Span.code(to_string(&1))),
-                   if(u.why == :contained, do: Span.text(" (contained)"), else: [])
+                   if(u.why, do: Span.text(" (#{u.why})"), else: [])
                  ]}
             }
           end)
@@ -834,15 +854,40 @@ defmodule Surfex.Status.Report do
           if(u.contract > 0, do: [{"contracts", u.contract}], else: [])
       )
 
-  # A contained claim's line says why its rule isn't met (§13.4).
+  # A contained claim's line says why its rule isn't met (§13.4), and code whose
+  # implements earn nothing says so (§13.9).
   defp unmet_line(%{scan: scan, requires: requires, why: why}) do
     because =
-      if why == :contained,
-        do: ": contained: a unit inside it is verified, its own text isn't",
-        else: ""
+      case why do
+        :contained -> ": contained: a unit inside it is verified, its own text isn't"
+        :unearned -> ": unearned: none of its implements earns (see Unearned)"
+        nil -> ""
+      end
 
     "#{scan.kind} #{scan.id} needs one of: #{Enum.join(requires, ", ")}#{at(scan)}#{because}"
   end
+
+  # Why an implements earns nothing (§13.5).
+  defp unearned_text(:unverified), do: "unverified: no evidence, on the unit or a claim inside it"
+
+  defp unearned_text(:not_exercised),
+    do:
+      "not_exercised: a claim inside is verified, but none of its tests or checks exercises the code"
+
+  defp unearned_text(:nothing_inside), do: "nothing_inside: a container with no claims"
+
+  # Counted under claim_grain: true (§13.9), so other reports read as before.
+  defp unearned_count(%{policy: %{claim_grain: true}} = status) do
+    fails = if status.policy.unearned == :fail, do: " (failing: require: code:)", else: ""
+    "  unearned: #{length(status.unearned)} implements#{fails}\n"
+  end
+
+  defp unearned_count(_status), do: []
+
+  defp unearned_stat(%{policy: %{claim_grain: true}} = status),
+    do: [{"unearned", length(status.unearned)}]
+
+  defp unearned_stat(_status), do: []
 
   # The spec units by verdict (§13.4): the claims, and the containers apart.
   defp verdict_counts(status) do

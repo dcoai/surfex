@@ -49,7 +49,8 @@ A keyword list, evaluated as data. An unknown key is refused, naming it.
   claim is verified.
 - `claim_grain: true`: read the spec at claim grain before the release that makes it the
   only reading: path headings fold where the spec writes ids, and completeness counts a
-  claim complete only with its own evidence. One switch for every breaking part, so a
+  claim complete only with its own evidence, and an `implements` counts for
+  `require: code:` only when it earns. One switch for every breaking part, so a
   project can measure them together; that release refuses the key.
 - `spec_classes: [{name, reason} | {name, reason, files: globs, headings: regex, marker: regex}]`:
   classes of spec text that asserts nothing, selected by a marker in the section, a

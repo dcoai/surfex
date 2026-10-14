@@ -112,6 +112,9 @@ class), and a deferral is **stale** once its unit has a test of its own or, unde
 verified unit earns; one to a container or a contained section earns when a verified
 claim inside it has a test (or a check) that exercises the code. Otherwise it is
 unearned: `unverified`, `not_exercised` or `nothing_inside` (`Surfex.Status.earning/2`).
+Under `claim_grain: true` an unearned `implements` meets no `require: code:` rule: the
+status lists it as **Unearned**, and fails on it where the policy asks code for an
+`implements` (spec §13.9). Completeness counts code described only by an earning one.
 
 **Code relates to the claim it realises.** With `claim_implements: true` in `.surfex.exs`
 (off by default until claim grain is released), `mix surfex.suggest` proposes

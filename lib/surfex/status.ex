@@ -127,7 +127,7 @@ defmodule Surfex.Status do
   @type t :: %{
           relations: [relation_status],
           new: [Scan.t()],
-          unmet: [%{scan: Scan.t(), requires: [atom], why: nil | :contained}],
+          unmet: [%{scan: Scan.t(), requires: [atom], why: nil | :contained | :unearned}],
           broken: [%{scan: Scan.t(), type: atom, ref: String.t(), reason: term}],
           triangle: [gap],
           unvalidated: [%{relation: tuple}],
@@ -182,7 +182,8 @@ defmodule Surfex.Status do
             marks: :allow | :fail,
             baseline: :allow | :fail,
             deviations: :allow | :fail,
-            claim_grain: boolean
+            claim_grain: boolean,
+            unearned: :report | :fail
           },
           unimplemented: [Scan.t()],
           verdicts: %{String.t() => Surfex.Status.Verdict.verdict()},
@@ -195,6 +196,13 @@ defmodule Surfex.Status do
             exercises: %{String.t() => MapSet.t(term)},
             through: MapSet.t(tuple)
           },
+          unearned: [
+            %{
+              code: String.t(),
+              unit: String.t(),
+              why: :unverified | :not_exercised | :nothing_inside
+            }
+          ],
           excused: [
             %{
               unit: String.t(),
@@ -349,6 +357,20 @@ defmodule Surfex.Status do
     # for earning (§13.1, §13.5).
     exercises = exercises(scans, relations)
 
+    earning = %{
+      inside: verdict.inside,
+      own: verdict.own,
+      exercises: exercises,
+      through: through_reviewed(relations)
+    }
+
+    # Under claim_grain: true an implements counts only when it earns (§13.9): the ones
+    # that don't are listed, and fail where `require: code:` asks for an implements.
+    unearned =
+      if claim_grain,
+        do: unearned(%{earning: earning, verdicts: verdict.verdicts, scans: by_id}, relations),
+        else: []
+
     status = %{
       relations: relations,
       verdicts: verdict.verdicts,
@@ -360,12 +382,8 @@ defmodule Surfex.Status do
       # What `earning/2` reads (§13.5): the claims inside each unit, each claim's own
       # verifiers, what each verifier exercises, and the relations reviewed through a
       # named path.
-      earning: %{
-        inside: verdict.inside,
-        own: verdict.own,
-        exercises: exercises,
-        through: through_reviewed(relations)
-      },
+      earning: earning,
+      unearned: unearned,
       # Listed with or without claim_grain: (§13.6): what the source classes and defers.
       excused: excused(scans, verdict.inside),
       deferred: deferred(scans, issues),
@@ -376,7 +394,7 @@ defmodule Surfex.Status do
         scans
         |> Enum.reject(&MapSet.member?(related, {&1.kind, &1.id}))
         |> Enum.sort_by(&{&1.kind, &1.id}),
-      unmet: unmet(scans, relations, require, verdict.verdicts),
+      unmet: unmet(scans, relations, require, verdict.verdicts, unearned),
       broken: broken(scans, resolver),
       deviating: deviating,
       undeclared: undeclared(scans, relations, resolver),
@@ -410,7 +428,12 @@ defmodule Surfex.Status do
         marks: marks_policy,
         baseline: baseline_policy,
         deviations: deviations_policy,
-        claim_grain: claim_grain
+        claim_grain: claim_grain,
+        unearned:
+          if(claim_grain and :implements in Keyword.get(require, :code, []),
+            do: :fail,
+            else: :report
+          )
       },
       unimplemented: unimplemented(scans, relations),
       planned: planned,
@@ -482,6 +505,7 @@ defmodule Surfex.Status do
 
     status.unmet != [] or status.broken != [] or status.stale != [] or status.citations != [] or
       status.contradicted != [] or status.stale_deferrals != [] or
+      (status.policy.unearned == :fail and status.unearned != []) or
       (status.policy.validated == true and status.unvalidated != []) or
       status.undeclared != [] or
       status.unrecorded != [] or
@@ -1163,10 +1187,16 @@ defmodule Surfex.Status do
 
   # ── Policy ──────────────────────────────────────────────────────────────
 
-  defp unmet(scans, relations, require, verdicts) do
+  defp unmet(scans, relations, require, verdicts, unearned) do
+    # An unearned implements meets no rule (§13.9): it is listed, and the code is judged
+    # by the relations it does earn.
+    unearned_relations =
+      MapSet.new(unearned, &{:implements, {:code, &1.code}, {:spec, &1.unit}})
+
     live =
-      for %{state: state, type: type, relation: {_, a, b}} <- relations,
+      for %{state: state, type: type, relation: {_, a, b} = relation} <- relations,
           state != :retired,
+          not MapSet.member?(unearned_relations, relation),
           end_ <- [a, b],
           reduce: %{},
           do: (acc -> Map.update(acc, end_, MapSet.new([type]), &MapSet.put(&1, type)))
@@ -1181,6 +1211,15 @@ defmodule Surfex.Status do
           reduce: %{} do
         acc -> Map.update(acc, Scan.definition(scan), types, &MapSet.union(&1, types))
       end
+
+    # The definitions whose implements didn't earn: why their rule isn't met.
+    code_scans = for %Scan{kind: :code} = s <- scans, into: %{}, do: {s.id, s}
+
+    unearned_defs =
+      for %{code: code} <- unearned,
+          {:ok, scan} <- [Map.fetch(code_scans, code)],
+          into: MapSet.new(),
+          do: Scan.definition(scan)
 
     met = fn
       %Scan{kind: :code} = scan -> Map.get(by_definition, Scan.definition(scan), MapSet.new())
@@ -1198,7 +1237,11 @@ defmodule Surfex.Status do
         requires = Keyword.get(require, key, []),
         requires != [],
         not Enum.any?(requires, &MapSet.member?(met.(scan), &1)),
-        do: %{scan: scan, requires: requires, why: unmet_why(scan, requires, verdicts)}
+        do: %{
+          scan: scan,
+          requires: requires,
+          why: unmet_why(scan, requires, verdicts, unearned_defs)
+        }
   end
 
   defp claim?(%Scan{kind: :spec, id: id}, verdicts),
@@ -1206,11 +1249,26 @@ defmodule Surfex.Status do
 
   defp claim?(_scan, _verdicts), do: true
 
-  defp unmet_why(%Scan{kind: :spec, id: id}, requires, verdicts) do
+  defp unmet_why(%Scan{kind: :spec, id: id}, requires, verdicts, _unearned_defs) do
     if :verifies in requires and Map.get(verdicts, id) == :contained, do: :contained
   end
 
-  defp unmet_why(_scan, _requires, _verdicts), do: nil
+  defp unmet_why(%Scan{kind: :code} = scan, requires, _verdicts, unearned_defs) do
+    if :implements in requires and MapSet.member?(unearned_defs, Scan.definition(scan)),
+      do: :unearned
+  end
+
+  defp unmet_why(_scan, _requires, _verdicts, _unearned_defs), do: nil
+
+  # Every implements that doesn't earn (§13.9), in relation order, with why. A retired,
+  # orphaned or planned relation is judged by its state, not by earning.
+  defp unearned(status, relations) do
+    for %{type: :implements, state: state, relation: {_, {:code, code}, {:spec, unit}} = r} <-
+          relations,
+        state not in [:retired, :orphaned, :planned],
+        {:unearned, why} <- [earning(status, r)],
+        do: %{code: code, unit: unit, why: why}
+  end
 
   # A declaration in a test (`@tag verifies: "id"`) that names no spec unit, or a bare id
   # that more than one file has.

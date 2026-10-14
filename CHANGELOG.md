@@ -365,6 +365,33 @@ to claim grain, with a walkthrough in the new guide "Migrating to claim grain".
   narration; and add `issues:` and `mix surfex.status --issues` where your tracker can be
   asked.
 
+- **Unearned: an `implements` counts for `require: code:` only when it earns, under
+  `claim_grain: true`** (#207, #247). B.3's guard against claims written only to own code
+  (spec §13.9). The status lists every live `implements` that doesn't earn (§13.5,
+  `Surfex.Status.earning/2`) as `unearned`, with its code, spec unit and why
+  (`unverified`, `not_exercised`, `nothing_inside`), in text with a count in the header,
+  in JSON (`unearned`) and as a `RELATIONS.md` table with a header count. An unearned
+  relation meets no `require:` rule: code whose only `implements` are unearned is unmet,
+  `why: :unearned`, and where the policy is `require: [code: [:implements]]` every
+  unearned relation fails the status, a spare one beside an earning one included.
+  Credit never flows up from an enclosing unit: code earns through a verified unit, or a
+  verified claim inside it whose test or check exercises the code. Completeness reads code
+  the same way (§20.3): code whose `implements` all earn nothing misses `unearned`.
+  Without `claim_grain:` nothing changes and no list, count or table appears.
+
+  Measured read-only over the adopters with a relation log before release (#145, #247),
+  under `claim_grain: true` with each project's own `require:`: 18 relations unearned in
+  one project, all `not_exercised`, against 4 sections (18 code items newly unmet, 17
+  incomplete), 2 in another (1 code item unmet), and 0 in the six others.
+
+  **Upgrade step, under `claim_grain: true` now and for everyone in the release that
+  completes claim grain:** run `mix surfex.status` and settle each unearned relation by
+  its why. `not_exercised`: the code belongs to another claim, or the claim inside that
+  covers it has no test reaching it; `mix surfex.migrate --report` shows where it goes.
+  `unverified`: add a test or check that verifies the unit, or retire the relation.
+  `nothing_inside`: relate the code to a claim, not the empty container. Regenerate
+  `RELATIONS.md` (`mix surfex.goldens --write`), which gains an `unearned` count.
+
 ## [0.9.1] — 2026-10-14
 
 What surfex writes now reads right. Spec pages published with ex_doc keep their headings
