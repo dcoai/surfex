@@ -224,6 +224,17 @@ to claim grain, with a walkthrough in the new guide "Migrating to claim grain".
   `contained` and `on container` tables where there are any, so run `mix surfex.goldens
   --write` once.
 
+- **Earning: the one definition of an earned `implements`** (#256, #259).
+  `Surfex.Status.earning/2` says whether an `implements` earns, and why not:
+  `Surfex.Status.earned?/2` is its yes or no (spec §13.5). Code earns its relation to a
+  `:verified` unit, or to a container or `:contained` unit through a verified claim inside
+  it whose verifying test reaches the code (directly, through what it calls, or by another
+  arity of the same definition), holds a `tests` relation to it, or whose verifying check
+  inspects its file; a current `--through` review counts too. Otherwise it is unearned:
+  `unverified`, `not_exercised` or `nothing_inside`. A section's own tag gives the claims
+  inside it nothing. Additive: nothing reads it yet. B.3's unearned rule (#247) will fail
+  `require: [code: [:implements]]` through it, in the same release.
+
 ## [0.9.1] — 2026-10-14
 
 What surfex writes now reads right. Spec pages published with ex_doc keep their headings
