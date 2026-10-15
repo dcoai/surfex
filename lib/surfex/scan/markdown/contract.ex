@@ -4,12 +4,14 @@ defmodule Surfex.Scan.Markdown.Contract do
   #
   # A fence is a contract when the line `<!-- surfex: contract [module: M] -->` stands
   # before it, or when its info string is `elixir contract`. Each `@spec`, `@callback` or
-  # `@macrocallback` in it, with the lines indented under it, is one signature, keyed
-  # `name/arity`, or `Module.name/arity` for a head that names its module; several
-  # signatures of one function (a multi-clause spec) are one unit.
+  # `@macrocallback` in it is one signature, keyed `name/arity`, or `Module.name/arity` for
+  # a head that names its module; several signatures of one function (a multi-clause spec)
+  # are one unit. Where a signature ends is §11.8's: by its delimiters, not its indentation.
 
   @marker ~r/^ {0,3}<!--\s*surfex:\s*contract(?:\s+module:\s*(\S+))?\s*-->\s*$/
   @signature ~r/^(\s*)@(spec|callback|macrocallback)\b/
+  # A line that opens the next typespec attribute, which no signature runs into.
+  @head ~r/^\s*@(spec|callback|macrocallback|type|typep|opaque)\b/
 
   @doc "A contract marker's module (`nil` when it names none), or `:none` for any other line."
   @spec marker(String.t()) :: String.t() | nil | :none
@@ -66,21 +68,39 @@ defmodule Surfex.Scan.Markdown.Contract do
     end
   end
 
-  # Each signature line opens a group that takes the following lines indented deeper.
-  defp split([], groups, rest), do: {Enum.reverse(Enum.map(groups, &Enum.reverse/1)), rest}
+  # Each signature line opens a group (§11.8): it takes the following lines while its text
+  # doesn't parse yet, whatever their indentation, so a closing `}` back at the head's
+  # column is its own; once it parses, the lines indented deeper (a `when`, a `| nil`). It
+  # never runs into the next typespec attribute, and an unfinished one stops at the fence's
+  # end, where key/1 reports it.
+  defp split([], groups, rest), do: {Enum.reverse(groups), rest}
 
   defp split([{line, _} = numbered | lines], groups, rest) do
     case Regex.run(@signature, line, capture: :all_but_first) do
       [indent, _kind] ->
-        {more, lines} = Enum.split_while(lines, &continues?(&1, String.length(indent)))
-        split(lines, [Enum.reverse([numbered | more]) | groups], rest)
+        {group, lines} = extend([numbered], line, String.length(indent), lines)
+        split(lines, [group | groups], rest)
 
       nil ->
         split(lines, groups, [numbered | rest])
     end
   end
 
-  defp continues?({line, _}, indent) do
+  defp extend(group, _text, _indent, []), do: {Enum.reverse(group), []}
+
+  defp extend(group, text, indent, [{line, _} = numbered | more] = lines) do
+    takes? =
+      not Regex.match?(@head, line) and
+        (not parses?(text) or deeper?(line, indent))
+
+    if takes?,
+      do: extend([numbered | group], text <> "\n" <> line, indent, more),
+      else: {Enum.reverse(group), lines}
+  end
+
+  defp parses?(text), do: match?({:ok, _}, Code.string_to_quoted(text))
+
+  defp deeper?(line, indent) do
     String.trim(line) != "" and
       String.length(line) - String.length(String.trim_leading(line)) > indent
   end
