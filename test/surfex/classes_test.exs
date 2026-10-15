@@ -142,8 +142,12 @@ defmodule Surfex.ClassesTest do
       {:ok, entries} = Suggest.accept_all(s, scans, [], @meta)
 
       status = Status.derive(scans, entries, code: [:implements, :excuses])
-      # Only App.Other and its field remain: neither described nor excusable.
-      assert Enum.map(status.unmet, & &1.scan.id) == ["App.Other", "App.Other.x"]
+      # Only App.Other and its field remain: neither described nor excusable. The described
+      # items are unmet only as unearned: no test verifies their sections (§13.9).
+      unmet = Map.new(status.unmet, &{&1.scan.id, &1.why})
+
+      assert Map.reject(unmet, fn {_id, why} -> why == :unearned end) ==
+               %{"App.Other" => nil, "App.Other.x" => nil}
 
       {s, _} = suggest(root, @config, entries)
       assert excuses(s) == []

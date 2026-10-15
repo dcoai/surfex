@@ -12,6 +12,28 @@ dangles the relations of the claim it touched, and no others.
 `mix surfex.migrate` moves a section's relations to its claims (spec §14.1). It works one
 section at a time, as work touches a section. Nothing is migrated wholesale.
 
+## 0. Claim grain is how surfex reads
+
+Surfex reads every spec at claim grain; there is no switch. A `.surfex.exs` that still
+sets `claim_grain:`, the key claim grain shipped behind, is refused: delete the line. For
+a project that never set it, the check changes in five ways (spec §13.2):
+
+- **Contained sections**: a section verified only through a claim inside it is
+  `contained`. Completeness counts it incomplete until a test checks its own prose, its
+  claims are named, or it is classed; containers aren't counted at all (spec §20.1).
+- **Earning**: an `implements` counts for `require: code:` only when it earns, through a
+  verified unit or a verified claim inside it whose test exercises the code. The rest are
+  **unearned** and fail where `require: [code: [:implements]]` is set (spec §13.9).
+- **Classes and deferrals** are read: an excused or deferred unit isn't judged or
+  counted, a relation to an excused section is contradicted, and a deferral that no
+  longer holds is stale (spec §13.6, §13.7).
+- **Deviations** hold back the sections they sit under too (spec §13.11).
+- **Path headings fold** under an id'd heading wherever `heading_ids:` is set
+  (`fold_paths: false` keeps them units, spec §11.1).
+
+Run `mix surfex.status` and `mix surfex.migrate --report` (below) to see what each of
+these means for your spec.
+
 ## 1. See what migration buys
 
 ```sh
@@ -51,7 +73,7 @@ spec.md#totals (claims are units): 4 relations now → 4 after; implements 0: 0 
 ```
 
 Contained sections are listed even when they hold no `implements`: there is no code to
-move, but under `claim_grain: true` completeness counts them incomplete until a test checks
+move, but completeness counts them incomplete until a test checks
 their own prose, their claims are named, or they are classed (spec §20.1). `mix
 surfex.migrate --report --format json` gives the same report for tools.
 

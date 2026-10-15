@@ -89,6 +89,8 @@ defmodule Surfex.CompletenessTest do
       # Current, but recorded before validation existed.
       rel(s, :implements, {:spec, "spec.md#a"}, {:code, "M.e/0"}, nil),
       rel(s, :verifies, {:test, "T: one"}, {:spec, "spec.md#h"}, :evidence),
+      # The section's own evidence: a hint's doesn't complete it (§20.1).
+      rel(s, :verifies, {:test, "T: one"}, {:spec, "spec.md#a"}, :evidence),
       rel(s, :tests, {:test, "T: one"}, {:code, "M.a/0"}, nil),
       rel(s, :verifies, {:test, "T: policy"}, {:spec, "spec.md#p"}, :review),
       rel(s, :excuses, {:class, "helpers"}, {:code, "M.b/0"}, :judgement)
@@ -114,7 +116,7 @@ defmodule Surfex.CompletenessTest do
     end
 
     @tag verifies: ["completeness-rules", "completeness"]
-    test "spec units: verified through a hint, code validated; a policy needs a test alone" do
+    test "spec units: verified by a test of their own, code validated; a policy needs a test alone" do
       assert missing(Completeness.report(status()), :spec) == %{
                # Its code M.e/0 is related, but not validated.
                "spec.md#a" => [:unvalidated],

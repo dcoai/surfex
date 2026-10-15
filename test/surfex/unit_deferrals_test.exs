@@ -55,7 +55,7 @@ defmodule Surfex.UnitDeferralsTest do
 
   defp stale(status), do: Enum.map(status.stale_deferrals, &{&1.unit, &1.reason})
 
-  defp derive(scans, entries \\ [], opts \\ [claim_grain: true]),
+  defp derive(scans, entries \\ [], opts \\ []),
     do: Status.derive(scans, entries, [], opts)
 
   describe "a citation resolves when the spec is scanned" do
@@ -238,16 +238,13 @@ defmodule Surfex.UnitDeferralsTest do
       assert stale(derive(edited ++ [t], [verifies])) == [{"spec/04-model.md#views", :built}]
 
       # Issue deferrals are judged as before; a citation has no issue.
-      issues = derive(pinned, [], claim_grain: true, issues: %{"#13" => :closed})
+      issues = derive(pinned, [], issues: %{"#13" => :closed})
       assert stale(issues) == [{"spec/04-model.md#gate-block", :closed}]
 
       assert Enum.map(issues.deferred, &{&1.unit, &1.issue}) == [
                {"spec/04-model.md#gate-block", :closed},
                {"spec/04-model.md#views", nil}
              ]
-
-      # Without claim_grain: nothing is stale.
-      assert stale(derive(edited, [], [])) == []
     end
 
     @tag verifies: ["unit-deferral-stale", "unit-deferrals"]
@@ -262,7 +259,7 @@ defmodule Surfex.UnitDeferralsTest do
       end
 
       status =
-        Config.status([sources: ["spec/*.md"], claim_grain: true], root, "Surfex", issues: ask)
+        Config.status([sources: ["spec/*.md"]], root, "Surfex", issues: ask)
 
       assert_received {:asked, ["#13"]}
       assert stale(status) == [{"spec/04-model.md#views", :unpinned}]

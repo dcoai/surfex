@@ -758,8 +758,8 @@ defmodule Surfex.Record do
       expresses the reworded requirement.
 
   An `implements` whose spec unit a deviation holds back (§13.11) is never validated
-  here: not the deviating unit's, nor one to a unit it sits in (`meta[:claim_grain]`,
-  the project's `claim_grain:`, reaches the sections it sits under too). The evidence would
+  here: not the deviating unit's, nor one to a unit it sits in, the sections it sits under
+  included. The evidence would
   say a test passes against the code; the deviation says the code doesn't meet the unit.
   `evidence_outcome/4` lists them.
 
@@ -784,10 +784,9 @@ defmodule Surfex.Record do
           {:ok, [Entry.t()], [%{relation: tuple, deviates: [String.t()]}]}
           | {:error, String.t()}
   def evidence_outcome(scans, entries, evidence, meta) do
-    # Under the project's adoption: setting (§18.1), a baselined test counts as discriminated;
-    # under its claim_grain:, a deviation holds the sections it sits under (§13.11).
-    derive = &Status.derive(scans, &1, [], Keyword.take(meta, [:adoption, :claim_grain]))
-    meta = meta |> Keyword.drop([:adoption, :claim_grain]) |> with_basis(:evidence)
+    # Under the project's adoption: setting (§18.1), a baselined test counts as discriminated.
+    derive = &Status.derive(scans, &1, [], Keyword.take(meta, [:adoption]))
+    meta = meta |> Keyword.drop([:adoption]) |> with_basis(:evidence)
     status = derive.(entries)
 
     with {:ok, observed} <- observations(status, evidence, meta),

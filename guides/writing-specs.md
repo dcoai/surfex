@@ -469,7 +469,7 @@ comment as the class's marker, and nothing is rewritten.
   asserts nothing, the relation says something checks or realises it. Usually the relation
   was narration and is retired; otherwise the class is wrong.
 
-Under `claim_grain: true` excused and deferred units leave the completeness score and are
+Excused and deferred units leave the completeness score and are
 counted on lines of their own, and `RELATIONS.md` lists each one, so a growing excusal
 shows in review.
 

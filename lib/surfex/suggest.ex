@@ -167,9 +167,9 @@ defmodule Surfex.Suggest do
   those tests call that reaches more code: `%{spec, through, count}`, information for a
   person to act on with `relate`, never recorded.
 
-  With `classes: true` (`claim_grain: true` in `.surfex.exs`, §15.2) a citation in a
-  classed section's own text proposes no `implements`, and a declaration naming a classed
-  unit proposes no `verifies`: the class says that text asserts nothing (§13.6).
+  A citation in a classed section's own text (§15.2) proposes no `implements`, and a
+  declaration naming a classed unit proposes no `verifies`: the class says that text
+  asserts nothing (§13.6).
   """
   # Only for computing what the moves would leave; never recorded.
   @epoch "1970-01-01T00:00:00Z"
@@ -188,12 +188,11 @@ defmodule Surfex.Suggest do
         {:ok, acc ++ recorded}
       end)
 
-    classes? = Keyword.get(opts, :classes, false)
-
+    # The class says a classed unit's own text asserts nothing (§15.2).
     cited =
       profile
       |> candidates(items, scans, moved, root)
-      |> Enum.reject(&(classes? and &1.spec.class != nil))
+      |> Enum.reject(&(&1.spec.class != nil))
 
     {claimed, reached} =
       if Keyword.get(opts, :claims, false),
@@ -210,8 +209,7 @@ defmodule Surfex.Suggest do
       implements: ordered(implements),
       excuses: ordered(excusals(profile, items, scans, moved, implements)),
       reached: ordered(reached),
-      verifies:
-        ordered(Enum.reject(verifications(scans, moved), &(classes? and &1.to.class != nil))),
+      verifies: ordered(Enum.reject(verifications(scans, moved), &(&1.to.class != nil))),
       undeclared: ordered(status.undeclared),
       moved: ordered(status.moved),
       migrated:

@@ -108,31 +108,12 @@ defmodule Surfex.DeviationConfirmTaskTest do
     do: "held back by a deviation: implements  code #{@function} ↔ spec #{unit} (deviates: #119)"
 
   @tag verifies: ["deviation-holds-back", "deviation-holds"]
-  test "confirm --evidence lists the held implements and records the rest", %{root: root} do
+  test "confirm --evidence lists the held implements, the section above too", %{root: root} do
     lines = confirm(root, ~s([sources: ["spec.md"], tests: ["test/*_test.exs"]]))
-
-    assert held("spec.md#discounts") in lines
-    refute held("spec.md#totals") in lines
-
-    assert Enum.any?(
-             lines,
-             &(&1 =~ "recorded relate implements  code #{@function}@" and
-                 &1 =~ "spec spec.md#totals@")
-           )
-
-    refute Enum.any?(lines, &(&1 =~ "recorded relate implements" and &1 =~ "spec.md#discounts@"))
-  end
-
-  @tag verifies: ["deviation-holds-back", "deviation-holds"]
-  test "under claim_grain: the section above is held too", %{root: root} do
-    lines =
-      confirm(
-        root,
-        ~s([sources: ["spec.md"], tests: ["test/*_test.exs"], claim_grain: true])
-      )
 
     assert held("spec.md#discounts") in lines
     assert held("spec.md#totals") in lines
     refute Enum.any?(lines, &(&1 =~ "recorded relate implements"))
+    assert Enum.any?(lines, &(&1 =~ "recorded relate verifies"))
   end
 end

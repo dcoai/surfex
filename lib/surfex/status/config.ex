@@ -12,7 +12,8 @@ defmodule Surfex.Status.Config do
       (`<!-- surfex: rules NAME -->`), in the forms `:heading_ids` takes: `:section_sign`
       reads `1. §Tenancy.1.4 …`, a regex `~r/^(?<id>P\d+)/` reads `P3` (§11.1)
     * `:fold_paths` — `true` to make a heading with no id, inside one that has an id, part of
-      that unit rather than a unit of its own (§11.1); `false` by default until 0.8
+      that unit rather than a unit of its own (§11.1); by default `true` where `:heading_ids`
+      is set and `false` where it isn't
     * `:unit_refs` — the project's own forms of citing a spec unit, as regexes with named
       captures `id` and `file` or `chapter` (a spec file's leading number):
       `~r/^§(?<chapter>\d\d)\.(?<id>[\w.]+)$/` reads `§03.4` (§11.1)
@@ -36,10 +37,6 @@ defmodule Surfex.Status.Config do
     * `:claim_implements` — `true` to have `mix surfex.suggest` propose `implements` between
       each claim and the code its verifying tests call directly (§15.1); `false` by
       default until the release that completes claim grain
-    * `:claim_grain` — `true` to read the spec at claim grain before the release that makes
-      it the only reading (§13.2): one transitional switch for every breaking part of it,
-      such as folding path headings by default where `:heading_ids` is set. `false` by
-      default
     * `:router` — the router module (or a list of them) whose routes a test's requests
       resolve through (§11); found from the project's endpoint when not given, and `false`
       turns route resolution off
@@ -85,7 +82,6 @@ defmodule Surfex.Status.Config do
     :router,
     :dispatch,
     :claim_implements,
-    :claim_grain,
     :spec_classes,
     :issues,
     :not_claims,
@@ -114,12 +110,23 @@ defmodule Surfex.Status.Config do
 
   @doc """
   Reads and validates a `.surfex.exs`: it must evaluate to a keyword list of known keys.
-  A key of the removed v0.2 trace raises saying so; any other unknown key raises naming
-  it. Every task reads its config through this, so a misspelt key is never ignored.
+  `claim_grain:`, the transitional switch claim grain shipped behind, is refused, saying
+  claim grain is now the only reading (§13.2); a key of the removed v0.2 trace raises
+  saying so; any other unknown key raises naming it. Every task reads its config through
+  this, so a misspelt key is never ignored.
   """
   @spec read!(String.t()) :: keyword
   def read!(path) do
     config = Surfex.Gate.config!(path)
+
+    if Keyword.has_key?(config, :claim_grain),
+      do:
+        raise(
+          ArgumentError,
+          "#{path}: claim_grain: is no longer a key: claim grain is now the only reading " <>
+            "(spec §13.2). Delete the key; the CHANGELOG's upgrade step says what changes, " <>
+            "and `mix surfex.migrate --report` lists the sections to move to claims"
+        )
 
     case Keyword.keys(config) -- (@own ++ Surfex.Profile.keys()) do
       [] ->
@@ -381,8 +388,8 @@ defmodule Surfex.Status.Config do
 
   @doc """
   The options `Surfex.Status.derive/4` takes from `.surfex.exs`: `triangle:`, validated,
-  and `claim_grain: true` when the config sets it (`claim_grain?/1`). Raises
-  `ArgumentError` naming what is wrong.
+  the classes' coverage and the `not_claims:` patterns. Raises `ArgumentError` naming
+  what is wrong.
   """
   @spec options!(keyword) :: keyword
   def options!(config) do
@@ -396,15 +403,13 @@ defmodule Surfex.Status.Config do
         do: [coverage: Surfex.Profile.coverage!(config)],
         else: []
 
-    grain = if claim_grain?(config), do: [claim_grain: true], else: []
-
     not_claims =
       case not_claims!(config) do
         [] -> []
         patterns -> [not_claims: Enum.map(patterns, &inspect/1)]
       end
 
-    [triangle: triangle] ++ grain ++ coverage ++ not_claims
+    [triangle: triangle] ++ coverage ++ not_claims
   end
 
   @doc "The `require_red:` policy (`false` by default), validated."
@@ -778,19 +783,6 @@ defmodule Surfex.Status.Config do
   end
 
   @doc """
-  Whether the spec is read at claim grain before the release that makes it the only
-  reading (`claim_grain:`, §13.2): `false` by default; anything but a boolean is refused.
-  It is one transitional switch for every breaking part of claim grain.
-  """
-  @spec claim_grain?(keyword) :: boolean
-  def claim_grain?(config) do
-    case Keyword.get(config, :claim_grain, false) do
-      flag when is_boolean(flag) -> flag
-      other -> raise ArgumentError, "claim_grain: must be true or false, got #{inspect(other)}"
-    end
-  end
-
-  @doc """
   The spec's classes (`spec_classes:`, §11.7), each as
   `%{name, reason, files, headings, marker}`, `[]` without the key. A class is
   `{name, reason}`, or `{name, reason, opts}` with `files:` (globs relative to the root,
@@ -937,8 +929,8 @@ defmodule Surfex.Status.Config do
       )
 
   # `fold_paths:` is a boolean; anything else is refused, not read as false. Without it,
-  # path headings fold under `claim_grain: true` wherever the spec writes ids
-  # (`heading_ids:`), and not otherwise (§11.1).
+  # path headings fold wherever the spec writes ids (`heading_ids:`), and not otherwise
+  # (§11.1).
   defp fold_paths!(config) do
     case Keyword.fetch(config, :fold_paths) do
       {:ok, flag} when is_boolean(flag) ->
@@ -948,7 +940,7 @@ defmodule Surfex.Status.Config do
         raise ArgumentError, "fold_paths: must be true or false, got #{inspect(other)}"
 
       :error ->
-        claim_grain?(config) and Keyword.get(config, :heading_ids) != nil
+        Keyword.get(config, :heading_ids) != nil
     end
   end
 

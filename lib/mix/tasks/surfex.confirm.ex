@@ -29,8 +29,8 @@ defmodule Mix.Tasks.Surfex.Confirm do
       mix test && mix surfex.confirm --evidence
 
   It never validates an `implements` whose spec unit a deviation holds back (§13.11): a
-  unit a test declares with `@tag deviation:`, or one it sits in (under `claim_grain:
-  true`, a section it sits under too). Each the evidence would have validated is listed
+  unit a test declares with `@tag deviation:`, or one it sits in, a section it sits
+  under included. Each the evidence would have validated is listed
   as `held back by a deviation`, with the references; once the tag goes and the test
   passes, the next evidence run validates it.
 
@@ -89,11 +89,7 @@ defmodule Mix.Tasks.Surfex.Confirm do
       opts[:evidence] == true ->
         # A baselined test counts as discriminated under the project's adoption: (§18.1).
         config = Config.read!(Path.join(root, opts[:config] || ".surfex.exs"))
-        # Under claim_grain:, a deviation holds back the sections it sits under (§13.11).
-        meta =
-          meta
-          |> Keyword.put(:adoption, Config.adoption!(config, root))
-          |> Keyword.put(:claim_grain, Config.claim_grain?(config))
+        meta = Keyword.put(meta, :adoption, Config.adoption!(config, root))
 
         case Surfex.Record.evidence_outcome(scans, entries, evidence, meta) do
           {:ok, confirmed, held} ->

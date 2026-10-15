@@ -31,7 +31,7 @@ defmodule Mix.Tasks.Surfex.Status do
   ran. It only
   reads: nothing is recorded, so CI can run it after `mix test`. With `--issues` it runs
   the command `issues:` in `.surfex.exs` declares once per issue the spec's deferrals
-  name (`Surfex.Issues`), so under `claim_grain: true` a deferral whose issue is closed,
+  name (`Surfex.Issues`), so a deferral whose issue is closed,
   or that the tracker can't answer, fails; a command that exits non-zero stops the task
   with its output. The states are never stored (§13.7). A project scanner is
   project code, so the task compiles first when `.surfex.exs` names one.

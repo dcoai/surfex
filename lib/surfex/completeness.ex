@@ -4,9 +4,9 @@ defmodule Surfex.Completeness do
   they need, and a score per kind and overall. A pure function of a status, so of the scans
   and the log. Complete means validated (§18), not asserted.
 
-    * **A spec unit** with text of its own is complete when a test verifies it, or a unit
-      inside it, by a current, validated relation, and every `implements` relation to it
-      is current and validated. A unit no code implements needs its test alone. A unit a
+    * **A spec unit** that is a claim is complete when a test or check verifies it by a
+      current, validated relation of its own, and every `implements` relation to it is
+      current and validated. A unit no code implements needs its test alone. A unit a
       test declares the code deviates from (`@tag deviation:`, `Surfex.Status`) is never
       complete: it misses `deviates`, with the references, whatever its basis.
     * **A test** is complete when it verifies a unit by a current, validated relation and
@@ -16,8 +16,8 @@ defmodule Surfex.Completeness do
       Code is one item per definition: a function's default-argument arities are judged
       together and counted once.
 
-  Under `claim_grain: true` (§20.1) a spec unit is read as verification reads it
-  (`Surfex.Status.verdict/2`): only claims are counted, and a claim is complete only with
+  A spec unit is read at claim grain, as verification reads it (§20.1,
+  `Surfex.Status.verdict/2`): only claims are counted, and a claim is complete only with
   its own validated `verifies`. A contained claim misses `{:contained, units}`, naming the
   verified claims inside it. Code is described only by an `implements` that earns
   (`Surfex.Status.earning/2`, §20.3): code whose implements all earn nothing misses
@@ -25,7 +25,6 @@ defmodule Surfex.Completeness do
   """
 
   alias Surfex.{Golden, Scan}
-  alias Surfex.Scan.Markdown
 
   @kinds [spec: "spec units", test: "tests", code: "code"]
 
@@ -123,18 +122,14 @@ defmodule Surfex.Completeness do
     if touching == [], do: [:no_relation], else: lacks(kind, scan, touching, live, within, status)
   end
 
-  defp lacks(:spec, scan, touching, live, within, status) do
-    # At claim grain only the claim's own evidence completes it (§20.1); before it, a
-    # unit inside it does too.
-    verifies? =
-      if status.policy.claim_grain,
-        do: &(&1 == scan.id),
-        else: &inside?(&1, scan.id, within)
+  defp lacks(:spec, scan, touching, live, _within, status) do
+    # Only the claim's own evidence completes it (§20.1): no unit inside it does.
+    id = scan.id
 
     verified =
       Enum.any?(live, fn
-        %{relation: {:verifies, {kind, _}, {:spec, unit}}} = r when kind in [:test, :check] ->
-          validated?(status, r) and verifies?.(unit)
+        %{relation: {:verifies, {kind, _}, {:spec, ^id}}} = r when kind in [:test, :check] ->
+          validated?(status, r)
 
         _ ->
           false
@@ -162,23 +157,19 @@ defmodule Surfex.Completeness do
       if exercises or code_less, do: [], else: [:exercises_nothing]
   end
 
-  # Why a unit lacks its test: at claim grain, a contained claim names the verified claims
-  # inside it (§20.1).
-  defp untested(scan, %{policy: %{claim_grain: true}} = status) do
+  # Why a unit lacks its test: a contained claim names the verified claims inside it
+  # (§20.1).
+  defp untested(scan, status) do
     case Enum.find(status.contained, &(&1.unit == scan.id)) do
       nil -> :no_test
       %{inside: inside} -> {:contained, inside}
     end
   end
 
-  defp untested(_scan, _status), do: :no_test
-
-  # Which spec units are counted: those with text of their own; at claim grain, the claims
-  # (§20.1), so a marked table, whose rows are its claims, isn't either.
-  defp counted?(scan, %{policy: %{claim_grain: true}} = status),
+  # Which spec units are counted: the claims (§20.1), so a unit with no text of its own,
+  # or a marked table, whose rows are its claims, isn't.
+  defp counted?(scan, status),
     do: Surfex.Status.verdict(status, scan.id) in [:verified, :contained, :unverified]
-
-  defp counted?(scan, _status), do: not Markdown.claimless?(scan)
 
   defp missing_code(group, live, status) do
     keys = for s <- group, do: {:code, s.id}
@@ -207,13 +198,11 @@ defmodule Surfex.Completeness do
     end
   end
 
-  # At claim grain code is described only by an implements that earns (§20.3): with none,
-  # it misses `unearned`, whatever validated the relations.
-  defp unearned(implements, %{policy: %{claim_grain: true}} = status) do
+  # Code is described only by an implements that earns (§20.3): with none, it misses
+  # `unearned`, whatever validated the relations.
+  defp unearned(implements, status) do
     if Enum.any?(implements, &Surfex.Status.earned?(status, &1)), do: [], else: [:unearned]
   end
-
-  defp unearned(_implements, _status), do: []
 
   defp ends(%{relation: {_type, a, b}}), do: [a, b]
 
@@ -228,15 +217,6 @@ defmodule Surfex.Completeness do
         {:ok, parent} -> implemented?(parent, live, within)
         :error -> false
       end
-  end
-
-  defp inside?(unit, unit, _within), do: true
-
-  defp inside?(unit, target, within) do
-    case Map.fetch(within, unit) do
-      {:ok, parent} -> inside?(parent, target, within)
-      :error -> false
-    end
   end
 
   # ── Reports ─────────────────────────────────────────────────────────────

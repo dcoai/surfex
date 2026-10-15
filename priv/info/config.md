@@ -8,8 +8,8 @@ A keyword list, evaluated as data. An unknown key is refused, naming it.
   items: `:section_sign` (`§ID`), `:section_number` (`1.2`), a regex with `(?<id>…)`, or a
   list of them (`mix surfex.info claims`).
 - `fold_paths: true`: a heading with no id inside one that has an id is part of that unit,
-  not a unit of its own (`mix surfex.info claims`). Off by default; the default under
-  `claim_grain: true` wherever `heading_ids:` is set, and `fold_paths: false` opts out.
+  not a unit of its own (`mix surfex.info claims`). The default wherever `heading_ids:` is
+  set, and `fold_paths: false` opts out.
 - `unit_refs: [~r/^§(?<chapter>\d\d)\.(?<id>[\w.]+)$/]`: the project's own forms of citing
   a spec unit across files, read in `verifies:` tags and by the tasks (`mix surfex.info claims`).
 - `tests: ["test/**/*_test.exs"]`: test files, scanned per test case. Add
@@ -54,11 +54,9 @@ A keyword list, evaluated as data. An unknown key is refused, naming it.
   `table`, `row`, `rule`, `contract`). A spec rule judges claims only: a unit with no text
   of its own is never unmet (`mix surfex.info claims`). `spec: [:verifies]` says every
   claim is verified.
-- `claim_grain: true`: read the spec at claim grain before the release that makes it the
-  only reading: path headings fold where the spec writes ids, and completeness counts a
-  claim complete only with its own evidence, and an `implements` counts for
-  `require: code:` only when it earns. One switch for every breaking part, so a
-  project can measure them together; that release refuses the key.
+- Claim grain is the only reading, so there is no key for it: `claim_grain:`, the switch
+  it shipped behind, is refused (true or false). Delete it; `mix surfex.migrate --report`
+  lists what to move to claims.
 - `spec_classes: [{name, reason} | {name, reason, files: globs, headings: regex, marker: regex}]`:
   classes of spec text that asserts nothing, selected by a marker in the section, a
   pattern, or the project's own comment (`mix surfex.info claims`).

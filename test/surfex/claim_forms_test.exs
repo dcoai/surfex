@@ -376,6 +376,8 @@ defmodule Surfex.ClaimFormsTest do
       end
     end
 
+    # §11.1 says units/1 counts contracts with the other roles.
+    @tag verifies: ["contract-fences", "claim-forms"]
     test "status counts contracts, and require: takes the contract role" do
       status = Surfex.Status.derive(claim_units(@claim_contract), [])
       assert %{contract: 4} = Surfex.Status.units(status)

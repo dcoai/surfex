@@ -1,6 +1,6 @@
 defmodule Surfex.ClassedStatusTest do
-  # #265 (C.2 part 2): what a spec class and a deferral change in the status, under
-  # claim_grain: true (§13.6, §15.2, §20.2).
+  # #265 (C.2 part 2): what a spec class and a deferral change in the status (§13.6,
+  # §15.2, §20.2).
   use ExUnit.Case, async: true
 
   alias Surfex.{Completeness, Item, Scan, Status, Suggest}
@@ -120,15 +120,14 @@ defmodule Surfex.ClassedStatusTest do
 
   defp unit(scans, id), do: Enum.find(scans, &(&1.id == "spec.md##{id}")) || flunk("no #{id}")
 
-  defp derive(scans, entries, require, grain?),
-    do: Status.derive(scans, entries, require, if(grain?, do: [claim_grain: true], else: []))
+  defp derive(scans, entries, require), do: Status.derive(scans, entries, require)
 
   defp unmet(status), do: status.unmet |> Enum.map(& &1.scan.id) |> Enum.sort()
 
   @tag verifies: ["classed-claims-stay", "classed-units"]
   test "a class excuses a section's own text, never a named claim inside it" do
     scans = spec()
-    status = derive(scans, [], [spec: [:verifies]], true)
+    status = derive(scans, [], spec: [:verifies])
 
     # Classed by pattern, with claims inside: a container. With none: excused.
     assert Status.verdict(status, "spec.md#arch") == :through_claims
@@ -151,18 +150,13 @@ defmodule Surfex.ClassedStatusTest do
       derive(
         scans ++ [t],
         [relate(:verifies, t, unit(scans, "arch-rule"))],
-        [spec: [:verifies]],
-        true
+        spec: [:verifies]
       )
 
     assert Status.verdict(verified, "spec.md#arch-rule") == :verified
     refute "spec.md#arch-rule" in unmet(verified)
 
-    # Without claim_grain: the class is listed and nothing else changes.
-    before = derive(scans, [], [spec: [:verifies]], false)
-    assert Status.verdict(before, "spec.md#background") == :unverified
-    assert "spec.md#arch" in unmet(before) and "spec.md#background" in unmet(before)
-    assert Enum.map(before.excused, & &1.unit) == ["spec.md#arch", "spec.md#background"]
+    assert Enum.map(status.excused, & &1.unit) == ["spec.md#arch", "spec.md#background"]
 
     assert %{claims: inside} = Enum.find(status.excused, &(&1.unit == "spec.md#arch"))
     assert "spec.md#arch-rule" in inside
@@ -191,7 +185,7 @@ defmodule Surfex.ClassedStatusTest do
       relate(:verifies, t, background)
     ]
 
-    status = derive(world, entries, [], true)
+    status = derive(world, entries, [])
 
     assert status.contradicted == [
              %{type: :declares, from: "T: declares", unit: "spec.md#background"},
@@ -208,15 +202,12 @@ defmodule Surfex.ClassedStatusTest do
 
     # Retiring the relations, and dropping the tags that declare the section, clears it.
     retired = entries ++ [retire(Enum.at(entries, 0)), retire(Enum.at(entries, 2))]
-    settled = derive(scans ++ [x, y], retired, [], true)
+    settled = derive(scans ++ [x, y], retired, [])
     assert settled.contradicted == []
 
     # Removing the class clears it too.
     unclassed = Enum.map(world, &if(&1.id == background.id, do: %{&1 | class: nil}, else: &1))
-    assert derive(unclassed, entries, [], true).contradicted == []
-
-    # Without claim_grain: nothing is contradicted.
-    assert derive(world, entries, [], false).contradicted == []
+    assert derive(unclassed, entries, []).contradicted == []
   end
 
   @tag verifies: ["deferred-units", "classed-units"]
@@ -224,7 +215,7 @@ defmodule Surfex.ClassedStatusTest do
     scans = spec()
     x = code("MyApp.V.view/1")
     implements = relate(:implements, x, unit(scans, "views"))
-    status = derive(scans ++ [x], [implements], [spec: [:verifies]], true)
+    status = derive(scans ++ [x], [implements], spec: [:verifies])
 
     assert Status.verdict(status, "spec.md#views") == :deferred
     assert Status.verdict(status, "spec.md#gate-block") == :deferred
@@ -277,11 +268,13 @@ defmodule Surfex.ClassedStatusTest do
     pairs = fn s -> s.implements |> Enum.map(&{&1.spec.id, &1.code.id}) |> Enum.sort() end
     verifies = fn s -> Enum.map(s.verifies, & &1.to.id) end
 
-    classed = Suggest.all(profile, items, scans, [], root, classes: true)
+    classed = Suggest.all(profile, items, scans, [], root)
     assert pairs.(classed) == [{"spec.md#Sending", "Wren.send/3"}]
     assert verifies.(classed) == []
 
-    plain = Suggest.all(profile, items, scans, [], root)
+    # The same citation unclassed is suggested.
+    unclassed = Enum.map(scans, &%{&1 | class: nil})
+    plain = Suggest.all(profile, items, unclassed, [], root)
     assert {"spec.md#Map", "Wren.send/3"} in pairs.(plain)
     assert verifies.(plain) == ["spec.md#Map"]
 
@@ -293,7 +286,7 @@ defmodule Surfex.ClassedStatusTest do
   @tag verifies: ["classed-goldens", "classed-record"]
   test "the status golden lists excusals by unit, counted, and moves only with them" do
     scans = spec()
-    render = fn scans -> Surfex.Golden.render(Report.golden(derive(scans, [], [], true))) end
+    render = fn scans -> Surfex.Golden.render(Report.golden(derive(scans, [], []))) end
     golden = render.(scans)
 
     assert golden =~ "## excused"
@@ -321,7 +314,7 @@ defmodule Surfex.ClassedStatusTest do
     refute render.(plain) =~ "excused 0"
 
     header =
-      derive(scans, [], [], true)
+      derive(scans, [], [])
       |> Completeness.report()
       |> Completeness.golden("COMPLETENESS.md")
       |> Surfex.Golden.render()
@@ -346,7 +339,7 @@ defmodule Surfex.ClassedStatusTest do
   @tag verifies: ["classed-completeness", "classed-score"]
   test "excused and deferred units are out of the score, counted on their own lines" do
     scans = spec()
-    report = Completeness.report(derive(scans, [], [], true))
+    report = Completeness.report(derive(scans, [], []))
 
     assert report.excused == ["spec.md#background"]
 
@@ -365,7 +358,10 @@ defmodule Surfex.ClassedStatusTest do
     json = JSON.decode!(Completeness.json(report))
     assert json["excused"] == ["spec.md#background"] and length(json["deferred"]) == 2
 
-    before = Completeness.report(derive(scans, [], [], false))
+    # Unclassed and undeferred, the same units are counted.
+    before =
+      Completeness.report(derive(Enum.map(scans, &%{&1 | class: nil, deferred: nil}), [], []))
+
     assert before.excused == [] and before.deferred == []
     assert "spec.md#background" in Enum.map(before.incomplete, & &1.id)
     assert before.scores.spec.total > report.scores.spec.total

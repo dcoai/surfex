@@ -38,9 +38,8 @@ defmodule Surfex.IssuesTest do
   @tag verifies: ["deferral-stale", "stale-deferrals"]
   test "a deferral is stale once its issue closes or its unit is built" do
     scans = spec()
-    grain = [claim_grain: true]
 
-    closed = derive(scans, [], grain ++ [issues: %{"#12" => :closed, "acme/tools#40" => :open}])
+    closed = derive(scans, [], issues: %{"#12" => :closed, "acme/tools#40" => :open})
     assert stale(closed) == [{"spec.md#views", :closed}]
     assert Status.failing?(closed)
     assert Report.text(closed) =~ "spec spec.md#views deferred by #12: its issue is closed"
@@ -49,14 +48,14 @@ defmodule Surfex.IssuesTest do
     assert [%{"issue" => "open"}, %{"issue" => "closed"}] =
              JSON.decode!(Report.json(closed))["deferred"]
 
-    open = derive(scans, [], grain ++ [issues: %{"#12" => :open, "acme/tools#40" => :open}])
+    open = derive(scans, [], issues: %{"#12" => :open, "acme/tools#40" => :open})
     assert stale(open) == []
     refute Status.failing?(open)
 
-    unanswered = derive(scans, [], grain ++ [issues: %{"#12" => :open}])
+    unanswered = derive(scans, [], issues: %{"#12" => :open})
     assert stale(unanswered) == [{"spec.md#gate-block", :unresolved}]
 
-    unasked = derive(scans, [], grain)
+    unasked = derive(scans, [], [])
     assert stale(unasked) == []
     assert Enum.map(unasked.deferred, & &1.issue) == [nil, nil]
 
@@ -85,15 +84,12 @@ defmodule Surfex.IssuesTest do
         ]
       )
 
-    built = derive(scans ++ [t], [verifies], grain)
+    built = derive(scans ++ [t], [verifies], [])
     assert stale(built) == [{"spec.md#views", :built}]
 
-    assert stale(derive(scans ++ [t], [verifies], grain ++ [issues: %{"#12" => :open}])) ==
+    assert stale(derive(scans ++ [t], [verifies], issues: %{"#12" => :open})) ==
              [{"spec.md#views", :built}, {"spec.md#gate-block", :unresolved}]
              |> Enum.sort()
-
-    # Without claim_grain: nothing is judged stale.
-    assert stale(derive(scans ++ [t], [verifies], issues: %{"#12" => :closed})) == []
 
     assert_raise ArgumentError, ~r/issues: must be a map/, fn ->
       derive(scans, [], issues: [:closed])
@@ -161,11 +157,7 @@ defmodule Surfex.IssuesTest do
       """)
 
       config = fn command ->
-        inspect(
-          sources: ["spec.md"],
-          claim_grain: true,
-          issues: [command: command]
-        )
+        inspect(sources: ["spec.md"], issues: [command: command])
       end
 
       File.write!(Path.join(root, ".surfex.exs"), config.(@command))

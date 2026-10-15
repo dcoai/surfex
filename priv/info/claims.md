@@ -66,8 +66,8 @@ all name `spec/03-wire-format.md#4`.
 **Sub-headings as structure**: with `fold_paths: true`, a heading with no id inside one
 that has an id (`### run/2` under `## §Engine.13`) is part of that unit: its text counts in
 the id'd section's version, and its hints sit in that section. Give a sub-heading an id
-when it should be a unit of its own. Off by default; under `claim_grain: true` it is the
-default wherever `heading_ids:` is set (`fold_paths: false` opts out).
+when it should be a unit of its own. It is the default wherever `heading_ids:` is set
+(`fold_paths: false` opts out).
 
 **One claim per row**: a table row whose key reads as a list (`1001, 1005`, `a / b`,
 `a and b`) is probably two claims in one row; the status lists it under "List-shaped keys"
@@ -113,9 +113,8 @@ a pattern says otherwise. The status lists each pattern with the lines it matche
 pattern, or by the project's own comment through `marker:`. A unit not built yet is
 deferred by its issue, `<!-- surfex: deferred #123[: REASON] -->`, or by the spec unit
 that records the decision, `<!-- surfex: deferred UNIT@VERSION[: REASON] -->`, pinned to
-the version its author judged (spec §13.13). Under
-`claim_grain: true` a classed section with no claim inside is **excused** and a deferred
-one **deferred**: neither is judged by `require:` spec rules nor counted in completeness.
+the version its author judged (spec §13.13). A classed section with no claim inside is
+**excused** and a deferred one **deferred**: neither is judged by `require:` spec rules nor counted in completeness.
 A class excuses the section's own text, never a claim named inside it. A `verifies` or
 `implements` to an excused section is **contradicted** and fails (retire it, or drop the
 class), and a deferral is **stale** once its unit has a test of its own or, under
@@ -126,12 +125,12 @@ it pins: the status names the version to write once the deferral is judged again
 verified unit earns; one to a container or a contained section earns when a verified
 claim inside it has a test (or a check) that exercises the code. Otherwise it is
 unearned: `unverified`, `not_exercised` or `nothing_inside` (`Surfex.Status.earning/2`).
-Under `claim_grain: true` an unearned `implements` meets no `require: code:` rule: the
+An unearned `implements` meets no `require: code:` rule: the
 status lists it as **Unearned**, and fails on it where the policy asks code for an
 `implements` (spec §13.9). Completeness counts code described only by an earning one.
 
 **Code relates to the claim it realises.** With `claim_implements: true` in `.surfex.exs`
-(off by default until claim grain is released), `mix surfex.suggest` proposes
+(off by default), `mix surfex.suggest` proposes
 `implements` between each claim and the code its verifying tests call directly (their
 own calls, private helpers, and resolved routes, events and messages), and prints one
 `reached … through X: N more items` line where a called function reaches more: name the

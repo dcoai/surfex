@@ -198,7 +198,7 @@ defmodule Surfex.MigrateTaskTest do
       end
       """)
 
-      config = [sources: ["spec.md"], tests: ["test/*_test.exs"], claim_grain: true]
+      config = [sources: ["spec.md"], tests: ["test/*_test.exs"]]
       File.write!(Path.join(root, ".surfex.exs"), inspect(config))
 
       File.cd!(root, fn ->
