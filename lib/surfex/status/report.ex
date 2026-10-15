@@ -163,6 +163,12 @@ defmodule Surfex.Status.Report do
         status.inert,
         &"#{&1.file}:#{&1.line} verifies #{Enum.join(&1.ids, ", ")}: #{inert_text(&1.reason)}"
       ),
+      # Information, not a failure (§13.10).
+      items(
+        "Restated (a contract stated differently in several files)",
+        status.restated,
+        &"contract #{&1.contract}: #{Enum.join(&1.units, ", ")}"
+      ),
       # A warning, not a failure (§11.2).
       items(
         "List-shaped keys (a table row's key that may name two things)",
@@ -317,6 +323,8 @@ defmodule Surfex.Status.Report do
         Enum.map(status.triangle, fn g ->
           %{"spec" => g.spec, "gap" => Atom.to_string(g.gap), "test" => g.test, "code" => g.code}
         end),
+      "restated" =>
+        Enum.map(status.restated, fn r -> %{"contract" => r.contract, "units" => r.units} end),
       "inert" =>
         Enum.map(status.inert, fn i ->
           %{
@@ -482,6 +490,10 @@ defmodule Surfex.Status.Report do
           ] ++
             check_stat(status) ++
             if(status.inert == [], do: [], else: [{"inert tags", length(status.inert)}]) ++
+            if(status.restated == [],
+              do: [],
+              else: [{"restated contracts", length(status.restated)}]
+            ) ++
             classed_stat(status) ++
             unearned_stat(status) ++
             [
@@ -580,6 +592,12 @@ defmodule Surfex.Status.Report do
             %{
               "Item" => {:code, i.file},
               "Verifies" => {:raw, coded(Enum.join(i.ids, ", "), inert_text(i.reason))}
+            }
+          end) ++
+          id_group.("restated", ["Item", "Stated in"], status.restated, fn r ->
+            %{
+              "Item" => {:code, "contract #{r.contract}"},
+              "Stated in" => {:raw, Enum.map_intersperse(r.units, ", ", &Span.code/1)}
             }
           end) ++
           id_group.("marks", ["Item", "State", "Note"], status.marks, fn m ->

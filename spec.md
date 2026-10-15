@@ -2721,6 +2721,35 @@ with its why, the JSON gives code, unit and why, and the golden has an unearned 
 header count; without claim_grain: no count, line or table appears
 ```
 
+### 13.10 A contract stated differently in several files
+<!-- surfex: restated-contracts -->
+
+A spec often states one function's contract in more than one file: in the chapter that
+defines it and again in a reference chapter. Within a file that is an error (§11.9);
+across files it is legitimate, but the statements drift apart unseen. A contract stated in
+several spec files whose statements differ is **restated**, listed and never failing.
+
+- Two contract units state the same contract when their ids after the file are equal:
+  the same `Module.name/arity` and the same kind, so a `@callback` never pairs with a
+  `@spec` of the same name (§11.9).
+- Their statements differ when their versions do (§11.1): a signature's text with its
+  whitespace collapsed, so reflowing one changes nothing.
+- `Surfex.Status.derive/4` gives `restated`, one entry per such contract, `%{contract,
+  units}` with the units' ids sorted, whatever its other units' versions; the same
+  statement in several files is not listed. It never makes the status fail and holds with
+  or without `claim_grain:`.
+- `Surfex.Status.Report.text/1` lists each with the units stating it, the JSON gives
+  `restated` (`contract`, `units`), and the status golden holds a `restated` table and
+  counts it in its header, each only where there is one.
+
+```test:restated-listed
+one contract stated in two files with different signatures is listed with both units, and
+the status doesn't fail; the same statement in two files is not listed, nor are two
+functions of one name in two modules, nor a callback and a spec of one name; a statement
+differing only in whitespace is the same; text, JSON and golden show the list only where
+it has an entry
+```
+
 ## 14. Recording
 <!-- surfex: recording -->
 

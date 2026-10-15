@@ -57,6 +57,10 @@ defmodule Surfex.Status do
   `inert:` (`Surfex.Scan.ExUnit.inert/2`), listed so a misplaced tag is visible, never a
   failure.
 
+  A contract stated in several spec files whose statements differ (§13.10) is
+  **restated**: the same function, of the same kind, at more than one version. Listed so
+  the drift is visible, never a failure.
+
   A test that `mix test --only verifies:id` can't select by some of the ids it declares (a
   list tag of several, §11) is **unselectable**, with those ids. A list is legitimate, so
   this is information, never a failure.
@@ -154,6 +158,7 @@ defmodule Surfex.Status do
           unchecked: [%{relation: tuple, test: String.t(), reason: :excluded | :skipped}],
           citations: [Surfex.Cite.t()],
           inert: [Surfex.Scan.ExUnit.inert()],
+          restated: [Surfex.Status.Restated.t()],
           stale: [
             %{
               class: String.t(),
@@ -410,6 +415,8 @@ defmodule Surfex.Status do
       citations: Keyword.get(opts, :citations, []),
       # Information, not a failure (§11.5): a tag that verifies nothing, made visible.
       inert: Keyword.get(opts, :inert, []),
+      # Information, not a failure (§13.10): one contract, stated differently in two files.
+      restated: Surfex.Status.Restated.of(scans),
       stale: stale(scans, relations, Keyword.get(opts, :coverage)),
       failed: failed,
       unproven: unproven,
