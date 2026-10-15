@@ -3039,6 +3039,32 @@ width now and after, widest first; with no section, every section holding sectio
 implements, worst first, and the population split into units and prose
 ```
 
+### 14.2 The migration work list
+<!-- surfex: migration-work-list -->
+
+The report (§14.1) is the migration's **one work list**: it lists, too, the sections whose
+own text has no evidence while a claim inside them is verified, the `:contained` sections
+of §13.4, read as the status reads them (`claim_grain:` and the project's classes, §13.6,
+decide what is contained). `Surfex.Migrate.report/4` takes `Surfex.Status.derive/4`'s
+options, and the task passes the project's.
+- Each contained section's report names the **verified claims inside it**, from the
+  status' `contained` list, sorted: a `contained:` line in the text, `contained` in each
+  section of the JSON. A section that isn't contained names none.
+- With no section named, the report covers every contained section as well as every section
+  holding a section-grain `implements`, **including contained sections that hold no
+  `implements`**: they are settled by a test of their own, by naming their claims, or by a
+  class (§20.1), never by moving code. The population counts the contained sections.
+- `--format json` (`Surfex.Migrate.json/1`) gives the same report, the population and each
+  section with its counts, `contained` and dangle widths, for tools. It is the report's
+  form: without `--report` it is refused, as is any format but text or json.
+
+```test:migrate-report-contained
+the report names the verified claims inside each contained section, none for one that isn't
+contained; with no section named it includes a contained section holding no implements and
+counts the contained sections in the population; --format json gives the same report and is
+refused without --report
+```
+
 ## 15. Suggesting relations
 <!-- surfex: suggesting -->
 

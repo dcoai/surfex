@@ -42,6 +42,19 @@ can dangle fell from 1,128 relations to 413; the widest section went from 81 to 
 widest item from 81 to 6. Projects whose sections are all prose owe the marking first:
 there, the report is the list of where to name claims.
 
+The report is the whole work list (spec §14.2). A **contained** section, one with no test
+of its own while a claim inside it is verified, gets a line naming those claims:
+
+```text
+spec.md#totals (claims are units): 4 relations now → 4 after; implements 0: 0 single · 0 several · 0 none
+  contained: spec.md#totals-empty verified inside, its own text isn't
+```
+
+Contained sections are listed even when they hold no `implements`: there is no code to
+move, but under `claim_grain: true` completeness counts them incomplete until a test checks
+their own prose, their claims are named, or they are classed (spec §20.1). `mix
+surfex.migrate --report --format json` gives the same report for tools.
+
 ## 2. Look at one section's proposals
 
 ```sh

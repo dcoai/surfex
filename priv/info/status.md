@@ -70,7 +70,9 @@ the tracker couldn't answer. `mix surfex.status --issues` asks the tracker throu
 verified claim's test or check exercises, with why (`unverified`, `not_exercised`,
 `nothing_inside`; `mix surfex.info claims`). It meets no `require: code:` rule, and the
 list fails where `require: [code: [:implements]]` is set. `not_exercised` usually means
-the code belongs to another claim: `mix surfex.migrate --report` shows which.
+the code belongs to another claim: `mix surfex.migrate --report` shows which. The same
+report lists each contained section with the verified claims inside it, the migration's
+one work list (spec §14.2).
 
 **Inert** (not failing): a `verifies` tag that applies to no test or property block, so it
 verifies nothing: a `@tag` no test follows, a `@moduletag` or `@describetag` over no test,
