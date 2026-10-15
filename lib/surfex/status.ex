@@ -66,6 +66,12 @@ defmodule Surfex.Status do
   scanned function, and whether it is **unresolved** (its module lists no literal target,
   so a call to it reaches nothing beyond it). Information, never a failure.
 
+  Each `not_claims:` pattern (§13.12), given as `not_claims:` (each pattern's `inspect/1`
+  form, in order), is listed under **not_claims** with the lines of own text it matched
+  and the units they sit in, a pattern matching nothing with `0`, so a pattern that starts
+  swallowing prose shows. A pattern the scans record but the option doesn't name is listed
+  too. Information, never a failure.
+
   A test that `mix test --only verifies:id` can't select by some of the ids it declares (a
   list tag of several, §11) is **unselectable**, with those ids. A list is legitimate, so
   this is information, never a failure.
@@ -173,6 +179,7 @@ defmodule Surfex.Status do
               unresolved: boolean
             }
           ],
+          not_claims: [%{pattern: String.t(), lines: non_neg_integer, units: non_neg_integer}],
           stale: [
             %{
               class: String.t(),
@@ -440,6 +447,8 @@ defmodule Surfex.Status do
       restated: Surfex.Status.Restated.of(scans),
       # Information, not a failure (§11.10): what each declared dispatcher's table lists.
       dispatch: dispatch(scans),
+      # Information, not a failure (§13.12): what each not_claims: pattern left out.
+      not_claims: not_claims(scans, Keyword.get(opts, :not_claims, [])),
       stale: stale(scans, relations, Keyword.get(opts, :coverage)),
       failed: failed,
       unproven: unproven,
@@ -1082,6 +1091,25 @@ defmodule Surfex.Status do
       }
     end
     |> Enum.sort_by(& &1.dispatcher)
+  end
+
+  # Each not_claims: pattern with the own-text lines it matched and the units holding them
+  # (§13.12): the configured ones in order, a pattern matching nothing with 0, then any
+  # other the scans record, sorted.
+  defp not_claims(scans, patterns) do
+    counts =
+      for %Scan{kind: :spec, not_claims: %{lines: lines}} <- scans,
+          {pattern, n} <- lines,
+          reduce: %{} do
+        acc -> Map.update(acc, pattern, {n, 1}, fn {l, u} -> {l + n, u + 1} end)
+      end
+
+    order = Enum.uniq(patterns ++ (counts |> Map.keys() |> Enum.sort()))
+
+    for pattern <- order do
+      {lines, units} = Map.get(counts, pattern, {0, 0})
+      %{pattern: pattern, lines: lines, units: units}
+    end
   end
 
   # The implements relations a current review named a path for (`--through`, §18.2).

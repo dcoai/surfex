@@ -100,6 +100,13 @@ by tagging it on a test that really checks its prose, by naming its prose's clai
 migrating them (the guide "Migrating to claim grain"), or by classing prose that asserts
 nothing.
 
+**Lines that aren't claims** (spec §13.12). `not_claims: [~r/^Legacy reference: \S+$/]`
+in `.surfex.exs` names lines of own text that state nothing, such as provenance. Each line
+is matched as written, and a matched line is left out of what the verdicts and completeness
+read, never out of the version. A section left with only such lines is a container; a
+sentence added beside them makes it a claim again. A sentence naming code is a claim unless
+a pattern says otherwise. The status lists each pattern with the lines it matched.
+
 **Spec text that asserts nothing is classed** (spec §11.7, §13.6). `spec_classes:` in
 `.surfex.exs` declares classes with reasons; a section is classed by
 `<!-- surfex: class NAME[: REASON] -->` on its own line, by a `files:` or `headings:`

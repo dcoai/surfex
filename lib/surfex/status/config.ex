@@ -55,6 +55,10 @@ defmodule Surfex.Status.Config do
     * `:issues` — how to ask the project's tracker for an issue's state, so a deferral
       goes stale when its issue closes: `[command: argv, state: key, project: name]`
       (`issues!/1`, `Surfex.Issues`, §13.7)
+    * `:not_claims` — the lines of a section's or block's own text that aren't claims, as
+      regexes matched against each line (`not_claims!/1`, §13.12):
+      `[~r/^Legacy reference: \S+$/]` leaves provenance lines out of what verification and
+      completeness read, while versions still cover them
   """
 
   alias Surfex.Log.Entry
@@ -84,6 +88,7 @@ defmodule Surfex.Status.Config do
     :claim_grain,
     :spec_classes,
     :issues,
+    :not_claims,
     :checks,
     :adoption,
     :process,
@@ -239,6 +244,25 @@ defmodule Surfex.Status.Config do
   end
 
   @doc """
+  The `not_claims:` patterns (§13.12), regexes matched against each line of a section's or
+  marked block's own text, in order. `[]` without the key. Anything but a list of regexes
+  raises.
+  """
+  @spec not_claims!(keyword) :: [Regex.t()]
+  def not_claims!(config) do
+    case Keyword.get(config, :not_claims, []) do
+      list when is_list(list) ->
+        unless Enum.all?(list, &is_struct(&1, Regex)),
+          do: raise(ArgumentError, "not_claims: must be a list of regexes, got #{inspect(list)}")
+
+        list
+
+      other ->
+        raise ArgumentError, "not_claims: must be a list of regexes, got #{inspect(other)}"
+    end
+  end
+
+  @doc """
   The declared dispatch functions (§11.10), `dispatch: [{Module, :fun, arity}]`, as call
   ids (`Module.fun/arity`), sorted. None without the key. Anything but a list of such
   triples raises.
@@ -374,7 +398,13 @@ defmodule Surfex.Status.Config do
 
     grain = if claim_grain?(config), do: [claim_grain: true], else: []
 
-    [triangle: triangle] ++ grain ++ coverage
+    not_claims =
+      case not_claims!(config) do
+        [] -> []
+        patterns -> [not_claims: Enum.map(patterns, &inspect/1)]
+      end
+
+    [triangle: triangle] ++ grain ++ coverage ++ not_claims
   end
 
   @doc "The `require_red:` policy (`false` by default), validated."
@@ -633,7 +663,8 @@ defmodule Surfex.Status.Config do
         rule_ids: Keyword.get(config, :rule_ids),
         subjects: Keyword.get(config, :subjects, []),
         fold_paths: fold_paths!(config),
-        spec_classes: spec_classes!(config, Scan.Markdown.files(root, sources, exclude))
+        spec_classes: spec_classes!(config, Scan.Markdown.files(root, sources, exclude)),
+        not_claims: not_claims!(config)
       )
 
     if spec == [],

@@ -62,6 +62,9 @@ A keyword list, evaluated as data. An unknown key is refused, naming it.
 - `spec_classes: [{name, reason} | {name, reason, files: globs, headings: regex, marker: regex}]`:
   classes of spec text that asserts nothing, selected by a marker in the section, a
   pattern, or the project's own comment (`mix surfex.info claims`).
+- `not_claims: [regex]`: lines of a section's own text that aren't claims (provenance), each
+  matched as written; left out of verdicts and completeness, never out of versions
+  (`mix surfex.info claims`).
 - `issues: [command: argv, state: key, project: name]`: how `mix surfex.status --issues`
   asks the tracker whether a deferral's issue is open; `{ref}`, `{n}` and `{project}` are
   substituted, no shell, nothing stored.

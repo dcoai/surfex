@@ -33,6 +33,9 @@ defmodule Surfex.Scan do
       `:marker`, `:pattern` or `:alias`. `nil` for an unclassed unit.
     * `deferred` — for a section or block a deferral marker defers (§11.7),
       `%{ref, reason}`: the issue reference and the marker's reason, or `nil`.
+    * `not_claims` — for a section or block whose own text has lines a `not_claims:`
+      pattern matches (§13.12), `%{lines, own_text}`: the lines each pattern matched (by
+      the pattern's `inspect/1` form) and whether any own text is left. `nil` otherwise.
 
   A test record (`Surfex.Scan.ExUnit`) can also **declare** what it relates to, in its
   own source: `declares` is a list of `{type, id}`, such as `{:verifies, "cart-add"}`
@@ -84,7 +87,8 @@ defmodule Surfex.Scan do
     contract: nil,
     check: nil,
     class: nil,
-    deferred: nil
+    deferred: nil,
+    not_claims: nil
   ]
 
   @type location :: %{file: String.t(), lines: {pos_integer, pos_integer} | nil}
@@ -133,7 +137,9 @@ defmodule Surfex.Scan do
               by: :marker | :pattern | :alias
             }
             | nil,
-          deferred: %{ref: String.t(), reason: String.t() | nil} | nil
+          deferred: %{ref: String.t(), reason: String.t() | nil} | nil,
+          # The lines of a unit's own text that aren't claims (§13.12).
+          not_claims: %{lines: %{String.t() => pos_integer}, own_text: boolean} | nil
         }
 
   @doc """

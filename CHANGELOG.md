@@ -460,7 +460,28 @@ to claim grain, with a walkthrough in the new guide "Migrating to claim grain".
   reach the endpoint module, but the endpoint plugs its pipeline (`plug Pipeline`), which
   is no call, so they never reach the dispatcher (proposal #282).
 
-### Changed
+- **Lines a project declares are not claims** (#273, #283). Under claim grain everything in
+  a section that isn't a finer unit is its own text, so a provenance line kept a section
+  contained for good, and classing the section would excuse any sentence added to it later.
+  `not_claims: [~r/^Legacy reference: \S+$/]` in `.surfex.exs` (spec §13.12):
+  - each non-blank line of a section's or marked block's own text is matched as written
+    against the patterns, and a matched line is left out of what the verdicts (§13.4) and
+    completeness (§20) read (`Surfex.Scan.Markdown.claimless?/1`). Versions still cover
+    every line, so editing one still dangles;
+  - a section left with only matched lines is a container; a sentence no pattern matches
+    makes it a claim again. A paragraph naming code is not left out by rule: a project
+    that wants that writes a pattern;
+  - the scan records what each unit's lines matched (`Surfex.Scan` field `not_claims`),
+    and the status lists each pattern with its lines and units, `0` for one matching
+    nothing (derive `not_claims`, text, JSON, and a `not claims` table in `RELATIONS.md`),
+    only where the key is set. A `not_claims:` that isn't a list of regexes is refused.
+
+  **Upgrade step:** none; without the key nothing changes. Measured read-only on the
+  adopter that asked for it: a pattern on its provenance prefix matches 26 lines in 26
+  sections, and none becomes a container yet, because each still has other own text (120
+  contained before and after). 12 of those lines carry behaviour on the same line as the
+  reference, so a pattern on the prefix alone would leave behaviour out: anchor it to the
+  whole line (14 lines are the reference alone) and keep the reference on a line of its own.
 
 - **`Surfex.Item` gains a `dispatch` field** (#272, #281), for scanner authors: on a
   module item, the dispatch functions declared in it with what each one's table lists

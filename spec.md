@@ -2847,6 +2847,63 @@ section above it is unearned as deviates, even when a verified claim's test exer
 code; the text names the why; without claim_grain: none is
 ```
 
+### 13.12 Lines that are not claims
+<!-- surfex: not-claims -->
+
+Everything in a section that isn't a finer unit is its own text (§13.4). A spec that names
+every behavioural statement as a claim can still keep lines that state nothing a test could
+fail on: a provenance line (`Legacy reference: …`), or a sentence naming the code a section
+is realised by. Such a line keeps the section a claim with no evidence of its own, contained
+for good. Classing the section (§11.7) would excuse it, and with it any behavioural sentence
+added later, which no one would then judge. The spec's author knows which lines these are,
+so the project declares them, where config review sees it:
+
+- `not_claims: [~r/^Legacy reference: \S+$/]` in `.surfex.exs`
+  (`Surfex.Status.Config.not_claims!/1`) is a list of regexes. Anything else is refused.
+  `Surfex.Status.Config.scans/2` passes it to `Surfex.Scan.Markdown.sections/3` as
+  `not_claims:`.
+- Each non-blank line of a section's or marked block's own text is matched **as written**,
+  one line at a time, against the patterns in order; the first that matches takes it. A
+  statement wrapped over several lines needs each line matched, and a pattern on a prefix
+  alone takes whatever the line says after it, so anchor it to the whole line. Hints, rules, rows and
+  contracts are always claims and are never matched.
+- A matched line is left out of the unit's own text for verification (§13.4) and
+  completeness (§20) only, read with `Surfex.Scan.Markdown.claimless?/1`: a unit is
+  claimless when its own text is empty or every line of it was matched. A section left with
+  no own text is a **container** and answers through its claims. A sentence added later that
+  no pattern matches is own text again, so the section is a claim, contained when a claim
+  inside it is verified.
+- **Versions are unchanged.** A unit's version still covers every line, matched or not, so
+  editing a provenance line still dangles the unit's relations.
+- A paragraph that only names code is **not** left out by rule. A project that wants that
+  writes a pattern for it, so the choice is visible in config, and a behavioural sentence
+  that happens to name code stays a claim.
+- The scan records what was matched on the unit (`not_claims`, `Surfex.Scan`):
+  `%{lines, own_text}`, the lines each pattern took (by the pattern's `inspect/1` form) and
+  whether any own text is left. `Surfex.Status.derive/4` gives `not_claims`, one entry per
+  pattern, `%{pattern, lines, units}`, the configured ones in order and a pattern matching
+  nothing with `0`, so a pattern that starts swallowing prose, or matches nothing any more,
+  shows. `Surfex.Status.Report.text/1` lists each pattern with its lines and units, the
+  JSON gives `not_claims`, and the status golden holds a `not claims` table, each only
+  where `not_claims:` is set. Information, never a failure.
+
+```test:not-claims-container
+a section whose own text is only a provenance line, with a verified hint inside, is
+contained without not_claims: and a container with a pattern matching that line; its
+version and the hint's are the same either way
+```
+
+```test:not-claims-added-sentence
+adding a sentence no pattern matches beside the matched line makes the section a claim
+again, contained by its verified hint, and completeness counts it
+```
+
+```test:not-claims-reported
+derive lists each pattern with the lines it matched and the units holding them, and a
+pattern matching nothing with 0; text, JSON and golden list them only where not_claims: is
+set; a not_claims: that isn't a list of regexes is refused
+```
+
 ## 14. Recording
 <!-- surfex: recording -->
 

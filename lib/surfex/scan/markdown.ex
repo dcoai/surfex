@@ -113,7 +113,10 @@ defmodule Surfex.Scan.Markdown do
   project's heading grammar (`heading_grammar/1`), and `rule_ids:` the grammar a marked
   list's items are read by, in the same forms. With `fold_paths: true`, a heading with no
   id inside one that has an id is part of that unit. `subjects:` (the profile's, §6.6) says
-  which module a contract fence in a subject section is about.
+  which module a contract fence in a subject section is about. `not_claims:` (regexes, §13.12)
+  names the lines of a section's or marked block's own text that aren't claims: each unit
+  records the lines each pattern matched and whether any own text is left (`not_claims`,
+  `claimless?/1`), and its version still covers every line.
   """
   @spec sections(String.t(), String.t(), keyword) :: [Scan.t()]
   def sections(text, file, opts \\ []) do
@@ -123,6 +126,7 @@ defmodule Surfex.Scan.Markdown do
     lines = text |> String.split("\n") |> Enum.with_index(1)
     subjects = Keyword.get(opts, :subjects, [])
     classes = Keyword.get(opts, :spec_classes, [])
+    patterns = not_claims!(Keyword.get(opts, :not_claims, []))
 
     {sections, units} =
       split(lines, file, {grammar, rule_grammar, subjects, classes}, unclosed(lines))
@@ -154,7 +158,8 @@ defmodule Surfex.Scan.Markdown do
             | named: s.anchor != nil,
               under: Map.get(s, :parent) && Map.fetch!(ids, s.parent),
               class: section_class(s, classes, file),
-              deferred: marked(s.deferred)
+              deferred: marked(s.deferred),
+              not_claims: not_claims(s.body, patterns)
           }
 
     unit_records =
@@ -170,12 +175,49 @@ defmodule Surfex.Scan.Markdown do
         %{
           record(file, "#{file}##{u.id}", u.body, {u.first, u.last}, u.role, within)
           | contract: Map.get(u, :contract),
-            deferred: marked(Map.get(u, :deferred))
+            deferred: marked(Map.get(u, :deferred)),
+            not_claims: if(u.role == :block, do: not_claims(u.body, patterns))
         }
       end
 
     Enum.sort_by(section_records ++ unit_records, &elem(&1.location.lines, 0))
   end
+
+  # The lines of a unit's own text that a `not_claims:` pattern matches (§13.12): each
+  # non-blank line is matched as written against the patterns in order, and the first that
+  # matches takes it. `nil` when none matches; otherwise the lines each pattern took
+  # (by its `inspect/1` form) and whether any own text is left.
+  defp not_claims(_body, []), do: nil
+
+  defp not_claims(body, patterns) do
+    {taken, rest} =
+      body
+      |> Enum.reject(&(String.trim(&1) == ""))
+      |> Enum.map(fn line -> {line, Enum.find(patterns, &Regex.match?(&1, line))} end)
+      |> Enum.split_with(fn {_line, pattern} -> pattern != nil end)
+
+    if taken == [],
+      do: nil,
+      else: %{
+        lines: Enum.frequencies_by(taken, fn {_line, pattern} -> inspect(pattern) end),
+        own_text: rest != []
+      }
+  end
+
+  defp not_claims!(patterns) when is_list(patterns) do
+    Enum.each(patterns, fn
+      %Regex{} ->
+        :ok
+
+      other ->
+        raise ArgumentError, "not_claims: must be a list of regexes, got #{inspect(other)}"
+    end)
+
+    patterns
+  end
+
+  defp not_claims!(other),
+    do: raise(ArgumentError, "not_claims: must be a list of regexes, got #{inspect(other)}")
 
   defp record(file, id, body, lines, role, within),
     do: %Scan{
@@ -1303,6 +1345,15 @@ defmodule Surfex.Scan.Markdown do
   """
   @spec empty?(Surfex.Scan.t()) :: boolean
   def empty?(%Surfex.Scan{kind: :spec, hash: hash}), do: hash == hash([])
+
+  @doc """
+  Whether a spec unit states nothing of its own: it is `empty?/1`, or every line of its own
+  text is one a `not_claims:` pattern matched (§13.12). What verification (§13.4) and
+  completeness (§20) read as own text; its version still covers every line.
+  """
+  @spec claimless?(Surfex.Scan.t()) :: boolean
+  def claimless?(%Surfex.Scan{kind: :spec, not_claims: %{own_text: false}}), do: true
+  def claimless?(%Surfex.Scan{kind: :spec} = scan), do: empty?(scan)
 
   # Whitespace carries no meaning in prose: collapse it, so reflowing a paragraph or adding
   # blank lines is not a change.
