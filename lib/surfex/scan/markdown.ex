@@ -76,6 +76,10 @@ defmodule Surfex.Scan.Markdown do
   @class_name ~r/^([A-Za-z0-9_-]+)(?:\s*:\s*(\S.*))?$/
   @deferral ~r/^([^\s:]+)(?:\s*:\s*(\S.*))?$/
   @issue_ref ~r/^(?:[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*)?#\d+$/
+  # A deferral citing a spec unit (§13.13): the reference (no `:` or `@`), an optional
+  # `@VERSION` pin and an optional reason.
+  @unit_deferral ~r/^([^:@]*[^:@\s])\s*(?:@(\S+?))?(?:\s*:\s*(\S.*))?$/
+  @pin ~r/^[0-9a-f]{8}$/
 
   @doc """
   Every unit of every markdown file of the spec under `root`, in order: the files
@@ -88,6 +92,44 @@ defmodule Surfex.Scan.Markdown do
     |> Enum.flat_map(fn file ->
       root |> Path.join(file) |> File.read!() |> sections(file, opts)
     end)
+    |> cited(Keyword.get(opts, :unit_refs, []))
+  end
+
+  # Each deferral that cites a spec unit (§13.13), resolved against the whole spec with the
+  # project's `unit_refs:`: its `cites` is the unit's full id. One that names no unit, or
+  # several, raises naming its file and line, as a malformed marker does.
+  defp cited(scans, unit_refs) do
+    if Enum.any?(scans, &cites?/1) do
+      resolver = Scan.resolver(scans, unit_refs)
+
+      for scan <- scans do
+        if cites?(scan),
+          do: %{scan | deferred: %{scan.deferred | cites: cite!(resolver, scan)}},
+          else: scan
+      end
+    else
+      scans
+    end
+  end
+
+  defp cites?(%Scan{deferred: %{cites: nil}}), do: true
+  defp cites?(_scan), do: false
+
+  defp cite!(resolver, %Scan{deferred: %{ref: ref, line: line}, location: %{file: file}}) do
+    case Scan.resolve(resolver, ref) do
+      {:ok, unit} ->
+        unit.id
+
+      {:error, :unknown} ->
+        raise ArgumentError,
+              "#{file}:#{line}: the deferral cites #{inspect(ref)}, which is no spec unit: " <>
+                "a deferral names an issue (#123) or a spec unit the spec's sources scan"
+
+      {:error, {:ambiguous, ids}} ->
+        raise ArgumentError,
+              "#{file}:#{line}: the deferral cites #{inspect(ref)}, which names several spec " <>
+                "units (#{Enum.join(ids, ", ")}): cite one by its full id"
+    end
   end
 
   @doc """
@@ -694,8 +736,9 @@ defmodule Surfex.Scan.Markdown do
 
   # ── Classes and deferrals (§11.7) ───────────────────────────────────────
 
-  # A class or deferral marker on this line: `{:class, name, note, by}` or
-  # `{:deferred, ref, reason}`, or nil. A malformed one is an error, never section text.
+  # A class or deferral marker on this line: `{:class, name, note, by}`,
+  # `{:deferred, ref, reason}` or `{:deferred_unit, ref, pin, reason}` (§13.13), or nil. A
+  # malformed one is an error, never section text.
   defp class_line(st, line, no) do
     cond do
       match = Regex.run(@class_marker, line, capture: :all_but_first) ->
@@ -717,15 +760,11 @@ defmodule Surfex.Scan.Markdown do
             nil -> {text, nil}
           end
 
-        unless Regex.match?(@issue_ref, ref),
-          do:
-            fail(
-              st,
-              no,
-              "a deferral names its issue: <!-- surfex: deferred #123[: REASON] --> or group/project#123, got #{inspect(ref)}"
-            )
-
-        {:deferred, ref, reason}
+        cond do
+          Regex.match?(@issue_ref, ref) -> {:deferred, ref, reason}
+          String.starts_with?(text, "#") -> fail(st, no, issue_or_unit(ref))
+          true -> unit_deferral(st, no, text)
+        end
 
       class = alias_class(st, line) ->
         {:class, class, nil, :alias}
@@ -734,6 +773,40 @@ defmodule Surfex.Scan.Markdown do
         nil
     end
   end
+
+  # A deferral citing a spec unit, `REF[@VERSION][: REASON]` (§13.13): resolved once the
+  # whole spec is scanned (`records/4`), so `cites` is nil until then.
+  defp unit_deferral(st, no, text) do
+    case Regex.run(@unit_deferral, text, capture: :all_but_first) do
+      nil ->
+        fail(st, no, issue_or_unit(text))
+
+      [ref | rest] ->
+        {pin, reason} =
+          case rest do
+            [] -> {nil, nil}
+            [pin] -> {pin, nil}
+            [pin, reason] -> {pin, reason}
+          end
+
+        pin = if pin == "", do: nil, else: pin
+
+        if pin != nil and not Regex.match?(@pin, pin),
+          do:
+            fail(
+              st,
+              no,
+              "a deferral pins the cited unit's version, 8 lowercase hex characters (REF@1a2b3c4d), got #{inspect(pin)}"
+            )
+
+        {:deferred_unit, ref, pin, reason}
+    end
+  end
+
+  defp issue_or_unit(ref),
+    do:
+      "a deferral names its issue, <!-- surfex: deferred #123[: REASON] --> or group/project#123, " <>
+        "or cites a spec unit, <!-- surfex: deferred UNIT[@VERSION][: REASON] -->, got #{inspect(ref)}"
 
   defp declared!(st, no, name) do
     Enum.find(st.classes, &(&1.name == name)) ||
@@ -760,11 +833,17 @@ defmodule Surfex.Scan.Markdown do
         "a class marker classes sections only: it can't sit in block #{block.id} (line #{block.first})"
       )
 
-  defp class_unit(%{block: block} = st, {:deferred, ref, reason}, no) when block != nil do
-    if block.deferred,
-      do: fail(st, no, "block #{block.id} is already deferred (line #{block.deferred.line})")
+  defp class_unit(%{block: block} = st, {:deferred, _ref, _reason} = marker, no)
+       when block != nil,
+       do: defer_block(st, deferral(marker, no), no)
 
-    %{st | block: %{block | deferred: %{ref: ref, reason: reason, line: no}}}
+  defp class_unit(%{block: block} = st, {:deferred_unit, _, _, _} = marker, no)
+       when block != nil,
+       do: defer_block(st, deferral(marker, no), no)
+
+  defp class_unit(%{cur: cur} = st, {:deferred_unit, _, _, _} = marker, no) do
+    marked_twice!(st, cur, no)
+    %{st | cur: %{cur | deferred: deferral(marker, no)}}
   end
 
   defp class_unit(%{cur: cur} = st, {:class, class, note, by}, no) do
@@ -773,10 +852,25 @@ defmodule Surfex.Scan.Markdown do
     %{st | cur: %{cur | class: class}}
   end
 
-  defp class_unit(%{cur: cur} = st, {:deferred, ref, reason}, no) do
+  defp class_unit(%{cur: cur} = st, {:deferred, _ref, _reason} = marker, no) do
     marked_twice!(st, cur, no)
-    %{st | cur: %{cur | deferred: %{ref: ref, reason: reason, line: no}}}
+    %{st | cur: %{cur | deferred: deferral(marker, no)}}
   end
+
+  defp defer_block(%{block: block} = st, deferral, no) do
+    if block.deferred,
+      do: fail(st, no, "block #{block.id} is already deferred (line #{block.deferred.line})")
+
+    %{st | block: %{block | deferred: deferral}}
+  end
+
+  # What a deferral marker records: an issue's `%{ref, reason}`, or a unit citation's
+  # `%{ref, reason, cites, pin}` (§13.13), each with its line until the scan ends. A
+  # citation keeps its line, which a report names where the pin is written.
+  defp deferral({:deferred, ref, reason}, no), do: %{ref: ref, reason: reason, line: no}
+
+  defp deferral({:deferred_unit, ref, pin, reason}, no),
+    do: %{ref: ref, reason: reason, cites: nil, pin: pin, line: no}
 
   defp marked_twice!(st, cur, no) do
     case cur.class || cur.deferred do
@@ -801,6 +895,7 @@ defmodule Surfex.Scan.Markdown do
 
   # What a record keeps of a marker: everything but its line.
   defp marked(nil), do: nil
+  defp marked(%{cites: _} = citation), do: citation
   defp marked(marker), do: Map.delete(marker, :line)
 
   # The first declared class whose pattern matches a section: `files:` its file, `headings:`

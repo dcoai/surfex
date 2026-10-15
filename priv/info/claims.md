@@ -111,13 +111,16 @@ a pattern says otherwise. The status lists each pattern with the lines it matche
 `.surfex.exs` declares classes with reasons; a section is classed by
 `<!-- surfex: class NAME[: REASON] -->` on its own line, by a `files:` or `headings:`
 pattern, or by the project's own comment through `marker:`. A unit not built yet is
-deferred by its issue, `<!-- surfex: deferred #123[: REASON] -->`. Under
+deferred by its issue, `<!-- surfex: deferred #123[: REASON] -->`, or by the spec unit
+that records the decision, `<!-- surfex: deferred UNIT@VERSION[: REASON] -->`, pinned to
+the version its author judged (spec §13.13). Under
 `claim_grain: true` a classed section with no claim inside is **excused** and a deferred
 one **deferred**: neither is judged by `require:` spec rules nor counted in completeness.
 A class excuses the section's own text, never a claim named inside it. A `verifies` or
 `implements` to an excused section is **contradicted** and fails (retire it, or drop the
 class), and a deferral is **stale** once its unit has a test of its own or, under
-`mix surfex.status --issues`, its issue is closed.
+`mix surfex.status --issues`, its issue is closed, or the unit it cites isn't the version
+it pins: the status names the version to write once the deferral is judged again.
 
 **Code earns through the claim that exercises it** (spec §13.5). An `implements` to a
 verified unit earns; one to a container or a contained section earns when a verified
