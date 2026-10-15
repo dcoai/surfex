@@ -99,7 +99,7 @@ defmodule Mix.Tasks.Surfex.Suggest do
         do:
           Mix.shell().info(
             "retire      implements #{m.code} ↔ #{m.section} (moved to #{Enum.join(m.claims, ", ")}, " <>
-              "which hold it now)"
+              "which #{if match?([_], m.claims), do: "holds", else: "hold"} it now)"
           )
 
     for x <- suggestions.excuses do

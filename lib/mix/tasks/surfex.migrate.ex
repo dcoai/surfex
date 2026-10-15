@@ -11,6 +11,7 @@ defmodule Mix.Tasks.Surfex.Migrate do
       mix surfex.migrate spec.md#carts --code MyApp.Cart.add/2 --to spec.md#adding
       mix surfex.migrate --report                        # every section, worst first
       mix surfex.migrate --report spec.md#carts          # what migrating it buys
+      mix surfex.migrate --report --format json          # the work list, for tools
 
   For each live `implements` between code and the section (or a table in it), it lists
   the claims inside the section that could own the code: a row whose key names it (an
@@ -44,6 +45,12 @@ defmodule Mix.Tasks.Surfex.Migrate do
   holding section-grain `implements`, worst first, after the population: the sections whose
   claims are already units (they migrate today) and the prose ones (they need claim forms,
   spec §11.1).
+
+  It is the migration's one work list (spec §14.2): a **contained** section, one with no
+  `verifies` of its own while a claim inside it is verified, gets a `contained:` line
+  naming those claims, and with no section named every contained section is reported,
+  those holding no `implements` too, with their count in the population. `--format json`
+  gives the same report as JSON (`Surfex.Migrate.json/1`).
   """
 
   use Mix.Task
@@ -59,13 +66,16 @@ defmodule Mix.Tasks.Surfex.Migrate do
         report: :boolean,
         accept: :boolean,
         code: :string,
-        to: :keep
+        to: :keep,
+        format: :string
       )
 
     {root, scans, entries, meta} = R.context(opts)
     config = Surfex.Status.Config.read!(Path.join(root, opts[:config] || ".surfex.exs"))
     # What is trusted (§18.1), so a section's baseline carries to its claims.
     derive = [adoption: Surfex.Status.Config.adoption!(config, root)]
+    # What reads as contained (§13.4, §13.6), as the status reads it: `claim_grain:`, classes.
+    options = Surfex.Status.Config.options!(config)
     refs = for ref <- R.units(refs, scans, opts), do: String.replace_prefix(ref, "spec:", "")
 
     sections =
@@ -78,9 +88,27 @@ defmodule Mix.Tasks.Surfex.Migrate do
       end
       |> Enum.uniq()
 
+    format = opts[:format] || "text"
+
+    unless format in ["text", "json"],
+      do: Mix.raise("--format must be text or json, got #{inspect(format)}")
+
+    if format == "json" and opts[:report] != true,
+      do: Mix.raise("--format json is the report's: add --report")
+
     cond do
       opts[:report] ->
-        report(Migrate.report(scans, entries, if(refs == [], do: :all, else: sections)), refs)
+        report =
+          Migrate.report(
+            scans,
+            entries,
+            if(refs == [], do: :all, else: sections),
+            options ++ derive
+          )
+
+        if format == "json",
+          do: Mix.shell().info(Migrate.json(report)),
+          else: report(report, refs)
 
       sections == [] ->
         Mix.raise("name a section: mix surfex.migrate SECTION [--within], or --report")
@@ -208,6 +236,13 @@ defmodule Mix.Tasks.Surfex.Migrate do
         "  prose: #{pop.prose.sections} sections, #{pop.prose.implements} implements " <>
           "(their claims need ids first, spec §11.1)"
       )
+
+      if pop.contained.sections > 0,
+        do:
+          Mix.shell().info(
+            "  contained: #{pop.contained.sections} sections (a claim inside is verified, " <>
+              "their own text isn't, spec §14.2)"
+          )
     end
 
     for s <- sections do
@@ -220,6 +255,12 @@ defmodule Mix.Tasks.Surfex.Migrate do
           if(s.migrating > 0, do: " · #{s.migrating} migrating", else: "") <>
           if(s.marking > 0, do: "; marking dangles #{s.marking} once", else: "")
       )
+
+      if s.contained != [],
+        do:
+          Mix.shell().info(
+            "  contained: #{Enum.join(s.contained, ", ")} verified inside, its own text isn't"
+          )
 
       for w <- s.widths do
         Mix.shell().info(

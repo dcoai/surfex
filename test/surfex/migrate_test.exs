@@ -186,12 +186,56 @@ defmodule Surfex.MigrateTest do
     # A prose section needs its claims named first: the marking dangles all it holds.
     assert %{section: @p, kind: :prose, relations: 1, marking: 1, none: 1, after: 1} = p
 
-    assert population == %{
+    assert %{
              units: %{sections: 1, implements: 6},
              prose: %{sections: 1, implements: 1}
-           }
+           } = population
 
     assert %{sections: [%{section: @p}]} = Migrate.report(scans(), entries(), [@p])
+  end
+
+  @tag verifies: ["migrate-report-contained", "migration-work-list"]
+  test "the report is the work list: each contained section with the claims verified inside" do
+    # A third section, holding no implements, whose hint alone is verified.
+    c = "spec.md#c"
+    h3 = "spec.md#h3"
+    t3 = "MTest: counts"
+
+    scans =
+      scans() ++
+        [spec(c, :section, nil), spec(h3, :test_hint, c), test_scan(t3, ["M.other/1"])]
+
+    entries =
+      entries() ++
+        [
+          Entry.new!(
+            at: "2026-10-14T10:00:00Z",
+            op: :relate,
+            type: :verifies,
+            basis: :evidence,
+            ends: [%{kind: :test, id: t3, hash: "t1"}, %{kind: :spec, id: h3, hash: "s1"}]
+          )
+        ]
+
+    %{sections: reports, population: population} = Migrate.report(scans, entries, :all)
+    by = Map.new(reports, &{&1.section, &1})
+
+    # Contained: no verifies of its own, a verified claim inside. Named, sorted.
+    assert Map.get(by[@s], :contained) == [@h1, @h2]
+    # A contained section holding no implements is on the work list too.
+    assert %{implements: 0, single: 0, none: 0} = by[c]
+    assert Map.get(by[c], :contained) == [h3]
+    # A section with nothing verified inside isn't contained.
+    assert Map.get(by[@p], :contained) == []
+    assert Map.get(population, :contained) == %{sections: 2}
+
+    # Named, a section is reported whether contained or not; the same in JSON.
+    assert %{sections: [%{section: ^c}]} = report = Migrate.report(scans, entries, [c])
+
+    assert %{
+             "population" => %{"contained" => %{"sections" => 1}},
+             "sections" => [%{"section" => ^c, "contained" => [^h3], "kind" => "units"}]
+           } = report |> Migrate.json() |> :json.decode()
   end
 
   describe "migrating" do

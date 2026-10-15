@@ -418,6 +418,24 @@ to claim grain, with a walkthrough in the new guide "Migrating to claim grain".
   spec. This is the upgrade step of §20.1 done on a spec of 267 claims, as a reference
   for the work it asks.
 
+- **`mix surfex.migrate --report` is the migration's one work list** (#269, #280), as
+  #256 promised. Each **contained** section (no `verifies` of its own while a claim inside
+  it is verified, spec §13.4) gets a `contained:` line naming the verified claims inside
+  it, and with no section named the report covers every contained section, including
+  those holding no `implements`, which it used to leave out; the population counts them
+  (spec §14.2). `--format json` gives the same report for tools
+  (`Surfex.Migrate.json/1`; refused without `--report`). `Surfex.Migrate.report/4` takes
+  `Surfex.Status.derive/4`'s options, and the task passes the project's `claim_grain:` and
+  classes, so what reads as contained is what the status says.
+
+  Measured read-only over eight adopters with a relation log, under `claim_grain: true`:
+  the report now lists 2 to 120 contained sections per project (220 in all), of which 85
+  hold no `implements` and were missing from it before; one project's report went from no
+  sections to 11. Surfex's own lists none, its contained sections settled under #263.
+
+  **Upgrade step:** none; the text report gains lines, never loses any. A tool reading the
+  report's population as two kinds should expect a third key, `contained`.
+
 ### Changed
 
 - **A deviation holds back the `implements` it says the code doesn't meet** (#255, #279).
@@ -448,6 +466,9 @@ to claim grain, with a walkthrough in the new guide "Migrating to claim grain".
   is unearned as `deviates` until the fix lands.
 
 ### Fixed
+
+- **`mix surfex.suggest` agrees in number** (#269, #280): a settled migration moved to one
+  claim reads `(moved to X, which holds it now)`; to several, `which hold it now`.
 
 - **A contract signature ends where its text parses, not at its indentation** (#271,
   #276). B.1's contract fences ended a signature at the first line not indented deeper

@@ -358,6 +358,7 @@ defmodule Surfex.Migrate do
           several: non_neg_integer,
           none: non_neg_integer,
           migrating: non_neg_integer,
+          contained: [String.t()],
           widths: [
             %{
               codes: [String.t()],
@@ -370,7 +371,8 @@ defmodule Surfex.Migrate do
 
   @doc """
   What migrating each of `sections` buys, or with `:all` every section holding a
-  section-grain `implements` (§14.1). Per section:
+  section-grain `implements` or `:contained` (§14.1, §14.2): the migration's work list.
+  Per section:
 
     * `relations` — the live relations on the section, of every type: what one edit of
       its text dangles now. `after`: those left once each code item with a candidate
@@ -384,24 +386,33 @@ defmodule Surfex.Migrate do
       its claim dangles: `now`, the unit's live relations; `after`, the claim's own plus
       the moved ones (the widest candidate's, for several), or the section's `after` for
       a code item with no candidate. Widest after first.
+    * `contained` — for a `:contained` section (§13.4), the verified claims inside it,
+      sorted: its own text has no evidence while theirs has. `[]` for any other section.
 
-  Sorted worst first: by `relations`, then id.
+  Sorted worst first: by `relations`, then id. `population` counts the sections by kind,
+  and how many are contained. `opts` are `Surfex.Status.derive/4`'s: `claim_grain:` and a
+  project's classes decide what reads as contained, as in the status.
   """
-  @spec report([Scan.t()], [Entry.t()], [String.t()] | :all) :: %{
+  @spec report([Scan.t()], [Entry.t()], [String.t()] | :all, keyword) :: %{
           sections: [section_report],
           population: %{
             units: %{sections: non_neg_integer, implements: non_neg_integer},
-            prose: %{sections: non_neg_integer, implements: non_neg_integer}
+            prose: %{sections: non_neg_integer, implements: non_neg_integer},
+            contained: %{sections: non_neg_integer}
           }
         }
-  def report(scans, entries, sections) do
-    ix = index(scans, Status.derive(scans, entries))
+  def report(scans, entries, sections, opts \\ []) do
+    ix = index(scans, Status.derive(scans, entries, [], opts))
 
     sections =
       case sections do
         :all ->
           for section <- ix.sections,
-              Enum.any?([section | Map.get(ix.tables, section, [])], &(groups(ix, &1) != [])),
+              Map.has_key?(ix.contained, section) or
+                Enum.any?(
+                  [section | Map.get(ix.tables, section, [])],
+                  &(groups(ix, &1) != [])
+                ),
               do: section
 
         list ->
@@ -418,8 +429,51 @@ defmodule Surfex.Migrate do
         of = Enum.filter(reports, &(&1.kind == kind))
         {kind, %{sections: length(of), implements: Enum.sum_by(of, & &1.implements)}}
       end
+      |> Map.put(:contained, %{sections: Enum.count(reports, &(&1.contained != []))})
 
     %{sections: reports, population: population}
+  end
+
+  @doc """
+  The report (`report/4`) as JSON, as `mix surfex.migrate --report --format json` prints
+  it: `population` and `sections`, each section with its counts, `contained` (the verified
+  claims inside it) and `widths`.
+  """
+  @spec json(%{sections: [section_report], population: map}) :: String.t()
+  def json(%{sections: sections, population: population}) do
+    %{
+      "population" =>
+        Map.new(population, fn {kind, counts} ->
+          {Atom.to_string(kind), Map.new(counts, fn {k, v} -> {Atom.to_string(k), v} end)}
+        end),
+      "sections" =>
+        for s <- sections do
+          %{
+            "section" => s.section,
+            "kind" => Atom.to_string(s.kind),
+            "relations" => s.relations,
+            "after" => s.after,
+            "marking" => s.marking,
+            "implements" => s.implements,
+            "single" => s.single,
+            "several" => s.several,
+            "none" => s.none,
+            "migrating" => s.migrating,
+            "contained" => s.contained,
+            "widths" =>
+              for w <- s.widths do
+                %{
+                  "codes" => w.codes,
+                  "outcome" => Atom.to_string(w.outcome),
+                  "now" => w.now,
+                  "after" => w.after
+                }
+              end
+          }
+        end
+    }
+    |> :json.encode()
+    |> IO.iodata_to_binary()
   end
 
   defp section_report(ix, section) do
@@ -461,6 +515,7 @@ defmodule Surfex.Migrate do
       several: count.([:several]),
       none: count.([:none]),
       migrating: count.([:migrating]),
+      contained: Map.get(ix.contained, section, []),
       widths: widths
     }
   end
@@ -571,6 +626,7 @@ defmodule Surfex.Migrate do
         ),
       within: within,
       migrating: Map.new(status.migrating, &{{&1.code, &1.section}, &1}),
+      contained: Map.new(status.contained, &{&1.unit, Enum.sort(&1.inside)}),
       validated: validated,
       declined: declined,
       spec: spec,
