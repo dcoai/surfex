@@ -418,6 +418,35 @@ to claim grain, with a walkthrough in the new guide "Migrating to claim grain".
   spec. This is the upgrade step of §20.1 done on a spec of 267 claims, as a reference
   for the work it asks.
 
+### Changed
+
+- **A deviation holds back the `implements` it says the code doesn't meet** (#255, #279).
+  `mix surfex.confirm --evidence` no longer validates an `implements`, dangling or
+  proposed, whose spec unit is deviating or holds a deviating unit at any depth (spec
+  §13.11): a module that fails one of its section's requirements doesn't implement the
+  section, however green its other tests are. Each the evidence would have validated is
+  listed as `held back by a deviation: implements code … ↔ spec … (deviates: #119)`; once
+  the tag goes and the test passes, the next evidence run validates it. A deviation test's
+  failing run still records its `verifies`. `Surfex.Status.derive/4` gives `held` (each
+  held unit with its references), which also marks a proposed relation `deviates`, and
+  `Surfex.Record.evidence_outcome/4` returns the held list beside the entries. Under
+  `claim_grain: true` a section a deviating one sits under is held too, and
+  `Surfex.Status.earning/2` answers `{:unearned, :deviates}` for an `implements` to a held
+  unit, asked first, so `unearned`, `require: code:` and completeness agree with confirm.
+  No new option; `deviations: :fail` is unchanged.
+
+  Measured read-only over the adopters before release: only one tags deviations, and none
+  are left at its head. At the commit that tagged them (23 deviating units, 4 references)
+  17 proposed `implements` would have been held back (19 under claim grain, plus one
+  validated relation now unearned as `deviates`, 11 code items unmet); a later commit
+  with 5 deviating units held 3 (4). Those are the relations that project withdrew by hand
+  after each evidence run.
+
+  **Upgrade step:** none for a project without deviation tags. With them, expect
+  `mix surfex.confirm --evidence` to list held relations instead of recording them;
+  stop withdrawing them by hand. Under `claim_grain: true`, an `implements` to a held unit
+  is unearned as `deviates` until the fix lands.
+
 ### Fixed
 
 - **A contract signature ends where its text parses, not at its indentation** (#271,

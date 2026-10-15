@@ -83,7 +83,9 @@ with its reference, and its `proposed` relations don't fail. The gate can be joi
 the deviations are fixed. Completeness counts the unit incomplete (`deviates (#119)`), and
 `RELATIONS.md` keeps the ledger. Run the deviation tests with their skips included now and
 then (`mix surfex.test --deviations`, then `mix surfex.status --evidence`). A deviation
-test that passes fails the status as stale.
+test that passes fails the status as stale. Meanwhile `mix surfex.confirm --evidence`
+doesn't validate an `implements` to the deviating unit or to a section holding it: it
+lists each as held back by the deviation, and validates it on the first run after the fix.
 When the fix lands, drop the tag and the skip, and validate as for any change. A release
 can hold every deviation with `mix surfex.status --no-deviations`.
 

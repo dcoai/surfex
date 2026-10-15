@@ -34,7 +34,9 @@ the spec, watch it fail, and tag it `@tag deviation: "#119", skip: "known deviat
 (#119)"`. Its units are listed under **Deviating** with the reference; their `proposed`
 relations (marked `deviates`) don't fail, and a failed run of it isn't Failed. Check it
 with the skip included (`mix surfex.test --deviations` runs exactly those): once it
-passes, status fails it as a stale deviation.
+passes, status fails it as a stale deviation. While the tag is on, `mix surfex.confirm
+--evidence` holds back (lists, doesn't validate) any `implements` to the unit or a unit
+holding it, and under `claim_grain: true` such a relation is unearned as `deviates`.
 
 Not failing: new, planned, impacted, deviating (unless `--no-deviations`), open marks (unless `--no-marks`), claims not
 checked here because this run excluded or skipped their test, and tests unselectable by

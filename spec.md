@@ -2750,6 +2750,48 @@ differing only in whitespace is the same; text, JSON and golden show the list on
 it has an entry
 ```
 
+### 13.11 A deviation holds back what it sits in
+<!-- surfex: deviation-holds -->
+
+A deviation (§13.1) says the code doesn't meet a unit yet. Code related to a section that
+holds that unit doesn't meet the section either, however green its other tests are. The
+deviation **holds back** the units it says that of, and nothing validates or earns an
+`implements` to one of them while the tag is on.
+
+- `Surfex.Status.derive/4` gives `held`: each spec unit a deviation holds back, with the
+  references of its deviations, sorted. That is every deviating unit and each unit it sits
+  in (`within`), at any depth; under `claim_grain: true` (§13.2) also each section it
+  sits under (`under`). A proposed relation is marked `deviates` when its spec end is
+  held, so under claim grain a section above the deviating one is marked too.
+- `mix surfex.confirm --evidence` (`Surfex.Record.confirm_by_evidence/4`) doesn't record
+  an `implements`, dangling or proposed, whose spec unit is held, whatever the evidence
+  says. It lists each one the evidence would have validated as `held back by a
+  deviation`, with the references (`Surfex.Record.evidence_outcome/4`), and reads the
+  project's `claim_grain:` to decide what is held. Other relations are confirmed as
+  before: a deviation test's failing run is still its `verifies` relation's evidence.
+- Once the tag goes and the test passes, nothing is held, and the next evidence run
+  validates them as it would have.
+
+```test:deviation-holds-back
+with a deviation tag on a hint, confirm by evidence records neither the hint's nor its
+section's implements and lists both as held back with the reference, while it still
+records the verifies; a section the deviating one sits under is held only under
+claim_grain: true; with the tag off and the test passing, the next run validates them
+```
+
+Under `claim_grain: true` an `implements` whose spec unit is held is unearned (§13.9),
+asked before anything else: `Surfex.Status.earning/2` answers `{:unearned, :deviates}`.
+So `unearned` lists it with why `deviates` and it meets no `require: code:` rule; code
+with no other `implements` that earns misses `unearned` in completeness (§20.3). Status
+and confirm agree: what confirm holds back doesn't earn. Without
+`claim_grain:` earning reads as before.
+
+```test:deviation-unearned
+under claim_grain: true an implements to a deviating hint, to its section, or to a
+section above it is unearned as deviates, even when a verified claim's test exercises the
+code; the text names the why; without claim_grain: none is
+```
+
 ## 14. Recording
 <!-- surfex: recording -->
 
