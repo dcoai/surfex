@@ -28,6 +28,12 @@ defmodule Mix.Tasks.Surfex.Confirm do
 
       mix test && mix surfex.confirm --evidence
 
+  It never validates an `implements` whose spec unit a deviation holds back (§13.11): a
+  unit a test declares with `@tag deviation:`, or one it sits in (under `claim_grain:
+  true`, a section it sits under too). Each the evidence would have validated is listed
+  as `held back by a deviation`, with the references; once the tag goes and the test
+  passes, the next evidence run validates it.
+
   With `require_red: true` in `.surfex.exs`, a `tests` relation isn't confirmed by hand
   until its test's current version has failed first.
   """
@@ -83,11 +89,27 @@ defmodule Mix.Tasks.Surfex.Confirm do
       opts[:evidence] == true ->
         # A baselined test counts as discriminated under the project's adoption: (§18.1).
         config = Config.read!(Path.join(root, opts[:config] || ".surfex.exs"))
-        meta = Keyword.put(meta, :adoption, Config.adoption!(config, root))
+        # Under claim_grain:, a deviation holds back the sections it sits under (§13.11).
+        meta =
+          meta
+          |> Keyword.put(:adoption, Config.adoption!(config, root))
+          |> Keyword.put(:claim_grain, Config.claim_grain?(config))
 
-        case Surfex.Record.confirm_by_evidence(scans, entries, evidence, meta) do
-          {:ok, []} -> Mix.shell().info("nothing to confirm by evidence")
-          result -> R.record(root, result)
+        case Surfex.Record.evidence_outcome(scans, entries, evidence, meta) do
+          {:ok, confirmed, held} ->
+            Enum.each(held, fn %{relation: {type, {ak, a}, {bk, b}}, deviates: refs} ->
+              Mix.shell().info(
+                "held back by a deviation: #{type}  #{ak} #{a} ↔ #{bk} #{b} " <>
+                  "(deviates: #{Enum.join(refs, ", ")})"
+              )
+            end)
+
+            if confirmed == [] and held == [],
+              do: Mix.shell().info("nothing to confirm by evidence"),
+              else: R.record(root, {:ok, confirmed})
+
+          error ->
+            R.record(root, error)
         end
 
       true ->

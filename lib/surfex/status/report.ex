@@ -894,6 +894,9 @@ defmodule Surfex.Status.Report do
 
   defp unearned_text(:nothing_inside), do: "nothing_inside: a container with no claims"
 
+  defp unearned_text(:deviates),
+    do: "deviates: a test declares the code doesn't meet the unit, or a unit inside it, yet"
+
   # Counted under claim_grain: true (§13.9), so other reports read as before.
   defp unearned_count(%{policy: %{claim_grain: true}} = status) do
     fails = if status.policy.unearned == :fail, do: " (failing: require: code:)", else: ""

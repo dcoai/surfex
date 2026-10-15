@@ -68,9 +68,10 @@ defmodule Surfex.Status do
   A spec unit a test declares with `@tag deviation: "<ref>"` (§11) is **deviating**: the
   spec is right, the code doesn't meet it yet, and the reference names what will fix it.
   Its test is red, and skipped to keep the suite green. Each is listed with its test and
-  reference, and, given evidence, the test's last result there. A proposed relation to a
-  deviating unit, or to a unit it sits in, is marked `deviates` (its references) and
-  doesn't fail: it is reported, as a planned one is. A deviation
+  reference, and, given evidence, the test's last result there. The deviation **holds
+  back** the unit and each unit it sits in (`held`, §13.11; under `claim_grain: true` the
+  sections it sits under too). A proposed relation to a held unit is marked `deviates`
+  (its references) and doesn't fail: it is reported, as a planned one is. A deviation
   test that failed is listed with its deviation, not as failed. One that **passed**, at
   its version, is a stale deviation and fails: the code meets the unit now, so the tag
   comes off and the relations are validated. A skipped test never passed, so without a
@@ -199,13 +200,15 @@ defmodule Surfex.Status do
             inside: %{String.t() => [String.t()]},
             own: %{String.t() => MapSet.t(String.t())},
             exercises: %{String.t() => MapSet.t(term)},
-            through: MapSet.t(tuple)
+            through: MapSet.t(tuple),
+            held: %{String.t() => [String.t()]}
           },
+          held: %{String.t() => [String.t()]},
           unearned: [
             %{
               code: String.t(),
               unit: String.t(),
-              why: :unverified | :not_exercised | :nothing_inside
+              why: :unverified | :not_exercised | :nothing_inside | :deviates
             }
           ],
           excused: [
@@ -309,11 +312,11 @@ defmodule Surfex.Status do
       |> Enum.map(fn {relation, group} -> judge(relation, group, by_id) end)
       |> Enum.sort_by(& &1.relation)
 
-    within = for %Scan{kind: :spec, within: w} = s <- scans, w != nil, into: %{}, do: {s.id, w}
     runs = latest_runs(Keyword.get(opts, :evidence))
     deviating = deviating(scans, resolver, runs)
+    held = held(deviating, scans, claim_grain)
 
-    relations = relations |> impacted() |> deviates(deviating, within) |> open_migrations()
+    relations = relations |> impacted() |> deviates(held) |> open_migrations()
 
     # A deviation test that fails is the state it declares: listed with its deviation, not
     # as failed (§13.1). Any other test's failure fails its relations.
@@ -366,7 +369,9 @@ defmodule Surfex.Status do
       inside: verdict.inside,
       own: verdict.own,
       exercises: exercises,
-      through: through_reviewed(relations)
+      through: through_reviewed(relations),
+      # Under claim_grain: a unit a deviation holds back doesn't earn (§13.11).
+      held: if(claim_grain, do: held, else: %{})
     }
 
     # Under claim_grain: true an implements counts only when it earns (§13.9): the ones
@@ -388,6 +393,9 @@ defmodule Surfex.Status do
       # verifiers, what each verifier exercises, and the relations reviewed through a
       # named path.
       earning: earning,
+      # Each spec unit a deviation holds back, with its references (§13.11): what marks a
+      # relation `deviates`, and what `mix surfex.confirm --evidence` doesn't validate.
+      held: held,
       unearned: unearned,
       # Listed with or without claim_grain: (§13.6): what the source classes and defers.
       excused: excused(scans, verdict.inside),
@@ -588,13 +596,22 @@ defmodule Surfex.Status do
   `:unverified` (no evidence, own or inside), `:not_exercised` (a claim inside is
   verified, but none of its verifiers exercises the code) or `:nothing_inside` (a
   container with no claims). An excused or deferred unit (§13.6) has no evidence to earn
-  through: `:unverified`. The one definition of "earned".
+  through: `:unverified`. Under `claim_grain: true` a unit a deviation holds back (§13.11)
+  is `{:unearned, :deviates}` before anything else is asked. The one definition of
+  "earned".
   """
   @spec earning(t, relation_status | tuple) ::
-          :earned | {:unearned, :unverified | :not_exercised | :nothing_inside}
+          :earned | {:unearned, :unverified | :not_exercised | :nothing_inside | :deviates}
   def earning(status, %{relation: relation}), do: earning(status, relation)
 
-  def earning(status, {:implements, {:code, code}, {:spec, unit}} = relation) do
+  def earning(status, {:implements, {:code, _code}, {:spec, unit}} = relation) do
+    # A deviation says the code doesn't meet the unit (§13.11): nothing else is asked.
+    if Map.has_key?(status.earning.held, unit),
+      do: {:unearned, :deviates},
+      else: earning_by_evidence(status, relation)
+  end
+
+  defp earning_by_evidence(status, {:implements, {:code, code}, {:spec, unit}} = relation) do
     %{inside: inside, own: own, exercises: exercises, through: through} = status.earning
     claims = Map.get(inside, unit, [])
     verified = Enum.filter(claims, &(Map.get(status.verdicts, &1) == :verified))
@@ -911,25 +928,39 @@ defmodule Surfex.Status do
     end
   end
 
+  # Each spec unit a deviation holds back (§13.11), with its references sorted: every
+  # deviating unit and each unit it sits in, by `within` and, under claim_grain:, by
+  # `under` too, so a section holding a deviating unit at any depth is held. Each deviating
+  # unit's chain is walked once.
+  defp held([], _scans, _claim_grain), do: %{}
+
+  defp held(deviating, scans, claim_grain) do
+    outer =
+      for %Scan{kind: :spec} = s <- scans,
+          o = s.within || if(claim_grain, do: s.under),
+          o != nil,
+          into: %{},
+          do: {s.id, o}
+
+    deviating
+    |> Enum.reduce(%{}, fn d, acc ->
+      Map.update(acc, d.spec, MapSet.new([d.ref]), &MapSet.put(&1, d.ref))
+    end)
+    |> verifying(outer)
+    |> Map.new(fn {unit, refs} -> {unit, Enum.sort(refs)} end)
+  end
+
   # Marks each proposed relation that deviates with the references (§13.1): a spec end of
-  # it is a deviating unit or a unit one sits in, each deviating unit's `within` chain
-  # walked once. A deviation test's own verifies is to its deviating unit. Other relations
-  # are left as they are.
-  defp deviates(relations, [], _within), do: relations
+  # it is a unit a deviation holds back (`held/3`). A deviation test's own verifies is to
+  # its deviating unit. Other relations are left as they are.
+  defp deviates(relations, held) when map_size(held) == 0, do: relations
 
-  defp deviates(relations, deviating, within) do
-    by_unit =
-      deviating
-      |> Enum.reduce(%{}, fn d, acc ->
-        Map.update(acc, d.spec, MapSet.new([d.ref]), &MapSet.put(&1, d.ref))
-      end)
-      |> verifying(within)
-
+  defp deviates(relations, held) do
     Enum.map(relations, fn
       %{state: :proposed, relation: {_type, a, b}} = r ->
         refs =
           for {:spec, unit} <- [a, b],
-              ref <- Map.get(by_unit, unit, []),
+              ref <- Map.get(held, unit, []),
               uniq: true,
               do: ref
 

@@ -757,15 +757,37 @@ defmodule Surfex.Record do
       changed, the `verifies` must be to that exact unit: someone has judged that the test
       expresses the reworded requirement.
 
+  An `implements` whose spec unit a deviation holds back (§13.11) is never validated
+  here: not the deviating unit's, nor one to a unit it sits in (`meta[:claim_grain]`,
+  the project's `claim_grain:`, reaches the sections it sits under too). The evidence would
+  say a test passes against the code; the deviation says the code doesn't meet the unit.
+  `evidence_outcome/4` lists them.
+
   Each entry records the evidence in its note. Returns `{:ok, []}` when nothing is
   justified, which is not an error: evidence confirms what it can.
   """
   @spec confirm_by_evidence([Scan.t()], [Entry.t()], [Surfex.Evidence.t()], meta) ::
           {:ok, [Entry.t()]} | {:error, String.t()}
   def confirm_by_evidence(scans, entries, evidence, meta) do
-    # Under the project's adoption: setting (§18.1), a baselined test counts as discriminated.
-    derive = &Status.derive(scans, &1, [], Keyword.take(meta, [:adoption]))
-    meta = meta |> Keyword.delete(:adoption) |> with_basis(:evidence)
+    with {:ok, confirmed, _held} <- evidence_outcome(scans, entries, evidence, meta),
+         do: {:ok, confirmed}
+  end
+
+  @doc """
+  What `confirm_by_evidence/4` records, and the `implements` relations the evidence would
+  have validated but a deviation holds back (§13.11), each with its references:
+  `{:ok, entries, held}`. `mix surfex.confirm --evidence` reports the held ones on a "held
+  back by a deviation" line; once the tag goes and the test passes, the next run validates
+  them.
+  """
+  @spec evidence_outcome([Scan.t()], [Entry.t()], [Surfex.Evidence.t()], meta) ::
+          {:ok, [Entry.t()], [%{relation: tuple, deviates: [String.t()]}]}
+          | {:error, String.t()}
+  def evidence_outcome(scans, entries, evidence, meta) do
+    # Under the project's adoption: setting (§18.1), a baselined test counts as discriminated;
+    # under its claim_grain:, a deviation holds the sections it sits under (§13.11).
+    derive = &Status.derive(scans, &1, [], Keyword.take(meta, [:adoption, :claim_grain]))
+    meta = meta |> Keyword.drop([:adoption, :claim_grain]) |> with_basis(:evidence)
     status = derive.(entries)
 
     with {:ok, observed} <- observations(status, evidence, meta),
@@ -775,13 +797,24 @@ defmodule Surfex.Record do
          {:ok, tests} <- by_evidence(status, :tests, &tests_evidence(&1, status, evidence), meta) do
       status = derive.(entries ++ verifies ++ tests)
 
-      implemented =
-        by_evidence(status, :implements, &implements_evidence(&1, status, evidence), meta)
+      # What the evidence justifies, less what a deviation holds back (§13.11).
+      {held, justified} =
+        status
+        |> evidence_justified(:implements, &implements_evidence(&1, status, evidence))
+        |> Enum.split_with(fn {r, _why} -> held_unit(status, r) != nil end)
 
-      with {:ok, implements} <- implemented,
-           do: {:ok, observed ++ verifies ++ tests ++ implements}
+      held =
+        for {r, _why} <- held,
+            do: %{relation: r.relation, deviates: held_unit(status, r)}
+
+      with {:ok, implements} <- by_evidence(status, :implements, justified, meta),
+           do: {:ok, observed ++ verifies ++ tests ++ implements, held}
     end
   end
+
+  # The references of the deviations holding back an implements' spec unit, or nil.
+  defp held_unit(status, %{relation: {:implements, _code, {:spec, unit}}}),
+    do: Map.get(status.held, unit)
 
   # A red_green observation for each scanned test version that discriminated in the
   # evidence and that the log doesn't record yet (§17).
@@ -887,36 +920,38 @@ defmodule Surfex.Record do
     end
   end
 
+  # Each dangling or proposed relation of `type` the evidence justifies, with what `why`
+  # gives it (a note, or a note and its basis), in relation order.
+  defp evidence_justified(status, type, why) do
+    for %{type: ^type, state: state, tip: %Entry{}} = r <- status.relations,
+        state in [:dangling, :proposed],
+        justified = why.(r),
+        justified != nil,
+        do: {r, justified}
+  end
+
   # For each dangling relation of `type` the evidence justifies (`why` gives a note or
-  # nil), a relate at the current versions.
-  defp by_evidence(status, type, why, meta) do
-    Enum.reduce_while(status.relations, {:ok, []}, fn
-      %{type: ^type, state: state, tip: %Entry{} = tip} = r, {:ok, acc}
-      when state in [:dangling, :proposed] ->
-        case why.(r) do
-          nil ->
-            {:cont, {:ok, acc}}
+  # nil, or `justified` lists them), a relate at the current versions.
+  defp by_evidence(status, type, why, meta) when is_function(why),
+    do: by_evidence(status, type, evidence_justified(status, type, why), meta)
 
-          justified ->
-            # A note, or a note with its own basis (a baselined test's, §18.1).
-            {note, meta} =
-              case justified do
-                {note, basis} -> {note, with_basis(meta, basis)}
-                note -> {note, meta}
-              end
-
-            ends = Enum.map(tip.ends, &end_(Map.fetch!(status.scans, {&1.kind, &1.id})))
-
-            parents = Enum.map(r.tips, & &1.id)
-
-            case entry(:relate, type, ends, parents, Keyword.put(meta, :note, note)) do
-              {:ok, e} -> {:cont, {:ok, acc ++ [e]}}
-              error -> {:halt, error}
-            end
+  defp by_evidence(status, type, justified, meta) do
+    Enum.reduce_while(justified, {:ok, []}, fn {%{tip: tip} = r, justified}, {:ok, acc} ->
+      # A note, or a note with its own basis (a baselined test's, §18.1).
+      {note, meta} =
+        case justified do
+          {note, basis} -> {note, with_basis(meta, basis)}
+          note -> {note, meta}
         end
 
-      _other, acc ->
-        {:cont, acc}
+      ends = Enum.map(tip.ends, &end_(Map.fetch!(status.scans, {&1.kind, &1.id})))
+
+      parents = Enum.map(r.tips, & &1.id)
+
+      case entry(:relate, type, ends, parents, Keyword.put(meta, :note, note)) do
+        {:ok, e} -> {:cont, {:ok, acc ++ [e]}}
+        error -> {:halt, error}
+      end
     end)
   end
 
