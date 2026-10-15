@@ -34,7 +34,8 @@ defmodule Surfex.Item do
     shape: false,
     calls: [],
     hidden: %{},
-    runs: %{}
+    runs: %{},
+    dispatch: %{}
   ]
 
   @type t :: %__MODULE__{
@@ -75,7 +76,11 @@ defmodule Surfex.Item do
           # names it with, each with its calls. It is no item's own: its version is in each
           # item that runs it, and a call naming it reaches no item and goes on through its
           # calls (§3.3, §4). Empty for most items.
-          runs: %{String.t() => [String.t()]}
+          runs: %{String.t() => [String.t()]},
+          # On a module: the dispatch functions declared in it (§11.10), each with what its
+          # table lists, `%{targets, unscanned}`: the functions a call to it reaches, and
+          # the literal entries naming no scanned function. Empty for every other item.
+          dispatch: %{String.t() => %{targets: [String.t()], unscanned: [String.t()]}}
         }
 
   @doc """

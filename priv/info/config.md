@@ -32,6 +32,13 @@ A keyword list, evaluated as data. An unknown key is refused, naming it.
   runs (a LiveView's `mount/3` and `handle_params/3`, or a controller action), its
   `render_click(view, …)` and friends call the view's `handle_event/3`, and
   `GenServer.call(Module, msg)` calls that module's `handle_call/3` (spec §11.3).
+- `dispatch: [{MyApp.Ops, :run, 3}]`: the project's dispatch functions, each running a
+  handler it looks up in a table (`apply(module, fun, args)`). A call to one reaches every
+  handler its module lists as a literal `{Module, :fun}`, `{Module, :fun, arity}` or
+  `&Module.fun/arity` in a module attribute, map or keyword list, so a test driving it
+  exercises them with no review per handler. The status lists each dispatcher with what
+  it reaches; one whose table isn't literal is listed as unresolved, never failing. A
+  scanner's `calls/3` answer for a call still wins (spec §11.10).
 - `checks: [[id:, run:, verifies:, inputs:]]`: gates that verify claims, such as a linter
   rule or a project's own verification task: a command that can fail, the spec units it
   verifies (a table's every row as `TABLE/*`), and the files it inspects, which with the

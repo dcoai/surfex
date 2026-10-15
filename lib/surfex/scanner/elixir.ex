@@ -43,6 +43,12 @@ defmodule Surfex.Scanner.Elixir do
     * `:call_scanners` — `[{scanner, opts}]`: each implementing `Surfex.Scanner.c:calls/3`
       is asked what a definition's remote calls name, and its answer joins the calls
       (spec §5.4). `Surfex.Status.Config.items/2` gives it the project's scanners.
+    * `:dispatch` — the declared dispatch functions, `["Module.fun/arity"]` (spec §11.10):
+      each is read for the targets its module lists, a call naming it also calls them (unless
+      a call scanner answered for that call), and its module's item holds the reading
+      (`Surfex.Item` `:dispatch`). A dispatcher the source doesn't define with `def`, or one
+      in a `@moduledoc false` module, raises. `Surfex.Status.Config.items/2` gives it the
+      project's `dispatch:`.
   """
 
   @behaviour Surfex.Scanner
@@ -60,8 +66,8 @@ defmodule Surfex.Scanner.Elixir do
     remote = Calls.remote(Keyword.get(opts, :call_scanners, []))
 
     # Every file is read before any version is made: a version covers the hidden code it
-    # runs in any module, in any file.
-    modules =
+    # runs in any module, in any file. And a dispatcher's targets are in any module.
+    parsed =
       root
       |> files(Keyword.get(opts, :paths, ["lib/**/*.ex"]))
       |> Enum.flat_map(fn file ->
@@ -71,14 +77,29 @@ defmodule Surfex.Scanner.Elixir do
         |> File.read!()
         |> Code.string_to_quoted!(file: file, token_metadata: true)
         |> modules([])
-        |> Enum.map(fn {parts, node} -> read_module(parts, node, rel, remote) end)
+        |> Enum.map(fn {parts, node} ->
+          %{name: Enum.map_join(parts, ".", &Atom.to_string/1), node: node, file: rel}
+        end)
       end)
 
+    readings = SourceScan.Dispatch.read(parsed, Keyword.get(opts, :dispatch, []))
+    dispatch = Map.new(readings, fn {id, r} -> {id, r.targets} end)
+
+    for {id, %{module: module}} <- readings,
+        %{name: ^module, node: node} <- parsed,
+        SourceScan.hidden_module?(node),
+        do:
+          raise(
+            ArgumentError,
+            "dispatch: #{id} is in a @moduledoc false module, which has no item to list its targets"
+          )
+
+    modules = Enum.map(parsed, &read_module(&1, remote, dispatch))
     index = hidden_code(modules)
 
     modules
     |> Enum.reject(& &1.hidden_module)
-    |> Enum.flat_map(&items_in(&1, index))
+    |> Enum.flat_map(&items_in(&1, index, readings))
     |> Enum.sort_by(&{Item.key(&1), &1.kind})
   end
 
@@ -137,8 +158,7 @@ defmodule Surfex.Scanner.Elixir do
   # One module as read: its name, its hidden definitions, and what each of its public and
   # hidden definitions calls. A module under `@moduledoc false` is read the same way; it
   # makes no items, and all its definitions are hidden code (§3.3).
-  defp read_module(parts, node, file, remote) do
-    module = Enum.map_join(parts, ".", &Atom.to_string/1)
+  defp read_module(%{name: module, node: node, file: file}, remote, dispatch) do
     hidden = SourceScan.hidden_definitions(node)
 
     %{
@@ -147,7 +167,7 @@ defmodule Surfex.Scanner.Elixir do
       node: node,
       hidden_module: SourceScan.hidden_module?(node),
       hidden: hidden,
-      calls: definition_calls(node, module, hidden, remote)
+      calls: definition_calls(node, module, hidden, remote, dispatch)
     }
   end
 
@@ -167,7 +187,11 @@ defmodule Surfex.Scanner.Elixir do
     end
   end
 
-  defp items_in(%{name: module, file: file, node: node, hidden: hidden, calls: calls}, index) do
+  defp items_in(
+         %{name: module, file: file, node: node, hidden: hidden, calls: calls},
+         index,
+         readings
+       ) do
     {module_hash, module_runs} =
       beyond(
         covering(node, SourceScan.module_hash(node), Map.keys(hidden), hidden),
@@ -183,7 +207,13 @@ defmodule Surfex.Scanner.Elixir do
         hash: module_hash,
         lines: SourceScan.line_range(node),
         hidden: Map.new(hidden, fn {key, _} -> {id(module, key), Map.fetch!(calls, key)} end),
-        runs: module_runs
+        runs: module_runs,
+        dispatch:
+          for(
+            {id, %{module: ^module} = r} <- readings,
+            into: %{},
+            do: {id, Map.delete(r, :module)}
+          )
       }
     ] ++
       for %{name: name, arity: arity, kind: kind, hash: hash, lines: lines} <-
@@ -232,7 +262,13 @@ defmodule Surfex.Scanner.Elixir do
   # its target. A definition that calls a function of a module this one `use`s or declares
   # as its `@behaviour` (`GenServer.call`, `:gen_statem.call`) dispatches through it, so it
   # calls the module's hidden callbacks too.
-  defp definition_calls({:defmodule, _, [_aliases, [do: body]]} = node, module, hidden, remote) do
+  defp definition_calls(
+         {:defmodule, _, [_aliases, [do: body]]} = node,
+         module,
+         hidden,
+         remote,
+         dispatch
+       ) do
     names = Calls.names(exprs(body), module)
     public = node |> SourceScan.defs() |> MapSet.new(&{&1.name, &1.arity})
     behaviours = behaviours(exprs(body), names.aliases)
@@ -267,7 +303,7 @@ defmodule Surfex.Scanner.Elixir do
       {key,
        Enum.sort(
          Enum.uniq(
-           Calls.of(bodies, local, remote) ++
+           Calls.of(bodies, local, remote, fn _body, _aliases -> [] end, dispatch) ++
              Enum.flat_map(delegates, &delegated(&1, names.aliases)) ++ dispatched
          )
        )}
