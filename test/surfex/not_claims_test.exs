@@ -73,13 +73,13 @@ defmodule Surfex.NotClaimsTest do
         ]
       )
 
-  defp derive(text, patterns, opts \\ []) do
+  defp derive(text, patterns) do
     scans =
       Markdown.sections(text, "spec.md", not_claims: patterns) ++
         [test_scan("T: saves", ["submit-saves"]), test_scan("T: other", ["other"])]
 
-    options = if patterns == [], do: opts, else: [not_claims: Enum.map(patterns, &inspect/1)]
-    Status.derive(scans, entries(scans), [], options ++ opts)
+    options = if patterns == [], do: [], else: [not_claims: Enum.map(patterns, &inspect/1)]
+    Status.derive(scans, entries(scans), [], options)
   end
 
   defp unit(status, id), do: Map.fetch!(status.scans, {:spec, "spec.md##{id}"})
@@ -123,7 +123,7 @@ defmodule Surfex.NotClaimsTest do
         "Legacy reference: L-E§4.2\n\nA submitted entry is locked.\n"
       )
 
-    status = derive(added, [@provenance], claim_grain: true)
+    status = derive(added, [@provenance])
     assert Status.verdict(status, "spec.md#submit") == :contained
 
     assert unit(status, "submit").not_claims ==
@@ -137,12 +137,10 @@ defmodule Surfex.NotClaimsTest do
     assert %{missing: [{:contained, ["spec.md#submit-saves"]}]} =
              Enum.find(report.incomplete, &(&1.id == "spec.md#submit"))
 
-    # With only the matched line it isn't counted, at claim grain or not.
-    for opts <- [[claim_grain: true], []] do
-      report = Completeness.report(derive(@spec_text, [@provenance], opts))
-      refute Enum.any?(report.incomplete, &(&1.id == "spec.md#submit"))
-      assert report.scores.spec.total == 2
-    end
+    # With only the matched line it isn't counted.
+    report = Completeness.report(derive(@spec_text, [@provenance]))
+    refute Enum.any?(report.incomplete, &(&1.id == "spec.md#submit"))
+    assert report.scores.spec.total == 2
   end
 
   @tag verifies: ["not-claims", "not-claims-reported"]

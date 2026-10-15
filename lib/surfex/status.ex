@@ -80,8 +80,8 @@ defmodule Surfex.Status do
   spec is right, the code doesn't meet it yet, and the reference names what will fix it.
   Its test is red, and skipped to keep the suite green. Each is listed with its test and
   reference, and, given evidence, the test's last result there. The deviation **holds
-  back** the unit and each unit it sits in (`held`, §13.11; under `claim_grain: true` the
-  sections it sits under too). A proposed relation to a held unit is marked `deviates`
+  back** the unit and each unit it sits in (`held`, §13.11), the sections it sits
+  under included. A proposed relation to a held unit is marked `deviates`
   (its references) and doesn't fail: it is reported, as a planned one is. A deviation
   test that failed is listed with its deviation, not as failed. One that **passed**, at
   its version, is a stale deviation and fails: the code meets the unit now, so the tag
@@ -208,7 +208,6 @@ defmodule Surfex.Status do
             marks: :allow | :fail,
             baseline: :allow | :fail,
             deviations: :allow | :fail,
-            claim_grain: boolean,
             unearned: :report | :fail
           },
           unimplemented: [Scan.t()],
@@ -311,11 +310,6 @@ defmodule Surfex.Status do
           "deviations: must be :allow or :fail, got #{inspect(deviations_policy)}"
         )
 
-    claim_grain = Keyword.get(opts, :claim_grain, false)
-
-    unless is_boolean(claim_grain),
-      do: raise(ArgumentError, "claim_grain: must be true or false, got #{inspect(claim_grain)}")
-
     by_id = Map.new(scans, &{{&1.kind, &1.id}, &1})
     # Every test's declarations resolve against one index, built once (§13).
     resolver = Scan.resolver(scans)
@@ -343,7 +337,7 @@ defmodule Surfex.Status do
 
     runs = latest_runs(Keyword.get(opts, :evidence))
     deviating = deviating(scans, resolver, runs)
-    held = held(deviating, scans, claim_grain)
+    held = held(deviating, scans)
 
     relations = relations |> impacted() |> deviates(held) |> open_migrations()
 
@@ -373,9 +367,9 @@ defmodule Surfex.Status do
 
     # What verified means for each spec unit (§13.4), from one index of the units' `within`
     # chains: no credit moves up, none into a unit's own text.
-    # A spec class or deferral (§11.7) is read under claim_grain: true (§13.6): the
-    # classed unit's own text is excused, or deferred, rather than judged.
-    classed = if claim_grain, do: classed(scans), else: %{}
+    # A spec class or deferral (§11.7) is read at claim grain (§13.6): the classed unit's
+    # own text is excused, or deferred, rather than judged.
+    classed = classed(scans)
 
     # The states of the issues the deferrals name, when the caller asked (§13.7): an
     # input, like evidence, never read here.
@@ -399,16 +393,14 @@ defmodule Surfex.Status do
       own: verdict.own,
       exercises: exercises,
       through: through_reviewed(relations),
-      # Under claim_grain: a unit a deviation holds back doesn't earn (§13.11).
-      held: if(claim_grain, do: held, else: %{})
+      # A unit a deviation holds back doesn't earn (§13.11).
+      held: held
     }
 
-    # Under claim_grain: true an implements counts only when it earns (§13.9): the ones
-    # that don't are listed, and fail where `require: code:` asks for an implements.
+    # An implements counts only when it earns (§13.9): the ones that don't are listed, and
+    # fail where `require: code:` asks for an implements.
     unearned =
-      if claim_grain,
-        do: unearned(%{earning: earning, verdicts: verdict.verdicts, scans: by_id}, relations),
-        else: []
+      unearned(%{earning: earning, verdicts: verdict.verdicts, scans: by_id}, relations)
 
     status = %{
       relations: relations,
@@ -426,12 +418,11 @@ defmodule Surfex.Status do
       # relation `deviates`, and what `mix surfex.confirm --evidence` doesn't validate.
       held: held,
       unearned: unearned,
-      # Listed with or without claim_grain: (§13.6): what the source classes and defers.
+      # What the source classes and defers (§13.6), and where that no longer holds.
       excused: excused(scans, verdict.inside),
       deferred: deferred(scans, issues),
-      stale_deferrals: if(claim_grain, do: stale_deferrals(scans, verdict.own, issues), else: []),
-      contradicted:
-        if(claim_grain, do: contradicted(scans, relations, verdict.verdicts), else: []),
+      stale_deferrals: stale_deferrals(scans, verdict.own, issues),
+      contradicted: contradicted(scans, relations, verdict.verdicts),
       new:
         scans
         |> Enum.reject(&MapSet.member?(related, {&1.kind, &1.id}))
@@ -476,9 +467,8 @@ defmodule Surfex.Status do
         marks: marks_policy,
         baseline: baseline_policy,
         deviations: deviations_policy,
-        claim_grain: claim_grain,
         unearned:
-          if(claim_grain and :implements in Keyword.get(require, :code, []),
+          if(:implements in Keyword.get(require, :code, []),
             do: :fail,
             else: :report
           )
@@ -629,8 +619,7 @@ defmodule Surfex.Status do
   `:unverified` (no evidence, own or inside), `:not_exercised` (a claim inside is
   verified, but none of its verifiers exercises the code) or `:nothing_inside` (a
   container with no claims). An excused or deferred unit (§13.6) has no evidence to earn
-  through: `:unverified`. Under `claim_grain: true` a unit a deviation holds back (§13.11)
-  is `{:unearned, :deviates}` before anything else is asked. The one definition of
+  through: `:unverified`. A unit a deviation holds back (§13.11) is `{:unearned, :deviates}` before anything else is asked. The one definition of
   "earned".
   """
   @spec earning(t, relation_status | tuple) ::
@@ -962,15 +951,15 @@ defmodule Surfex.Status do
   end
 
   # Each spec unit a deviation holds back (§13.11), with its references sorted: every
-  # deviating unit and each unit it sits in, by `within` and, under claim_grain:, by
-  # `under` too, so a section holding a deviating unit at any depth is held. Each deviating
-  # unit's chain is walked once.
-  defp held([], _scans, _claim_grain), do: %{}
+  # deviating unit and each unit it sits in, by `within` and by `under`, so a section
+  # holding a deviating unit at any depth is held. Each deviating unit's chain is walked
+  # once.
+  defp held([], _scans), do: %{}
 
-  defp held(deviating, scans, claim_grain) do
+  defp held(deviating, scans) do
     outer =
       for %Scan{kind: :spec} = s <- scans,
-          o = s.within || if(claim_grain, do: s.under),
+          o = s.within || s.under,
           o != nil,
           into: %{},
           do: {s.id, o}
@@ -984,7 +973,7 @@ defmodule Surfex.Status do
   end
 
   # Marks each proposed relation that deviates with the references (§13.1): a spec end of
-  # it is a unit a deviation holds back (`held/3`). A deviation test's own verifies is to
+  # it is a unit a deviation holds back (`held/2`). A deviation test's own verifies is to
   # its deviating unit. Other relations are left as they are.
   defp deviates(relations, held) when map_size(held) == 0, do: relations
 

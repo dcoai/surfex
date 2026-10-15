@@ -150,13 +150,32 @@ defmodule Surfex.StatusTest do
     assert [%Scan{id: "M.other/0"}] = status.new
   end
 
+  # A test verifying the spec unit, so an implements to it earns (§13.9).
+  defp verifying do
+    t = %{scan(:test, "T: adds", "t1") | declares: [{:verifies, @spec_id}]}
+
+    entry =
+      Entry.new!(
+        at: "2026-09-28T10:00:00Z",
+        op: :relate,
+        type: :verifies,
+        ends: [%{kind: :test, id: t.id, hash: "t1"}, %{kind: :spec, id: @spec_id, hash: "s1"}]
+      )
+
+    {t, entry}
+  end
+
   describe "policy" do
     @describetag verifies: "status-states"
 
     @tag verifies: ["status-failing", "status-states"]
     test "an id the policy requires to be related, and isn't, is unmet" do
       extra = scan(:code, "M.other/0", "o")
-      status = Status.derive([extra | scans()], [relate("s1", "c1")], code: [:implements])
+      {t, verifies} = verifying()
+
+      status =
+        Status.derive([extra, t | scans()], [relate("s1", "c1"), verifies], code: [:implements])
+
       assert [%{scan: ^extra, requires: [:implements]}] = status.unmet
       assert Status.failing?(status)
     end
@@ -181,7 +200,13 @@ defmodule Surfex.StatusTest do
           )
         end
 
-      status = Status.derive(one_def ++ two_defs ++ scans(), related, code: [:implements])
+      {t, verifies} = verifying()
+
+      status =
+        Status.derive(one_def ++ two_defs ++ [t | scans()], [verifies | related],
+          code: [:implements]
+        )
+
       unmet = for %{scan: %{id: id}} <- status.unmet, do: id
 
       refute "M.f/1" in unmet
@@ -777,7 +802,8 @@ defmodule Surfex.StatusTest do
     status =
       Status.derive([scan(:spec, tick_spec, "s1"), scan(:code, pipe_id, "c2")], [entry])
 
-    [row] =
+    # The implements row; the unearned table names the code too (§13.9).
+    [row, _unearned] =
       status
       |> Report.golden()
       |> Surfex.Golden.render()

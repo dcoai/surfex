@@ -67,8 +67,7 @@ defmodule Surfex.Status.Report do
       # Listed where a project declares any, so other reports read as before (§11.4).
       items("Checks (gates that verify claims)", checks(status), &check_line/1),
       items("Unmet (required relation missing)", status.unmet, &unmet_line/1),
-      # Under claim_grain: true (§13.9): failing where `require: code:` asks for an
-      # implements, listed otherwise.
+      # §13.9: failing where `require: code:` asks for an implements, listed otherwise.
       items(
         "Unearned (an implements no verified claim's test or check exercises: it meets no require: code: rule)",
         status.unearned,
@@ -128,13 +127,13 @@ defmodule Surfex.Status.Report do
         status.moved,
         &"refines  spec #{describe({:spec, &1.from}, status)} → spec #{&1.to}: #{moved_text(&1)}"
       ),
-      # Failing under claim_grain: true (§13.6): one of the class and the relation is wrong.
+      # Failing (§13.6): one of the class and the relation is wrong.
       items(
         "Contradicted (a relation to a unit its class says asserts nothing: retire the relation, or remove the class)",
         status.contradicted,
         &contradicted_line/1
       ),
-      # Failing under claim_grain: true (§13.7): the deferral no longer holds.
+      # Failing (§13.7): the deferral no longer holds.
       items(
         "Stale deferrals (built, its issue closed, the tracker couldn't say, or the unit it cites changed: remove, re-defer or re-pin)",
         status.stale_deferrals,
@@ -968,18 +967,13 @@ defmodule Surfex.Status.Report do
   defp unearned_text(:deviates),
     do: "deviates: a test declares the code doesn't meet the unit, or a unit inside it, yet"
 
-  # Counted under claim_grain: true (§13.9), so other reports read as before.
-  defp unearned_count(%{policy: %{claim_grain: true}} = status) do
+  # Counted (§13.9), failing where `require: code:` asks for an implements.
+  defp unearned_count(status) do
     fails = if status.policy.unearned == :fail, do: " (failing: require: code:)", else: ""
     "  unearned: #{length(status.unearned)} implements#{fails}\n"
   end
 
-  defp unearned_count(_status), do: []
-
-  defp unearned_stat(%{policy: %{claim_grain: true}} = status),
-    do: [{"unearned", length(status.unearned)}]
-
-  defp unearned_stat(_status), do: []
+  defp unearned_stat(status), do: [{"unearned", length(status.unearned)}]
 
   # The spec units by verdict (§13.4): the claims, and the containers apart.
   defp verdict_counts(status) do

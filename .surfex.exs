@@ -13,8 +13,6 @@
 # COMPLETENESS.md, the completeness report.
 [
   goldens: [:status, :completeness],
-  # Claim grain (#145, #256): a section is verified by its own evidence only.
-  claim_grain: true,
   # Every spec unit, test and code item stays covered by validated relations (§20).
   completeness: [min: 100],
   # Code implements a section, or is excused by a class. The one class is types (#137), so
@@ -27,8 +25,8 @@
   ],
   rules: [%{class: "type", kinds: [:type]}],
   # Spec text that asserts nothing a test could fail on (§11.7): an orientation sentence
-  # over the claims below it. Under claim_grain: a classed section with claims inside is a
-  # container, its claims answering for themselves.
+  # over the claims below it. A classed section with claims inside is a container, its
+  # claims answering for themselves.
   spec_classes: [
     {"informative", "orients the reader; asserts nothing a test or check could fail on"}
   ],

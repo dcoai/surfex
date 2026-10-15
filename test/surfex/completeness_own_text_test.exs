@@ -1,5 +1,5 @@
 defmodule Surfex.CompletenessOwnTextTest do
-  # #256 (C.1): under claim_grain: true a claim is complete only with its own evidence, and
+  # #256 (C.1): a claim is complete only with its own evidence, and
   # a contained one names where the evidence is (§20.1).
   use ExUnit.Case, async: true
 
@@ -99,12 +99,15 @@ defmodule Surfex.CompletenessOwnTextTest do
     do: for(%{kind: :spec, id: id, missing: m} <- report.incomplete, into: %{}, do: {id, m})
 
   @tag verifies: ["completeness-own-text", "own-text-score"]
-  test "under claim_grain: a claim is complete only with its own evidence" do
-    {_status, report} = report(tests(), claim_grain: true)
+  test "a claim is complete only with its own evidence" do
+    {status, report} = report(tests(), [])
 
     assert spec_missing(report) == %{
              "spec.md#contained" => [{:contained, ["spec.md#inner"]}]
            }
+
+    assert Status.verdict(status, "spec.md#contained") == :contained
+    assert [%{unit: "spec.md#contained"}] = status.contained
 
     # Counted: own, contained, inner and the row. Not the containers: the chapter, the
     # section holding only a table, and the table itself.
@@ -122,24 +125,9 @@ defmodule Surfex.CompletenessOwnTextTest do
 
     # Tagged by a validated test of its own, it is complete.
     {_status, tagged} =
-      report(tests([test_scan("T: contained", ["contained"])]), claim_grain: true)
+      report(tests([test_scan("T: contained", ["contained"])]), [])
 
     assert spec_missing(tagged) == %{}
     assert tagged.scores.spec.percent == 100.0
-  end
-
-  @tag verifies: ["claim-grain-switch", "own-text-score"]
-  test "without claim_grain: completeness reads as before, and the verdicts are still given" do
-    {status, report} = report(tests(), [])
-
-    # Complete through the hint inside it, and the marked table counted (through its row).
-    assert spec_missing(report) == %{}
-    assert report.scores.spec == %{complete: 5, total: 5, percent: 100.0}
-
-    assert Status.verdict(status, "spec.md#contained") == :contained
-    assert [%{unit: "spec.md#contained"}] = status.contained
-
-    {grained, _} = report(tests(), claim_grain: true)
-    assert grained.policy.claim_grain and not status.policy.claim_grain
   end
 end

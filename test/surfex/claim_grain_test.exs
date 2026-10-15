@@ -1,6 +1,7 @@
 defmodule Surfex.ClaimGrainTest do
-  # #256 (C.1): require: spec rules judge claims only and name a contained claim; the
-  # transitional claim_grain: switch and the folding default it gates (§13.2, §11.1).
+  # #256 (C.1): require: spec rules judge claims only and name a contained claim; #285:
+  # claim grain is the only reading, so the claim_grain: key is refused, and path
+  # headings fold by default where the spec writes ids (§13.2, §11.1).
   use ExUnit.Case, async: true
 
   alias Surfex.{Scan, Status}
@@ -126,32 +127,33 @@ defmodule Surfex.ClaimGrainTest do
     end
   end
 
-  describe "the claim_grain: switch" do
-    @describetag verifies: "status-config-read"
+  describe "claim grain is the only reading" do
+    @describetag verifies: "claim-grain-refused"
 
-    @tag verifies: ["status-config-read", "status-config"]
-    test "claim_grain: is a boolean, false by default, passed to derive only when set" do
-      refute Config.claim_grain?([])
-      assert Config.claim_grain?(claim_grain: true)
-      refute Config.claim_grain?(claim_grain: false)
+    @tag :tmp_dir
+    @tag verifies: ["claim-grain-refused", "status-config"]
+    test "a .surfex.exs with claim_grain: is refused, either value; without it, it reads", %{
+      tmp_dir: dir
+    } do
+      path = Path.join(dir, ".surfex.exs")
 
-      assert_raise ArgumentError, ~r/claim_grain: must be true or false, got :yes/, fn ->
-        Config.claim_grain?(claim_grain: :yes)
+      for value <- [true, false] do
+        File.write!(path, ~s([sources: ["spec.md"], claim_grain: #{value}]))
+
+        error = assert_raise ArgumentError, fn -> Config.read!(path) end
+        assert error.message =~ "claim_grain: is no longer a key"
+        assert error.message =~ "claim grain is now the only reading"
+        assert error.message =~ "mix surfex.migrate --report"
       end
 
-      assert Config.options!([]) == [triangle: :report]
-      assert Config.options!(claim_grain: true) == [triangle: :report, claim_grain: true]
-
-      assert Status.derive([], []).policy.claim_grain == false
-      assert Status.derive([], [], [], claim_grain: true).policy.claim_grain == true
-
-      assert_raise ArgumentError, ~r/claim_grain: must be true or false/, fn ->
-        Status.derive([], [], [], claim_grain: :yes)
-      end
+      File.write!(path, ~s([sources: ["spec.md"]]))
+      assert Config.read!(path) == [sources: ["spec.md"]]
+      assert Config.options!(Config.read!(path)) == [triangle: :report]
+      refute Map.has_key?(Status.derive([], []).policy, :claim_grain)
     end
   end
 
-  describe "folding by default under claim_grain:" do
+  describe "folding by default" do
     @describetag verifies: "fold-default"
 
     @folding """
@@ -177,18 +179,14 @@ defmodule Surfex.ClaimGrainTest do
     @tag :tmp_dir
     @tag verifies: ["fold-default", "claim-forms"]
     test "a path heading under an id'd heading folds where the spec writes ids", %{tmp_dir: dir} do
-      refute @path in ids(dir, claim_grain: true, heading_ids: :section_sign)
-      assert "spec.md#Engine.13" in ids(dir, claim_grain: true, heading_ids: :section_sign)
+      refute @path in ids(dir, heading_ids: :section_sign)
+      assert "spec.md#Engine.13" in ids(dir, heading_ids: :section_sign)
 
       # fold_paths: false keeps the path heading a unit.
-      assert @path in ids(dir, claim_grain: true, heading_ids: :section_sign, fold_paths: false)
+      assert @path in ids(dir, heading_ids: :section_sign, fold_paths: false)
 
       # Without heading_ids: there is no id'd heading to fold into.
-      assert "spec.md#Index/§Engine.13 Engine/run/2" in ids(dir, claim_grain: true)
-
-      # Without claim_grain: nothing folds unless fold_paths: true says so.
-      assert @path in ids(dir, heading_ids: :section_sign)
-      refute @path in ids(dir, heading_ids: :section_sign, fold_paths: true)
+      assert "spec.md#Index/§Engine.13 Engine/run/2" in ids(dir, [])
     end
   end
 end

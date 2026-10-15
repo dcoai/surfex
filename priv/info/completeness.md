@@ -11,7 +11,7 @@ relations, per kind and overall, and lists each incomplete item with what it lac
 - A unit a test declares the code deviates from (`@tag deviation: "#119"`) is never
   complete: it lists `deviates (#119)` until the fix lands and the tag comes off.
 
-With `claim_grain: true`, a spec unit counts only with its **own** evidence: a section
+A spec unit counts only with its **own** evidence (claim grain): a section
 whose hint is verified but whose prose no test claims lists `contained (<hint>, …)`, and
 units with no text of their own (containers, marked tables) aren't counted
 (`mix surfex.info claims`). Code is described only by an `implements` that earns: code

@@ -1,5 +1,5 @@
 defmodule Surfex.UnearnedTest do
-  # #247 (B.3 part 2): under claim_grain: true an implements counts for require: code:
+  # #247 (B.3 part 2): an implements counts for require: code:
   # only when it earns, through a verified unit or a verified claim inside it whose test
   # exercises the code (§13.9, §20.3).
   use ExUnit.Case, async: true
@@ -82,15 +82,15 @@ defmodule Surfex.UnearnedTest do
     Status.derive(scans, evidence ++ related, require, opts)
   end
 
-  defp grained(tests, implements, require \\ @require),
-    do: derive(tests, implements, require, claim_grain: true)
+  defp status_of(tests, implements, require \\ @require),
+    do: derive(tests, implements, require, [])
 
   describe "require: code: counts only earning implements" do
     @describetag verifies: "unearned-fails"
 
     @tag verifies: ["unearned-fails", "unearned"]
     test "code related only to an unverified hint is unearned, unmet and failing" do
-      status = grained([], [{"M.a/0", "feature-hint"}])
+      status = status_of([], [{"M.a/0", "feature-hint"}])
 
       assert status.unearned == [
                %{code: "M.a/0", unit: "spec.md#feature-hint", why: :unverified}
@@ -104,7 +104,8 @@ defmodule Surfex.UnearnedTest do
     end
 
     test "verifying the hint clears it" do
-      status = grained([test_scan("T", ["feature-hint"], ["M.a/0"])], [{"M.a/0", "feature-hint"}])
+      status =
+        status_of([test_scan("T", ["feature-hint"], ["M.a/0"])], [{"M.a/0", "feature-hint"}])
 
       assert status.unearned == []
       assert Enum.filter(status.unmet, &(&1.scan.kind == :code and &1.scan.id == "M.a/0")) == []
@@ -112,7 +113,7 @@ defmodule Surfex.UnearnedTest do
 
     test "a contained section earns through a verified hint whose test reaches the code" do
       status =
-        grained(
+        status_of(
           [test_scan("T", ["feature-hint"], ["M.a/0"])],
           [{"M.a/0", "feature"}, {"M.b/0", "feature"}]
         )
@@ -130,7 +131,7 @@ defmodule Surfex.UnearnedTest do
     @tag verifies: ["unearned-fails", "unearned"]
     test "a spare unearned relation fails even when another relation meets the code" do
       status =
-        grained(
+        status_of(
           [test_scan("T", ["feature-hint"], ["M.a/0", "M.b/0"])],
           [{"M.a/0", "feature-hint"}, {"M.b/0", "feature-hint"}, {"M.a/0", "other"}]
         )
@@ -144,26 +145,17 @@ defmodule Surfex.UnearnedTest do
 
     @tag verifies: ["unearned-fails", "unearned"]
     test "without the rule the list is reported and doesn't fail" do
-      status = grained([], [{"M.a/0", "feature-hint"}], [])
+      status = status_of([], [{"M.a/0", "feature-hint"}], [])
 
       assert [%{code: "M.a/0", why: :unverified}] = status.unearned
       assert status.policy.unearned == :report
       refute Status.failing?(status)
     end
-
-    @tag verifies: ["unearned-fails", "unearned"]
-    test "without claim_grain: nothing is unearned and the implements meets the rule" do
-      status = derive([], [{"M.a/0", "feature-hint"}], @require, [])
-
-      assert status.unearned == []
-      assert status.policy.unearned == :report
-      refute Enum.any?(status.unmet, &(&1.scan.id == "M.a/0"))
-    end
   end
 
   @tag verifies: ["unearned-report", "unearned"]
-  test "the text, JSON and golden report unearned relations under claim_grain only" do
-    status = grained([], [{"M.a/0", "feature-hint"}])
+  test "the text, JSON and golden report unearned relations" do
+    status = status_of([], [{"M.a/0", "feature-hint"}])
     text = Report.text(status)
 
     assert text =~ "  unearned: 1 implements (failing: require: code:)\n"
@@ -178,16 +170,10 @@ defmodule Surfex.UnearnedTest do
     golden = status |> Report.golden("RELATIONS.md") |> Surfex.Golden.render()
     assert golden =~ "unearned"
     assert golden =~ "`code M.a/0`"
-
-    plain = derive([], [{"M.a/0", "feature-hint"}], @require, [])
-    refute Report.text(plain) =~ "unearned"
-    refute Report.text(plain) =~ "Unearned"
-    assert JSON.decode!(Report.json(plain))["unearned"] == []
-    refute plain |> Report.golden("RELATIONS.md") |> Surfex.Golden.render() =~ "unearned"
   end
 
   @tag verifies: ["completeness-earned-code", "earned-code-score"]
-  test "completeness describes code only by an earning implements under claim_grain" do
+  test "completeness describes code only by an earning implements" do
     missing = fn status ->
       status
       |> Completeness.report()
@@ -195,13 +181,11 @@ defmodule Surfex.UnearnedTest do
       |> Enum.find_value([], &(&1.kind == :code and &1.id == "M.a/0" and &1.missing))
     end
 
-    assert :unearned in missing.(grained([], [{"M.a/0", "feature-hint"}]))
+    assert :unearned in missing.(status_of([], [{"M.a/0", "feature-hint"}]))
 
     earned =
-      grained([test_scan("T", ["feature-hint"], ["M.a/0"])], [{"M.a/0", "feature-hint"}], [])
+      status_of([test_scan("T", ["feature-hint"], ["M.a/0"])], [{"M.a/0", "feature-hint"}], [])
 
     refute :unearned in missing.(earned)
-
-    refute :unearned in missing.(derive([], [{"M.a/0", "feature-hint"}], [], []))
   end
 end

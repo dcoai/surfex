@@ -74,7 +74,7 @@ defmodule Mix.Tasks.Surfex.Migrate do
     config = Surfex.Status.Config.read!(Path.join(root, opts[:config] || ".surfex.exs"))
     # What is trusted (§18.1), so a section's baseline carries to its claims.
     derive = [adoption: Surfex.Status.Config.adoption!(config, root)]
-    # What reads as contained (§13.4, §13.6), as the status reads it: `claim_grain:`, classes.
+    # What reads as contained (§13.4, §13.6), as the status reads it: the classes.
     options = Surfex.Status.Config.options!(config)
     refs = for ref <- R.units(refs, scans, opts), do: String.replace_prefix(ref, "spec:", "")
 

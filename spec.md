@@ -1295,16 +1295,13 @@ that section's unit**, through any such headings between them:
 
 A heading with no id'd heading above it stays a path unit, as before: an index page, or a
 project that writes no ids. A sub-heading meant as a unit of its own gets an id. Folding
-changes which units exist, so it is off by default until the release that completes claim
-grain. Under `claim_grain: true` (§13.2) it is the default wherever the spec writes ids
-(`heading_ids:`): a path heading under an id'd heading is part of that unit's own text
-(§13.4). `fold_paths: false` keeps path sub-headings as units, and without `heading_ids:`
+is the default wherever the spec writes ids (`heading_ids:`): a path heading under an
+id'd heading is part of that unit's own text (§13.4). `fold_paths: false` keeps path sub-headings as units, and without `heading_ids:`
 nothing folds. A value other than `true` or `false` is an error.
 
 ```test:fold-default
-under claim_grain: true with heading_ids: and no fold_paths:, a path heading under an
-id'd heading folds; fold_paths: false keeps it a unit; without heading_ids: nothing
-folds; without claim_grain: nothing folds unless fold_paths: true
+with heading_ids: and no fold_paths:, a path heading under an id'd heading folds;
+fold_paths: false keeps it a unit; without heading_ids: nothing folds
 ```
 
 ```test:fold-paths
@@ -2311,13 +2308,18 @@ suggest --accept retires it
 log's own: `heading_ids` (§11), `rule_ids`, `fold_paths` and `unit_refs` (§11.1),
 `scanners` (§5.3), `scanner`, `scanner_opts`, `namespace`, `goldens` (§10.3), `require`,
 `tests`, `declares` (§11.6), `triangle`,
-`require_red` (§17), `router` (§11.3), `claim_implements` (§15.1), `claim_grain`,
+`require_red` (§17), `router` (§11.3), `claim_implements` (§15.1),
 `spec_classes` (§11.7), `issues` (§13.7), `adoption` (§18.1),
 `process` (§19) and
 `completeness` (§20).
 - `Surfex.Status.Config.read!/1` reads and validates it. It raises on an unknown key, and
   on a key of the removed trace, saying so (§9). Every task reads its config through
   it, so a misspelt key is never silently ignored.
+- Claim grain is how surfex reads a spec (§13.4, §13.5): there is no switch for it.
+  `claim_grain:`, the transitional key it shipped behind, is refused, `true` or `false`:
+  the message names the key, says claim grain is now the only reading, and points to the
+  upgrade step and `mix surfex.migrate --report` (§14.1). A config that only drops the
+  key reads as before.
 - `Surfex.Status.Config.items/2` runs the code scanners and combines their items (§5.3):
   the built-in Elixir scanner, the project's own (`Surfex.Scanner`), or several.
 - `Surfex.Status.Config.scans/2` scans each markdown unit of `sources`, reading headings
@@ -2346,13 +2348,6 @@ log's own: `heading_ids` (§11), `rule_ids`, `fold_paths` and `unit_refs` (§11.
   `{:command, argv}` with a non-empty list of strings, and raises on anything else.
 - `Surfex.Status.Config.require!/1` validates the `require:` policy against the known
   kinds, spec roles and types, and raises naming what's wrong.
-- `Surfex.Status.Config.claim_grain?/1` reads `claim_grain: true | false` (`false` by
-  default), and raises on any other value. It is a transitional switch: a part of claim
-  grain that changes what an existing project's check reports is read only under it,
-  until the release that makes claim grain the only reading refuses the key. Each part
-  it gates says so where it is specified (folding path headings, §11.1).
-  `Surfex.Status.Config.options!/1` passes it to `Surfex.Status.derive/4` as
-  `claim_grain: true`, and the status holds it in its policy.
 
 A spec rule (a spec role's key such as `section:`, or the kind key `spec:`) judges claims
 only (§13.4). A container isn't judged: it has no text of its own, and its claims answer
@@ -2371,6 +2366,12 @@ rules and rows and skips containers
 ```test:status-config-read
 .surfex.exs is read and validated: unknown keys and keys of the removed trace are refused,
 the code is scanned once, and citations are read under the config's profile
+```
+
+```test:claim-grain-refused
+a .surfex.exs setting claim_grain: true or claim_grain: false is refused, naming the key,
+saying claim grain is now the only reading and pointing to mix surfex.migrate --report;
+the same config without the key reads
 ```
 
 ### 13.3 Reports and the check
@@ -2596,9 +2597,8 @@ A class (§11.7) says a section's own text asserts nothing a test or check could
 and a deferral says a unit's text isn't built yet. `Surfex.Status.derive/4` lists both
 whatever the configuration: `excused` (each classed unit with its class, the class's
 reason, the marker's own reason, how it was selected, and the claims inside it) and
-`deferred` (each deferred unit with its reference and reason). Under
-`claim_grain: true` (§13.2) the status also reads them, which is what can change what
-fails; without the key nothing else changes.
+`deferred` (each deferred unit with its reference and reason). The status also reads
+them, which is what can change what fails.
 
 **A class excuses a section's own text, and nothing else.** Every named claim inside a
 classed section (a rule, a row, a hint, a contract, a marked block, a subsection) stays a
@@ -2617,13 +2617,12 @@ claim and is judged as any claim is. A pattern can't hide what an author named.
 a section classed by pattern holding a named rule, a marked table, a hint, a contract, a
 marked block and a subsection: each stays a claim, unverified until a test verifies it,
 and require: [spec: [:verifies]] fails on the claims, not the section; a classed section
-with no claims inside is excused and not judged; without claim_grain: the classed section
-is judged as before
+with no claims inside is excused and not judged
 ```
 
 **Contradicted.** A class says the text asserts nothing, so a relation saying something
-checks or realises it means one of the two is wrong. Under `claim_grain: true` each is
-listed as `contradicted`, and the status fails:
+checks or realises it means one of the two is wrong. Each is listed as `contradicted`, and
+the status fails:
 
 - a live `verifies` whose spec end is a classed section, with claims inside or not (it
   should name the claims);
@@ -2635,10 +2634,9 @@ listed as `contradicted`, and the status fails:
 The fix is to retire the relation (it was narration) or to remove the class.
 
 ```test:contradicted-relations
-under claim_grain: true an implements and a verifies to an excused section, and a test
-declaration naming it, are contradicted and fail; retiring the relation or removing the
-class clears it; an implements to a classed section with claims inside isn't
-contradicted; without claim_grain: none is
+an implements and a verifies to an excused section, and a test declaration naming it,
+are contradicted and fail; retiring the relation or removing the class clears it; an
+implements to a classed section with claims inside isn't contradicted
 ```
 
 **Deferred.** A deferred unit isn't judged by `require:` spec rules, is out of the
@@ -2647,9 +2645,8 @@ excuses the spec unit, never code: the MR that builds it adds the test and the
 relations, and removes the marker.
 
 ```test:deferred-units
-under claim_grain: true a deferred section and a deferred block are deferred, listed with
-reference and reason, not judged by require: spec rules; an implements to one is unearned
-as unverified
+a deferred section and a deferred block are deferred, listed with reference and reason,
+not judged by require: spec rules; an implements to one is unearned as unverified
 ```
 
 `Surfex.Status.Report.text/1` counts the excused units (and how many hold claims) and the
@@ -2659,9 +2656,9 @@ deferred units in one header line, and lists each contradicted relation.
 ### 13.7 Deferrals go stale
 <!-- surfex: stale-deferrals -->
 
-A deferral (§11.7) holds while its issue is open and the unit isn't built. Under
-`claim_grain: true` (§13.2) one that no longer holds is a **stale deferral**, and the
-status fails, as it does on a stale deviation (§13.1). `stale_deferrals` lists each with
+A deferral (§11.7) holds while its issue is open and the unit isn't built. One that no
+longer holds is a **stale deferral**, and the status fails, as it does on a stale
+deviation (§13.1). `stale_deferrals` lists each with
 its reference and why:
 
 - `built`: the unit has a current `verifies` of its own (§13.4). It has its evidence now,
@@ -2675,7 +2672,7 @@ its reference and why:
 with issues: %{"#12" => :closed} a deferral by #12 is stale and fails; :open isn't; an
 unanswered reference is unresolved; without issues: the deferral is listed with no issue
 state and not judged closed; a deferred unit with a verifies of its own is stale as built,
-with or without issue states; without claim_grain: nothing is stale
+with or without issue states
 ```
 
 **How surfex learns an issue's state.** Surfex knows no tracker (§19), and
@@ -2733,8 +2730,7 @@ a spec with neither renders as before; the completeness golden's header counts b
 ### 13.9 Unearned implements
 <!-- surfex: unearned -->
 
-Under `claim_grain: true` (§13.2) an `implements` counts for a `require: code:` rule only
-when it earns (§13.5). A claim written only to own code, with nothing that could fail
+An `implements` counts for a `require: code:` rule only when it earns (§13.5). A claim written only to own code, with nothing that could fail
 behind it, satisfies nothing: the code it names is judged by the relations that do earn.
 
 - `Surfex.Status.derive/4` lists every `implements` that doesn't earn as `unearned`: its
@@ -2757,24 +2753,21 @@ claim, and `mix surfex.migrate --report` shows which (§14.1); `nothing_inside` 
 container with no claims to earn through.
 
 ```test:unearned-fails
-under claim_grain: true with require: [code: [:implements]], code related only to an
-unverified hint is unearned and unmet with why unearned, and the status fails; verifying
+with require: [code: [:implements]], code related only to an unverified hint is unearned and unmet with why unearned, and the status fails; verifying
 the hint clears both; code related to a contained section earns through a verified hint
 whose test reaches it, and is unearned as not_exercised when the test reaches other code;
 a spare unearned relation fails even when another relation meets the code; without the
-rule the list is reported and passes; without claim_grain: nothing is unearned
+rule the list is reported and passes
 ```
 
-`Surfex.Status.Report.text/1` counts the unearned relations in a header line under
-`claim_grain: true` (marking it failing under `require: code:`) and lists each with its
-why; `Surfex.Status.Report.json/1` gives `unearned` (`code`, `unit`, `why`); and the status
+`Surfex.Status.Report.text/1` counts the unearned relations in a header line (marking it
+failing under `require: code:`) and lists each with its why; `Surfex.Status.Report.json/1` gives `unearned` (`code`, `unit`, `why`); and the status
 golden (`Surfex.Status.Report.golden/2`, `RELATIONS.md`) holds an `unearned` table keyed by code and counts it in its
-header. Without `claim_grain:` none of these appear, and reports read as before.
+header.
 
 ```test:unearned-report
-under claim_grain: true the text counts unearned relations in its header and lists each
-with its why, the JSON gives code, unit and why, and the golden has an unearned table and
-header count; without claim_grain: no count, line or table appears
+the text counts unearned relations in its header and lists each with its why, the JSON
+gives code, unit and why, and the golden has an unearned table and header count
 ```
 
 ### 13.10 A contract stated differently in several files
@@ -2792,8 +2785,7 @@ several spec files whose statements differ is **restated**, listed and never fai
   whitespace collapsed, so reflowing one changes nothing.
 - `Surfex.Status.derive/4` gives `restated`, one entry per such contract, `%{contract,
   units}` with the units' ids sorted, whatever its other units' versions; the same
-  statement in several files is not listed. It never makes the status fail and holds with
-  or without `claim_grain:`.
+  statement in several files is not listed. It never makes the status fail.
 - `Surfex.Status.Report.text/1` lists each with the units stating it, the JSON gives
   `restated` (`contract`, `units`), and the status golden holds a `restated` table and
   counts it in its header, each only where there is one.
@@ -2816,14 +2808,14 @@ deviation **holds back** the units it says that of, and nothing validates or ear
 
 - `Surfex.Status.derive/4` gives `held`: each spec unit a deviation holds back, with the
   references of its deviations, sorted. That is every deviating unit and each unit it sits
-  in (`within`), at any depth; under `claim_grain: true` (§13.2) also each section it
-  sits under (`under`). A proposed relation is marked `deviates` when its spec end is
-  held, so under claim grain a section above the deviating one is marked too.
+  in (`within`), at any depth, and each section it sits under (`under`). A proposed
+  relation is marked `deviates` when its spec end is held, so a section above the
+  deviating one is marked too.
 - `mix surfex.confirm --evidence` (`Surfex.Record.confirm_by_evidence/4`) doesn't record
   an `implements`, dangling or proposed, whose spec unit is held, whatever the evidence
   says. It lists each one the evidence would have validated as `held back by a
-  deviation`, with the references (`Surfex.Record.evidence_outcome/4`), and reads the
-  project's `claim_grain:` to decide what is held. Other relations are confirmed as
+  deviation`, with the references (`Surfex.Record.evidence_outcome/4`). Other relations
+  are confirmed as
   before: a deviation test's failing run is still its `verifies` relation's evidence.
 - Once the tag goes and the test passes, nothing is held, and the next evidence run
   validates them as it would have.
@@ -2831,21 +2823,19 @@ deviation **holds back** the units it says that of, and nothing validates or ear
 ```test:deviation-holds-back
 with a deviation tag on a hint, confirm by evidence records neither the hint's nor its
 section's implements and lists both as held back with the reference, while it still
-records the verifies; a section the deviating one sits under is held only under
-claim_grain: true; with the tag off and the test passing, the next run validates them
+records the verifies; a section the deviating one sits under is held too; with the tag
+off and the test passing, the next run validates them
 ```
 
-Under `claim_grain: true` an `implements` whose spec unit is held is unearned (§13.9),
+An `implements` whose spec unit is held is unearned (§13.9),
 asked before anything else: `Surfex.Status.earning/2` answers `{:unearned, :deviates}`.
 So `unearned` lists it with why `deviates` and it meets no `require: code:` rule; code
 with no other `implements` that earns misses `unearned` in completeness (§20.3). Status
-and confirm agree: what confirm holds back doesn't earn. Without
-`claim_grain:` earning reads as before.
+and confirm agree: what confirm holds back doesn't earn.
 
 ```test:deviation-unearned
-under claim_grain: true an implements to a deviating hint, to its section, or to a
-section above it is unearned as deviates, even when a verified claim's test exercises the
-code; the text names the why; without claim_grain: none is
+an implements to a deviating hint, to its section, or to a section above it is unearned
+as deviates, even when a verified claim's test exercises the code; the text names the why
 ```
 
 ### 13.12 Lines that are not claims
@@ -2937,8 +2927,8 @@ cited unit's id, its pin and its reason; one citing no unit or several raises na
 file and line; a malformed pin raises; an issue deferral's record is as before
 ```
 
-**It goes stale when the cited unit changes.** Under `claim_grain: true` (§13.2) a
-citation is a stale deferral (§13.7) when:
+**It goes stale when the cited unit changes.** A citation is a stale deferral (§13.7)
+when:
 
 - `changed`: the cited unit's version isn't the pinned one. The decision text was edited,
   so the deferral is judged again: write the new version in the marker, or remove it.
@@ -2950,11 +2940,10 @@ The text report says what to write and on which line; the JSON's `stale_deferral
 `pin`, `version` and `line`, and its `deferred` carry `cites` and `pin`, for citations only.
 
 ```test:unit-deferral-stale
-under claim_grain: true a citation pinning the cited unit's version holds; editing the
+a citation pinning the cited unit's version holds; editing the
 cited unit makes it stale as changed, naming the new version; without a pin it is
 unpinned; with the unit gone it is gone; a built unit is built; issue deferrals are judged
-as before and only issue references are asked of the tracker; without claim_grain:
-nothing is stale
+as before and only issue references are asked of the tracker
 ```
 
 **Why a pin, and not only disappearance.** Nothing is stored in the log for a deferral
@@ -3216,8 +3205,8 @@ implements, worst first, and the population split into units and prose
 
 The report (§14.1) is the migration's **one work list**: it lists, too, the sections whose
 own text has no evidence while a claim inside them is verified, the `:contained` sections
-of §13.4, read as the status reads them (`claim_grain:` and the project's classes, §13.6,
-decide what is contained). `Surfex.Migrate.report/4` takes `Surfex.Status.derive/4`'s
+of §13.4, read as the status reads them (the project's classes, §13.6, decide what is
+contained). `Surfex.Migrate.report/4` takes `Surfex.Status.derive/4`'s
 options, and the task passes the project's.
 - Each contained section's report names the **verified claims inside it**, from the
   status' `contained` list, sorted: a `contained:` line in the text, `contained` in each
@@ -3425,8 +3414,8 @@ declined pair isn't proposed again; nothing without claim_implements: true
 <!-- surfex: classed-suggestions -->
 
 A classed section's citations are narration: an architecture map names modules to orient a
-reader, not to say what they realise. With `claim_grain: true` (§13.2),
-`mix surfex.suggest` (`Surfex.Suggest.all/6` with `classes: true`) proposes no
+reader, not to say what they realise. `mix surfex.suggest` (`Surfex.Suggest.all/6`)
+proposes no
 `implements` from a citation in a classed section's own text, and no `verifies` to a
 classed unit from a declaration, which is contradicted instead (§13.6). The citation is
 still read and checked: one that resolves to nothing is broken (§6) whatever its section's
@@ -3434,9 +3423,9 @@ class. A citation inside a named claim within the section, a block or a hint, is
 claim's and is suggested as before.
 
 ```test:classed-citations
-under claim_grain: true a citation in a classed section's text yields no implements
-suggestion and a broken one is still reported; a declaration naming the classed section
-yields no verifies suggestion; the same citation unclassed, or without the key, does
+a citation in a classed section's text yields no implements suggestion and a broken one
+is still reported; a declaration naming the classed section yields no verifies
+suggestion; the same citation unclassed does
 ```
 
 ## 16. The specification guide
@@ -4106,15 +4095,15 @@ is covered**: which spec units, tests and code are missing a relation they need,
 score to move. `Surfex.Completeness.report/1` (`Surfex.Completeness`) derives it from a status, and it is a pure
 function of the scans and the log.
 
-**What counts.** Every spec unit with text of its own (a section, marked block or test
-hint whose own body isn't empty, `Surfex.Scan.Markdown.empty?/1`; a heading over
-subsections carries no claims), every
+**What counts.** Every spec unit that is a claim (§20.1: a unit with text of its own,
+`Surfex.Scan.Markdown.empty?/1`; a container, such as a heading over subsections, carries
+no claims of its own), every
 test, and every code item. What's complete is judged on **validated** relations (§18):
 complete means validated, not asserted.
 
 | Kind | Complete when | Missing, as listed |
 |---|---|---|
-| spec unit | a test verifies it, or a unit inside it, by a current, validated relation (under `claim_grain: true`, only one of its own, §20.1); and every `implements` relation to it is current and validated. A unit no code implements (a policy, say) is complete with its test alone: every unit needs a test, and code only where the spec describes code. A deviating unit (§13.1) is never complete, whatever its basis: a `verifies` recorded on its test's red run is validated, but the code doesn't meet the unit | `no_relation` (in none), `no_test`, `contained (<unit>, …)` (§20.1), `unvalidated`, `deviates (<ref>, …)` |
+| spec unit | a test or check verifies it by a current, validated relation of its own (§20.1); and every `implements` relation to it is current and validated. A unit no code implements (a policy, say) is complete with its test alone: every unit needs a test, and code only where the spec describes code. A deviating unit (§13.1) is never complete, whatever its basis: a `verifies` recorded on its test's red run is validated, but the code doesn't meet the unit | `no_relation` (in none), `no_test`, `contained (<unit>, …)` (§20.1), `unvalidated`, `deviates (<ref>, …)` |
 | test | it verifies a spec unit by a current, validated relation, and exercises code (a current `tests` relation). A test verifying only units no code implements is complete with its `verifies` alone | `no_relation`, `verifies_nothing`, `exercises_nothing` |
 | code | it implements a unit by a current, validated relation, or is excused by a current `excuses` relation; and, when implemented, a test verifying the unit exercises it (no `code_untested` gap, §13.1). Code is one item per definition (§11): a function's default-argument arities are judged together and counted once, listed under the first of their ids | `no_relation`, `not_described` (neither implemented nor excused), `unvalidated`, `untested` |
 
@@ -4144,7 +4133,7 @@ else, and below completeness: [min: N] fails with the same message as without it
 ```
 
 ```test:completeness-rules
-a spec unit is complete when a validated test verifies it (or a unit inside it) and any
+a spec unit is complete when a validated test verifies it (its own evidence) and any
 implementing code is validated, with a test alone for a unit no code implements; a
 heading-only section isn't counted; a test is complete verifying and exercising code, or
 verifying only code-less units; code is complete when validated and exercised, or
@@ -4167,8 +4156,8 @@ count; it reads as text, JSON and a golden with no hashes or times; below comple
 ### 20.1 Own text in the score
 <!-- surfex: own-text-score -->
 
-Under `claim_grain: true` (§13.2), completeness (`Surfex.Completeness.report/1`) reads a
-spec unit's text as verification does (§13.4): a unit is counted when it is a claim, and
+Completeness (`Surfex.Completeness.report/1`) reads a spec unit's text as verification
+does (§13.4): a unit is counted when it is a claim, and
 a claim is complete only with **its own** evidence.
 
 - A claim is complete when a test or check verifies **it** by a current, validated
@@ -4184,26 +4173,17 @@ a claim is complete only with **its own** evidence.
 
 A contained claim is settled by adding it to the tag of a test that really checks its
 prose, by naming the prose's claims (§11.1) and migrating its relations (§14.1), or by
-classing the prose as asserting nothing. Without `claim_grain:` completeness reads as
-before, and the verdict lists (§13.4) are reported either way.
+classing the prose as asserting nothing.
 
 ```test:completeness-own-text
-under claim_grain: true a contained section is incomplete, missing contained with the
-verified unit inside it; the same section tagged by a validated test is complete; a
+a contained section is incomplete, missing contained with the verified unit inside it; the same section tagged by a validated test is complete; a
 container, a marked table among them, isn't counted
-```
-
-```test:claim-grain-switch
-without claim_grain: completeness counts a unit complete through a unit inside it and
-counts a marked table, as before, and the status still gives verdicts and contained
-claims; with it, completeness reads own text
 ```
 
 ### 20.2 Excused and deferred in the score
 <!-- surfex: classed-score -->
 
-Under `claim_grain: true` (§13.2) completeness reads classes and deferrals as verification
-does (§13.6): an excused unit and a deferred unit are left out of the spec score's total,
+Completeness reads classes and deferrals as verification does (§13.6): an excused unit and a deferred unit are left out of the spec score's total,
 and counted on lines of their own, so a growing excusal moves a number the summary shows:
 
 ```text
@@ -4214,29 +4194,24 @@ and counted on lines of their own, so a growing excusal moves a number the summa
 
 The claims inside a classed section are counted as any claim is.
 `Surfex.Completeness.report/1` gives them as `excused` (the units) and `deferred` (each
-unit and its reference), and `Surfex.Completeness.json/1` under the same keys. Without
-the key both are empty and the score reads as before.
+unit and its reference), and `Surfex.Completeness.json/1` under the same keys.
 
 ```test:classed-completeness
-under claim_grain: true an excused section and a deferred section are out of the spec
-total and counted on their own lines in text and JSON, while a rule inside a classed
-section is counted; without claim_grain: they are counted as before
+an excused section and a deferred section are out of the spec total and counted on their
+own lines in text and JSON, while a rule inside a classed section is counted
 ```
 
 ### 20.3 Code described by an earning implements
 <!-- surfex: earned-code-score -->
 
-Under `claim_grain: true` (§13.2) completeness (`Surfex.Completeness.report/1`) reads code
-as `require:` does (§13.9): code is described only by an `implements` that earns (§13.5).
+Completeness (`Surfex.Completeness.report/1`) reads code as `require:` does (§13.9): code is described only by an `implements` that earns (§13.5).
 Code with `implements` relations of which none earns misses `unearned`, whatever
 validated them; one earning relation describes it. Code with no `implements` misses
 `not_described`, as before, and an `excuses` still describes code nothing implements.
-Without `claim_grain:` an `implements` describes code whether or not it earns.
 
 ```test:completeness-earned-code
-under claim_grain: true code whose only implements is to an unverified hint misses
-unearned, and no longer does once a test verifying the hint reaches it; without
-claim_grain: the same code doesn't miss unearned
+code whose only implements is to an unverified hint misses unearned, and no longer does
+once a test verifying the hint reaches it
 ```
 
 ## 21. Discovering the tool

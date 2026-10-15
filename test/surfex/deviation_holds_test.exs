@@ -132,13 +132,13 @@ defmodule Surfex.DeviationHoldsTest do
   describe "confirm by evidence" do
     @describetag verifies: ["deviation-holds-back", "deviation-holds"]
 
-    test "holds back the hint's and its section's implements, and still records the verifies" do
+    test "holds back the hint's, its section's and the section above's implements, and still records the verifies" do
       scans = world()
 
       assert {:ok, recorded, held} = Record.evidence_outcome(scans, log(scans), evidence(), [])
 
-      # The section above carts isn't held without claim_grain: its implements is recorded.
-      assert implements(recorded) == [@shop]
+      # The section the deviating one sits under (shop, above carts) is held too.
+      assert implements(recorded) == []
 
       assert Enum.any?(
                recorded,
@@ -147,26 +147,17 @@ defmodule Surfex.DeviationHoldsTest do
 
       assert held == [
                %{relation: {:implements, {:code, @add}, {:spec, @carts}}, deviates: ["#119"]},
-               %{relation: {:implements, {:code, @add}, {:spec, @free}}, deviates: ["#119"]}
+               %{relation: {:implements, {:code, @add}, {:spec, @free}}, deviates: ["#119"]},
+               %{relation: {:implements, {:code, @add}, {:spec, @shop}}, deviates: ["#119"]}
              ]
 
       # confirm_by_evidence/4 records the same, and never what is held.
       assert {:ok, ^recorded} = Record.confirm_by_evidence(scans, log(scans), evidence(), [])
     end
 
-    test "under claim_grain: a section the deviating one sits under is held too" do
+    test "the derive holds a section the deviating one sits under, and marks its relation" do
       scans = world()
-
-      assert {:ok, recorded, held} =
-               Record.evidence_outcome(scans, log(scans), evidence(), claim_grain: true)
-
-      assert implements(recorded) == []
-
-      assert Enum.map(held, fn %{relation: {_, _, {:spec, unit}}} -> unit end) ==
-               [@carts, @free, @shop]
-
-      # The derive says the same: the shop is held, and marks its proposed relation.
-      status = Status.derive(scans, log(scans), [], claim_grain: true)
+      status = Status.derive(scans, log(scans))
       assert status.held == %{@free => ["#119"], @carts => ["#119"], @shop => ["#119"]}
 
       assert %{deviates: ["#119"]} =
@@ -174,21 +165,17 @@ defmodule Surfex.DeviationHoldsTest do
                  status.relations,
                  &(&1.relation == {:implements, {:code, @add}, {:spec, @shop}})
                )
-
-      assert Status.derive(scans, log(scans)).held == %{@free => ["#119"], @carts => ["#119"]}
     end
 
     test "with the tag off and the test passing, the next run validates them" do
       scans = world()
 
-      {:ok, first, _held} =
-        Record.evidence_outcome(scans, log(scans), evidence(), claim_grain: true)
+      {:ok, first, _held} = Record.evidence_outcome(scans, log(scans), evidence(), [])
 
       fixed = world(nil)
       green = evidence() ++ [run(@deviant, :passed, "c-new", 3)]
 
-      assert {:ok, recorded, []} =
-               Record.evidence_outcome(fixed, log(fixed) ++ first, green, claim_grain: true)
+      assert {:ok, recorded, []} = Record.evidence_outcome(fixed, log(fixed) ++ first, green, [])
 
       assert implements(recorded) == [@carts, @free, @shop]
     end
@@ -212,9 +199,9 @@ defmodule Surfex.DeviationHoldsTest do
       ]
     end
 
-    test "under claim_grain: an implements to a held unit is unearned as deviates" do
+    test "an implements to a held unit is unearned as deviates" do
       scans = world()
-      status = Status.derive(scans, validated(scans), [code: [:implements]], claim_grain: true)
+      status = Status.derive(scans, validated(scans), code: [:implements])
 
       # Each is verified and exercised; the deviation alone holds it.
       for unit <- [@free, @carts, @shop] do
@@ -233,18 +220,9 @@ defmodule Surfex.DeviationHoldsTest do
 
       # The tag off: the same relations earn.
       fixed = world(nil)
-      earned = Status.derive(fixed, validated(fixed), [code: [:implements]], claim_grain: true)
+      earned = Status.derive(fixed, validated(fixed), code: [:implements])
       assert earned.unearned == []
-    end
-
-    test "without claim_grain: earning reads as before" do
-      scans = world()
-      status = Status.derive(scans, validated(scans), code: [:implements])
-
-      assert status.unearned == []
-      assert status.earning.held == %{}
-
-      assert Status.earning(status, {:implements, {:code, @add}, {:spec, @free}}) == :earned
+      assert Status.earning(earned, {:implements, {:code, @add}, {:spec, @free}}) == :earned
     end
   end
 end

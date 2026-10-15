@@ -11,7 +11,9 @@ release it merely follows.
 
 Plan v2's B.1 (#205, claim forms) is landing here piece by piece, unreleased until most of
 milestone "Claims own their code" is in. So is B.5 (#209), the migration from section grain
-to claim grain, with a walkthrough in the new guide "Migrating to claim grain".
+to claim grain, with a walkthrough in the new guide "Migrating to claim grain". Claim
+grain is now the only reading, and `claim_grain:` is refused (#285, under Changed): every
+entry below that says "under `claim_grain: true`" applies to every project.
 
 ### Added
 
@@ -540,6 +542,59 @@ to claim grain, with a walkthrough in the new guide "Migrating to claim grain".
   `mix surfex.confirm --evidence` to list held relations instead of recording them;
   stop withdrawing them by hand. Under `claim_grain: true`, an `implements` to a held unit
   is unearned as `deviates` until the fix lands.
+
+### Changed
+
+- **Breaking: claim grain is the only reading, and `claim_grain:` is refused** (#285, for
+  #145). Every part of claim grain that shipped behind the transitional key now applies
+  to every project, and a `.surfex.exs` that sets `claim_grain:`, `true` or `false`,
+  raises: the message names the key, says claim grain is now the only reading, and points
+  to this step and `mix surfex.migrate --report` (spec §13.2). A config that only drops
+  the key reads as before. For a project that never set it, what changes:
+  - **contained sections**: a claim is complete only with its own evidence, so a section
+    verified only through a claim inside it misses `contained` in completeness, and
+    containers (marked tables among them) are no longer counted (spec §20.1);
+  - **earning**: an `implements` that earns nothing is listed as unearned and meets no
+    `require: code:` rule; where `require: [code: [:implements]]` is set it fails, and
+    code with no earning `implements` is unmet (`why: :unearned`) and misses `unearned`
+    in completeness (spec §13.9, §20.3). The text header always counts them;
+  - **classes and deferrals** are read: an excused or deferred unit isn't judged by
+    `require:` spec rules or counted in completeness, a relation to an excused section is
+    contradicted, and a deferral that no longer holds is stale; both fail (spec §13.6,
+    §13.7, §13.13, §20.2), and `mix surfex.suggest` proposes nothing from a classed
+    section's own text (spec §15.2);
+  - **deviations** hold back the sections a deviating unit sits under, for
+    `confirm --evidence` and for earning (spec §13.11);
+  - **path headings fold** under an id'd heading wherever `heading_ids:` is set and
+    `fold_paths:` isn't (spec §11.1).
+
+  Library API: `Surfex.Status.Config.claim_grain?/1` is removed; `Surfex.Status.derive/4`
+  no longer reads a `claim_grain:` option and its `policy` no longer holds one;
+  `Surfex.Record.evidence_outcome/4` no longer reads `claim_grain:` from its meta;
+  `Surfex.Suggest.all/6` no longer takes `classes:`. Each such option is ignored.
+
+  Measured read-only over the 9 projects with a `.surfex.exs` and a relation log, each at
+  its committed head, with this checkout's code against their files (nothing written in
+  any of them). Before is each project's own config as it stands, after is the same
+  config read now:
+  - failing projects: 2 before, 4 after. Status failures per project, before → after:
+    0 → 0 in five, 0 → 36 and 0 → 3 in two (unearned relations and the code they leave
+    unmet), and unchanged in the two that already failed (their failures are proposed
+    and dangling relations, read the same either way);
+  - unearned `implements`: 18 and 2 in two projects, 0 in seven;
+  - contained sections: 2 to 120 per project, 223 in all (listed before too); spec
+    completeness falls in four projects, by 3.7 to 18.1 points, and holds in five;
+  - none declares spec classes or deferrals yet, so nothing is excused, deferred,
+    contradicted or stale.
+
+  **Upgrade step (breaking):** delete `claim_grain:` from `.surfex.exs` if it is there,
+  then run `mix surfex.status` and `mix surfex.migrate --report`. Settle each unearned
+  relation by its why (the #247 entry above); settle each contained section by tagging it
+  on a test that checks its own prose, by naming its claims and migrating
+  (`mix surfex.migrate`), or by classing prose that asserts nothing (`spec_classes:`). A
+  `completeness: [min: N]` floor can fail until then. Regenerate the goldens
+  (`mix surfex.goldens --write`): `RELATIONS.md` gains its `unearned` count and
+  `COMPLETENESS.md` its new scores. A library caller drops `claim_grain:` and `classes:`.
 
 ### Fixed
 

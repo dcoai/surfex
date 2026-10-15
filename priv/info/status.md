@@ -36,7 +36,7 @@ relations (marked `deviates`) don't fail, and a failed run of it isn't Failed. C
 with the skip included (`mix surfex.test --deviations` runs exactly those): once it
 passes, status fails it as a stale deviation. While the tag is on, `mix surfex.confirm
 --evidence` holds back (lists, doesn't validate) any `implements` to the unit or a unit
-holding it, and under `claim_grain: true` such a relation is unearned as `deviates`.
+holding it, and such a relation is unearned as `deviates`.
 
 Not failing: new, planned, impacted, deviating (unless `--no-deviations`), open marks (unless `--no-marks`), claims not
 checked here because this run excluded or skipped their test, and tests unselectable by
@@ -60,13 +60,13 @@ isn't`.
 
 **Excused and deferred** units (spec classes and deferrals) are counted in one header
 line, `excused by class: N (M with claims inside) · deferred: N`, and listed in the JSON.
-Under `claim_grain: true` two lists fail: **Contradicted**, a relation to a section its
+Two lists fail: **Contradicted**, a relation to a section its
 class says asserts nothing (retire the relation, or remove the class), and **Stale
 deferrals**, a deferral whose unit has a test of its own, whose issue is closed, or that
 the tracker couldn't answer. `mix surfex.status --issues` asks the tracker through the
 `issues:` command; without it only a built unit is judged.
 
-**Unearned** (under `claim_grain: true`, counted in the header): an `implements` no
+**Unearned** (counted in the header): an `implements` no
 verified claim's test or check exercises, with why (`unverified`, `not_exercised`,
 `nothing_inside`; `mix surfex.info claims`). It meets no `require: code:` rule, and the
 list fails where `require: [code: [:implements]]` is set. `not_exercised` usually means

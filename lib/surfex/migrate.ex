@@ -390,8 +390,8 @@ defmodule Surfex.Migrate do
       sorted: its own text has no evidence while theirs has. `[]` for any other section.
 
   Sorted worst first: by `relations`, then id. `population` counts the sections by kind,
-  and how many are contained. `opts` are `Surfex.Status.derive/4`'s: `claim_grain:` and a
-  project's classes decide what reads as contained, as in the status.
+  and how many are contained. `opts` are `Surfex.Status.derive/4`'s: a project's classes
+  decide what reads as contained, as in the status.
   """
   @spec report([Scan.t()], [Entry.t()], [String.t()] | :all, keyword) :: %{
           sections: [section_report],
