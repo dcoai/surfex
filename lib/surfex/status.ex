@@ -61,6 +61,11 @@ defmodule Surfex.Status do
   **restated**: the same function, of the same kind, at more than one version. Listed so
   the drift is visible, never a failure.
 
+  Each declared dispatch function (`dispatch:`, §11.10) is listed under **dispatch** with
+  what its table lists: the functions a call to it reaches, the literal entries naming no
+  scanned function, and whether it is **unresolved** (its module lists no literal target,
+  so a call to it reaches nothing beyond it). Information, never a failure.
+
   A test that `mix test --only verifies:id` can't select by some of the ids it declares (a
   list tag of several, §11) is **unselectable**, with those ids. A list is legitimate, so
   this is information, never a failure.
@@ -160,6 +165,14 @@ defmodule Surfex.Status do
           citations: [Surfex.Cite.t()],
           inert: [Surfex.Scan.ExUnit.inert()],
           restated: [Surfex.Status.Restated.t()],
+          dispatch: [
+            %{
+              dispatcher: String.t(),
+              targets: [String.t()],
+              unscanned: [String.t()],
+              unresolved: boolean
+            }
+          ],
           stale: [
             %{
               class: String.t(),
@@ -425,6 +438,8 @@ defmodule Surfex.Status do
       inert: Keyword.get(opts, :inert, []),
       # Information, not a failure (§13.10): one contract, stated differently in two files.
       restated: Surfex.Status.Restated.of(scans),
+      # Information, not a failure (§11.10): what each declared dispatcher's table lists.
+      dispatch: dispatch(scans),
       stale: stale(scans, relations, Keyword.get(opts, :coverage)),
       failed: failed,
       unproven: unproven,
@@ -1053,6 +1068,20 @@ defmodule Surfex.Status do
     else
       %{}
     end
+  end
+
+  # Each declared dispatch function with its reading, from its module's record (§11.10).
+  defp dispatch(scans) do
+    for %Scan{kind: :code, dispatch: dispatch} <- scans,
+        {id, %{targets: targets, unscanned: unscanned}} <- dispatch do
+      %{
+        dispatcher: id,
+        targets: targets,
+        unscanned: unscanned,
+        unresolved: targets == [] and unscanned == []
+      }
+    end
+    |> Enum.sort_by(& &1.dispatcher)
   end
 
   # The implements relations a current review named a path for (`--through`, §18.2).

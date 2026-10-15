@@ -43,6 +43,9 @@ defmodule Surfex.Status.Config do
     * `:router` — the router module (or a list of them) whose routes a test's requests
       resolve through (§11); found from the project's endpoint when not given, and `false`
       turns route resolution off
+    * `:dispatch` — the project's dispatch functions, `[{Module, :fun, arity}]`: a call to
+      one reaches every handler its module's table lists as literal `{Module, :fun}` pairs
+      or `&Module.fun/arity` captures (`dispatch!/1`, §11.10)
     * `:checks` — gates that verify claims: each `[id:, run:, verifies:, inputs:]`, a
       command that can fail, the spec units it verifies, and the files it inspects
       (`Surfex.Scan.Checks`, §11.4)
@@ -76,6 +79,7 @@ defmodule Surfex.Status.Config do
     :triangle,
     :require_red,
     :router,
+    :dispatch,
     :claim_implements,
     :claim_grain,
     :spec_classes,
@@ -140,11 +144,24 @@ defmodule Surfex.Status.Config do
     scanners = scanners!(config)
     asked = project_scanners(scanners)
 
+    dispatch = dispatch!(config)
+
+    if dispatch != [] and not elixir_scanner?(config),
+      do:
+        raise(
+          ArgumentError,
+          "dispatch: is read by the Elixir scanner, which isn't among scanners:"
+        )
+
     found =
       for {scanner, opts} <- scanners do
         case scanner do
-          :elixir -> {scanner, Surfex.Scanner.Elixir.items(root, opts ++ [call_scanners: asked])}
-          module -> {scanner, module!(module).items(root, opts)}
+          :elixir ->
+            {scanner,
+             Surfex.Scanner.Elixir.items(root, opts ++ [call_scanners: asked, dispatch: dispatch])}
+
+          module ->
+            {scanner, module!(module).items(root, opts)}
         end
       end
 
@@ -219,6 +236,38 @@ defmodule Surfex.Status.Config do
         Enum.any?(marks, &String.contains?(text, &1)),
         uniq: true,
         do: {file, Code.string_to_quoted!(text, file: file)}
+  end
+
+  @doc """
+  The declared dispatch functions (§11.10), `dispatch: [{Module, :fun, arity}]`, as call
+  ids (`Module.fun/arity`), sorted. None without the key. Anything but a list of such
+  triples raises.
+  """
+  @spec dispatch!(keyword) :: [String.t()]
+  def dispatch!(config) do
+    list = Keyword.get(config, :dispatch, [])
+
+    valid? =
+      is_list(list) and
+        Enum.all?(list, fn
+          {m, f, a} ->
+            is_atom(m) and m not in [nil, true, false] and is_atom(f) and is_integer(a) and a >= 0
+
+          _ ->
+            false
+        end)
+
+    unless valid?,
+      do:
+        raise(
+          ArgumentError,
+          "dispatch: must be a list of {Module, :fun, arity}, got #{inspect(list)}"
+        )
+
+    list
+    |> Enum.map(fn {m, f, a} -> Surfex.SourceScan.Calls.call(inspect(m), f, a) end)
+    |> Enum.uniq()
+    |> Enum.sort()
   end
 
   @doc """

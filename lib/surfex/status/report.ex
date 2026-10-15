@@ -169,6 +169,12 @@ defmodule Surfex.Status.Report do
         status.restated,
         &"contract #{&1.contract}: #{Enum.join(&1.units, ", ")}"
       ),
+      # Information, not a failure (§11.10).
+      items(
+        "Dispatch (a call to a declared dispatcher reaches what its table lists)",
+        status.dispatch,
+        &"dispatch #{&1.dispatcher}: #{dispatch_text(&1)}"
+      ),
       # A warning, not a failure (§11.2).
       items(
         "List-shaped keys (a table row's key that may name two things)",
@@ -325,6 +331,15 @@ defmodule Surfex.Status.Report do
         end),
       "restated" =>
         Enum.map(status.restated, fn r -> %{"contract" => r.contract, "units" => r.units} end),
+      "dispatch" =>
+        Enum.map(status.dispatch, fn d ->
+          %{
+            "dispatcher" => d.dispatcher,
+            "targets" => d.targets,
+            "unscanned" => d.unscanned,
+            "unresolved" => d.unresolved
+          }
+        end),
       "inert" =>
         Enum.map(status.inert, fn i ->
           %{
@@ -494,6 +509,7 @@ defmodule Surfex.Status.Report do
               do: [],
               else: [{"restated contracts", length(status.restated)}]
             ) ++
+            if(status.dispatch == [], do: [], else: [{"dispatchers", length(status.dispatch)}]) ++
             classed_stat(status) ++
             unearned_stat(status) ++
             [
@@ -598,6 +614,27 @@ defmodule Surfex.Status.Report do
             %{
               "Item" => {:code, "contract #{r.contract}"},
               "Stated in" => {:raw, Enum.map_intersperse(r.units, ", ", &Span.code/1)}
+            }
+          end) ++
+          id_group.("dispatch", ["Item", "Reaches"], status.dispatch, fn d ->
+            %{
+              "Item" => {:code, "dispatch #{d.dispatcher}"},
+              "Reaches" =>
+                {:raw,
+                 if(d.unresolved,
+                   do: Span.text(dispatch_text(d)),
+                   else: [
+                     Enum.map_intersperse(d.targets, ", ", &Span.code/1),
+                     if(d.unscanned == [],
+                       do: [],
+                       else: [
+                         if(d.targets == [], do: "", else: "; "),
+                         "not scanned: ",
+                         Enum.map_intersperse(d.unscanned, ", ", &Span.code/1)
+                       ]
+                     )
+                   ]
+                 )}
             }
           end) ++
           id_group.("marks", ["Item", "State", "Note"], status.marks, fn m ->
@@ -851,6 +888,17 @@ defmodule Surfex.Status.Report do
   defp unproven_text(:no_verifying_test), do: "no current verifying test exercises the code"
 
   # Why a verifies tag verifies nothing (§11.5).
+  defp dispatch_text(%{unresolved: true}),
+    do: "unresolved, its module lists no literal {Module, :fun} or &Module.fun/arity"
+
+  defp dispatch_text(%{targets: targets, unscanned: unscanned}) do
+    reached = if targets == [], do: "nothing scanned", else: Enum.join(targets, ", ")
+
+    if unscanned == [],
+      do: reached,
+      else: "#{reached}; not scanned: #{Enum.join(unscanned, ", ")}"
+  end
+
   defp inert_text(:no_test), do: "no test or property block takes it"
   defp inert_text(:support), do: "in test/support, which runs no test"
 

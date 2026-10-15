@@ -266,6 +266,14 @@ defmodule Surfex.Scan.ExUnit do
       forms: forms,
       remote: Calls.remote(scanners),
       routes: routes,
+      # The declared dispatch functions' targets (§11.10), as the module records hold them.
+      dispatch:
+        for(
+          %Scan{kind: :code, dispatch: dispatch} <- code,
+          {id, %{targets: targets}} <- dispatch,
+          into: %{},
+          do: {id, targets}
+        ),
       modules:
         MapSet.new(
           for(%Scan{kind: :code, role: :module, id: id} <- code, do: id) ++
@@ -365,7 +373,8 @@ defmodule Surfex.Scan.ExUnit do
             |> Enum.flat_map(&imported(&1, fun, arity, known))
       end,
       known.remote,
-      &Surfex.SourceScan.Routes.calls(&1, &2, known.routes)
+      &Surfex.SourceScan.Routes.calls(&1, &2, known.routes),
+      known.dispatch
     )
   end
 

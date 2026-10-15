@@ -324,6 +324,7 @@ source of a code record (§11).
 | `calls` | the keys of the code it calls, as far as its source says (§5.2). A fact about the source, never part of its key or its hash. Empty when the scanner doesn't know: the item is then reached only by a test calling it (§13.1) |
 | `hidden` | code the item covers that isn't an item of its own (a module's hidden definitions, §3.3), keyed as a call names it (`Mix.Tasks.Foo.run/1`), each with its calls. Its version is in the item's; a call naming it reaches the item and goes on through its calls (§13.1). Empty for most items |
 | `runs` | the hidden modules' code the item runs (§3.3), keyed as a call names it, each with its calls. It is no item's own: its version is in each item running it, and each carries the same entry. A call naming it reaches no item and goes on through its calls (§13.1). Empty for most items |
+| `dispatch` | on a module, the dispatch functions declared in it (§11.10), each with what its table lists: `%{targets, unscanned}`. Never part of its key or its hash. Empty for every other item |
 
 `Surfex.Item.key/1` is an item's identity: `parent.name` for a member, otherwise `name`.
 The hash is never part of the key, so an edit changes a row's version and not its
@@ -1800,6 +1801,60 @@ ones join), else the marker's module:, else the nearest heading naming one, by a
 or a backticked alias, climbing past headings that name none; a callback and a spec of one
 name and arity are two units; one id twice in a file raises naming both lines; a signature
 no module places, or whose heading names several, raises naming its line
+```
+
+### 11.10 Calls through a declared dispatch function
+<!-- surfex: dispatch-calls -->
+
+Some code runs its handlers through a table: a function looks the handler up in a map of
+operations and calls it with `apply(module, fun, args)`. No call in the source names a
+handler, so without help a test driving the dispatcher reaches none of them, and each
+handler earns (§13.5) only through a review naming the path (§18.2). The project author
+knows the dispatcher exists, so the project declares it once, and surfex reads the table
+from source, never compiled and never traced at run time:
+
+- `dispatch: [{Module, :fun, arity}]` in `.surfex.exs`
+  (`Surfex.Status.Config.dispatch!/1`) names the dispatch functions. Anything but a list
+  of such triples is refused, as is a dispatcher the scanned source doesn't define with
+  `def`, one in a `@moduledoc false` module, and the key without the Elixir scanner among
+  the scanners (§5.3), which is what reads it.
+- A dispatcher's **targets** are the literal entries its module writes inside a module
+  attribute's value (not a typespec's or the docs'), a map literal or a keyword literal
+  (not a `do:` block): `{Module, :fun}` names every arity of `Module.fun` the scanned
+  source defines with `def` or `defdelegate`, `{Module, :fun, arity}` and
+  `&Module.fun/arity` that arity. Aliases resolve as the module declares them, and
+  `__MODULE__` is the module. A module nested in it is its own. An entry naming no function
+  the scanned source defines is listed as **unscanned** and reaches nothing.
+- A call that names a dispatcher, remote, local inside its module or a capture, also calls
+  each target and names its module, in a definition's calls (§5.2) and a test's (§11)
+  alike. So reach, the triangle, evidence (§13.1, §17), the suggestions (§15) and earning
+  (§13.5) follow it with no special case.
+- A scanner's `calls/3` (§5.4) still takes precedence: where it answers for a call to a
+  dispatcher, its answer is what that call reaches, and the table adds nothing.
+- The reading travels on the dispatcher's module item and code record (`dispatch`, §4).
+  `Surfex.Status.derive/4` gives `dispatch`, one entry per dispatcher, `%{dispatcher,
+  targets, unscanned, unresolved}`. A dispatcher whose module lists no literal entry is
+  **unresolved**: a call to it reaches nothing beyond it. It is reported, never failing.
+  `Surfex.Status.Report.text/1` lists each dispatcher with what it reaches, the JSON
+  gives `dispatch`, and the status golden holds a `dispatch` table and counts the
+  dispatchers in its header, each only where `dispatch:` declares one.
+
+```test:dispatch-reach
+a test driving an endpoint whose code calls a declared dispatcher reaches each handler its
+module's map lists, and the handler's module; a {Module, :fun} entry names every defined
+arity and an &Module.fun/arity capture its arity; without dispatch: it reaches none
+```
+
+```test:dispatch-unresolved
+a dispatcher whose table isn't literal reaches nothing beyond it and is listed unresolved,
+an entry naming unscanned code is listed unscanned, and the status doesn't fail; text,
+JSON and golden list dispatchers only where dispatch: declares one; a malformed dispatch:
+or an undefined dispatcher is refused
+```
+
+```test:dispatch-calls-precedence
+where a scanner's calls/3 answers for a call to a dispatcher, the call reaches its answer
+and not the table; a call it doesn't answer still reaches the table
 ```
 
 ## 12. The relation log

@@ -436,7 +436,35 @@ to claim grain, with a walkthrough in the new guide "Migrating to claim grain".
   **Upgrade step:** none; the text report gains lines, never loses any. A tool reading the
   report's population as two kinds should expect a third key, `contained`.
 
+- **A declared dispatch function reaches the handlers its table lists** (#272, #281). Code
+  that runs its handlers through a table (`apply(module, fun, args)` from a map of
+  operations) reached no handler from a test driving it, so each handler earned only
+  through a unit test calling it or a `--through` review per relation. `dispatch:
+  [{MyApp.Ops, :run, 3}]` in `.surfex.exs` declares the dispatcher once (spec §11.10):
+  - its module's literal entries, `{Module, :fun}` (every arity defined),
+    `{Module, :fun, arity}` and `&Module.fun/arity`, inside module attributes, map
+    literals and keyword literals, are its targets, read from source, never traced;
+  - a call naming the dispatcher, in a definition or a test, also calls each target and
+    names its module, so reach, the triangle, evidence and earning follow;
+  - a scanner's `calls/3` answer for a call takes precedence over the table;
+  - the status lists each dispatcher with its targets and the entries naming unscanned
+    code (text, JSON `dispatch`, and a `dispatch` table and `dispatchers` count in
+    `RELATIONS.md`), only where `dispatch:` declares one. A dispatcher whose module lists
+    no literal entry is unresolved: reported, never failing. A malformed `dispatch:`, an
+    undefined dispatcher, one in a `@moduledoc false` module, or the key without the Elixir
+    scanner is refused.
+
+  Measured read-only on one adopter whose S3-style API dispatches 56 handlers through one
+  table: the table reads whole (56 targets, none unscanned), and test→handler reach grows
+  from 59 to 166 pairs. Its 2 `not_exercised` implements stay: their verifying HTTP tests
+  reach the endpoint module, but the endpoint plugs its pipeline (`plug Pipeline`), which
+  is no call, so they never reach the dispatcher (proposal #282).
+
 ### Changed
+
+- **`Surfex.Item` gains a `dispatch` field** (#272, #281), for scanner authors: on a
+  module item, the dispatch functions declared in it with what each one's table lists
+  (spec §4, §11.10). It defaults to `%{}`, so a project scanner's items are unchanged.
 
 - **A deviation holds back the `implements` it says the code doesn't meet** (#255, #279).
   `mix surfex.confirm --evidence` no longer validates an `implements`, dangling or

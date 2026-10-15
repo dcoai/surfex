@@ -33,14 +33,25 @@ defmodule Surfex.SourceScan.Calls do
   it (§5.4): a piped call is given with its piped value as its first argument. `driven`
   is asked about each whole body, with every alias it can see, for calls only the body as
   a whole states (a request to a route, then an event to the view it mounted, #206).
+
+  `dispatch` maps a declared dispatch function (§11.10) to the targets its table lists: a
+  call naming it, local or remote or a capture, also calls each target and names its
+  module, unless `remote` answered for that call, whose answer says what it reaches.
   """
   @spec of(
           [{Macro.t(), aliases}],
           ({atom, non_neg_integer} -> [String.t()]),
           remote,
-          (Macro.t(), aliases -> [String.t()])
+          (Macro.t(), aliases -> [String.t()]),
+          %{String.t() => [String.t()]}
         ) :: [String.t()]
-  def of(bodies, local, remote \\ none(), driven \\ fn _body, _aliases -> [] end) do
+  def of(
+        bodies,
+        local,
+        remote \\ none(),
+        driven \\ fn _body, _aliases -> [] end,
+        dispatch \\ %{}
+      ) do
     bodies =
       for {node, scope} <- bodies, body = body(node), do: {body, scope, local_aliases(body)}
 
@@ -51,10 +62,16 @@ defmodule Surfex.SourceScan.Calls do
         |> Enum.flat_map(fn
           {:remote, parts, fun, arity, line, node} ->
             aliases = visible(scope, own, line)
-            [call(expand(parts, aliases), fun, arity) | named(remote, node, aliases)]
+            id = call(expand(parts, aliases), fun, arity)
+
+            case named(remote, node, aliases) do
+              [] -> [id | dispatched(dispatch, id)]
+              answered -> [id | answered]
+            end
 
           {:local, fun, arity} ->
-            local.({fun, arity})
+            ids = local.({fun, arity})
+            ids ++ Enum.flat_map(ids, &dispatched(dispatch, &1))
         end)
       end)
 
@@ -71,6 +88,15 @@ defmodule Surfex.SourceScan.Calls do
           do: id
 
     (functions ++ modules ++ stated) |> Enum.uniq() |> Enum.sort()
+  end
+
+  # What a call to a declared dispatcher reaches besides it (§11.10): each target, and the
+  # module it is in, as a call names its module.
+  defp dispatched(dispatch, id) do
+    case Map.fetch(dispatch, id) do
+      {:ok, targets} -> targets ++ Enum.map(targets, &module_of/1)
+      :error -> []
+    end
   end
 
   @doc "A `t:remote/0` that names nothing: the calls of a project with no scanner answering."

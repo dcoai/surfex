@@ -46,7 +46,9 @@ defmodule Surfex.Scan do
   what it
   `calls`: the functions its source calls (`MyApp.Cart.add/3`), as facts to suggest
   `tests` relations from. A code record lists what its item calls (`Surfex.Item`), so
-  `reach/1` can follow a test through the code it calls.
+  `reach/1` can follow a test through the code it calls. A module's record carries the
+  dispatch functions declared in it (`dispatch`, §11.10), each with the targets its table
+  lists, which a call to it calls too.
 
   A check record (`Surfex.Scan.Checks`, kind `:check`) is a declared gate: its `declares`
   are what it verifies, and `check` holds its command, its declaration's version and its
@@ -76,6 +78,7 @@ defmodule Surfex.Scan do
     calls: [],
     hidden: %{},
     runs: %{},
+    dispatch: %{},
     shape: false,
     named: false,
     contract: nil,
@@ -107,6 +110,9 @@ defmodule Surfex.Scan do
           hidden: %{String.t() => [String.t()]},
           # The hidden modules' code a code record runs, by key, with its calls (`Surfex.Item`).
           runs: %{String.t() => [String.t()]},
+          # A module's declared dispatch functions with what each one's table lists (§11.10,
+          # `Surfex.Item`).
+          dispatch: %{String.t() => %{targets: [String.t()], unscanned: [String.t()]}},
           # A code record of a shape (`Surfex.Item` `:shape`): judged, never exercised.
           shape: boolean,
           # A spec section whose id the author wrote (an anchor, a heading comment or the
@@ -268,7 +274,8 @@ defmodule Surfex.Scan do
         shape: item.shape,
         calls: item.calls,
         hidden: item.hidden,
-        runs: item.runs
+        runs: item.runs,
+        dispatch: item.dispatch
       }
     end)
     |> Enum.sort_by(& &1.id)
