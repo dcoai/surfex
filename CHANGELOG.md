@@ -4,16 +4,21 @@ All notable changes to Surfex are recorded here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.10.0] — 2026-10-15
 
-`mix.exs` reads `0.9.2-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
-release it merely follows.
+Claims own their code (#145, plan v2). A spec states its claims at the grain it means
+them, as rules, id'd paragraphs, contract fences and table rows, and each claim answers
+for itself: it is complete only with its own evidence, and an `implements` earns only
+through a test that exercises the code. Sections that only orient the reader can be
+classed, open work can be deferred to an issue or a spec unit, and `mix surfex.migrate`
+moves an existing log from section grain to claim grain (guide "Migrating to claim
+grain").
 
-Plan v2's B.1 (#205, claim forms) is landing here piece by piece, unreleased until most of
-milestone "Claims own their code" is in. So is B.5 (#209), the migration from section grain
-to claim grain, with a walkthrough in the new guide "Migrating to claim grain". Claim
-grain is now the only reading, and `claim_grain:` is refused (#285, under Changed): every
-entry below that says "under `claim_grain: true`" applies to every project.
+**This release is breaking.** Claim grain is now the only reading, and a `.surfex.exs`
+that sets `claim_grain:` is refused. Projects with unearned `implements` start failing.
+Read the upgrade step under Changed (#285) before taking it. The entries below were written
+while claim grain sat behind the key: wherever one says "under `claim_grain: true`", it now
+applies to every project.
 
 ### Added
 
