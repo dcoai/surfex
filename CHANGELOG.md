@@ -54,6 +54,15 @@ to claim grain, with a walkthrough in the new guide "Migrating to claim grain".
   marker as a comment, but an `elixir contract` info string swallows the heading after
   it, as `test ID` does.
 
+- **A contract stated differently in several files is listed** (#270, #278). Two contract
+  units with the same id after the file (the same `Module.name/arity`, of the same kind)
+  in several spec files, at more than one version, are `restated`: the status derives
+  `%{contract, units}` for each, the text report lists them, the JSON gives `restated`, and
+  the status golden holds a `restated` table and header count, each only where there is
+  one. It never fails, with or without `claim_grain:` (spec §13.10). Measured read-only
+  over three adopters' specs: 4 restated contracts in one, 1 in another, and none in the
+  third until its unplaced fences name their module.
+
 - **Path headings fold into an id'd section, opt-in** (#205, #237). With `fold_paths: true`,
   a heading with no id inside a section that has one is part of that section's unit: its
   text counts in the section's version and its hints, blocks, rules, rows and contracts sit
