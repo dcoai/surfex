@@ -38,15 +38,21 @@ to claim grain, with a walkthrough in the new guide "Migrating to claim grain".
   item after it, and a list item or paragraph already starting with `<!-- surfex: ID -->`
   becomes a rule, leaving its section's version.
 
-- **Contract fences** (#205, #235). A fenced block after `<!-- surfex: contract -->`, or
-  opened as ```` ```elixir contract ````, is one unit of role `:contract` per function its
-  `@spec`, `@callback` and `@macrocallback` lines name, keyed `file#name/arity` (or
-  `file#Module.name/arity` for a head that names its module), so changing one signature
-  dangles only that function's relations (spec §11.1). The module is the one the head names,
-  else the marker's `module:` option, else the enclosing subject section's item
-  (`subjects:`); a signature with none is an error. The new scan-record field `contract` holds the function,
-  `MyApp.Feed.feed/2`. ex_doc renders the marker as a comment, but an `elixir contract`
-  info string swallows the heading after it, as `test ID` does.
+- **Contract fences** (#205, #235, #270, #277). A fenced block after
+  `<!-- surfex: contract -->`, or opened as ```` ```elixir contract ````, is one unit of
+  role `:contract` per function its `@spec`, `@callback` and `@macrocallback` lines name,
+  keyed by the function it states, `file#MyApp.Feed.feed/2`, so changing one signature
+  dangles only that function's relations (spec §11.1). An unqualified signature's module
+  is, nearest first, the `defmodule M do` around it inside the fence (nested ones join),
+  the marker's `module:` option, then the nearest enclosing heading that names one (a
+  `subjects:` item, else a module alias alone in backticks), climbing past headings that
+  name none (spec §11.9). So two functions of one name in two modules of one file are two
+  units. A `@callback` keys apart from a `@spec` of the same name and arity,
+  `file#MyApp.Feed.callback:init/1` (`macrocallback:` likewise). The same id in two fences
+  of one file, and a signature no module places, stay errors naming the lines. The new
+  scan-record field `contract` holds the function, `MyApp.Feed.feed/2`. ex_doc renders the
+  marker as a comment, but an `elixir contract` info string swallows the heading after
+  it, as `test ID` does.
 
 - **Path headings fold into an id'd section, opt-in** (#205, #237). With `fold_paths: true`,
   a heading with no id inside a section that has one is part of that section's unit: its

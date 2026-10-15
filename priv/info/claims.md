@@ -34,7 +34,8 @@ above it.
 `:section_number`, a regex with `(?<id>…)` such as `~r/^(?<id>P\d+)/`, or a list of them.
 An item with no id is an error naming its line.
 
-**A module's signatures**: a contract fence, one unit per function, `spec.md#feed/2`.
+**A module's signatures**: a contract fence, one unit per function,
+`spec.md#MyApp.Feed.feed/2`, and a callback apart, `spec.md#MyApp.Feed.callback:init/1`.
 
 ````
 <!-- surfex: contract module: MyApp.Feed -->
@@ -44,7 +45,10 @@ An item with no id is an error naming its line.
 ```
 ````
 
-In a subject section (`subjects:`) the marker needs no `module:`. Changing one signature
+A signature's module is its head's, else a `defmodule M do` around it in the fence, else
+the marker's `module:`, else the nearest heading naming one (a `subjects:` item, or a
+module alias alone in backticks, as in ``## 2. `MyApp.Feed` ``), so under such a heading
+the marker needs no `module:`. One id twice in a file is an error. Changing one signature
 dangles only that function's relations.
 
 **Citing a unit in the project's own form**: ids are per file, and a project often cites

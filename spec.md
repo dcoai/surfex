@@ -643,7 +643,7 @@ A profile subject (a file, a heading pattern, item keys) declares that a section
 until the next heading of the same or higher level, resolves as that item's member, and
 inside such a section the member wins over a global of the same name. A subject key
 that names nothing makes the heading's citation unresolved. A contract fence (§11.1) in a
-subject section is about the subject's one item, unless its marker names a module.
+subject section is about the subject's one item where nothing nearer names a module (§11.9).
 
 ## 7. Coverage
 <!-- surfex: coverage -->
@@ -1270,22 +1270,18 @@ module's signatures. A fenced block after the line `<!-- surfex: contract -->` (
 between are fine), or opened as ```` ```elixir contract ````, yields one unit of role
 `:contract` per function its `@spec`, `@callback` or `@macrocallback` lines name. Where
 a signature ends is §11.8's.
-- **Its id** is `file#name/arity`, read by parsing the signature as Elixir:
-  `spec/17-public-api.md#feed/2`. A head that names its module, `@spec MyApp.open(port,
-  opts) :: …`, is keyed as written, `file#MyApp.open/2`. Several signatures of one function
-  (a multi-clause spec) are one unit, at the first one's place.
-- **Its module** is the one its head names, else the marker's `module:` option
-  (`<!-- surfex: contract module: MyApp.Feed -->`), else the one item of the nearest
-  enclosing subject section (§6.6). The record's `contract` is the function it is the
-  contract of, `MyApp.Feed.feed/2`.
+- **Its id** is `file#Module.name/arity`, read by parsing the signature as Elixir, with the
+  module §11.9 resolves: `spec/17-public-api.md#MyApp.Feed.feed/2`. Several signatures of
+  one function (a multi-clause spec) are one unit, at the first one's place. The record's
+  `contract` is the function it is the contract of, `MyApp.Feed.feed/2`.
 - **Its version** is its signatures' text, so changing a signature dangles exactly that
   unit's relations. The fence's other lines (comments, code) and its fence lines are the
   text of what it sits in.
 
 The bare marker is a block's opening marker too, and stays a block where a
 `<!-- /surfex -->` closes it (§11). A signature with no module, a marker with no fence after
-it, a fence holding no signature, a signature that doesn't parse, and a function in two
-fences of one file are errors naming the line. Whether a contract unit's citation of its own
+it, a fence holding no signature, a signature that doesn't parse, and one id in two fences
+of one file are errors naming the line. Whether a contract unit's citation of its own
 function yields `implements` is plan item D.2's to decide.
 
 **Folding path headings.** With `fold_paths: true` in `.surfex.exs`, a heading with no id
@@ -1370,13 +1366,11 @@ after it.
 
 ```test:contract-fences
 a contract fence (after the contract marker, or opened elixir contract) is one unit per
-function its @spec, @callback and @macrocallback lines name, keyed file#name/arity (or as
-written, Module.name/arity, for a head naming its module), with its module from its head,
-module: or the enclosing subject section; changing one signature changes only its unit, the
-fence's other lines are its section's text; a bare marker a close marker follows is a block;
-a signature with no module, a fence with no signature, a marker with no fence, a signature
-that doesn't parse and a function in two fences are errors naming the line; status counts
-contracts
+function its @spec, @callback and @macrocallback lines name, keyed file#Module.name/arity;
+changing one signature changes only its unit, the fence's other lines are its section's
+text; a bare marker a close marker follows is a block; a signature with no module, a fence
+with no signature, a marker with no fence, a signature that doesn't parse and one id in two
+fences are errors naming the line; status counts contracts
 ```
 
 ```test:rule-items
@@ -1772,6 +1766,40 @@ through that line; once a signature parses only deeper-indented lines join it; a
 that never parses raises naming its first line, and an unfinished one stops at the next
 @spec, @callback, @macrocallback, @type, @typep or @opaque line; every fence of
 typespecs that parses whole reads without a parse error
+```
+
+### 11.9 Which module a contract signature is about
+<!-- surfex: contract-module-resolution -->
+
+A contract signature (§11.1) is keyed by the function it states, so two functions of one
+name in two modules are two units, and a callback is a unit apart from a function of the
+same name. A signature's module is, nearest first:
+1. the module its head names, `@spec MyApp.open(port, opts) :: …`, as written;
+2. else the `defmodule M do` around it inside the fence, whose `end` at its column closes
+   it; a `defmodule` inside another joins its name, `A.B`;
+3. else the marker's `module:` (`<!-- surfex: contract module: MyApp.Feed -->`);
+4. else the nearest enclosing heading that names a module, climbing past headings that
+   name none: the items a profile subject gives it (§6.6), else the module alias it writes
+   alone in backticks, as `` ## 1. `MyApp.Feed`: the feed `` does.
+
+A `@spec` is keyed `file#Module.name/arity`, a `@callback` `file#Module.callback:name/arity`
+and a `@macrocallback` `file#Module.macrocallback:name/arity`. The kind holds no space, and
+no module or function name holds a `:`, so a callback's id never collides with a module's.
+A behaviour that also defines the function it declares as a callback has both units. The
+record's `contract` is `Module.name/arity` for every kind.
+
+These stay errors naming the line: one id in two fences of one file, which names the line
+it first had, since the same function stated twice in one file is a restatement that
+drifts; a signature none of the four places, and one whose nearest naming heading names
+several modules. A heading's modules are asked only of a signature that needs them, so a
+qualified signature under such a heading reads.
+
+```test:contract-modules
+an unqualified signature takes the module of the defmodule around it in the fence (nested
+ones join), else the marker's module:, else the nearest heading naming one, by a subject
+or a backticked alias, climbing past headings that name none; a callback and a spec of one
+name and arity are two units; one id twice in a file raises naming both lines; a signature
+no module places, or whose heading names several, raises naming its line
 ```
 
 ## 12. The relation log

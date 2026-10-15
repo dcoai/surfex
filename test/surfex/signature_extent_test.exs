@@ -26,7 +26,7 @@ defmodule Surfex.SignatureExtentTest do
 
   for {closer, lines} <- @closers do
     test "a closing #{closer} at the head's column ends the signature, not the line before it" do
-      assert [{"spec.md#f/" <> _, {5, 7}}] = contracts(fence(unquote(lines)))
+      assert [{"spec.md#M.f/" <> _, {5, 7}}] = contracts(fence(unquote(lines)))
     end
   end
 
@@ -43,7 +43,7 @@ defmodule Surfex.SignatureExtentTest do
     }
     """
 
-    assert [{"spec.md#plan/0", {5, 13}}] = contracts(fence(lines))
+    assert [{"spec.md#M.callback:plan/0", {5, 13}}] = contracts(fence(lines))
   end
 
   test "once a signature parses, only the lines indented under it are its own" do
@@ -55,7 +55,7 @@ defmodule Surfex.SignatureExtentTest do
     t
     """
 
-    assert [{"spec.md#f/1", {5, 6}}, {"spec.md#g/1", {8, 9}}] = contracts(fence(lines))
+    assert [{"spec.md#M.f/1", {5, 6}}, {"spec.md#M.g/1", {8, 9}}] = contracts(fence(lines))
   end
 
   test "a real sketch still doesn't parse, and is reported at its own line" do

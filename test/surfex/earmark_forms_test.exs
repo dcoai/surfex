@@ -41,7 +41,7 @@ defmodule Surfex.EarmarkFormsTest do
      ["spec.md#Claims", "spec.md#T.1", "spec.md#T.2", "spec.md#Next"]},
     {"a marked contract fence",
      "# Feeds\n\n<!-- surfex: contract module: MyApp.Feed -->\n```elixir\n@spec feed(t) :: t\n```\n\n# Next\n",
-     ["spec.md#Feeds", "spec.md#feed/1", "spec.md#Next"]}
+     ["spec.md#Feeds", "spec.md#MyApp.Feed.feed/1", "spec.md#Next"]}
   ]
 
   for {form, text, ids} <- @rendered do
@@ -98,7 +98,7 @@ defmodule Surfex.EarmarkFormsTest do
 
     assert Enum.any?(
              Markdown.sections(text, "spec.md", subjects: subjects),
-             &(&1.id == "spec.md#feed/1")
+             &(&1.id == "spec.md#MyApp.Feed.feed/1")
            )
 
     assert earmark_headings(ExDoc.Markdown.Earmark.to_ast(text, [])) == ["Feeds"]

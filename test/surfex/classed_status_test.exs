@@ -136,7 +136,7 @@ defmodule Surfex.ClassedStatusTest do
     assert unit(scans, "arch").class.by == :pattern
 
     claims =
-      ~w(arch-rule arch-table/a arch-hint feed/1 arch-block Architecture/Layers)
+      ~w(arch-rule arch-table/a arch-hint MyApp.Feed.feed/1 arch-block Architecture/Layers)
       |> Enum.map(&"spec.md##{&1}")
 
     for claim <- claims, do: assert(Status.verdict(status, claim) == :unverified)
