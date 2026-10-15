@@ -228,7 +228,7 @@ defmodule Surfex.ClaimFormsTest do
                "spec.md#para-new",
                "spec.md#L.0",
                "spec.md#item-new",
-               "spec.md#zeroth/1"
+               "spec.md#Forms.zeroth/1"
              ]
     end
   end
@@ -289,10 +289,12 @@ defmodule Surfex.ClaimFormsTest do
       units = for u <- claim_units(@claim_contract), u.role == :contract, do: u
 
       assert for(u <- units, do: {u.id, u.contract, u.within, u.location.lines}) == [
-               {"spec.md#feed/2", "MyApp.Feed.feed/2", "spec.md#Feeds", {6, 6}},
-               {"spec.md#feed/3", "MyApp.Feed.feed/3", "spec.md#Feeds", {7, 9}},
-               {"spec.md#init/1", "MyApp.Feed.init/1", "spec.md#Feeds", {10, 10}},
-               {"spec.md#guard/1", "MyApp.Feed.guard/1", "spec.md#Feeds", {11, 11}}
+               {"spec.md#MyApp.Feed.feed/2", "MyApp.Feed.feed/2", "spec.md#Feeds", {6, 6}},
+               {"spec.md#MyApp.Feed.feed/3", "MyApp.Feed.feed/3", "spec.md#Feeds", {7, 9}},
+               {"spec.md#MyApp.Feed.callback:init/1", "MyApp.Feed.init/1", "spec.md#Feeds",
+                {10, 10}},
+               {"spec.md#MyApp.Feed.macrocallback:guard/1", "MyApp.Feed.guard/1", "spec.md#Feeds",
+                {11, 11}}
              ]
     end
 
@@ -300,7 +302,7 @@ defmodule Surfex.ClaimFormsTest do
       text = "# Feeds\n\n```elixir contract\n@spec feed(t) :: t\n```\n"
       subjects = [%{file: "spec.md", heading: ~r/^Feeds$/, items: ["MyApp.Feed"]}]
 
-      assert [%{id: "spec.md#feed/1", contract: "MyApp.Feed.feed/1"}] =
+      assert [%{id: "spec.md#MyApp.Feed.feed/1", contract: "MyApp.Feed.feed/1"}] =
                Enum.filter(claim_units(text, subjects: subjects), &(&1.role == :contract))
     end
 
@@ -323,10 +325,13 @@ defmodule Surfex.ClaimFormsTest do
       end
 
       assert changed.("@spec feed(t, item) :: t", "@spec feed(t, item) :: t | nil") == [
-               "spec.md#feed/2"
+               "spec.md#MyApp.Feed.feed/2"
              ]
 
-      assert changed.("[item], keyword) :: t", "[item], keyword) :: :ok") == ["spec.md#feed/3"]
+      assert changed.("[item], keyword) :: t", "[item], keyword) :: :ok") == [
+               "spec.md#MyApp.Feed.feed/3"
+             ]
+
       # The fence's other lines are its section's text.
       assert changed.("in order", "in turn") == ["spec.md#Feeds"]
     end

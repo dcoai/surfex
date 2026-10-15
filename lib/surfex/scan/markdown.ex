@@ -975,27 +975,12 @@ defmodule Surfex.Scan.Markdown do
     end
   end
 
-  # The fence opens: its module is the marker's, else its subject section's (§6.6).
+  # The fence opens: its module is the marker's, else the nearest heading's that names one
+  # (§11.9). Only a signature its head or a defmodule doesn't place needs it, so a heading
+  # naming several is an error only then (close_contract/1).
   defp open_contract(st, line, no) do
     headings = Enum.map(st.stack, &elem(&1, 1))
-
-    module =
-      st.contract.module ||
-        case Contract.subject(st.subjects, st.file, headings) do
-          {:ok, module} ->
-            module
-
-          {:error, several} ->
-            fail(
-              st,
-              no,
-              "the contract fence's subject section names several items, #{Enum.join(several, ", ")}: give module:"
-            )
-
-          # Only a signature that doesn't name its module needs one (close_contract/1).
-          nil ->
-            nil
-        end
+    module = st.contract.module || Contract.subject(st.subjects, st.file, headings)
 
     contract =
       Map.merge(st.contract, %{module: module, open: true, open_line: line, lines: [], close: nil})
@@ -1009,7 +994,7 @@ defmodule Surfex.Scan.Markdown do
     lines = Enum.reverse(contract.lines)
 
     sigs =
-      case Contract.signatures(lines) do
+      case Contract.signatures(lines, contract.module) do
         {:ok, [], _rest} ->
           fail(
             st,
@@ -1035,7 +1020,7 @@ defmodule Surfex.Scan.Markdown do
           last: sig.last,
           body: sig.body,
           within: contract.within,
-          contract: contract_of(st, sig, contract.module)
+          contract: sig.contract
         }
       end
 
@@ -1046,19 +1031,6 @@ defmodule Surfex.Scan.Markdown do
       do: %{st | block: %{st.block | body: Enum.reverse(around) ++ st.block.body}},
       else: %{st | cur: %{st.cur | body: Enum.reverse(around) ++ st.cur.body}}
   end
-
-  # The function a signature is the contract of: its head's own module, else the fence's.
-  defp contract_of(_st, %{module: module} = sig, _fence) when module != nil, do: sig.key
-
-  defp contract_of(st, sig, nil),
-    do:
-      fail(
-        st,
-        sig.first,
-        "the contract signature names no module: qualify it, give module: or put it in a subject section (§6.6)"
-      )
-
-  defp contract_of(_st, sig, module), do: "#{module}.#{sig.key}"
 
   # ── Rules ───────────────────────────────────────────────────────────────
 

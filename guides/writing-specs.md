@@ -174,7 +174,8 @@ dangles only that claim's relations:
   `rule_ids: :section_sign` or a regex such as `~r/^(?<id>P\d+)/`.
 - **A module's signatures**: a contract fence (`<!-- surfex: contract module: Wren -->`
   before an `elixir` fence of `@spec` lines), one unit per function, so changing one
-  signature dangles only that function's relations.
+  signature dangles only that function's relations. Under a heading that names its module
+  in backticks, or with a `defmodule` in the fence, it needs no `module:`.
 - **A table of cases**: a marked table, one unit per row (`spec.md` §11).
 
 Bold is never a claim: it is emphasis far more often than it is a requirement, so a
