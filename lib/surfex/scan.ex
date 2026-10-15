@@ -32,7 +32,10 @@ defmodule Surfex.Scan do
       the class's name and reason, the marker's own reason (`note`, or `nil`), and `by`
       `:marker`, `:pattern` or `:alias`. `nil` for an unclassed unit.
     * `deferred` — for a section or block a deferral marker defers (§11.7),
-      `%{ref, reason}`: the issue reference and the marker's reason, or `nil`.
+      `%{ref, reason}`: the issue reference and the marker's reason, or `nil`. A deferral
+      citing a spec unit (§13.13) is `%{ref, reason, cites, pin, line}`: the reference as
+      written, the cited unit's full id (`nil` until `Surfex.Scan.Markdown.records/4`
+      resolves it), the version its marker pins (or `nil`) and the marker's line.
     * `not_claims` — for a section or block whose own text has lines a `not_claims:`
       pattern matches (§13.12), `%{lines, own_text}`: the lines each pattern matched (by
       the pattern's `inspect/1` form) and whether any own text is left. `nil` otherwise.
@@ -137,7 +140,16 @@ defmodule Surfex.Scan do
               by: :marker | :pattern | :alias
             }
             | nil,
-          deferred: %{ref: String.t(), reason: String.t() | nil} | nil,
+          deferred:
+            %{ref: String.t(), reason: String.t() | nil}
+            | %{
+                ref: String.t(),
+                reason: String.t() | nil,
+                cites: String.t() | nil,
+                pin: String.t() | nil,
+                line: pos_integer
+              }
+            | nil,
           # The lines of a unit's own text that aren't claims (§13.12).
           not_claims: %{lines: %{String.t() => pos_integer}, own_text: boolean} | nil
         }

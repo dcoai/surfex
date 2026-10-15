@@ -252,7 +252,16 @@ defmodule Surfex.Status do
             }
           ],
           stale_deferrals: [
-            %{unit: String.t(), ref: String.t(), reason: :built | :closed | :unresolved}
+            %{
+              required(:unit) => String.t(),
+              required(:ref) => String.t(),
+              required(:reason) => :built | :closed | :unresolved | :changed | :unpinned | :gone,
+              # A deferral citing a spec unit (§13.13), unless built: the version its marker
+              # pins, the unit's current version (nil when gone) and the marker's line.
+              optional(:pin) => String.t() | nil,
+              optional(:version) => String.t() | nil,
+              optional(:line) => pos_integer
+            }
           ],
           contradicted: [
             %{type: :verifies | :implements | :declares, from: String.t(), unit: String.t()}
@@ -1227,25 +1236,71 @@ defmodule Surfex.Status do
 
   defp deferred(scans, issues) do
     for %Scan{kind: :spec, deferred: %{} = d} = s <- Enum.sort_by(scans, & &1.id),
-        do: Map.merge(d, %{unit: s.id, location: s.location, issue: issue(issues, d.ref)})
+        do: Map.merge(d, %{unit: s.id, location: s.location, issue: issue(issues, d)})
   end
 
-  defp issue(nil, _ref), do: nil
-  defp issue(issues, ref), do: Map.get(issues, ref, :unresolved)
+  # A deferral citing a spec unit has no issue (§13.13).
+  defp issue(nil, _deferral), do: nil
+  defp issue(_issues, %{cites: _}), do: nil
+  defp issue(issues, %{ref: ref}), do: Map.get(issues, ref, :unresolved)
 
   # A deferral that no longer holds (§13.7): the unit has its own evidence now (`built`),
   # its issue is closed (`closed`), or, when the caller asked the tracker, the tracker
   # couldn't say (`unresolved`). Without issue states only `built` can be judged.
   defp stale_deferrals(scans, own, issues) do
-    for %Scan{kind: :spec, deferred: %{ref: ref}} = s <- Enum.sort_by(scans, & &1.id),
-        reason = stale_reason(Map.has_key?(own, s.id), issue(issues, ref)),
-        reason != nil,
-        do: %{unit: s.id, ref: ref, reason: reason}
+    versions = cited_versions(scans)
+
+    for %Scan{kind: :spec, deferred: %{ref: ref} = d} = s <- Enum.sort_by(scans, & &1.id),
+        stale = stale(Map.has_key?(own, s.id), d, issues, Map.get(versions, s.id)),
+        stale != nil,
+        do: Map.merge(stale, %{unit: s.id, ref: ref})
   end
 
-  defp stale_reason(true = _built, _issue), do: :built
-  defp stale_reason(false, issue) when issue in [:closed, :unresolved], do: issue
-  defp stale_reason(false, _open_or_unasked), do: nil
+  # Each deferred unit citing a spec unit => the cited unit's current version (nil when no
+  # unit has the id its deferral resolved to). A deferral scanned without
+  # `Surfex.Scan.Markdown.records/4` (`cites: nil`) is resolved here by its reference,
+  # without a project's `unit_refs:` forms.
+  defp cited_versions(scans) do
+    citations = for %Scan{kind: :spec, deferred: %{cites: _} = d} = s <- scans, do: {s.id, d}
+
+    if citations == [] do
+      %{}
+    else
+      resolver = Scan.resolver(scans)
+      by_id = for %Scan{kind: :spec} = s <- scans, into: %{}, do: {s.id, s.hash}
+
+      Map.new(citations, fn {deferred, d} ->
+        id =
+          d.cites ||
+            case Scan.resolve(resolver, d.ref) do
+              {:ok, cited} -> cited.id
+              {:error, _} -> nil
+            end
+
+        {deferred, id && Map.get(by_id, id)}
+      end)
+    end
+  end
+
+  defp stale(true = _built, _deferral, _issues, _version), do: %{reason: :built}
+
+  # A deferral citing a spec unit (§13.13) holds while the unit's version is the one its
+  # marker pins: an edit to the decision text, or the unit's removal, judges it again.
+  defp stale(false, %{cites: _} = d, _issues, version) do
+    cond do
+      version == nil -> %{reason: :gone, pin: d.pin, version: nil, line: d.line}
+      d.pin == nil -> %{reason: :unpinned, pin: nil, version: version, line: d.line}
+      d.pin != version -> %{reason: :changed, pin: d.pin, version: version, line: d.line}
+      true -> nil
+    end
+  end
+
+  defp stale(false, d, issues, _version) do
+    case issue(issues, d) do
+      issue when issue in [:closed, :unresolved] -> %{reason: issue}
+      _open_or_unasked -> nil
+    end
+  end
 
   # What says something checks or realises a classed unit's text, which its class says
   # asserts nothing (§13.6): a live verifies to a classed unit, a live implements to an

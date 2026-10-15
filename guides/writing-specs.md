@@ -458,6 +458,13 @@ comment as the class's marker, and nothing is rewritten.
   past v1 -->` names the issue that will build it; under `mix surfex.status --issues` the
   deferral goes stale when that issue closes, and it is stale as soon as the unit has a
   test of its own.
+- **A decision to defer cites its record, not an issue.** When "deferred past v1" is a
+  spec decision with its reason in a decision table, and no issue should exist for it,
+  cite the unit that records it: `<!-- surfex: deferred spec/06-architecture.md#deferred@1a2b3c4d:
+  past v1 -->` (spec §13.13). The reference must resolve against the spec's `sources:`, and
+  `@VERSION` pins the version you judged. When the decision text is edited the deferral
+  is stale as `changed`: judge it again and write the version the status names. Mark the
+  table and cite its row if editing a neighbouring row shouldn't re-open this one.
 - **A relation to an excused section is contradicted** and fails: the class says the text
   asserts nothing, the relation says something checks or realises it. Usually the relation
   was narration and is retired; otherwise the class is wrong.

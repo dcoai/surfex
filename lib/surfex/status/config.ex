@@ -457,7 +457,13 @@ defmodule Surfex.Status.Config do
     extra =
       case Keyword.fetch(extra, :issues) do
         {:ok, ask} when is_function(ask, 1) ->
-          refs = for %Scan{kind: :spec, deferred: %{ref: ref}} <- scans, uniq: true, do: ref
+          # Only issue deferrals: one citing a spec unit has no tracker to ask (§13.13).
+          refs =
+            for %Scan{kind: :spec, deferred: %{ref: ref} = d} <- scans,
+                not Map.has_key?(d, :cites),
+                uniq: true,
+                do: ref
+
           Keyword.put(extra, :issues, ask.(refs))
 
         _ ->
@@ -664,7 +670,8 @@ defmodule Surfex.Status.Config do
         subjects: Keyword.get(config, :subjects, []),
         fold_paths: fold_paths!(config),
         spec_classes: spec_classes!(config, Scan.Markdown.files(root, sources, exclude)),
-        not_claims: not_claims!(config)
+        not_claims: not_claims!(config),
+        unit_refs: unit_refs!(config)
       )
 
     if spec == [],

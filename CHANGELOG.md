@@ -483,6 +483,33 @@ to claim grain, with a walkthrough in the new guide "Migrating to claim grain".
   reference, so a pattern on the prefix alone would leave behaviour out: anchor it to the
   whole line (14 lines are the reference alone) and keep the reference on a line of its own.
 
+- **A deferral may cite the spec unit that records the decision** (#274, #284). Some
+  deferrals are spec decisions ("deferred past v1", with the reason in a decision table),
+  not tracked work, and forcing an issue for them only satisfied the marker.
+  `<!-- surfex: deferred UNIT[@VERSION][: REASON] -->` (spec §13.13) cites a spec unit in
+  any form a declaration may name one, `unit_refs:` forms included:
+  - it is resolved when the spec is scanned (`Surfex.Scan.Markdown.records/4`, given
+    `unit_refs:`), and one citing no unit or several raises naming the file and line;
+  - `@VERSION` pins the cited unit's 8-hex version. Under `claim_grain: true` the
+    deferral is stale as `changed` when the unit's version differs (its decision text was
+    edited), `unpinned` with no pin, `gone` without the unit, and `built` as before. The
+    report names the version to write and the marker's line; JSON `stale_deferrals` carry
+    `pin`, `version` and `line`, and `deferred` carry `cites` and `pin`, for citations only;
+  - the scan records `%{ref, reason, cites, pin, line}` (`Surfex.Scan` field `deferred`).
+    Issue deferrals are unchanged, and `--issues` asks only issue references.
+
+  A pin rather than staleness on disappearance alone: nothing is stored for a deferral, so
+  what its author judged lives in the marker, and only a pin makes an edit to the decision
+  text re-open the deferral. No tracker is needed, so it is judged offline and in every CI
+  job. A reference that isn't an issue was refused before, so no existing spec reads
+  differently.
+
+  **Upgrade step:** none; no adopter writes a deferral marker yet. Measured read-only on
+  the adopter that asked, with the marker added to a scratch copy: citing its deferred
+  table resolves only once the cited file is in `sources:` (its `.surfex.exs` scans one
+  chapter); unpinned it is one stale deferral, pinned none, and an edit to any row of the
+  unmarked table makes it `changed`, since the table is its section's own text.
+
 - **`Surfex.Item` gains a `dispatch` field** (#272, #281), for scanner authors: on a
   module item, the dispatch functions declared in it with what each one's table lists
   (spec §4, §11.10). It defaults to `%{}`, so a project scanner's items are unchanged.

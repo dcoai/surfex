@@ -1683,9 +1683,10 @@ spec_classes: [
 - `<!-- surfex: class NAME -->` classes the section it sits in, with the class's reason.
   `<!-- surfex: class NAME: REASON -->` adds the author's own reason for this unit.
 - `<!-- surfex: deferred REF -->` or `<!-- surfex: deferred REF: REASON -->` defers the
-  section or marked block it sits in. REF is an issue, `#123` or `group/project#123`: a
-  deferral with no issue would never end, and that is what a class is for. There is no
-  pattern form; each deferral names its own issue.
+  section or marked block it sits in. REF is an issue, `#123` or `group/project#123`, or
+  the spec unit that records the decision (§13.13): a deferral with neither would never
+  end, and that is what a class is for. There is no pattern form; each deferral names its
+  own.
 - A marker may follow a heading's id comment on the next line. Like every marker it is
   left out of the unit's version, so classing or deferring a unit changes no version.
 
@@ -1724,7 +1725,7 @@ line:
 - a class marker naming a class `spec_classes:` doesn't declare;
 - a class marker in a marked block or in a rule, or a deferral marker in a rule;
 - two class or deferral markers in one unit, a class and a deferral among them;
-- a deferral whose reference isn't an issue;
+- a deferral whose reference is neither an issue nor a spec unit (§13.13);
 - a marker under a heading `fold_paths:` folds into its ancestor (§11.1), which would class
   the ancestor its author didn't mark.
 
@@ -2903,6 +2904,65 @@ derive lists each pattern with the lines it matched and the units holding them, 
 pattern matching nothing with 0; text, JSON and golden list them only where not_claims: is
 set; a not_claims: that isn't a list of regexes is refused
 ```
+
+### 13.13 A deferral may cite a spec unit
+<!-- surfex: unit-deferrals -->
+
+Some deferrals are spec decisions, not tracked work: a feature "deferred past v1", with the
+reason recorded in a decision table. No issue exists for it, and none should, so a deferral
+(§11.7) may cite the **spec unit** that records the decision instead of an issue:
+
+```markdown
+## 6. View abstraction
+<!-- surfex: deferred spec/06-architecture.md#deferred@1a2b3c4d: past v1 -->
+```
+
+- `<!-- surfex: deferred UNIT[@VERSION][: REASON] -->`: a reference that isn't an issue
+  (`#123`, `group/project#123`) cites a spec unit, in any form a test's declaration may
+  name one (§11, the project's `unit_refs:` forms included). A reference starting with `#`
+  is always an issue. The reference holds no `:` or `@`.
+- **It must resolve.** `Surfex.Scan.Markdown.records/4` resolves each citation against the
+  whole spec once every file is scanned (`Surfex.Status.Config.scans/2` passes it the
+  project's `unit_refs:`), and one that names no unit, or several, raises naming the file
+  and line, as a malformed marker does. The cited unit must be in `sources:`.
+- `@VERSION` **pins** the cited unit's version (8 lowercase hex characters, §11) as the
+  author last judged it. Anything else after `@` raises.
+- The scan records the citation on the deferred unit as `%{ref, reason, cites, pin, line}`
+  (`Surfex.Scan`): `cites` the cited unit's full id. An issue deferral's record is
+  unchanged, `--issues` asks only issue references, and a citation's `issue` is `nil`.
+
+```test:unit-deferral-resolves
+a deferral citing a unit by full id, by bare anchor or by a unit_refs: form records the
+cited unit's id, its pin and its reason; one citing no unit or several raises naming the
+file and line; a malformed pin raises; an issue deferral's record is as before
+```
+
+**It goes stale when the cited unit changes.** Under `claim_grain: true` (§13.2) a
+citation is a stale deferral (§13.7) when:
+
+- `changed`: the cited unit's version isn't the pinned one. The decision text was edited,
+  so the deferral is judged again: write the new version in the marker, or remove it.
+- `unpinned`: the marker pins no version. The status names the version to write.
+- `gone`: no unit has the cited id any more (a scan with `records/4` raises first).
+- `built`, as for every deferral.
+
+The text report says what to write and on which line; the JSON's `stale_deferrals` carry
+`pin`, `version` and `line`, and its `deferred` carry `cites` and `pin`, for citations only.
+
+```test:unit-deferral-stale
+under claim_grain: true a citation pinning the cited unit's version holds; editing the
+cited unit makes it stale as changed, naming the new version; without a pin it is
+unpinned; with the unit gone it is gone; a built unit is built; issue deferrals are judged
+as before and only issue references are asked of the tracker; without claim_grain:
+nothing is stale
+```
+
+**Why a pin, and not only disappearance.** Nothing is stored in the log for a deferral
+(§13.8), so what the author judged has to live in the marker. Going stale only when the
+cited unit disappears would need no pin, but a deferral would never be judged again when
+its decision text is edited, which is the point of citing it. The pin costs one hash in the
+marker, rewritten by hand from the status report each time the deferral is judged again.
+Nothing needs a tracker, so it is judged offline and in every CI job.
 
 ## 14. Recording
 <!-- surfex: recording -->

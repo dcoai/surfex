@@ -196,7 +196,7 @@ defmodule Surfex.SpecClassesTest do
            "already classed"},
           {"# A\n<!-- surfex: class informative -->\n<!-- surfex: deferred #1 -->\n", 3,
            "already classed"},
-          {"# A\n<!-- surfex: deferred soon -->\n", 2, "names its issue"},
+          {"# A\n<!-- surfex: deferred soon@zz -->\n", 2, "8 lowercase hex"},
           {"# A\n<!-- surfex: deferred #x: later -->\n", 2, "names its issue"}
         ] do
       error = assert_raise ArgumentError, fn -> units(text) end

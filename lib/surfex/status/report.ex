@@ -136,9 +136,9 @@ defmodule Surfex.Status.Report do
       ),
       # Failing under claim_grain: true (§13.7): the deferral no longer holds.
       items(
-        "Stale deferrals (built, its issue closed, or the tracker couldn't say: remove or re-defer)",
+        "Stale deferrals (built, its issue closed, the tracker couldn't say, or the unit it cites changed: remove, re-defer or re-pin)",
         status.stale_deferrals,
-        &"spec #{&1.unit} deferred by #{&1.ref}: #{stale_deferral_text(&1.reason)}"
+        &"spec #{&1.unit} deferred by #{&1.ref}: #{stale_deferral_text(&1)}"
       ),
       items("Stale (an excuse its class no longer covers)", status.stale, fn s ->
         "class #{s.class} ↔ code #{s.code}: #{stale_text(s.reason)}"
@@ -304,11 +304,15 @@ defmodule Surfex.Status.Report do
             "issue" => d.issue && Atom.to_string(d.issue),
             "location" => location_json(d.location)
           }
+          |> Map.merge(citation_json(d, [:cites, :pin]))
         end),
       "stale_deferrals" =>
         Enum.map(
           status.stale_deferrals,
-          &%{"unit" => &1.unit, "ref" => &1.ref, "reason" => Atom.to_string(&1.reason)}
+          &Map.merge(
+            %{"unit" => &1.unit, "ref" => &1.ref, "reason" => Atom.to_string(&1.reason)},
+            citation_json(&1, [:pin, :version, :line])
+          )
         ),
       "contradicted" =>
         Enum.map(
@@ -582,7 +586,7 @@ defmodule Surfex.Status.Report do
           id_group.("stale deferrals", ["Item", "Deferral"], status.stale_deferrals, fn d ->
             %{
               "Item" => {:code, "spec #{d.unit}"},
-              "Deferral" => {:raw, coded(d.ref, stale_deferral_text(d.reason))}
+              "Deferral" => {:raw, coded(d.ref, stale_deferral_text(d))}
             }
           end) ++
           id_group.(
@@ -1022,14 +1026,37 @@ defmodule Surfex.Status.Report do
       "deferred: #{length(status.deferred)}\n"
   end
 
-  defp stale_deferral_text(:built),
+  defp stale_deferral_text(%{reason: :built}),
     do: "it has its own evidence now: remove the marker"
 
-  defp stale_deferral_text(:closed),
+  defp stale_deferral_text(%{reason: :closed}),
     do: "its issue is closed: remove the marker, or re-defer with the issue that holds the work"
 
-  defp stale_deferral_text(:unresolved),
+  defp stale_deferral_text(%{reason: :unresolved}),
     do: "the tracker couldn't say whether its issue is open"
+
+  # A deferral citing a spec unit (§13.13): the marker's pin, judged again by hand.
+  defp stale_deferral_text(%{reason: :unpinned} = d),
+    do:
+      "it pins no version of the unit it cites: judge the deferral, then write " <>
+        "#{d.ref}@#{d.version} in the marker (line #{d.line})"
+
+  defp stale_deferral_text(%{reason: :changed} = d),
+    do:
+      "the unit it cites changed (pinned @#{d.pin}, now @#{d.version}): judge the deferral " <>
+        "again, then write #{d.ref}@#{d.version} in the marker (line #{d.line}) or remove it"
+
+  defp stale_deferral_text(%{reason: :gone} = d),
+    do:
+      "the unit it cites is gone: remove the marker (line #{d.line}), or cite the unit that " <>
+        "holds the decision now"
+
+  # The keys a deferral citing a spec unit adds to its JSON (§13.13); none for an issue's.
+  defp citation_json(d, keys) do
+    if Map.has_key?(d, :pin),
+      do: Map.new(keys, &{Atom.to_string(&1), Map.get(d, &1)}),
+      else: %{}
+  end
 
   defp contradicted_line(%{type: :declares} = c),
     do: "verifies  #{verifier(c.from)} declares spec #{c.unit}, which its class excuses"
