@@ -178,7 +178,7 @@ defmodule Surfex.Completeness do
   defp counted?(scan, %{policy: %{claim_grain: true}} = status),
     do: Surfex.Status.verdict(status, scan.id) in [:verified, :contained, :unverified]
 
-  defp counted?(scan, _status), do: not Markdown.empty?(scan)
+  defp counted?(scan, _status), do: not Markdown.claimless?(scan)
 
   defp missing_code(group, live, status) do
     keys = for s <- group, do: {:code, s.id}

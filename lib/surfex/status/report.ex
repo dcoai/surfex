@@ -175,6 +175,12 @@ defmodule Surfex.Status.Report do
         status.dispatch,
         &"dispatch #{&1.dispatcher}: #{dispatch_text(&1)}"
       ),
+      # Information, not a failure (§13.12).
+      items(
+        "Not claims (own-text lines a not_claims: pattern leaves out)",
+        status.not_claims,
+        &"#{&1.pattern}: #{not_claims_text(&1)}"
+      ),
       # A warning, not a failure (§11.2).
       items(
         "List-shaped keys (a table row's key that may name two things)",
@@ -339,6 +345,10 @@ defmodule Surfex.Status.Report do
             "unscanned" => d.unscanned,
             "unresolved" => d.unresolved
           }
+        end),
+      "not_claims" =>
+        Enum.map(status.not_claims, fn n ->
+          %{"pattern" => n.pattern, "lines" => n.lines, "units" => n.units}
         end),
       "inert" =>
         Enum.map(status.inert, fn i ->
@@ -637,6 +647,9 @@ defmodule Surfex.Status.Report do
                  )}
             }
           end) ++
+          id_group.("not claims", ["Item", "Left out"], status.not_claims, fn n ->
+            %{"Item" => {:code, n.pattern}, "Left out" => not_claims_text(n)}
+          end) ++
           id_group.("marks", ["Item", "State", "Note"], status.marks, fn m ->
             %{
               "Item" => {:code, "spec #{m.unit}"},
@@ -898,6 +911,12 @@ defmodule Surfex.Status.Report do
       do: reached,
       else: "#{reached}; not scanned: #{Enum.join(unscanned, ", ")}"
   end
+
+  defp not_claims_text(%{lines: lines, units: units}),
+    do: "#{lines} #{plural(lines, "line", "lines")} in #{units} #{plural(units, "unit", "units")}"
+
+  defp plural(1, one, _many), do: one
+  defp plural(_n, _one, many), do: many
 
   defp inert_text(:no_test), do: "no test or property block takes it"
   defp inert_text(:support), do: "in test/support, which runs no test"

@@ -3,7 +3,8 @@ defmodule Surfex.Status.Verdict do
   # What "verified" means for a spec unit (spec §13.4), computed once per derive.
   #
   # A unit's **own text** is what its version covers: its body without the finer units
-  # inside it and without markers (`Surfex.Scan.Markdown.empty?/1`). A **claim** has own
+  # inside it, without markers and without the lines a `not_claims:` pattern matches
+  # (`Surfex.Scan.Markdown.claimless?/1`, §13.12). A **claim** has own
   # text: a section or block whose own text isn't empty, and every hint, rule, row and
   # contract. A **container** has none: a heading over subsections, a section whose whole
   # body is named claims, a marked table (its version is its header, which is structure).
@@ -40,7 +41,7 @@ defmodule Surfex.Status.Verdict do
   def container?(%Scan{kind: :spec, role: :table}), do: true
 
   def container?(%Scan{kind: :spec, role: role} = scan) when role in [:section, :block],
-    do: Markdown.empty?(scan)
+    do: Markdown.claimless?(scan)
 
   def container?(%Scan{kind: :spec}), do: false
 
