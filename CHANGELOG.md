@@ -403,6 +403,18 @@ to claim grain, with a walkthrough in the new guide "Migrating to claim grain".
   spec. This is the upgrade step of §20.1 done on a spec of 267 claims, as a reference
   for the work it asks.
 
+### Fixed
+
+- **A contract signature ends where its text parses, not at its indentation** (#271,
+  #276). B.1's contract fences ended a signature at the first line not indented deeper
+  than its head, so a multi-line type whose closing `}`, `)`, `]` or `>>` came back to
+  the head's column was cut one line early and reported as a signature that doesn't
+  parse. A signature now takes the next lines while its text doesn't parse, whatever
+  their indentation, then the lines indented under it, and stops at the next `@spec`,
+  `@callback`, `@macrocallback`, `@type`, `@typep` or `@opaque` line or the fence's end
+  (spec §11.8). A sketch that never parses, such as `%{id:, …}`, is still an error naming
+  its line. Nothing changes for a fence that read before.
+
 ## [0.9.1] — 2026-10-14
 
 What surfex writes now reads right. Spec pages published with ex_doc keep their headings

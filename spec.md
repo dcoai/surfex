@@ -1268,8 +1268,8 @@ ordinal would dangle every claim after an insertion.
 **A contract fence** holds the one place where naming code in the spec is the contract: a
 module's signatures. A fenced block after the line `<!-- surfex: contract -->` (blank lines
 between are fine), or opened as ```` ```elixir contract ````, yields one unit of role
-`:contract` per function its `@spec`, `@callback` or `@macrocallback` lines name. A
-signature takes the lines indented under it.
+`:contract` per function its `@spec`, `@callback` or `@macrocallback` lines name. Where
+a signature ends is §11.8's.
 - **Its id** is `file#name/arity`, read by parsing the signature as Elixir:
   `spec/17-public-api.md#feed/2`. A head that names its module, `@spec MyApp.open(port,
   opts) :: …`, is keyed as written, `file#MyApp.open/2`. Several signatures of one function
@@ -1752,6 +1752,27 @@ stays a heading
 ```
 
 What a class or a deferral changes in the status is §13.6's.
+
+### 11.8 Where a contract signature ends
+<!-- surfex: contract-signature-extent -->
+
+A contract signature (§11.1) runs from its `@spec`, `@callback` or `@macrocallback` line
+for as long as its text doesn't parse as Elixir yet: while a `{`, `(`, `[` or `<<` is open,
+or a `::` waits for its type, it takes the next line whatever its indentation, so a map
+closed by a `}` back at the head's column is one signature. Once it parses, it takes the
+lines indented deeper than its head, such as a `when` or a `| nil` continuation, and no
+others. It never runs into the next `@spec`, `@callback`, `@macrocallback`, `@type`,
+`@typep` or `@opaque` line, and it ends at the fence's end. A signature still unfinished
+there, or one that never parses, such as a sketch `%{id:, …}`, is the error naming its
+first line that §11.1 lists.
+
+```test:signature-extent
+a contract signature whose closing }, ), ] or >> sits at its head's column is one unit
+through that line; once a signature parses only deeper-indented lines join it; a sketch
+that never parses raises naming its first line, and an unfinished one stops at the next
+@spec, @callback, @macrocallback, @type, @typep or @opaque line; every fence of
+typespecs that parses whole reads without a parse error
+```
 
 ## 12. The relation log
 <!-- surfex: relation-log -->
