@@ -14,6 +14,7 @@ defmodule Mix.Tasks.Surfex.Status do
       mix surfex.status --validated      # also fail on relations nothing has validated (§18)
       mix surfex.status --no-deviations  # also fail on declared deviations: a release's check
       mix surfex.status --issues         # also ask the tracker whether each deferral's issue is open
+      mix surfex.status --spec           # the spec side alone: a repository that holds only a spec
 
   It fails on any dangling, orphaned or conflicted relation, on any id the `require:`
   policy in `.surfex.exs` says must be related and isn't, and, with `--verify`, on any
@@ -35,6 +36,14 @@ defmodule Mix.Tasks.Surfex.Status do
   or that the tracker can't answer, fails; a command that exits non-zero stops the task
   with its output. The states are never stored (§13.7). A project scanner is
   project code, so the task compiles first when `.surfex.exs` names one.
+
+  With `--spec` it reads the spec side alone (§13.16), for a repository that holds a spec
+  another implements: `.surfex.exs` is read and validated as always, then only the spec is
+  scanned. Code, tests, checks, relations, the log, evidence, `require:` and completeness
+  are not read, and the report opens saying so (the JSON carries `mode: "spec"`). It fails
+  on scan errors and on each citation of an arity the spec's own contracts don't state;
+  restated contracts and the other spec-shape warnings are listed. The flags that read
+  what `--spec` skips are refused with it.
   """
 
   use Mix.Task
@@ -57,13 +66,71 @@ defmodule Mix.Tasks.Surfex.Status do
           marks: :boolean,
           baseline: :boolean,
           deviations: :boolean,
-          issues: :boolean
+          issues: :boolean,
+          spec: :boolean
         ]
       )
 
     root = File.cwd!()
     config = Config.read!(Path.join(root, opts[:config] || ".surfex.exs"))
 
+    if opts[:spec] == true, do: spec_only(opts, config, root), else: full(opts, config, root)
+  end
+
+  # The flags that read what the spec-only reading skips (§13.16): refused with --spec, so
+  # none is silently ignored.
+  @not_spec [:verify, :planned, :evidence, :merge, :validated, :marks, :baseline] ++
+              [:deviations, :issues]
+
+  defp spec_only(opts, config, root) do
+    case for(flag <- @not_spec, Keyword.has_key?(opts, flag), do: flag) do
+      [] ->
+        :ok
+
+      flags ->
+        Mix.raise(
+          "--spec reads the spec alone, so it takes none of " <>
+            Enum.map_join(flags, ", ", &"--#{&1}") <>
+            " (code, relations, the log and evidence are not read)"
+        )
+    end
+
+    format = format!(opts)
+    namespace = Mix.Project.config()[:app] |> to_string() |> Macro.camelize()
+
+    status =
+      case {Config.read_spec(config, root, namespace), format} do
+        {{:ok, status}, _} ->
+          status
+
+        {{:error, errors}, "json"} ->
+          Mix.shell().info(Report.spec_scan_errors_json(errors))
+          Mix.raise("#{length(errors)} scan errors (see above)")
+
+        {{:error, errors}, "text"} ->
+          Mix.shell().info(Surfex.Status.SpecOnly.header())
+          raise Surfex.Scan.Errors, errors: errors
+      end
+
+    case format do
+      "json" -> Mix.shell().info(Report.spec_json(status))
+      "text" -> Mix.shell().info(Report.spec_text(status))
+    end
+
+    if Surfex.Status.SpecOnly.failing?(status),
+      do: Mix.raise("the spec needs attention (see above)")
+  end
+
+  defp format!(opts) do
+    format = opts[:format] || "text"
+
+    if format not in ["text", "json"],
+      do: Mix.raise("--format must be text or json, got #{inspect(format)}")
+
+    format
+  end
+
+  defp full(opts, config, root) do
     if Config.project_scanner?(config), do: Mix.Task.run("compile")
 
     # Verified before loading: a tampered log gets its report, not the first decode error.
@@ -78,10 +145,7 @@ defmodule Mix.Tasks.Surfex.Status do
     baseline = if opts[:baseline] == false, do: :fail, else: :allow
     deviations = if opts[:deviations] == false, do: :fail, else: :allow
 
-    format = opts[:format] || "text"
-
-    if format not in ["text", "json"],
-      do: Mix.raise("--format must be text or json, got #{inspect(format)}")
+    format = format!(opts)
 
     read =
       Config.read_status(

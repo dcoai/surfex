@@ -583,6 +583,31 @@ defmodule Surfex.Status.Config do
   end
 
   @doc """
+  The spec side alone (§13.16), as `mix surfex.status --spec` reads it: the config
+  validated (`validate!/1`), then the spec scanned under `sources:` and nothing else (no
+  code scanner, test, check, class or log is read). As `{:ok, status}`, the status derived
+  over the spec's units alone, its spec-shape warnings including each citation of an arity
+  the spec's own contracts don't state (§13.15); or `{:error, errors}`, the spec's scan
+  errors (§11.11), sorted by file and line. The citations are read with no code, so none
+  is broken and the contracts are not checked against code (§6.9).
+  """
+  @spec read_spec(keyword, String.t(), String.t() | nil) ::
+          {:ok, Surfex.Status.t()} | {:error, [Scan.Errors.error()]}
+  def read_spec(config, root, namespace) do
+    config = validate!(config)
+
+    case spec_scans(config, root, []) do
+      {spec, []} ->
+        all = Surfex.Cite.citations([], profile!(config, namespace, []), root)
+        scans = arity_warned(spec, Surfex.Cite.Contracts.arities(all, spec))
+        {:ok, Surfex.Status.derive(scans, [], [], options!(config))}
+
+      {_spec, errors} ->
+        {:error, Scan.Errors.sorted(errors)}
+    end
+  end
+
+  @doc """
   The spec's citations that resolve to nothing (`:unresolved`) or to more than one item
   (`:ambiguous`), read with `Surfex.Cite` under the config's profile (`profile!/2`). A
   name the profile declares external, or a documented absence, is not broken, nor is a
@@ -713,6 +738,21 @@ defmodule Surfex.Status.Config do
   end
 
   defp scans(config, root, items) do
+    {spec, spec_errors} = spec_scans(config, root, items)
+
+    code = Scan.code(items)
+    checks = config |> checks!() |> Scan.Checks.records(root) |> rows(spec, unit_refs!(config))
+    {tests, test_errors} = tests(config, root, code)
+
+    {spec ++
+       code ++
+       declared(tests ++ checks, spec, unit_refs!(config)) ++
+       classes(config), Scan.Errors.sorted(spec_errors ++ test_errors)}
+  end
+
+  # The spec's units under `sources:` and their scan errors, each heading's function names
+  # read against `items` (none for the spec alone, §13.16).
+  defp spec_scans(config, root, items) do
     sources =
       Keyword.get(config, :sources) ||
         raise(ArgumentError, ".surfex.exs needs sources: (the spec's globs)")
@@ -734,14 +774,7 @@ defmodule Surfex.Status.Config do
     if spec == [] and spec_errors == [],
       do: raise(ArgumentError, "no spec sections found in #{inspect(sources)} under #{root}")
 
-    code = Scan.code(items)
-    checks = config |> checks!() |> Scan.Checks.records(root) |> rows(spec, unit_refs!(config))
-    {tests, test_errors} = tests(config, root, code)
-
-    {spec ++
-       code ++
-       declared(tests ++ checks, spec, unit_refs!(config)) ++
-       classes(config), Scan.Errors.sorted(spec_errors ++ test_errors)}
+    {spec, spec_errors}
   end
 
   # The profile's `normalise:` rewrites, as profile!/3 gives them, without needing the

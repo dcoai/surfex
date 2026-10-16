@@ -10,7 +10,7 @@ defmodule Surfex.Status.Report do
   alias Surfex.Golden.Span
   alias Surfex.Log.Entry
   alias Surfex.Status
-  alias Surfex.Status.SpecShape
+  alias Surfex.Status.{SpecOnly, SpecShape}
 
   @doc "The status as text: the summary per relation type, then everything needing attention."
   @spec text(Status.t()) :: String.t()
@@ -188,16 +188,7 @@ defmodule Surfex.Status.Report do
     verdict = if Status.failing?(status), do: "FAILING", else: "ok"
     counts = if summary == [], do: ["  (no relations)"], else: summary
 
-    u = Status.units(status)
-
-    # Tables and rows only where a spec marks tables (§11), so other reports read as before.
-    tables = if u.table > 0, do: " · tables #{u.table} · rows #{u.row}", else: ""
-    # Rules only where a spec names claims (§11.1).
-    tables = if u.rule > 0, do: tables <> " · rules #{u.rule}", else: tables
-    tables = if u.contract > 0, do: tables <> " · contracts #{u.contract}", else: tables
-
-    units =
-      "  spec units: sections #{u.section} · blocks #{u.block} · test hints #{u.test_hint}#{tables}\n"
+    units = units_text(status)
 
     unvalidated =
       case length(status.unvalidated) do
@@ -249,7 +240,9 @@ defmodule Surfex.Status.Report do
   that scanned has `scan_errors: []`.
   """
   @spec scan_errors_json([Surfex.Scan.Errors.error()]) :: String.t()
-  def scan_errors_json(errors) do
+  def scan_errors_json(errors), do: errors |> scan_errors_map() |> encode()
+
+  defp scan_errors_map(errors) do
     %{
       "failing" => true,
       "scan_errors" =>
@@ -257,13 +250,68 @@ defmodule Surfex.Status.Report do
         |> Surfex.Scan.Errors.sorted()
         |> Enum.map(&%{"file" => &1.file, "line" => &1.line, "message" => &1.message})
     }
-    |> :json.encode()
-    |> IO.iodata_to_binary()
   end
+
+  defp encode(map), do: map |> :json.encode(&encode/2) |> IO.iodata_to_binary()
+
+  @doc """
+  The spec-only reading as text (§13.16), `mix surfex.status --spec`: its header, the
+  verdict, the spec's unit counts, then the spec-side lists as a full report gives them:
+  stale deferrals citing a spec unit and cited arities no contract states, which fail, and
+  restated contracts and the other spec-shape warnings, which don't.
+  """
+  @spec spec_text(Status.t()) :: String.t()
+  def spec_text(status) do
+    verdict = if SpecOnly.failing?(status), do: "FAILING", else: "ok"
+
+    IO.iodata_to_binary([
+      SpecOnly.header(),
+      "\n",
+      "spec status: #{verdict}\n",
+      units_text(status),
+      items(
+        "Stale deferrals (the unit it cites changed: re-pin or remove)",
+        status.stale_deferrals,
+        &"spec #{&1.unit} deferred by #{&1.ref}: #{stale_deferral_text(&1)}"
+      ),
+      items(
+        "Restated (a contract stated differently in several files)",
+        status.restated,
+        &"contract #{&1.contract}: #{Enum.join(&1.units, ", ")}"
+      ),
+      spec_shape_text(status, "\nSpec shape (warnings; under --spec a cited arity fails):\n")
+    ])
+  end
+
+  @doc """
+  The spec-only reading as JSON (§13.16): `mode: "spec"`, whether it fails, and the
+  spec-side lists in the full report's keys (`units`, `spec_warnings`, `list_keys`,
+  `restated`, `stale_deferrals`), with `scan_errors: []`. Scan errors are
+  `spec_scan_errors_json/1`'s.
+  """
+  @spec spec_json(Status.t()) :: String.t()
+  def spec_json(status) do
+    status
+    |> json_map()
+    |> Map.take(["units", "spec_warnings", "list_keys", "restated", "stale_deferrals"])
+    |> Map.merge(%{
+      "mode" => "spec",
+      "failing" => SpecOnly.failing?(status),
+      "scan_errors" => []
+    })
+    |> encode()
+  end
+
+  @doc "Scan errors as `scan_errors_json/1` gives them, in the spec-only reading's mode."
+  @spec spec_scan_errors_json([Surfex.Scan.Errors.error()]) :: String.t()
+  def spec_scan_errors_json(errors),
+    do: errors |> scan_errors_map() |> Map.put("mode", "spec") |> encode()
 
   @doc "The status as JSON: the summary, every relation, the new and the unmet."
   @spec json(Status.t()) :: String.t()
-  def json(status) do
+  def json(status), do: status |> json_map() |> encode()
+
+  defp json_map(status) do
     %{
       "failing" => Status.failing?(status),
       "scan_errors" => [],
@@ -477,8 +525,6 @@ defmodule Surfex.Status.Report do
           })
         end)
     }
-    |> :json.encode(&encode/2)
-    |> IO.iodata_to_binary()
   end
 
   @doc """
@@ -836,7 +882,19 @@ defmodule Surfex.Status.Report do
   defp moved_text(%{now: now}),
     do: "it now sits in #{now}: retire it and relate the new one (mix surfex.suggest --accept)"
 
-  defp spec_shape_text(status) do
+  defp units_text(status) do
+    u = Status.units(status)
+
+    # Tables and rows only where a spec marks tables (§11), so other reports read as before.
+    tables = if u.table > 0, do: " · tables #{u.table} · rows #{u.row}", else: ""
+    # Rules only where a spec names claims (§11.1).
+    tables = if u.rule > 0, do: tables <> " · rules #{u.rule}", else: tables
+    tables = if u.contract > 0, do: tables <> " · contracts #{u.contract}", else: tables
+
+    "  spec units: sections #{u.section} · blocks #{u.block} · test hints #{u.test_hint}#{tables}\n"
+  end
+
+  defp spec_shape_text(status, header \\ "\nSpec shape (warnings; none fails):\n") do
     by_kind = status |> SpecShape.warnings() |> Enum.group_by(& &1.kind)
 
     case for({kind, title} <- SpecShape.kinds(), list = by_kind[kind], do: {title, list}) do
@@ -845,7 +903,7 @@ defmodule Surfex.Status.Report do
 
       groups ->
         [
-          "\nSpec shape (warnings; none fails):\n",
+          header,
           for {title, list} <- groups do
             [
               "  ",
