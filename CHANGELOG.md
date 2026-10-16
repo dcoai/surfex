@@ -9,7 +9,22 @@ All notable changes to Surfex are recorded here, following
 `mix.exs` reads `0.10.1-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
 release it merely follows.
 
-## [0.10.0] — 2026-10-15
+### Fixed
+
+- **`validate`'s refusal names its real cause** (#298, #301). With nothing to record,
+  `mix surfex.validate` said `already validated: nothing to record` even when the unit
+  still had unvalidated `implements`: when the test's green run in the evidence reached
+  their code only at an older version (the code had changed since, so the relations
+  dangled), or didn't reach it at all. It now names that code and says what to do: run the
+  test's suite again, or name the code with `--code` and say how with `--through`.
+  `already validated` is said only when nothing is left. The refusal for want of a green
+  run says what the last run was, `never`, `failed` or `at an older version` of the test,
+  for a test and for a check, and for `never` it says that in a poncho a sibling app's suite
+  writes the root's evidence only when its formatter sets `surfex_root:`. The same messages
+  come through `--file`. Spec §18.5.
+
+## [0.10.0]
+ — 2026-10-15
 
 Claims own their code (#145, plan v2). A spec states its claims at the grain it means
 them, as rules, id'd paragraphs, contract fences and table rows, and each claim answers

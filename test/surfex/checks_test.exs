@@ -337,6 +337,34 @@ defmodule Surfex.ChecksTest do
     end
   end
 
+  # #298: a check's refusal for want of a green run names its last run, as a test's does.
+  describe "a check's refusal names its cause" do
+    @tag verifies: ["refusal-names-cause", "validate-refusal", "review-check"]
+    test "no green run names the last run: never, failed, or at an older version",
+         %{tmp_dir: root} do
+      before = root |> project() |> scans()
+      green_before = run(before, ["no-rescue"], :passed, "2026-10-14T10:00:01Z")
+
+      # The check's input changes, so the run above is of an older version.
+      File.write!(Path.join(root, "rules.txt"), "deny rescue and catch\n")
+      scans = scans(root)
+      entries = relate!(scans, [], "no-rescue", "spec.md#plat-3", :verifies)
+      note = @meta ++ [note: "fails on any rescue in lib, which plat-3 forbids"]
+      refusal = &Record.validate(scans, entries, "no-rescue", "spec.md#plat-3", &1, note)
+
+      assert {:error, never} = refusal.([])
+      assert never =~ "no green run of check no-rescue at its current version (last run: never)"
+
+      red = run(scans, ["no-rescue"], :failed, "2026-10-14T10:00:02Z")
+      assert {:error, failed} = refusal.(green_before ++ red)
+      assert failed =~ "(last run: failed)"
+
+      assert {:error, older} = refusal.(green_before)
+      assert older =~ "(last run: at an older version of check no-rescue)"
+      assert older =~ "mix surfex.check no-rescue"
+    end
+  end
+
   describe "a check in the status" do
     @describetag verifies: "check-status"
 

@@ -1703,4 +1703,95 @@ defmodule Surfex.RecordTest do
                Record.validate(world(), [impl, tests], @t, @spec_id, green, note)
     end
   end
+
+  # #298: a review with nothing to record says why, in the order §18.5 gives, and says
+  # "already validated" only when nothing is left.
+  describe "a refusal names its cause" do
+    @describetag verifies: ["refusal-names-cause", "validate-refusal"]
+
+    defp refusal_note,
+      do: Keyword.put(@meta, :note, "asserts a closed cart is refused, and the cart is unchanged")
+
+    defp refusal_of(scans, entries, evidence),
+      do: Record.validate(scans, entries, @t, @hint, evidence, refusal_note())
+
+    # The same review as one line of a batch, as `mix surfex.validate --file` records it.
+    defp refused_in_batch(scans, entries, evidence) do
+      line = %{line: 3, test: @t, unit: @hint, note: refusal_note()[:note]}
+
+      Record.batch(entries, [line], fn so_far, l ->
+        Record.validate(
+          scans,
+          so_far,
+          l.test,
+          l.unit,
+          evidence,
+          Keyword.put(@meta, :note, l.note)
+        )
+      end)
+    end
+
+    defp refused_both(scans, entries, evidence) do
+      assert {:error, single} = refusal_of(scans, entries, evidence)
+      assert {:error, "line 3: " <> ^single} = refused_in_batch(scans, entries, evidence)
+      single
+    end
+
+    defp refusal_impl(code_hash \\ "c1"),
+      do: rel(:implements, {:spec, @hint, "h1"}, {:code, @code_id, code_hash})
+
+    defp refusal_ver, do: rel(:verifies, {:test, @t, "t1"}, {:spec, @hint, "h1"})
+
+    test "no green run names the last run: never, failed, or at an older version" do
+      log = [refusal_impl(), refusal_ver()]
+
+      never = refused_both(world(), log, [])
+      assert never =~ "no green run of #{@t} at its current version (last run: never)"
+      assert never =~ "surfex_root:"
+
+      failed = refused_both(world(), log, [ev(:passed, "c1", 1), ev(:failed, "c1", 2)])
+      assert failed =~ "(last run: failed)"
+      assert failed =~ "green run"
+
+      older = refused_both(world(), log, [ev(:passed, "c1", 1, "t0")])
+      assert older =~ "(last run: at an older version of #{@t})"
+      assert older =~ "suite again"
+    end
+
+    test "code the green run reached only at an older version is named" do
+      # The run reached add/2 at c1; the code is at c2 now, so its implements dangles.
+      log = [refusal_impl("c1"), on(refusal_ver(), :review)]
+
+      message = refused_both(world("s1", "c2"), log, [ev(:passed, "c1", 1)])
+      assert message =~ "reached #{@code_id} at an older version (it has changed since)"
+      assert message =~ "suite again"
+      refute message =~ "already validated"
+    end
+
+    test "unvalidated implements whose code the run didn't reach are named" do
+      log = [refusal_impl(), on(refusal_ver(), :review)]
+
+      message = refused_both(world(), log, [ev(:passed, nil, 1)])
+      assert message =~ "reached none of #{@hint}'s unvalidated implements (#{@code_id})"
+      assert message =~ "--code" and message =~ "--through"
+      refute message =~ "already validated"
+    end
+
+    test "already validated only when nothing is left" do
+      log = [on(refusal_impl(), :review), on(refusal_ver(), :review)]
+
+      assert refused_both(world(), log, [ev(:passed, "c1", 1)]) =~
+               "already validated: nothing to record (#{@t} and #{@hint})"
+
+      # The same relations, the code reached only at an older version, but validated: the
+      # unit has nothing left, so that is what the refusal says.
+      assert refused_both(world(), log, [ev(:passed, nil, 1)]) =~ "already validated"
+
+      # An orphaned implements (its code no longer scanned) is nothing left to review.
+      gone = rel(:implements, {:spec, @hint, "h1"}, {:code, "M.gone/1", "g1"})
+
+      assert refused_both(world(), log ++ [gone], [ev(:passed, "c1", 1)]) =~
+               "already validated"
+    end
+  end
 end

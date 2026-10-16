@@ -1121,22 +1121,22 @@ defmodule Surfex.Record do
 
     with {:ok, r} <-
            live_relation(status, Entry.relation(:verifies, end_(check), end_(unit)), missing) do
-      green =
-        case Surfex.Evidence.latest(evidence, check.id, declaration) do
-          %{result: :passed, code: inputs} ->
-            Surfex.Scan.Checks.version(declaration, inputs) == check.hash
+      current? = fn run ->
+        run.test_hash == declaration and
+          Surfex.Scan.Checks.version(declaration, run.code) == check.hash
+      end
 
-          _ ->
-            false
-        end
+      last = last_run(evidence, check.id, current?)
 
       cond do
         Status.validated?(status, r) ->
           {:error, "already validated: nothing to record (check #{check.id} and #{unit.id})"}
 
-        not green ->
+        last != :passed ->
           {:error,
-           "no green run of check #{check.id} at its current version: run mix surfex.check #{check.id} first"}
+           "no green run of check #{check.id} at its current version " <>
+             "(last run: #{last_run_said(last, "check " <> check.id)}): " <>
+             "run mix surfex.check #{check.id} first"}
 
         true ->
           confirm_each([r], status, meta)
@@ -1186,6 +1186,29 @@ defmodule Surfex.Record do
 
       unreached = for {id, d} <- named, d == nil or not MapSet.member?(ran, d), do: id
 
+      # What a refusal with nothing to record names (§18.5): the unit's unvalidated
+      # implements the run didn't exercise, split by whether it reached their code at an
+      # older version (the code changed since the run) or not at all.
+      older =
+        MapSet.new(
+          for {id, hash} <- green.code,
+              scan = Map.get(status.scans, {:code, id}),
+              scan != nil and scan.hash != hash,
+              do: Scan.definition(scan)
+        )
+
+      {stale, missed} =
+        for(
+          %{type: :implements, state: state, relation: {_, {:code, c}, {:spec, ^spec_id}}} = r <-
+            status.relations,
+          state not in [:retired, :orphaned, :planned, :conflicted],
+          not Status.validated?(status, r),
+          code = Map.fetch!(status.scans, {:code, c}),
+          not exercised.(code),
+          do: {c, Scan.definition(code)}
+        )
+        |> Enum.split_with(fn {_c, d} -> MapSet.member?(older, d) end)
+
       todo =
         Enum.reject(reviewed, &Status.validated?(status, &1)) ++
           Enum.map(implements, &elem(&1, 0))
@@ -1209,6 +1232,20 @@ defmodule Surfex.Record do
            "nothing to record: #{test.id} reaches " <>
              Enum.map_join(unnamed, ", ", fn {%{relation: {_, {:code, c}, _}}, _d} -> c end) <>
              " only through other code; a review credits it when you name it (--code ID)"}
+
+        stale != [] ->
+          {:error,
+           "nothing to record: the green run of #{test.id} reached " <>
+             Enum.map_join(stale, ", ", &elem(&1, 0)) <>
+             " at an older version (it has changed since): run #{test.id}'s suite again, then validate"}
+
+        missed != [] ->
+          {:error,
+           "nothing to record: the green run of #{test.id} reached none of #{unit.id}'s " <>
+             "unvalidated implements (" <>
+             Enum.map_join(missed, ", ", &elem(&1, 0)) <>
+             "): if the test exercises it in a way no call shows (a route, a message), " <>
+             "name it with --code and say how with --through"}
 
         true ->
           {:error, "already validated: nothing to record (#{test.id} and #{unit.id})"}
@@ -1358,10 +1395,43 @@ defmodule Surfex.Record do
 
   defp green_run(evidence, test) do
     case Surfex.Evidence.latest(evidence, test.id, test.hash) do
-      %{result: :passed} = green -> {:ok, green}
-      _ -> {:error, "no green run of #{test.id} at its current version: run the tests first"}
+      %{result: :passed} = green ->
+        {:ok, green}
+
+      _ ->
+        last = last_run(evidence, test.id, &(&1.test_hash == test.hash))
+
+        {:error,
+         "no green run of #{test.id} at its current version " <>
+           "(last run: #{last_run_said(last, test.id)}): " <> green_run_next(last, test.id)}
     end
   end
+
+  # What a refusal for want of a green run names (§18.5): the latest run at the current
+  # version, or, with none, whether any run of an older version exists.
+  defp last_run(evidence, id, current?) do
+    runs = Enum.filter(evidence, &(&1.test == id and &1.result in [:passed, :failed]))
+
+    case runs |> Enum.filter(current?) |> List.last() do
+      %{result: result} -> result
+      nil when runs == [] -> :never
+      nil -> :older
+    end
+  end
+
+  defp last_run_said(:never, _id), do: "never"
+  defp last_run_said(:failed, _id), do: "failed"
+  defp last_run_said(:older, id), do: "at an older version of #{id}"
+
+  defp green_run_next(:never, _id),
+    do:
+      "run its suite, then validate (in a poncho, a sibling app's suite writes the root's " <>
+        "evidence only when its formatter is configured with surfex_root:)"
+
+  defp green_run_next(:failed, _id),
+    do: "validate records a review on a green run: make it pass, then validate"
+
+  defp green_run_next(:older, id), do: "run #{id}'s suite again, then validate"
 
   defp inside?(unit, unit, _scans), do: true
 
