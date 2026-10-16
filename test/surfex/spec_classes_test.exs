@@ -216,13 +216,13 @@ defmodule Surfex.SpecClassesTest do
     assert unit(units(folded), "spec.md#A/Sub") |> class() |> Map.get(:name) == "informative"
 
     for {list, why} <- [
-          {[{"informative", ""}], "needs a reason"},
+          {[{"informative", ""}], "reason must be a non-empty string"},
           {[{"in formative", "r"}], "letters, digits"},
-          {[{"x", "r", pattern: ~r/x/}], "unknown options"},
-          {[{"x", "r", headings: "Process"}], "a class is"},
+          {[{"x", "r", pattern: ~r/x/}], "unknown option pattern:"},
+          {[{"x", "r", headings: "Process"}], "headings: must be a regex"},
           {[{"x", "r"}, {"x", "s"}], "different reasons"},
           {[{"x", "r", files: ["docs/*.md"]}], "matches no spec file"},
-          {[:x], "a class is"},
+          {[:x], "a class must be {name, reason}"},
           {:x, "must be a list"}
         ] do
       error =

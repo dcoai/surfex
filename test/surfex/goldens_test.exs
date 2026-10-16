@@ -231,9 +231,11 @@ defmodule Surfex.GoldensTest do
 
     @tag verifies: ["traces", "goldens-entries", "all-goldens"]
     test "names a malformed entry, and the removed :trace with its reason" do
-      assert_raise ArgumentError, ~r/goldens entry "API.md" is not :status/, fn ->
-        Goldens.entries!(goldens: ["API.md"])
-      end
+      assert_raise ArgumentError,
+                   ~r/goldens: an entry must be one of :status.*, got "API.md"/,
+                   fn ->
+                     Goldens.entries!(goldens: ["API.md"])
+                   end
 
       assert_raise ArgumentError, ~r/:trace was removed in 0.4.0/, fn ->
         Goldens.entries!(goldens: [:trace])

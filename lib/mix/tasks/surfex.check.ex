@@ -35,17 +35,17 @@ defmodule Mix.Tasks.Surfex.Check do
     config = Config.read!(Path.join(root, opts[:config] || ".surfex.exs"))
 
     checks =
-      case Check.select(Scan.Checks.records(config, root), ids) do
+      case Check.select(Scan.Checks.records(Config.checks!(config), root), ids) do
         {:ok, checks} -> checks
         {:error, message} -> Mix.raise(message)
       end
 
     if opts[:list] do
-      for c <- checks, do: Mix.shell().info("#{c.id}  #{c.check.run}")
+      for c <- checks, do: Mix.shell().info("#{c.id}  #{Check.display(c.check.run)}")
     else
       records =
         Check.run(checks, root, fn command, root ->
-          Mix.shell().info("running: #{command}")
+          Mix.shell().info("running: #{Check.display(command)}")
           Check.shell(command, root)
         end)
 

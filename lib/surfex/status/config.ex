@@ -44,8 +44,8 @@ defmodule Surfex.Status.Config do
       one reaches every handler its module's table lists as literal `{Module, :fun}` pairs
       or `&Module.fun/arity` captures (`dispatch!/1`, §11.10)
     * `:checks` — gates that verify claims: each `[id:, run:, verifies:, inputs:]`, a
-      command that can fail, the spec units it verifies, and the files it inspects
-      (`Surfex.Scan.Checks`, §11.4)
+      command that can fail (a string run through the shell, or an argv run with none),
+      the spec units it verifies, and the files it inspects (`checks!/1`, §11.4)
     * `:spec_classes` — the spec's classes of text that asserts nothing, each
       `{name, reason}` or `{name, reason, files: globs, headings: regex, marker: regex}`
       (`spec_classes!/2`, §11.7)
@@ -56,12 +56,24 @@ defmodule Surfex.Status.Config do
       regexes matched against each line (`not_claims!/1`, §13.12):
       `[~r/^Legacy reference: \S+$/]` leaves provenance lines out of what verification and
       completeness read, while versions still cover them
+    * `:namespace` — the Elixir scanner's root module, when it isn't the app's: a string,
+      a module, or a list of them (`namespace!/1`)
+
+  Every key is validated before anything is scanned (`validate!/1`, §13.14): a refusal
+  names the key, the value as written and the form the key takes, and every refusal of a
+  config is raised at once.
   """
 
-  alias Surfex.Log.Entry
   alias Surfex.Scan
+  alias Surfex.Status.Config.Keys
 
-  @roles [:section, :block, :test_hint, :table, :row, :rule, :contract]
+  @typedoc "A declared check (`checks!/1`, §11.4)."
+  @type check :: %{
+          id: String.t(),
+          run: String.t() | [String.t()],
+          verifies: [String.t()],
+          inputs: [String.t()]
+        }
 
   # The keys a `.surfex.exs` may hold, besides the profile's (`Surfex.Profile.keys/0`).
   @own [
@@ -109,41 +121,75 @@ defmodule Surfex.Status.Config do
   ]
 
   @doc """
-  Reads and validates a `.surfex.exs`: it must evaluate to a keyword list of known keys.
-  `claim_grain:`, the transitional switch claim grain shipped behind, is refused, saying
-  claim grain is now the only reading (§13.2); a key of the removed v0.2 trace raises
-  saying so; any other unknown key raises naming it. Every task reads its config through
-  this, so a misspelt key is never ignored.
+  The keys a `.surfex.exs` may hold: the log's own and the profile's
+  (`Surfex.Profile.keys/0`). Each has a validator (§13.14).
+  """
+  @spec keys() :: [atom]
+  def keys, do: @own ++ Surfex.Profile.keys()
+
+  @doc """
+  Reads and validates a `.surfex.exs`: it must evaluate to a keyword list of known keys,
+  each in its accepted form (`validate!/1`). `claim_grain:`, the transitional switch claim
+  grain shipped behind, is refused, saying claim grain is now the only reading (§13.2); a
+  key of the removed v0.2 trace is refused saying so; any other unknown key is refused
+  naming it. Every refusal is raised at once, one per line (§13.14). Every task reads its
+  config through this, so a misspelt key is never ignored.
   """
   @spec read!(String.t()) :: keyword
   def read!(path) do
     config = Surfex.Gate.config!(path)
 
-    if Keyword.has_key?(config, :claim_grain),
-      do:
-        raise(
-          ArgumentError,
-          "#{path}: claim_grain: is no longer a key: claim grain is now the only reading " <>
+    claim_grain =
+      if Keyword.has_key?(config, :claim_grain),
+        do: [
+          "claim_grain: is no longer a key: claim grain is now the only reading " <>
             "(spec §13.2). Delete the key; the CHANGELOG's upgrade step says what changes, " <>
             "and `mix surfex.migrate --report` lists the sections to move to claims"
-        )
+        ],
+        else: []
 
-    case Keyword.keys(config) -- (@own ++ Surfex.Profile.keys()) do
-      [] ->
-        config
+    unknown =
+      case Keyword.keys(config) -- [:claim_grain | keys()] do
+        [] ->
+          []
 
-      unknown ->
-        case Enum.filter(unknown, &(&1 in @removed)) do
-          [] ->
-            raise ArgumentError, "#{path}: unknown keys #{inspect(unknown)}"
+        unknown ->
+          case Enum.split_with(unknown, &(&1 in @removed)) do
+            {[], unknown} ->
+              ["unknown keys #{inspect(unknown)}"]
 
-          removed ->
-            raise ArgumentError,
-                  "#{path}: #{inspect(removed)} belonged to the v0.2 trace, removed in 0.4.0; " <>
-                    "delete them (the relation log needs only sources:, the reading keys and its own)"
-        end
+            {removed, unknown} ->
+              [
+                "#{inspect(removed)} belonged to the v0.2 trace, removed in 0.4.0; " <>
+                  "delete them (the relation log needs only sources:, the reading keys and its own)"
+              ] ++ if(unknown == [], do: [], else: ["unknown keys #{inspect(unknown)}"])
+          end
+      end
+
+    case claim_grain ++ unknown ++ Keys.refusals(config) do
+      [] -> config
+      refusals -> raise ArgumentError, refused(path <> ": ", refusals)
     end
   end
+
+  @doc """
+  Validates every key of `config` against its accepted form (§13.14), before anything is
+  scanned, and gives the config. Every refusal is raised at once, in one `ArgumentError`,
+  one per line: the key, the value as written and the form it takes. A key no
+  `.surfex.exs` may hold is `read!/1`'s to refuse, and left alone here.
+  """
+  @spec validate!(keyword) :: keyword
+  def validate!(config) do
+    case Keys.refusals(config) do
+      [] -> config
+      refusals -> raise ArgumentError, refused("", refusals)
+    end
+  end
+
+  defp refused(prefix, [one]), do: prefix <> one
+
+  defp refused(prefix, refusals),
+    do: "#{prefix}#{length(refusals)} refusals:\n" <> Enum.map_join(refusals, "\n", &("  " <> &1))
 
   @doc """
   The items the code scanners find under `root`, combined (§5.3): each of `scanners!/1`
@@ -153,7 +199,7 @@ defmodule Surfex.Status.Config do
   """
   @spec items(keyword, String.t()) :: [Surfex.Item.t()]
   def items(config, root) do
-    scanners = scanners!(config)
+    scanners = config |> validate!() |> scanners!()
     asked = project_scanners(scanners)
 
     dispatch = dispatch!(config)
@@ -210,6 +256,8 @@ defmodule Surfex.Status.Config do
         nil -> ["lib/**/*.ex"]
       end
 
+    Keys.check!(config, :router)
+
     case Keyword.get(config, :router) do
       false ->
         []
@@ -225,17 +273,7 @@ defmodule Surfex.Status.Config do
     end
   end
 
-  defp router_names!(named) do
-    list = List.wrap(named)
-
-    if list != [] and Enum.all?(list, &(is_atom(&1) and &1 not in [nil, true, false])),
-      do: Enum.map(list, &inspect/1),
-      else:
-        raise(
-          ArgumentError,
-          "router: must be a module, a list of modules, or false, got #{inspect(named)}"
-        )
-  end
+  defp router_names!(named), do: named |> List.wrap() |> Enum.map(&inspect/1)
 
   # The source files that may hold an endpoint or a router, parsed: only those that say
   # so, so the rest of the code is never read twice.
@@ -257,16 +295,8 @@ defmodule Surfex.Status.Config do
   """
   @spec not_claims!(keyword) :: [Regex.t()]
   def not_claims!(config) do
-    case Keyword.get(config, :not_claims, []) do
-      list when is_list(list) ->
-        unless Enum.all?(list, &is_struct(&1, Regex)),
-          do: raise(ArgumentError, "not_claims: must be a list of regexes, got #{inspect(list)}")
-
-        list
-
-      other ->
-        raise ArgumentError, "not_claims: must be a list of regexes, got #{inspect(other)}"
-    end
+    Keys.check!(config, :not_claims)
+    Keyword.get(config, :not_claims, [])
   end
 
   @doc """
@@ -276,26 +306,9 @@ defmodule Surfex.Status.Config do
   """
   @spec dispatch!(keyword) :: [String.t()]
   def dispatch!(config) do
-    list = Keyword.get(config, :dispatch, [])
+    Keys.check!(config, :dispatch)
 
-    valid? =
-      is_list(list) and
-        Enum.all?(list, fn
-          {m, f, a} ->
-            is_atom(m) and m not in [nil, true, false] and is_atom(f) and is_integer(a) and a >= 0
-
-          _ ->
-            false
-        end)
-
-    unless valid?,
-      do:
-        raise(
-          ArgumentError,
-          "dispatch: must be a list of {Module, :fun, arity}, got #{inspect(list)}"
-        )
-
-    list
+    Keyword.get(config, :dispatch, [])
     |> Enum.map(fn {m, f, a} -> Surfex.SourceScan.Calls.call(inspect(m), f, a) end)
     |> Enum.uniq()
     |> Enum.sort()
@@ -327,53 +340,17 @@ defmodule Surfex.Status.Config do
   """
   @spec scanners!(keyword) :: [{:elixir | module, keyword}]
   def scanners!(config) do
-    scanners =
-      case {Keyword.fetch(config, :scanners), Keyword.fetch(config, :scanner)} do
-        {{:ok, _}, {:ok, _}} ->
-          raise ArgumentError, "scanners: and scanner: are one setting; give only scanners:"
+    Enum.each([:scanners, :scanner, :scanner_opts], &Keys.check!(config, &1))
 
-        {{:ok, [_ | _] = list}, :error} ->
-          if Keyword.has_key?(config, :scanner_opts),
-            do:
-              raise(
-                ArgumentError,
-                "scanner_opts: belongs to scanner:; with scanners: give {scanner, opts}"
-              )
-
-          Enum.map(list, &scanner_entry!/1)
-
-        {{:ok, other}, :error} ->
-          bad_scanners(other)
-
-        {:error, {:ok, scanner}} ->
-          [scanner_entry!({scanner, Keyword.get(config, :scanner_opts, [])})]
-
-        {:error, :error} ->
-          [{:elixir, Keyword.get(config, :scanner_opts, [])}]
-      end
-
-    case scanners |> Enum.frequencies_by(&elem(&1, 0)) |> Enum.filter(&(elem(&1, 1) > 1)) do
-      [] -> scanners
-      [{twice, _} | _] -> raise ArgumentError, "scanners: names #{inspect(twice)} twice"
+    case {Keyword.fetch(config, :scanners), Keyword.fetch(config, :scanner)} do
+      {{:ok, list}, :error} -> Enum.map(list, &scanner_entry/1)
+      {:error, {:ok, scanner}} -> [{scanner, Keyword.get(config, :scanner_opts, [])}]
+      {:error, :error} -> [{:elixir, Keyword.get(config, :scanner_opts, [])}]
     end
   end
 
-  defp scanner_entry!({scanner, opts}) when is_atom(scanner) and is_list(opts) do
-    if Keyword.keyword?(opts), do: {scanner, opts}, else: bad_scanners({scanner, opts})
-  end
-
-  defp scanner_entry!(scanner)
-       when is_atom(scanner) and not is_nil(scanner) and not is_boolean(scanner),
-       do: {scanner, []}
-
-  defp scanner_entry!(other), do: bad_scanners(other)
-
-  defp bad_scanners(value),
-    do:
-      raise(
-        ArgumentError,
-        "scanners: must be a non-empty list of :elixir, a module or {scanner, opts}, got #{inspect(value)}"
-      )
+  defp scanner_entry({scanner, opts}), do: {scanner, opts}
+  defp scanner_entry(scanner), do: {scanner, []}
 
   @doc """
   Whether any of the code scanners is the project's own (`scanners!/1`): its module is
@@ -393,10 +370,8 @@ defmodule Surfex.Status.Config do
   """
   @spec options!(keyword) :: keyword
   def options!(config) do
+    Keys.check!(config, :triangle)
     triangle = Keyword.get(config, :triangle, :report)
-
-    unless triangle in [:report, :fail],
-      do: raise(ArgumentError, "triangle: must be :report or :fail, got #{inspect(triangle)}")
 
     coverage =
       if Keyword.has_key?(config, :classes),
@@ -415,10 +390,8 @@ defmodule Surfex.Status.Config do
   @doc "The `require_red:` policy (`false` by default), validated."
   @spec require_red!(keyword) :: boolean
   def require_red!(config) do
-    case Keyword.get(config, :require_red, false) do
-      flag when is_boolean(flag) -> flag
-      other -> raise ArgumentError, "require_red: must be true or false, got #{inspect(other)}"
-    end
+    Keys.check!(config, :require_red)
+    Keyword.get(config, :require_red, false)
   end
 
   @doc """
@@ -427,24 +400,9 @@ defmodule Surfex.Status.Config do
   """
   @spec process!(keyword) :: :print | {:command, [String.t()]}
   def process!(config) do
-    case Keyword.get(config, :process, :print) do
-      :print ->
-        :print
-
-      {:command, [_ | _] = argv} = process ->
-        if Enum.all?(argv, &is_binary/1), do: process, else: bad_process(process)
-
-      other ->
-        bad_process(other)
-    end
+    Keys.check!(config, :process)
+    Keyword.get(config, :process, :print)
   end
-
-  defp bad_process(value),
-    do:
-      raise(
-        ArgumentError,
-        "process: must be :print or {:command, argv} with argv a list of strings, got #{inspect(value)}"
-      )
 
   @doc """
   The status of the project at `root` under `config`, as `mix surfex.status` derives it:
@@ -497,16 +455,11 @@ defmodule Surfex.Status.Config do
   """
   @spec completeness!(keyword) :: number | nil
   def completeness!(config) do
+    Keys.check!(config, :completeness)
+
     case Keyword.fetch(config, :completeness) do
-      :error ->
-        nil
-
-      {:ok, [min: min]} when is_number(min) and min >= 0 and min <= 100 ->
-        min
-
-      {:ok, other} ->
-        raise ArgumentError,
-              "completeness: must be [min: N] with N from 0 to 100, got #{inspect(other)}"
+      :error -> nil
+      {:ok, [min: min]} -> min
     end
   end
 
@@ -518,6 +471,8 @@ defmodule Surfex.Status.Config do
   """
   @spec adoption!(keyword, String.t()) :: %{setting: term, trusted: :all | MapSet.t(String.t())}
   def adoption!(config, root) do
+    Keys.check!(config, :adoption)
+
     case Keyword.get(config, :adoption, :reevaluate) do
       :reevaluate ->
         %{setting: :reevaluate, trusted: MapSet.new()}
@@ -526,12 +481,6 @@ defmodule Surfex.Status.Config do
         %{setting: :trust, trusted: :all}
 
       setting ->
-        unless Keyword.keyword?(setting) and setting != [] and
-                 Enum.all?(setting, fn {k, v} ->
-                   k in [:trust, :reevaluate] and is_list(v) and Enum.all?(v, &is_binary/1)
-                 end),
-               do: bad_adoption(setting)
-
         files = &files(root, Keyword.get(setting, &1, []))
         {trusted, reevaluated} = {files.(:trust), files.(:reevaluate)}
         tests = files(root, Keyword.get(config, :tests, []))
@@ -557,13 +506,6 @@ defmodule Surfex.Status.Config do
     end
   end
 
-  defp bad_adoption(value),
-    do:
-      raise(
-        ArgumentError,
-        "adoption: must be :reevaluate, :trust or [trust: globs, reevaluate: globs], got #{inspect(value)}"
-      )
-
   defp files(root, globs) do
     for glob <- globs,
         file <- Path.wildcard(Path.join(root, glob)),
@@ -579,28 +521,8 @@ defmodule Surfex.Status.Config do
   @doc "The `require:` policy, validated. Raises `ArgumentError` naming what is wrong."
   @spec require!(keyword) :: keyword
   def require!(config) do
-    policy = Keyword.get(config, :require, [])
-
-    unless Keyword.keyword?(policy),
-      do:
-        raise(
-          ArgumentError,
-          "require: must be a keyword list of kind: [type, …], got #{inspect(policy)}"
-        )
-
-    for {kind, types} <- policy do
-      unless kind in Entry.kinds() or kind in @roles,
-        do: raise(ArgumentError, "require: #{inspect(kind)} is neither a kind nor a spec role")
-
-      unless is_list(types) and types != [] and Enum.all?(types, &(&1 in Entry.types())),
-        do:
-          raise(
-            ArgumentError,
-            "require: #{kind} needs a non-empty list of #{inspect(Entry.types())}"
-          )
-    end
-
-    policy
+    Keys.check!(config, :require)
+    Keyword.get(config, :require, [])
   end
 
   @doc """
@@ -700,7 +622,7 @@ defmodule Surfex.Status.Config do
     defaults =
       if elixir_scanner?(config) do
         ns =
-          Keyword.get(config, :namespace, namespace) ||
+          namespace!(config) || namespace ||
             raise(ArgumentError, "reading citations needs namespace: for the Elixir scanner")
 
         roots =
@@ -708,12 +630,49 @@ defmodule Surfex.Status.Config do
               not String.contains?(name, "."),
               do: name
 
-        Surfex.Scanner.Elixir.profile_defaults([ns | roots])
+        Surfex.Scanner.Elixir.profile_defaults(List.wrap(ns) ++ roots)
       else
         []
       end
 
     Surfex.Profile.new!(Keyword.merge(defaults, Keyword.take(config, Surfex.Profile.keys())))
+  end
+
+  @doc """
+  The config's `namespace:` (§13.14) as root module names, or `nil` without the key: a
+  string as written, a module by its name (`MyApp` reads as `"MyApp"`), and a list of
+  either as each. Anything else is refused.
+  """
+  @spec namespace!(keyword) :: [String.t()] | nil
+  def namespace!(config) do
+    Keys.check!(config, :namespace)
+
+    case Keyword.fetch(config, :namespace) do
+      {:ok, ns} -> ns |> List.wrap() |> Enum.map(&root_name/1)
+      :error -> nil
+    end
+  end
+
+  defp root_name(name) when is_binary(name), do: name
+  defp root_name(module), do: inspect(module)
+
+  @doc """
+  The project's checks (`checks:`, §11.4), validated (§13.14): each
+  `%{id, run, verifies, inputs}`, `run` a command string or an argv, `verifies` a list.
+  `[]` without the key. Anything else is refused, naming it.
+  """
+  @spec checks!(keyword) :: [check]
+  def checks!(config) do
+    Keys.check!(config, :checks)
+
+    for check <- Keyword.get(config, :checks, []) do
+      %{
+        id: Keyword.fetch!(check, :id),
+        run: Keyword.fetch!(check, :run),
+        verifies: check |> Keyword.fetch!(:verifies) |> List.wrap(),
+        inputs: Keyword.get(check, :inputs, [])
+      }
+    end
   end
 
   defp scans(config, root, items) do
@@ -738,7 +697,7 @@ defmodule Surfex.Status.Config do
       do: raise(ArgumentError, "no spec sections found in #{inspect(sources)} under #{root}")
 
     code = Scan.code(items)
-    checks = config |> Scan.Checks.records(root) |> rows(spec, unit_refs!(config))
+    checks = config |> checks!() |> Scan.Checks.records(root) |> rows(spec, unit_refs!(config))
     {tests, test_errors} = tests(config, root, code)
 
     {spec ++
@@ -783,44 +742,17 @@ defmodule Surfex.Status.Config do
   """
   @spec declares!(keyword) :: [%{kind: :tag | :attribute, name: atom, strip: Regex.t() | nil}]
   def declares!(config) do
+    Keys.check!(config, :declares)
+
     case Keyword.get(config, :declares, []) do
-      [] ->
-        []
-
-      [verifies: [_ | _] = forms] ->
-        Enum.map(forms, &declared_form!/1)
-
-      other ->
-        raise ArgumentError,
-              "declares: must be [verifies: [form, …]], each form {:tag, key} or " <>
-                "{:attribute, name}, with [strip: regex] as an option, got #{inspect(other)}"
+      [] -> []
+      [verifies: forms] -> Enum.map(forms, &declared_form/1)
     end
   end
 
-  # ExUnit's own tag keys, and the attributes ExUnit reads, are no project's form.
-  @not_forms [:verifies, :tag, :describetag, :moduletag, :doc, :moduledoc]
-
-  defp declared_form!({kind, name}), do: declared_form!({kind, name, []})
-
-  defp declared_form!({kind, name, opts} = form)
-       when kind in [:tag, :attribute] and is_atom(name) and name not in @not_forms and
-              is_list(opts) do
-    case opts do
-      [] -> %{kind: kind, name: name, strip: nil}
-      [strip: %Regex{} = strip] -> %{kind: kind, name: name, strip: strip}
-      _ -> bad_form(form)
-    end
-  end
-
-  defp declared_form!(form), do: bad_form(form)
-
-  defp bad_form(form),
-    do:
-      raise(
-        ArgumentError,
-        "declares: a form is {:tag, key} or {:attribute, name}, a name other than ExUnit's " <>
-          "own, with [strip: regex] as its only option, got #{inspect(form)}"
-      )
+  defp declared_form({kind, name}), do: declared_form({kind, name, []})
+  defp declared_form({kind, name, []}), do: %{kind: kind, name: name, strip: nil}
+  defp declared_form({kind, name, [strip: strip]}), do: %{kind: kind, name: name, strip: strip}
 
   @doc """
   Whether `mix surfex.suggest` proposes a claim's `implements` from what its verifying
@@ -829,13 +761,8 @@ defmodule Surfex.Status.Config do
   """
   @spec claim_implements?(keyword) :: boolean
   def claim_implements?(config) do
-    case Keyword.get(config, :claim_implements, false) do
-      flag when is_boolean(flag) ->
-        flag
-
-      other ->
-        raise ArgumentError, "claim_implements: must be true or false, got #{inspect(other)}"
-    end
+    Keys.check!(config, :claim_implements)
+    Keyword.get(config, :claim_implements, false)
   end
 
   @doc """
@@ -858,54 +785,16 @@ defmodule Surfex.Status.Config do
           }
         ]
   def spec_classes!(config, files) do
-    case Keyword.get(config, :spec_classes, []) do
-      list when is_list(list) ->
-        classes = Enum.map(list, &spec_class!(&1, files))
-
-        for {name, cs} <- Enum.group_by(classes, & &1.name),
-            reasons = cs |> Enum.map(& &1.reason) |> Enum.uniq(),
-            length(reasons) > 1,
-            do:
-              raise(
-                ArgumentError,
-                "spec_classes: #{name} is declared with different reasons: " <>
-                  Enum.map_join(reasons, " / ", &inspect/1)
-              )
-
-        classes
-
-      other ->
-        raise ArgumentError, "spec_classes: must be a list of classes, got #{inspect(other)}"
-    end
+    Keys.check!(config, :spec_classes)
+    config |> Keyword.get(:spec_classes, []) |> Enum.map(&spec_class!(&1, files))
   end
 
   defp spec_class!({name, reason}, files), do: spec_class!({name, reason, []}, files)
 
-  defp spec_class!({name, reason, opts} = class, files)
-       when is_binary(name) and is_binary(reason) and is_list(opts) do
-    unless Regex.match?(~r/^[A-Za-z0-9_-]+$/, name),
-      do:
-        raise(
-          ArgumentError,
-          "spec_classes: a class name is letters, digits, - and _, got #{inspect(name)}"
-        )
-
-    if String.trim(reason) == "",
-      do: raise(ArgumentError, "spec_classes: class #{name} needs a reason")
-
-    case Keyword.keys(opts) -- [:files, :headings, :marker] do
-      [] ->
-        :ok
-
-      unknown ->
-        raise ArgumentError,
-              "spec_classes: class #{name} has unknown options #{inspect(unknown)}"
-    end
-
+  defp spec_class!({name, reason, opts}, files) do
+    # An atom names the class its string does (`:informative` is `"informative"`).
+    name = to_string(name)
     globs = Keyword.get(opts, :files)
-
-    unless globs == nil or (is_list(globs) and globs != [] and Enum.all?(globs, &is_binary/1)),
-      do: bad_spec_class(class)
 
     for glob <- globs || [],
         not Enum.any?(files, &Scan.Markdown.glob_match?(glob, &1)),
@@ -914,11 +803,6 @@ defmodule Surfex.Status.Config do
             ArgumentError,
             "spec_classes: class #{name}'s files: #{inspect(glob)} matches no spec file"
           )
-
-    for key <- [:headings, :marker],
-        value = Keyword.get(opts, key),
-        not is_struct(value, Regex),
-        do: bad_spec_class(class)
 
     %{
       name: name,
@@ -929,16 +813,6 @@ defmodule Surfex.Status.Config do
     }
   end
 
-  defp spec_class!(other, _files), do: bad_spec_class(other)
-
-  defp bad_spec_class(class),
-    do:
-      raise(
-        ArgumentError,
-        "spec_classes: a class is {name, reason} or {name, reason, files: [glob], " <>
-          "headings: regex, marker: regex}, got #{inspect(class)}"
-      )
-
   @doc """
   The tracker resolver (`issues:`, §13.7) as `Surfex.Issues` takes it, or `nil` without
   the key: `command:`, a non-empty list of strings run with no shell, with `{ref}`, `{n}`
@@ -947,64 +821,37 @@ defmodule Surfex.Status.Config do
   """
   @spec issues!(keyword) :: Surfex.Issues.resolver() | nil
   def issues!(config) do
+    Keys.check!(config, :issues)
+
     case Keyword.fetch(config, :issues) do
       :error ->
         nil
 
-      {:ok, opts} when is_list(opts) ->
-        unless Keyword.keyword?(opts) and Keyword.keys(opts) -- [:command, :state, :project] == [],
-          do: bad_issues(opts)
-
-        command = Keyword.get(opts, :command)
-
-        unless is_list(command) and command != [] and Enum.all?(command, &is_binary/1),
-          do: bad_issues(opts)
-
-        for key <- [:state, :project],
-            value = Keyword.get(opts, key),
-            not is_binary(value),
-            do: bad_issues(opts)
-
+      {:ok, opts} ->
         %{
-          command: command,
+          command: Keyword.fetch!(opts, :command),
           state: Keyword.get(opts, :state),
           project: Keyword.get(opts, :project)
         }
-
-      {:ok, other} ->
-        bad_issues(other)
     end
   end
-
-  defp bad_issues(value),
-    do:
-      raise(
-        ArgumentError,
-        "issues: must be [command: argv, state: key, project: name] with argv a non-empty " <>
-          "list of strings and state and project strings, got #{inspect(value)}"
-      )
 
   # `fold_paths:` is a boolean; anything else is refused, not read as false. Without it,
   # path headings fold wherever the spec writes ids (`heading_ids:`), and not otherwise
   # (§11.1).
   defp fold_paths!(config) do
-    case Keyword.fetch(config, :fold_paths) do
-      {:ok, flag} when is_boolean(flag) ->
-        flag
-
-      {:ok, other} ->
-        raise ArgumentError, "fold_paths: must be true or false, got #{inspect(other)}"
-
-      :error ->
-        Keyword.get(config, :heading_ids) != nil
-    end
+    Keys.check!(config, :fold_paths)
+    Keyword.get(config, :fold_paths, Keyword.get(config, :heading_ids) != nil)
   end
 
   @doc """
   The project's `unit_refs:` (`Surfex.Scan.Resolver.unit_refs!/1`), `[]` when it has none.
   """
   @spec unit_refs!(keyword) :: [Regex.t()]
-  def unit_refs!(config), do: config |> Keyword.get(:unit_refs, []) |> Scan.Resolver.unit_refs!()
+  def unit_refs!(config) do
+    Keys.check!(config, :unit_refs)
+    Keyword.get(config, :unit_refs, [])
+  end
 
   # A test's declaration in the project's own citation form names the unit by its full id,
   # so everything reading declarations resolves it as it would the id (§11.1).
