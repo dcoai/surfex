@@ -11,6 +11,19 @@ release it merely follows.
 
 ### Added
 
+- **`TABLE/*` declares every row in a test's `verifies`, as in a check's** (#286, #319).
+  The expansion ran only over checks, so `@tag verifies: ["spec/x.md#modes/*"]` on a
+  table-driven test was broken ("no spec unit has that id") and each tag had to list every
+  row by hand. It now runs once over every test and check declaration, before they are
+  resolved, whatever form declares it (`verifies:`, a `declares:` form) and with or without
+  `unit_refs:`. The test declares one `verifies` per row at its own version, so a row added
+  to the table is declared with no edit to the test; its relation is still recorded by the
+  usual process, and until then the row is listed as unrecorded, not credited. A `/*` on
+  anything but a marked table stays broken. Spec §11.16. Measured: no adopter's test or
+  check declaration changes (none declares a `/*` today); an adopter's table-driven test
+  whose tag lists all 15 rows of its table by hand declares exactly those 15 rows when the
+  tag is written as `TABLE/*` (in a scratch copy).
+
 - **Two key-shape warnings for marked tables** (#286, #318). A row key holding a `/`
   outside its code spans that isn't the spaced ` / ` (`HTML/D3 visualizer`) gives an id
   that reads as a path one level deeper: it is now warned `slash_key`, and `TABLE/KEY` still

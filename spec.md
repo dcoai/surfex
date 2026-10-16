@@ -2139,6 +2139,30 @@ backslash escapes outside code spans; snake_case keeps its underscores, a code s
 its * and backticks, an unpaired or spaced * stays; a key: header matches the same way
 ```
 
+### 11.16 Every row of a marked table, `TABLE/*`
+<!-- surfex: table-star-section -->
+
+A table-driven test iterates every row of a marked table, so its declaration is the whole
+table. `TABLE/*`, the table's id or any reference resolving to it followed by `/*`,
+declares each of its rows, wherever a declaration is written: a test's `verifies` tag at
+any level (§11), a project's own declaration form (`declares:`, §11.6), and a check's
+`verifies` (§11.4). It is expanded once, before declarations are resolved
+(`Surfex.Status.Config.scans/2`), with or without `unit_refs:` (§11.1), so a table written
+in the project's citation form expands too.
+
+- The test then declares one `verifies` per row, each at the test's version: the tag is
+  what changed, not the rows. A row added to the table is declared with no edit to the
+  test. Its relation is recorded by the usual process (§15, §17): until then it is listed
+  as a declaration with no relation (§13.1), never silently credited.
+- A `/*` on a reference that is no marked table is left as written, so it is broken
+  (§13.1), as any reference naming nothing is.
+
+```test:table-star-declarations
+a test tagged TABLE/* over a three-row marked table declares the three rows, none broken;
+a fourth row adds a fourth declaration with no change to the test; a declares: form and a
+unit_refs: form of the table expand the same way; NOT-A-TABLE/* stays broken
+```
+
 ## 12. The relation log
 <!-- surfex: relation-log -->
 

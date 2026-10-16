@@ -741,13 +741,12 @@ defmodule Surfex.Status.Config do
     {spec, spec_errors} = spec_scans(config, root, items)
 
     code = Scan.code(items)
-    checks = config |> checks!() |> Scan.Checks.records(root) |> rows(spec, unit_refs!(config))
+    checks = config |> checks!() |> Scan.Checks.records(root)
     {tests, test_errors} = tests(config, root, code)
+    unit_refs = unit_refs!(config)
+    declaring = (tests ++ checks) |> rows(spec, unit_refs) |> declared(spec, unit_refs)
 
-    {spec ++
-       code ++
-       declared(tests ++ checks, spec, unit_refs!(config)) ++
-       classes(config), Scan.Errors.sorted(spec_errors ++ test_errors)}
+    {spec ++ code ++ declaring ++ classes(config), Scan.Errors.sorted(spec_errors ++ test_errors)}
   end
 
   # The spec's units under `sources:` and their scan errors, each heading's function names
@@ -792,18 +791,20 @@ defmodule Surfex.Status.Config do
     end
   end
 
-  # A check may verify every row of a marked table at once, `TABLE/*` (§11.4): the
-  # declaration is each row's. A reference whose table isn't one is left as written, so it
-  # is reported broken.
+  # A test or a check may verify every row of a marked table at once, `TABLE/*` (§11.16),
+  # whatever form declares it (`verifies:`, a `declares:` form, a check's `verifies`) and
+  # with or without `unit_refs:`: the declaration is each row's, so a row added to the
+  # table is declared with no edit to the tag. A reference whose table isn't one is left
+  # as written, so it is reported broken.
   defp rows([], _spec, _unit_refs), do: []
 
-  defp rows(checks, spec, unit_refs) do
+  defp rows(records, spec, unit_refs) do
     resolver = Scan.resolver(spec, unit_refs)
     by_table = spec |> Enum.filter(&(&1.role == :row)) |> Enum.group_by(& &1.within)
 
-    for check <- checks do
+    for record <- records do
       declares =
-        Enum.flat_map(check.declares, fn {type, ref} = declared ->
+        Enum.flat_map(record.declares, fn {type, ref} = declared ->
           with true <- String.ends_with?(ref, "/*"),
                {:ok, %Scan{role: :table, id: table}} <-
                  Scan.resolve(resolver, String.replace_suffix(ref, "/*", "")) do
@@ -813,7 +814,7 @@ defmodule Surfex.Status.Config do
           end
         end)
 
-      %{check | declares: Enum.uniq(declares)}
+      %{record | declares: Enum.uniq(declares)}
     end
   end
 
