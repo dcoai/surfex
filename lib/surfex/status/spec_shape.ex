@@ -8,7 +8,9 @@ defmodule Surfex.Status.SpecShape do
     * `:list_key` — a marked table's row key that reads as a list (§11.2,
       `Surfex.Status.list_keys/1`);
     * `:path_heading` — a heading with no id among siblings the heading grammar numbered
-      (§11.12), which is almost always a missed id.
+      (§11.12), which is almost always a missed id;
+    * `:contract_arity` — a citation of `Module.name/arity` that names no code, where the
+      spec's contracts state `Module.name` at other arities only (§13.15).
 
   A kind read from the scan is a spec unit's `warnings` entry (`Surfex.Scan`); one read
   from the status, like `:list_key`, is made here from the status.
@@ -27,7 +29,9 @@ defmodule Surfex.Status.SpecShape do
 
   @kinds [
     list_key: "List-shaped keys (a table row's key that may name two things)",
-    path_heading: "Path headings among numbered siblings (a heading with no id: a missed id?)"
+    path_heading: "Path headings among numbered siblings (a heading with no id: a missed id?)",
+    contract_arity:
+      "Cited arities no contract states (the contracts state the function at others)"
   ]
 
   @doc "The kinds, in the order the report lists them, each with its listing's title."

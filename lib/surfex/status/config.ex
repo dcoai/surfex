@@ -571,10 +571,11 @@ defmodule Surfex.Status.Config do
             globs -> Scan.ExUnit.inert(root, globs, declares!(config))
           end
 
+        {broken, all} = read_citations(config, items, root, namespace, scans)
+
         {:ok,
-         {scans,
-          options!(config) ++
-            [citations: broken_citations(config, items, root, namespace, scans), inert: inert]}}
+         {arity_warned(scans, Surfex.Cite.Contracts.arities(all, scans)),
+          options!(config) ++ [citations: broken, inert: inert]}}
 
       {_scans, errors} ->
         {:error, errors}
@@ -590,14 +591,48 @@ defmodule Surfex.Status.Config do
   """
   @spec broken_citations(keyword, [Surfex.Item.t()], String.t(), String.t() | nil, [Scan.t()]) ::
           [Surfex.Cite.t()]
-  def broken_citations(config, items, root, namespace, scans \\ []) do
-    profile = profile!(config, namespace, items)
+  def broken_citations(config, items, root, namespace, scans \\ []),
+    do: config |> read_citations(items, root, namespace, scans) |> elem(0)
 
-    items
-    |> Surfex.Cite.citations(profile, root, registered: registered_names(config, root))
-    |> Enum.concat(Surfex.Cite.Contracts.citations(scans, items, profile))
-    |> Enum.filter(&(&1.status in [:unresolved, :ambiguous]))
-    |> Enum.sort_by(&{&1.file, &1.line, &1.span})
+  # The broken citations, and every citation of the spec's text (not the contracts' own).
+  defp read_citations(config, items, root, namespace, scans) do
+    profile = profile!(config, namespace, items)
+    all = Surfex.Cite.citations(items, profile, root, registered: registered_names(config, root))
+
+    broken =
+      all
+      |> Enum.concat(Surfex.Cite.Contracts.citations(scans, items, profile))
+      |> Enum.filter(&(&1.status in [:unresolved, :ambiguous]))
+      |> Enum.sort_by(&{&1.file, &1.line, &1.span})
+
+    {broken, all}
+  end
+
+  # Each citation of an arity no contract states (§13.15) is a spec-shape warning (§11.12)
+  # on the innermost spec unit holding its line.
+  defp arity_warned(scans, []), do: scans
+
+  defp arity_warned(scans, arities) do
+    spec = Enum.filter(scans, &(&1.kind == :spec))
+
+    by_unit =
+      Enum.group_by(
+        arities,
+        fn %{citation: c} -> Surfex.Scan.at(spec, c.file, c.line).id end,
+        fn %{citation: c} = a ->
+          %{kind: :contract_arity, line: c.line, message: Surfex.Cite.Contracts.arity_text(a)}
+        end
+      )
+
+    for scan <- scans do
+      case Map.fetch(by_unit, scan.id) do
+        {:ok, warnings} when scan.kind == :spec ->
+          %{scan | warnings: Enum.sort_by(scan.warnings ++ warnings, & &1.line)}
+
+        _ ->
+          scan
+      end
+    end
   end
 
   # The process names the Elixir scanner's source registers (its `:paths`); none without

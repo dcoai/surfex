@@ -2005,7 +2005,9 @@ adding a list of its own. The kinds:
   id, not a subsection. The warning names its nearest numbered siblings before and after
   it and the unit it reads as: the id'd section `fold_paths:` folds it into (§11.1), or its
   own path unit. It sits on that unit (the scan record's `warnings`). A heading among
-  siblings with no grammar id, or with written ids only, is not warned.
+  siblings with no grammar id, or with written ids only, is not warned;
+- `contract_arity`: a citation of an arity no contract states (§13.15), on the unit
+  holding it.
 
 ```test:path-heading-warning
 under :section_number, a heading 3-raw. among 1., 2. and 4. is warned naming 2 and 4 and
@@ -3228,6 +3230,32 @@ refusals are raised together, one per line, before anything is scanned
 namespace: given a module reads as its name, and a list of roots as each; a spec_classes:
 atom name names the class its string does; a class with a bad name, an empty reason or an
 unknown option is refused naming that part and quoting the class as written
+```
+
+### 13.15 A citation of an arity no contract states
+<!-- surfex: contract-arity -->
+
+A spec states its functions' contracts (§11.1) and cites them in prose. A citation
+`MyApp.Env.check/1` where the spec's contract units state `MyApp.Env.check` only at other
+arities is almost always a slip in one of the two, and the spec alone shows it, so it is
+found with no code scanned. `Surfex.Status.Config.read/3` lists each such citation as a
+**spec-shape warning** (§11.12) of kind `contract_arity`, on the innermost spec unit holding
+its line (`Surfex.Scan.at/3`), naming each contract that states the function and where:
+listed, never failing.
+
+- A citation counts when it is written `Module.name/arity` and names no code item
+  (`:unresolved`, §6.2): where the code defines that arity, the code says the contracts are
+  the ones short. A citation with no arity, `Module.name`, cites every arity and is not
+  warned, nor is a function no contract states.
+- Where the code is scanned and lacks the arity, the citation is also broken (§13.1), as
+  any citation naming nothing is; the warning adds what the contracts say.
+- The contracts compared are every contract unit's `contract`, a callback's included.
+
+```test:contract-arity-warned
+a citation of M.f/1 where the only contract states M.f/2 is a contract_arity warning on the
+unit holding it, naming the contract and its line, with no code scanned; listed under Spec
+shape and in the JSON's spec_warnings, never failing; M.f/2, a bare M.f and a function no
+contract states are not warned, nor is M.f/1 when the code defines it
 ```
 
 ## 14. Recording
