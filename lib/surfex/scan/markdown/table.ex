@@ -77,18 +77,22 @@ defmodule Surfex.Scan.Markdown.Table do
     {st, row_units} =
       Enum.reduce(rows, {st, []}, fn {row, no}, {st, units} ->
         row_cells = Span.cells(row)
-        parts = for c <- keys, do: row_cells |> Enum.at(c, "") |> key_text()
+        key_cells = for c <- keys, do: Enum.at(row_cells, c, "")
+        parts = Enum.map(key_cells, &key_text/1)
 
         if "" in parts do
           {fail(st, no, "a row of table #{table.id} has an empty key"), units}
         else
+          id = "#{table.id}/#{Enum.join(parts, "/")}"
+
           unit = %{
             role: :row,
-            id: "#{table.id}/#{Enum.join(parts, "/")}",
+            id: id,
             first: no,
             last: no,
             body: row_version(row, row_cells, ignored),
-            within: {:table, table.id}
+            within: {:table, table.id},
+            warnings: key_warnings(key_cells, no, id)
           }
 
           {st, [unit | units]}
@@ -99,6 +103,59 @@ defmodule Surfex.Scan.Markdown.Table do
   end
 
   defp column(header, name), do: Enum.find_index(header, &(key_text(&1) == key_text(name)))
+
+  # What a row's key cells say that is probably a mistake (§11.12), each a warning on the
+  # row; the row is keyed as written either way. A `/` outside code spans and not spaced
+  # as ` / ` (a list, §11.2) makes the id read as a path one level deeper (`:slash_key`);
+  # one inside a code span, `f/2` or `lib/`, is a name written as code. A key cell that is
+  # a code span followed by prose probably means the span alone (`:span_key`).
+  defp key_warnings(cells, no, id) do
+    slash =
+      for cell <- cells, slash?(cell) do
+        %{
+          kind: :slash_key,
+          line: no,
+          message:
+            "row #{id}: its key #{inspect(key_text(cell))} holds a / outside a code span, " <>
+              "so the id reads as a path one level deeper (TABLE/KEY still resolves it)"
+        }
+      end
+
+    span =
+      for cell <- cells, probable = spanned(cell) do
+        %{
+          kind: :span_key,
+          line: no,
+          message:
+            "row #{id}: its key is a code span followed by prose; " <>
+              "the span alone, #{inspect(probable)}, is probably the key"
+        }
+      end
+
+    slash ++ span
+  end
+
+  defp slash?(cell) do
+    text =
+      Enum.map_join(Span.inline(cell), fn
+        {:code, _} -> "x"
+        {:text, t} -> t
+      end)
+
+    Regex.match?(~r{(?<! )/|/(?! )}, text)
+  end
+
+  # The span's text when the cell is a code span followed by prose, not by a list's
+  # separator or another span; else nil.
+  defp spanned(cell) do
+    with [{:code, code}, {:text, text}] <- Span.inline(cell),
+         rest = String.trim(text),
+         true <- rest != "" and not Regex.match?(~r{\A(,|/|and\s)}, rest) do
+      code |> String.split() |> Enum.join(" ")
+    else
+      _ -> nil
+    end
+  end
 
   # A row's version covers its cells, less the columns `ignore:` names.
   defp row_version(row, _cells, []), do: [row]

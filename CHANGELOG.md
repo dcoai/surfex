@@ -11,6 +11,21 @@ release it merely follows.
 
 ### Added
 
+- **Two key-shape warnings for marked tables** (#286, #318). A row key holding a `/`
+  outside its code spans that isn't the spaced ` / ` (`HTML/D3 visualizer`) gives an id
+  that reads as a path one level deeper: it is now warned `slash_key`, and `TABLE/KEY` still
+  resolves it. A `/` inside a code span (`` `f/2` ``, `` `lib/` ``) is a name written as
+  code and isn't warned. A key cell that is a code span followed by prose
+  (`` `ack` (high 3 bytes of TCP ack) ``) is warned `span_key`, naming the span as the
+  probable key. Neither re-keys the row nor fails the status; both are listed under
+  `Spec shape` and in the JSON's `spec_warnings`, beside `list_key` (`migrate --report` is
+  unchanged). Spec §11.12, §11.2. Measured: no row of the three adopters' marked tables is
+  warned (103 of their 279 keys hold a `/`, every one inside a code span, a function's
+  arity); with every table of the volunteers' and adopters' specs marked (a scratch
+  copy), 18 rows would be warned `slash_key` and 36 `span_key` of 2,410, the reported `/`
+  row among them; the reported code-span row is warned once its table is keyed on its
+  field column.
+
 - **`mix surfex.status --spec` reads the spec side alone** (#297, #316). For a repository
   that holds only a spec, one another repository implements and pins, where a full status
   says `FAILING`, `(no relations)` and lists every citation as naming nothing. `--spec`

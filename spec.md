@@ -1474,7 +1474,8 @@ A marked table's row key (§11) that reads as a list, such as `1001, 1005 legacy
 almost always two things in one row, so their relations can't be told apart.
 `Surfex.Status.list_keys/1` lists every row whose key holds `, `, ` / ` or ` and `, with
 its table and the separator it holds, in file and line order. The key parts of a
-composite key (`key: [A, B]`) are joined by a bare `/`, which is no separator. The status
+composite key (`key: [A, B]`) are joined by a bare `/`, which is no separator; a `/` in a
+key cell that isn't spaced is the `slash_key` warning (§11.12). The status
 lists them among its spec-shape warnings (§11.12), and the JSON also as `list_keys`. It is
 a **warning**, never a failure, since a key may hold a comma on purpose. The scan is
 unchanged: the rows are units as before.
@@ -2009,7 +2010,27 @@ adding a list of its own. The kinds:
   own path unit. It sits on that unit (the scan record's `warnings`). A heading among
   siblings with no grammar id, or with written ids only, is not warned;
 - `contract_arity`: a citation of an arity no contract states (§13.15), on the unit
-  holding it.
+  holding it;
+- `slash_key`: a marked table's row whose key cell (§11.15), or a part of a composite key,
+  holds a `/` outside its code spans that isn't spaced as ` / ` (that one is `list_key`).
+  `HTML/D3 visualizer` gives an id that reads as a path one level deeper; `TABLE/KEY` still
+  resolves it. A `/` inside a code span, `` `f/2` `` or `` `lib/` ``, is a name written as
+  code and isn't warned, nor is the bare `/` joining a composite key's parts;
+- `span_key`: a row whose key cell is a code span followed by prose, as in
+  `` `ack` (high 3 bytes) ``: the span alone, which the warning names, is probably the key.
+  Prose is text that doesn't start with a list's separator (`,`, `/`, `and`), and a cell
+  with a second span isn't warned.
+
+Neither key warning changes a row's id: the key is what the spec writes. Both sit on the
+row (the scan record's `warnings`).
+
+```test:key-warnings
+a row keyed HTML/D3 visualizer is warned slash_key and still resolves by TABLE/KEY; a
+spaced / is list_key only, and a / in a code span or joining a composite key isn't warned;
+a key `ack` (prose) is warned span_key naming ack, and a span alone, a span list or a span
+with a second span isn't; the status lists both under Spec shape and in spec_warnings, and
+doesn't fail
+```
 
 ```test:path-heading-warning
 under :section_number, a heading 3-raw. among 1., 2. and 4. is warned naming 2 and 4 and
