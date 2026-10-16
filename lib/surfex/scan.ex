@@ -98,7 +98,12 @@ defmodule Surfex.Scan do
     warnings: []
   ]
 
-  @type location :: %{file: String.t(), lines: {pos_integer, pos_integer} | nil}
+  # A folded spec unit also carries `ranges`, every range of its lines (§11.13).
+  @type location :: %{
+          optional(:ranges) => [{pos_integer, pos_integer}],
+          file: String.t(),
+          lines: {pos_integer, pos_integer} | nil
+        }
   @type role :: atom | nil
   @type t :: %__MODULE__{
           kind: atom,
@@ -181,6 +186,30 @@ defmodule Surfex.Scan do
   """
   @spec resolver([t], [Regex.t()]) :: Resolver.t()
   def resolver(scans, unit_refs \\ []), do: Resolver.new(scans, unit_refs)
+
+  @doc """
+  A location's ranges of lines, first to last: a folded spec unit's several (§11.13),
+  whose `lines` are the first, else its one `lines`; `[]` for a location with none.
+  """
+  @spec ranges(location | map) :: [{pos_integer, pos_integer}]
+  def ranges(%{ranges: [_ | _] = ranges}), do: ranges
+  def ranges(%{lines: {_, _} = lines}), do: [lines]
+  def ranges(_location), do: []
+
+  @doc """
+  A location as a report names it: `spec.md:1-40, 120-131`, every range of its lines
+  (`ranges/1`), or the file alone when it has none.
+  """
+  @spec place(location | map) :: String.t()
+  def place(%{file: file} = location) do
+    case ranges(location) do
+      [] ->
+        file
+
+      ranges ->
+        "#{file}:" <> Enum.map_join(ranges, ", ", fn {first, last} -> "#{first}-#{last}" end)
+    end
+  end
 
   @doc """
   What a code record is a version of: its file, lines and version. A function with

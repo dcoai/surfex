@@ -52,11 +52,26 @@ defmodule Surfex.Scan.Markdown.Fold do
 
           inside ->
             body = s.body ++ Enum.flat_map(inside, &[&1.heading | &1.body])
-            %{s | body: body, last: Enum.max([s.last | Enum.map(inside, & &1.last)])}
+            [{first, last} | _] = ranges = ranges(s, inside)
+            Map.merge(s, %{body: body, first: first, last: last, ranges: ranges})
         end
       end
 
     {kept, owners, errors}
+  end
+
+  # A folded unit's lines (§11.13): its own, then each folded section's, one range where no
+  # other unit sits between (the next section in order is the one folded), so the unit
+  # never claims the lines of a sibling unit between its parts.
+  defp ranges(owner, inside) do
+    inside
+    |> Enum.reduce([{owner.n, owner.first, owner.last}], fn s, [{n, first, last} | done] ->
+      if s.n == n + 1,
+        do: [{s.n, first, max(last, s.last)} | done],
+        else: [{s.n, s.first, s.last}, {n, first, last} | done]
+    end)
+    |> Enum.reverse()
+    |> Enum.map(fn {_n, first, last} -> {first, last} end)
   end
 
   # A heading with no id among siblings (the same level, under the same parent) the heading

@@ -32,6 +32,16 @@ release it merely follows.
 
 ### Changed
 
+- **A folded unit keeps its own line ranges** (#292, #307). A unit `fold_paths:` folds a
+  heading into was located from its first line to its last folded one, so a chapter whose
+  path heading sat after §5 claimed the lines of §1–§5, units of their own. It is now
+  located at its own lines and each folded part's, one range where nothing sits between:
+  its record's `lines` are the first range and `location.ranges` lists them all
+  (`Surfex.Scan.ranges/1`). Reports print `spec/07.md:1-7, 157-167`, the JSON adds
+  `ranges` beside `lines` for such a unit only, `suggest` finds the unit a citation sits in
+  by its ranges, and a change draft quotes each range. Versions are unchanged, so nothing
+  dangles. Measured: no unit of the nine adopters with a relation log has more than one
+  range (their `lines` are unchanged); one volunteer spec has one, the motivating chapter.
 - **Spec-shape warnings share one listing** (#292, #306). The text report's
   `List-shaped keys` list is now a group of one `Spec shape (warnings; none fails)` listing,
   beside the path-heading warnings and any later kind; the JSON gives every such warning

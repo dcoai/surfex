@@ -1133,8 +1133,7 @@ defmodule Surfex.Status.Report do
 
   defp mark_text(m), do: "spec #{m.unit}#{at(m)}: #{m.note} (#{m.by}, #{m.at})"
 
-  defp at(%{location: %{file: file, lines: {first, last}}}), do: " (#{file}:#{first}-#{last})"
-  defp at(%{location: %{file: file}}), do: " (#{file})"
+  defp at(%{location: location}), do: " (#{Surfex.Scan.place(location)})"
 
   # ── JSON ────────────────────────────────────────────────────────────────
 
@@ -1218,6 +1217,14 @@ defmodule Surfex.Status.Report do
       "location" => location_json(scan.location)
     }
   end
+
+  # A folded unit's several ranges as well (§11.13); `lines` is the first.
+  defp location_json(%{file: file, lines: {first, last}, ranges: ranges}),
+    do: %{
+      "file" => file,
+      "lines" => [first, last],
+      "ranges" => Enum.map(ranges, &Tuple.to_list/1)
+    }
 
   defp location_json(%{file: file, lines: {first, last}}),
     do: %{"file" => file, "lines" => [first, last]}

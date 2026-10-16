@@ -1945,6 +1945,26 @@ without; among siblings with no numbered id nothing is warned; the status lists 
 Spec shape and the JSON in spec_warnings, and the status doesn't fail
 ```
 
+### 11.13 A folded unit's line ranges
+<!-- surfex: folded-ranges-section -->
+
+A unit `fold_paths:` folds headings into (§11.1) is located by **ranges** of lines: its own
+first to last line, then each folded section's, one range where no other unit sits between
+its parts (a folded heading straight after it, or after another folded part, extends the
+range it follows). So a chapter whose path heading sits after §5 is located at its own
+lines and the heading's, never across §1–§5, which are units of their own. The record's
+`lines` are its first range and `location.ranges` lists them all (`Surfex.Scan.ranges/1`);
+a unit in one range has no `ranges`. Reports name every range, `spec/07.md:1-7, 157-167`,
+the JSON adds `ranges: [[first, last], …]` beside `lines`, the spec unit a line belongs to
+is found in its ranges, and a change draft quotes each range. Its version is unchanged.
+
+```test:folded-ranges
+with fold_paths: true a path heading after §5 that folds into the chapter leaves the chapter
+located at its own lines and the heading's, two ranges, not one span over §1-§5; a heading
+folding straight after its owner extends one range; reports name both ranges and the JSON
+gives them as ranges; a citation in the folded heading's lines is the chapter's
+```
+
 ## 12. The relation log
 <!-- surfex: relation-log -->
 

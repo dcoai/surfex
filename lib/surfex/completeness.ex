@@ -274,8 +274,7 @@ defmodule Surfex.Completeness do
   defp lack({:contained, units}), do: "contained (#{Enum.join(units, ", ")})"
   defp lack(atom), do: Atom.to_string(atom)
 
-  defp at(%{file: file, lines: {first, last}}), do: " (#{file}:#{first}-#{last})"
-  defp at(%{file: file}), do: " (#{file})"
+  defp at(%{file: _} = location), do: " (#{Surfex.Scan.place(location)})"
   defp at(nil), do: ""
 
   @doc "The report as JSON, the work list for an agent."
@@ -307,6 +306,14 @@ defmodule Surfex.Completeness do
     |> :json.encode()
     |> IO.iodata_to_binary()
   end
+
+  # A folded unit's several ranges as well (§11.13); `lines` is the first.
+  defp location_json(%{file: file, lines: {first, last}, ranges: ranges}),
+    do: %{
+      "file" => file,
+      "lines" => [first, last],
+      "ranges" => Enum.map(ranges, &Tuple.to_list/1)
+    }
 
   defp location_json(%{file: file, lines: {first, last}}),
     do: %{"file" => file, "lines" => [first, last]}
