@@ -4034,6 +4034,34 @@ a review crediting a unit's implements to two arities of one definition records 
 validate names them as one definition; a review crediting one arity names none
 ```
 
+### 18.5 A refusal names its cause
+<!-- surfex: validate-refusal -->
+
+When `validate` records nothing, its refusal says why, so that it never reads as a reason
+to skip a relation that still needs review. With the note, both ends and the relation in
+place, the causes are checked in this order, and the first that holds is the one named:
+
+1. **No green run of the test at its current version.** The refusal says what the last run
+   was: `never` (nothing in the evidence: run its suite; in a poncho, a sibling app's suite
+   writes the root's evidence only when its formatter is configured with `surfex_root:`),
+   `failed` (a review is recorded on a green run), or `at an older version` of the test
+   (run its suite again). A check's refusal (§18.3) names its last run the same way.
+2. **The green run reached the unit's code only at an older version.** An unvalidated
+   `implements` of the unit whose code the run reached at a different version than the
+   current one (the code changed since the run, so the relation dangles, §13.1): the
+   refusal names that code and says to run the test's suite again.
+3. **The green run reached none of it.** An unvalidated `implements` of the unit whose code
+   the run didn't reach at all: the refusal names it, and says to name it with `--code` and
+   say how with `--through` if the test exercises it in a way no call shows (§18.2).
+4. **Everything is validated already.** Only then does `validate` say `already validated`.
+
+```test:refusal-names-cause
+a review with nothing to record names why: no green run at the test's current version
+(last run never, failed, or at an older version, for a test or a check), unvalidated
+implements whose code the run reached only at an older version, or reached not at all,
+each named; already validated only when nothing is left; the same through --file
+```
+
 ## 19. Handing off found work
 <!-- surfex: hand-off -->
 
