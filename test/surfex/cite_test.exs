@@ -249,6 +249,18 @@ defmodule Surfex.CiteTest do
       assert [%{line: 5}] = one(cites, "app_recv")
       assert [%{line: 3}] = one(cites, "app_send")
     end
+
+    @tag verifies: ["citation-sections", "table-cells-section"]
+    test "a cell's escaped pipe stays in its cell, so the columns after it hold", %{tmp_dir: root} do
+      write(root, "spec/01.md", """
+      | Note | Type |
+      |---|---|
+      | a \\| b | APP_MAX_OP |
+      """)
+
+      cites = cite(root, profile(table_columns: ["Type"]))
+      assert [%{line: 3, status: :resolved}] = one(cites, "APP_MAX_OP")
+    end
   end
 
   @tag verifies: "citation-sections"
