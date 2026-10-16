@@ -11,6 +11,16 @@ release it merely follows.
 
 ### Added
 
+- **`suggest` pairs a contract with its own function** (#287, #314). A contract unit keyed
+  `Module.name/arity` was offered only `refines`, while prose mentions got `implements`
+  suggestions; now `mix surfex.suggest` proposes `implements` between each contract and the
+  code item of its key (a callback's where a scanner lists callbacks), cited at the
+  contract's line and listed first, with or without `claims: true`. A pair related in any
+  state, retired included, is not proposed. Spec §15.3. Measured on one volunteer spec with
+  its fences marked (in a scratch copy, against its own code): 63 of its 77 contracts are
+  now paired with their functions, the one its team named among them; the other 14 are
+  callbacks, which the built-in scanner doesn't list, and the functions it lacks.
+
 - **A contract's function is a citation** (#287, #311). A contract unit's key,
   `Module.name/arity`, is now resolved against the code as a cited name is, and one naming
   nothing is a broken citation at the signature's line, under the section `(contract)`,

@@ -188,25 +188,30 @@ defmodule Surfex.Suggest do
         {:ok, acc ++ recorded}
       end)
 
+    # A contract's key names its function (§15.3): those pairs come first, whatever else
+    # proposes them.
+    own = own_functions(scans, moved)
+    owned = MapSet.new(own, &{&1.spec.id, &1.code.id})
+
     # The class says a classed unit's own text asserts nothing (§15.2).
     cited =
       profile
       |> candidates(items, scans, moved, root)
-      |> Enum.reject(&(&1.spec.class != nil))
+      |> Enum.reject(&(&1.spec.class != nil or MapSet.member?(owned, {&1.spec.id, &1.code.id})))
 
     {claimed, reached} =
       if Keyword.get(opts, :claims, false),
-        do: claims(scans, moved, cited),
+        do: claims(scans, moved, own ++ cited),
         else: {[], []}
 
-    implements = cited ++ claimed
+    implements = own ++ cited ++ claimed
     status = Surfex.Status.derive(scans, moved)
 
     %{
       moves: moves,
       ambiguous: ambiguous,
       refines: ordered(refinements(scans, moved)),
-      implements: ordered(implements),
+      implements: ordered(own) ++ ordered(cited ++ claimed),
       excuses: ordered(excusals(profile, items, scans, moved, implements)),
       reached: ordered(reached),
       verifies: ordered(Enum.reject(verifications(scans, moved), &(&1.to.class != nil))),
@@ -222,6 +227,26 @@ defmodule Surfex.Suggest do
       refresh: ordered(refreshed(scans, status)),
       tests: ordered(exercised(scans, moved))
     }
+  end
+
+  # §15.3: each contract unit and the code item of its own key, a `@spec`'s
+  # `Module.name/arity` and a callback's `Module.callback:name/arity`, unless a relation
+  # relates them in any state. Cited at the contract's line: the key is the claim.
+  defp own_functions(scans, entries) do
+    code = for %Scan{kind: :code} = s <- scans, into: %{}, do: {s.id, s}
+    related = MapSet.new(entries, &Entry.relation/1)
+
+    for %Scan{kind: :spec, role: :contract} = unit <- scans,
+        item = Map.get(code, own_key(unit)),
+        item != nil,
+        not MapSet.member?(related, Entry.relation(:implements, unit, item)) do
+      %{spec: unit, code: item, cited_at: {unit.location.file, elem(unit.location.lines, 0)}}
+    end
+  end
+
+  defp own_key(%Scan{id: id, contract: contract}) do
+    [_file, key] = String.split(id, "#", parts: 2)
+    if Regex.match?(~r/\.(macro)?callback:/, key), do: key, else: contract
   end
 
   # A verifier as status lists it (`check ID` for a check, §11.4), as an id to record by.

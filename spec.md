@@ -3705,6 +3705,26 @@ is still reported; a declaration naming the classed section yields no verifies
 suggestion; the same citation unclassed does
 ```
 
+### 15.3 A contract's own function
+<!-- surfex: contract-suggestions -->
+
+A contract unit's key names the function it states (§11.9), so the contract is the claim
+that function realises, whatever prose cites it. `Surfex.Suggest.all/6` proposes, for each
+contract unit, `implements` between it and the code item whose id is its key: a `@spec`'s
+`Module.name/arity`, a callback's `Module.callback:name/arity` where a scanner lists one.
+It needs no `claims: true`, since the key is the claim, not what a test calls. A pair a
+relation relates in any state, retired included, is not proposed, as for any candidate
+(§15). The candidate is cited at the contract's first line, and these candidates are
+listed before the citation-derived ones; a citation proposing the same pair adds nothing.
+A function of the same name in another module is not the contract's.
+
+```test:contract-own-function
+a contract keyed M.f/2 with code M.f/2 and no relation yields one implements suggestion,
+cited at the contract's line, with or without claims:, listed before citation-derived
+ones; a callback pairs with the code item of its callback id; related or retired yields
+none, and no code of its key none
+```
+
 ## 16. The specification guide
 <!-- surfex: spec-guide -->
 
