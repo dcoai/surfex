@@ -398,6 +398,7 @@ defmodule Surfex.Status.Report do
             "status" => Atom.to_string(c.status),
             "items" => c.items
           }
+          |> Map.merge(if c[:why], do: %{"why" => c.why}, else: %{})
         end),
       "failed" => Enum.map(status.failed, &failed_json/1),
       "unproven" => Enum.map(status.unproven, &claim_json/1),
@@ -902,6 +903,7 @@ defmodule Surfex.Status.Report do
   # A golden cell naming an item, then saying something about it: `` `item`: text ``.
   defp coded(item, text), do: [Span.code(item), ": ", Span.text(text)]
 
+  defp citation_text(%{status: :unresolved, why: why}), do: why
   defp citation_text(%{status: :unresolved}), do: "names nothing the code has"
 
   defp citation_text(%{status: :ambiguous, items: items}),

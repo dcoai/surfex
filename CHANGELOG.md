@@ -11,7 +11,22 @@ release it merely follows.
 
 ### Added
 
-- **`.surfex.exs` names take the forms the rest of the file does** (#288, #308).
+- **A contract's function is a citation** (#287, #311). A contract unit's key,
+  `Module.name/arity`, is now resolved against the code as a cited name is, and one naming
+  nothing is a broken citation at the signature's line, under the section `(contract)`,
+  saying what is missing: `no module M`, `no f in M`, or `M.f exists at /3, not /2`. A
+  callback resolves to its behaviour module (the built-in scanner lists no callbacks).
+  `known_external:` and `documented_absences:` carry one as they carry any citation, and a
+  contract deferred by its own marker or its section is not broken. The JSON's citation
+  gains `why` where there is one. `Surfex.Status.Config.broken_citations/5` takes the scans;
+  `/4` is unchanged. Spec §6.9, §6.2. **Upgrade step:** a spec with contract fences may now
+  fail on broken citations its contracts make. Each names a function the code lacks: fix
+  the contract, defer its section, or name it in `documented_absences:`. Measured: none of
+  the nine adopters with a relation log has a contract fence, so none changes; on three
+  volunteer specs with their fences marked (in a scratch copy), the two functions and the
+  three moved ones their teams reported are among the new broken citations, and a spec with
+  no code in its repository reads every contract as broken until a spec-only reading exists.
+
   `namespace:` takes a module (`namespace: MyApp` reads as `"MyApp"`) or a list of roots,
   where it took only a string and a module crashed the scan with a `FunctionClauseError`
   from inside the Elixir scanner (`Surfex.Status.Config.namespace!/1`). A `spec_classes:`
@@ -86,6 +101,14 @@ release it merely follows.
   error at its HEAD, so none sees a change.
 
 ### Fixed
+
+- **A fence is read by CommonMark's rule in the citation pass** (#287, #311). The citation
+  pass found fenced code blocks with a pattern that only opened on a lowercase info string,
+  so an `elixir contract` or `test:id` fence was skipped and its closing line was taken as
+  the next fence's opening: the prose after it was read as a code block and the next real
+  fence's code was not. It now reads fences as the spec scan does (any info string, tildes,
+  a closer only of the same character and length), and credits a fence's tokens to
+  `(code block)` at their own line rather than line 1. Spec §6.8.
 
 - **A class marker with a malformed name says the name is the problem** (#288, #309).
   `<!-- surfex: class defect log: … -->` got only the marker's form, `a class marker is

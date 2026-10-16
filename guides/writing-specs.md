@@ -175,7 +175,9 @@ dangles only that claim's relations:
 - **A module's signatures**: a contract fence (`<!-- surfex: contract module: Wren -->`
   before an `elixir` fence of `@spec` lines), one unit per function, so changing one
   signature dangles only that function's relations. Under a heading that names its module
-  in backticks, or with a `defmodule` in the fence, it needs no `module:`.
+  in backticks, or with a `defmodule` in the fence, it needs no `module:`. A contract
+  also cites its own function, so one the code doesn't have is a broken citation, unless
+  the section is deferred until it is built.
 - **A table of cases**: a marked table, one unit per row (`spec.md` §11).
 
 Bold is never a claim: it is emphasis far more often than it is a requirement, so a
