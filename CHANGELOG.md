@@ -11,6 +11,18 @@ release it merely follows.
 
 ### Added
 
+- **A citation of an arity no contract states is warned** (#287, #315). A citation
+  `MyApp.Env.check/1` in the spec's text, where the spec's contracts state
+  `MyApp.Env.check` only at other arities and the code has no such function, is now a
+  spec-shape warning of a new kind, `contract_arity`, naming the contracts and where they
+  are. It reads the spec alone, so it works with no code scanned, and it never fails (a
+  citation naming nothing is broken as before where code is scanned).
+  `Surfex.Scan.at/3` gives the innermost spec unit holding a line. Spec §13.15.
+  Measured: none of the nine adopters with a relation log has a contract fence; on three
+  volunteer specs with their fences marked (in a scratch copy), the one citation a team
+  found by hand is warned, with no code in its repository, and nothing else is. Across
+  all of #287's changes, the nine adopters' status goldens are byte-for-byte unchanged.
+
 - **`suggest` pairs a contract with its own function** (#287, #314). A contract unit keyed
   `Module.name/arity` was offered only `refines`, while prose mentions got `implements`
   suggestions; now `mix surfex.suggest` proposes `implements` between each contract and the

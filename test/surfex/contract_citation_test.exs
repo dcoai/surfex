@@ -14,9 +14,10 @@ defmodule Surfex.ContractCitationTest do
     File.write!(file, text)
   end
 
+  # As `Config.read/3` gives them as its `citations:`, through the function §6.9 names.
   defp cc_broken(root, config) do
-    {:ok, {_scans, opts}} = Config.read(config, root, nil)
-    Keyword.fetch!(opts, :citations)
+    items = Config.items(config, root)
+    Config.broken_citations(config, items, root, nil, Config.scans(config, root))
   end
 
   @code """

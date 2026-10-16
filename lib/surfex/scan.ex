@@ -192,6 +192,21 @@ defmodule Surfex.Scan do
   def resolver(scans, unit_refs \\ []), do: Resolver.new(scans, unit_refs)
 
   @doc """
+  The innermost spec unit among `spec` whose lines in `file` hold `line`, or `nil`.
+  Sections don't overlap (each stops at the next heading, and a folded one holds only its
+  own ranges, §11.13), but a marked block, a hint or a contract sits inside its section,
+  and a line in it is about the inner unit.
+  """
+  @spec at([t], String.t(), pos_integer) :: t | nil
+  def at(spec, file, line) do
+    spec
+    |> Enum.filter(fn %__MODULE__{location: %{file: f} = location} ->
+      f == file and Enum.any?(ranges(location), fn {first, last} -> line in first..last end)
+    end)
+    |> Enum.max_by(fn %__MODULE__{location: %{lines: {first, _}}} -> first end, fn -> nil end)
+  end
+
+  @doc """
   A location's ranges of lines, first to last: a folded spec unit's several (§11.13),
   whose `lines` are the first, else its one `lines`; `[]` for a location with none.
   """

@@ -62,6 +62,54 @@ defmodule Surfex.Cite.Contracts do
     end
   end
 
+  @typedoc "A citation of an arity no contract states, and the contracts stating others."
+  @type cited_arity :: %{
+          citation: Cite.t(),
+          function: String.t(),
+          stated: [
+            %{unit: String.t(), arity: non_neg_integer, file: String.t(), line: pos_integer}
+          ]
+        }
+
+  @doc """
+  §13.15: each citation in `citations` of `Module.name/arity` that names no code
+  (`:unresolved`) where the contract units among `scans` state `Module.name` at other
+  arities only, with those units sorted by file and line. It reads the spec alone, so it
+  holds with no code scanned.
+  """
+  @spec arities([Cite.t()], [Scan.t()]) :: [cited_arity]
+  def arities(citations, scans) do
+    stated =
+      for %Scan{kind: :spec, role: :contract, contract: contract} = unit <- scans,
+          [_, function, arity] <- [Regex.run(~r/^(.+)\/(\d+)$/, contract)],
+          do:
+            {function,
+             %{
+               unit: unit.id,
+               arity: String.to_integer(arity),
+               file: unit.location.file,
+               line: elem(unit.location.lines, 0)
+             }}
+
+    by_function = Enum.group_by(stated, &elem(&1, 0), &elem(&1, 1))
+
+    for %{status: :unresolved, span: span} = c <- citations,
+        [_, function, arity] <- [
+          Regex.run(~r/^([A-Z][\w.]*\.[^.\/\s]+)\/(\d+)$/, String.trim(span))
+        ],
+        {:ok, others} <- [Map.fetch(by_function, function)],
+        not Enum.any?(others, &(&1.arity == String.to_integer(arity))) do
+      %{citation: c, function: function, stated: Enum.sort_by(others, &{&1.file, &1.line})}
+    end
+  end
+
+  @doc "What a spec-shape warning of `arities/2`'s entry says."
+  @spec arity_text(cited_arity) :: String.t()
+  def arity_text(%{citation: c, function: function, stated: stated}) do
+    at = Enum.map_join(stated, ", ", &"#{function}/#{&1.arity} at #{&1.file}:#{&1.line}")
+    "`#{String.trim(c.span)}` cites an arity no contract states; the contracts state #{at}"
+  end
+
   # `Module.name` => the arities the code defines it at.
   defp families(items) do
     for %Item{parent: parent, name: name} <- items,
