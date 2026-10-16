@@ -574,7 +574,7 @@ defmodule Surfex.Status.Config do
         {:ok,
          {scans,
           options!(config) ++
-            [citations: broken_citations(config, items, root, namespace), inert: inert]}}
+            [citations: broken_citations(config, items, root, namespace, scans), inert: inert]}}
 
       {_scans, errors} ->
         {:error, errors}
@@ -585,17 +585,19 @@ defmodule Surfex.Status.Config do
   The spec's citations that resolve to nothing (`:unresolved`) or to more than one item
   (`:ambiguous`), read with `Surfex.Cite` under the config's profile (`profile!/2`). A
   name the profile declares external, or a documented absence, is not broken, nor is a
-  process name the Elixir scanner's source registers (§6.7).
+  process name the Elixir scanner's source registers (§6.7). The contract units among
+  `scans` are citations too, each of its own function (§6.9), sorted in among them.
   """
-  @spec broken_citations(keyword, [Surfex.Item.t()], String.t(), String.t() | nil) :: [
-          Surfex.Cite.t()
-        ]
-  def broken_citations(config, items, root, namespace) do
+  @spec broken_citations(keyword, [Surfex.Item.t()], String.t(), String.t() | nil, [Scan.t()]) ::
+          [Surfex.Cite.t()]
+  def broken_citations(config, items, root, namespace, scans \\ []) do
+    profile = profile!(config, namespace, items)
+
     items
-    |> Surfex.Cite.citations(profile!(config, namespace, items), root,
-      registered: registered_names(config, root)
-    )
+    |> Surfex.Cite.citations(profile, root, registered: registered_names(config, root))
+    |> Enum.concat(Surfex.Cite.Contracts.citations(scans, items, profile))
     |> Enum.filter(&(&1.status in [:unresolved, :ambiguous]))
+    |> Enum.sort_by(&{&1.file, &1.line, &1.span})
   end
 
   # The process names the Elixir scanner's source registers (its `:paths`); none without

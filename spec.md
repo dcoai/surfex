@@ -580,6 +580,9 @@ Every citation has exactly one status:
 | `:documented_absence` | a section names it *because* the code lacks it (`documented_absences`) |
 | `:registered_name` | it names a process name the source registers, and no module (§6.7) |
 
+A contract's function is a citation too (§6.9), with the same statuses; a deferred
+contract is not cited, since it names what isn't built yet by declaration.
+
 ### 6.3 What is read
 <!-- surfex: citation-reading -->
 
@@ -668,6 +671,52 @@ registered name is not a broken citation (§13.1).
 a span naming exactly a literal `name:` alias the source registers, with no module of
 that name, is a registered name and not broken; a function on it, a `{:global, …}` or
 `{:via, …}` name and a misspelt module stay broken
+```
+
+### 6.8 A fence is read by CommonMark's rule
+<!-- surfex: citation-fences -->
+
+A fenced code block (§6.3) is found as CommonMark finds one, the spec scan's own reading
+(§11): three or more backticks or tildes, indented at most three spaces, open it whatever
+the rest of the line says, so an info string with a space (`elixir contract`) or a colon
+(`test:id`) opens a fence like any other. Only a line of the same character, at least as
+long and with nothing after it, closes it, so a fence's closing line is never read as the
+next one's opening and the prose after a fence is never read as code. A fence that never
+closes runs to the end of the file. Each shape-matching token in a fence is credited to
+`(code block)` at the line it first appears on, once per fence.
+
+```test:fences-by-commonmark
+a contract fence followed by prose and then a plain fence: the prose is not read as a code
+block, and the plain fence's tokens are, at their own line, once per fence; a tilde fence
+whose info string holds spaces is a fence
+```
+
+### 6.9 A contract's function is a citation
+<!-- surfex: contract-citations -->
+
+A contract unit (§11.1) is keyed by the function it states, `Module.name/arity` (§11.9):
+the most literal citation a spec makes. So each contract unit is a citation of its own
+function, resolved against the code items as any citation is (§6.4), and one that names
+nothing is a **broken citation** (§13.1), listed at the signature's first line under the
+section `(contract)` with what is missing: `no module M`, `no f in M`, or `M.f exists at
+/3, not /2` when the code has the function at other arities only. A `@callback` or
+`@macrocallback` contract resolves to an item keyed by its callback id
+(`Module.callback:name/arity`) where a scanner lists one, else to its behaviour module,
+since the built-in scanner lists no callbacks; with neither it is broken.
+
+A `known_external` entry naming the contract, its function or its module, and a documented
+absence naming the contract or its function in the file, carry it as they carry any
+citation. A contract that is deferred (§11.7), by its own marker or by a unit it sits in,
+names what isn't built yet by declaration: it is reported as deferred (§13.6), never as
+broken. `Surfex.Status.Config.broken_citations/5` gives these among the spec's other broken
+citations, from the contract records the scan made, so the module a citation names is
+always the one §11.9 keyed the unit by.
+
+```test:contract-citation
+a contract whose function the code lacks is a broken citation at its line, saying whether
+the module, the function or the arity is missing; a documented absence or a known external
+carries it; a contract deferred by its section is not broken; a callback resolves to its
+behaviour module and one whose module is missing is broken
 ```
 
 ## 7. Coverage

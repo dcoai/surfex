@@ -32,15 +32,18 @@ defmodule Surfex.Cite do
   - **Headings of subject sections** (`Surfex.Profile` `:subjects`), which cite the items
     the section is about.
   - **Table cells** under the profile's `:table_columns`, backticked or not.
-  - **Fenced code blocks**, whose shape-matching tokens are credited to `(code block)`.
-    Inside a fence nothing else is read: a `# comment` in a code block is not a heading and
-    a backtick in code is not a span.
+  - **Fenced code blocks**, whose shape-matching tokens are credited to `(code block)` at
+    their line, once per fence. A fence is CommonMark's (`Surfex.Scan.Markdown.Fence`): any
+    info string opens one, and only a matching closer closes it, so prose is never read as
+    code. Inside a fence nothing else is read: a `# comment` in a code block is not a
+    heading and a backtick in code is not a span.
 
   Everything that differs between projects (what a claim looks like, how the spec is
   laid out) is `Surfex.Profile` data.
   """
 
   alias Surfex.{Item, Profile}
+  alias Surfex.Scan.Markdown.Fence
 
   @type status ::
           :resolved
@@ -50,8 +53,12 @@ defmodule Surfex.Cite do
           | :documented_absence
           | :registered_name
 
-  @typedoc "One citation: the span as written, where it is, and what it resolved to."
+  @typedoc """
+  One citation: the span as written, where it is, and what it resolved to. A contract's
+  citation of its own function (§6.9) that names nothing says why, `why`.
+  """
   @type t :: %{
+          optional(:why) => String.t(),
           span: String.t(),
           file: String.t(),
           section: String.t(),
@@ -122,34 +129,13 @@ defmodule Surfex.Cite do
 
   # ── Scanning ────────────────────────────────────────────────────────────
 
-  defp citations_in(path, root, ctx) do
-    text = File.read!(Path.join(root, path))
-    fenced(text, ctx) ++ lines(text, ctx)
-  end
-
-  # A fenced block quoting code documents it as surely as prose does. Only shape-matching
-  # tokens are credited, so a block of the project's own code is not mistaken for claims.
-  defp fenced(text, ctx) do
-    ~r/^```[a-z]*\n(.*?)^```/ms
-    |> Regex.scan(text, capture: :all_but_first)
-    |> Enum.flat_map(fn [block] ->
-      block
-      |> tokens(ctx.profile)
-      |> Enum.filter(&shaped?(&1, ctx.profile))
-      |> Enum.uniq()
-      |> Enum.flat_map(fn token ->
-        case named(token, token, ctx) do
-          nil -> []
-          found -> [citation(found, ctx.path, "(code block)", 1)]
-        end
-      end)
-    end)
-  end
+  defp citations_in(path, root, ctx), do: lines(File.read!(Path.join(root, path)), ctx)
 
   # The line scan's state: the heading stack (`{level, heading, subject keys}`, deepest
-  # first), whether we are inside a fence, and the table being read (the previous row's
-  # cells until a separator row confirms them as a header).
-  @start %{stack: [], fence: false, prev: nil, columns: nil}
+  # first), the fence we are inside (`Fence.state/0`) and the tokens it already credited,
+  # and the table being read (the previous row's cells until a separator row confirms them
+  # as a header).
+  @start %{stack: [], fence: nil, seen: MapSet.new(), prev: nil, columns: nil}
 
   defp lines(text, ctx) do
     text
@@ -159,14 +145,44 @@ defmodule Surfex.Cite do
     |> elem(0)
   end
 
-  defp step(line, _no, %{fence: true} = st, _ctx),
-    do: {[], %{st | fence: not fence?(line)}}
+  defp step(line, no, %{fence: {_, _} = fence} = st, ctx) do
+    case Fence.step(line, fence) do
+      {false, nil} -> {[], %{st | fence: nil, seen: MapSet.new()}}
+      {false, fence} -> fenced(line, no, %{st | fence: fence}, ctx)
+    end
+  end
 
   defp step(line, no, st, ctx) do
-    cond do
-      fence?(line) ->
-        {[], %{st | fence: true, prev: nil, columns: nil}}
+    case Fence.step(line, nil) do
+      {false, fence} -> {[], %{st | fence: fence, prev: nil, columns: nil}}
+      {true, nil} -> prose(line, no, st, ctx)
+    end
+  end
 
+  # A fenced block quoting code documents it as surely as prose does. Only shape-matching
+  # tokens are credited, so a block of the project's own code is not mistaken for claims,
+  # and each once per fence, at the line it first appears on.
+  defp fenced(line, no, st, ctx) do
+    tokens =
+      line
+      |> tokens(ctx.profile)
+      |> Enum.filter(&shaped?(&1, ctx.profile))
+      |> Enum.uniq()
+      |> Enum.reject(&MapSet.member?(st.seen, &1))
+
+    cites =
+      Enum.flat_map(tokens, fn token ->
+        case named(token, token, ctx) do
+          nil -> []
+          found -> [citation(found, ctx.path, "(code block)", no)]
+        end
+      end)
+
+    {cites, %{st | seen: MapSet.union(st.seen, MapSet.new(tokens))}}
+  end
+
+  defp prose(line, no, st, ctx) do
+    cond do
       heading = heading(ctx.path, line) ->
         {level, text} = heading
         subjects = subjects(ctx.path, text, ctx.profile)
@@ -240,8 +256,6 @@ defmodule Surfex.Cite do
 
   defp citation({span, status, items}, file, section, line),
     do: %{span: span, file: file, section: section, line: line, status: status, items: items}
-
-  defp fence?(line), do: String.starts_with?(line, "```")
 
   defp heading(path, line) do
     cond do

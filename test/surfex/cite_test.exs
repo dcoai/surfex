@@ -205,7 +205,7 @@ defmodule Surfex.CiteTest do
     test "fenced blocks credit shaped tokens only, under (code block)", %{tmp_dir: root} do
       write(root, "spec/01.md", "```c\nint x = app_send(APP_MAX_OP);\napp_twice();\n```\n")
       cites = cite(root)
-      assert [%{section: "(code block)", line: 1, status: :resolved}] = one(cites, "app_send")
+      assert [%{section: "(code block)", line: 2, status: :resolved}] = one(cites, "app_send")
       assert one(cites, "APP_MAX_OP") == []
       assert [%{status: :ambiguous}] = one(cites, "app_twice")
     end
