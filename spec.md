@@ -554,8 +554,8 @@ related to it, and doesn't without calls/3; a malformed answer raises naming the
 file, line and span.
 
 ```test:citation-status-kinds
-each citation ends in exactly one status: resolved, ambiguous, unresolved, external or
-a documented absence
+each citation ends in exactly one status: resolved, ambiguous, unresolved, external, a
+documented absence, or a name the source defines that isn't code (§6.7)
 ```
 
 ### 6.1 No new notation
@@ -578,6 +578,7 @@ Every citation has exactly one status:
 | `:unresolved` | it has the shape of a claim about the code and names nothing |
 | `:external` | it names something real outside the scanned tree (`known_external`) |
 | `:documented_absence` | a section names it *because* the code lacks it (`documented_absences`) |
+| `:registered_name` | it names a process name the source registers, and no module (§6.7) |
 
 ### 6.3 What is read
 <!-- surfex: citation-reading -->
@@ -645,6 +646,29 @@ until the next heading of the same or higher level, resolves as that item's memb
 inside such a section the member wins over a global of the same name. A subject key
 that names nothing makes the heading's citation unresolved. A contract fence (§11.1) in a
 subject section is about the subject's one item where nothing nearer names a module (§11.9).
+
+### 6.7 Names that aren't code
+<!-- surfex: citation-not-code -->
+
+Some names the spec cites are defined by the source without being code items. Each
+resolves by reading the source, never by a configured list, under a status of its own,
+so it is never mistaken for a citation of code and never hides a misspelt one. It is no
+item: it has no relations, counts for no completeness and is never suggested.
+
+**A registered name.** The Elixir scanner's source registers a process name with a
+keyword pair `name: Alias` whose value is a literal alias, anywhere in its files: in a
+call or a child-spec tuple alike. `{:global, …}`, `{:via, …}` and a variable are not
+literal aliases, and `__MODULE__` is a real module. A span naming exactly such an alias,
+when no module of that name is scanned and none of §6.4's rules 1 to 6 resolves it, has
+the status `:registered_name` (`Surfex.Cite.citations/4`'s `:registered`). A function or
+member on it still names nothing: it falls to the shape rule. A
+registered name is not a broken citation (§13.1).
+
+```test:registered-name
+a span naming exactly a literal `name:` alias the source registers, with no module of
+that name, is a registered name and not broken; a function on it, a `{:global, …}` or
+`{:via, …}` name and a misspelt module stay broken
+```
 
 ## 7. Coverage
 <!-- surfex: coverage -->

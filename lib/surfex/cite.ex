@@ -22,6 +22,8 @@ defmodule Surfex.Cite do
   - `:unresolved` — it has the shape of a claim about the code and names nothing
   - `:external` — it names something real outside the scanned tree (`:known_external`)
   - `:documented_absence` — a section names it *because* the code does not have it
+  - `:registered_name` — it names exactly a process name the source registers
+    (`name: MyApp.Sessions`) and no module (`citations/4`'s `:registered`)
 
   ## What is read
 
@@ -40,7 +42,13 @@ defmodule Surfex.Cite do
 
   alias Surfex.{Item, Profile}
 
-  @type status :: :resolved | :unresolved | :ambiguous | :external | :documented_absence
+  @type status ::
+          :resolved
+          | :unresolved
+          | :ambiguous
+          | :external
+          | :documented_absence
+          | :registered_name
 
   @typedoc "One citation: the span as written, where it is, and what it resolved to."
   @type t :: %{
@@ -58,10 +66,19 @@ defmodule Surfex.Cite do
   @doc """
   Every citation in the profile's sources under `root`, resolved against `items`, sorted
   by file, line and span.
+
+  `opts`: `:registered`, the process names the source registers that are no module
+  (spec §6.7). A span naming exactly one of them, and nothing else, is a
+  `:registered_name`; a function or member on it still names nothing.
   """
-  @spec citations([Item.t()], Profile.t(), String.t()) :: [t]
-  def citations(items, %Profile{} = profile, root) do
-    base = %{index: index(items, profile), aliases: aliases(items), profile: profile}
+  @spec citations([Item.t()], Profile.t(), String.t(), keyword) :: [t]
+  def citations(items, %Profile{} = profile, root, opts \\ []) do
+    base = %{
+      index: index(items, profile),
+      aliases: aliases(items),
+      profile: profile,
+      registered: opts |> Keyword.get(:registered, []) |> MapSet.new()
+    }
 
     profile
     |> sources(root)
@@ -285,6 +302,11 @@ defmodule Surfex.Cite do
 
       keys = member_path(name, scopes, index) ->
         [{span, :resolved, keys}]
+
+      # Something real the source names, not code: listed under its own status, so it
+      # never hides a misspelt module (§6.7).
+      MapSet.member?(ctx.registered, name) ->
+        [{span, :registered_name, []}]
 
       shaped?(name, profile) ->
         [{span, :unresolved, []}]

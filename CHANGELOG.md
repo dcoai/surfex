@@ -9,6 +9,18 @@ All notable changes to Surfex are recorded here, following
 `mix.exs` reads `0.10.1-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
 release it merely follows.
 
+### Added
+
+- **A citation of a registered process name resolves** (#299, #303). A span naming exactly
+  a module alias that the Elixir scanner's source uses as a process name, `name: MyApp.Sessions`
+  (a literal alias, in a call or a child-spec tuple alike; not `{:global, …}`, `{:via, …}`
+  or a variable), is no longer a broken citation when no module of that name is scanned. It
+  has a status of its own, `:registered_name`, so it never hides a misspelt module, and a
+  function on it (`.count/0`) still names nothing. It is no item: no relations, no
+  completeness. `Surfex.Cite.citations/4` takes the names as `registered:`; `citations/3`
+  is unchanged. Spec §6.7. Measured on an adopter's spec: 1 of its 21 broken citations
+  (a supervisor registered by name) goes, and none other changes.
+
 ### Fixed
 
 - **`validate`'s refusal names its real cause** (#298, #301). With nothing to record,
