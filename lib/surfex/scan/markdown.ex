@@ -240,7 +240,9 @@ defmodule Surfex.Scan.Markdown do
     section_records =
       for s <- sections,
           do: %{
-            record(file, s.id, s.body, {s.first, s.last}, :section, nil)
+            (file
+             |> record(s.id, s.body, {s.first, s.last}, :section, nil)
+             |> ranged(Map.get(s, :ranges, [])))
             | named: s.anchor != nil,
               under: Map.get(s, :parent) && Map.fetch!(ids, s.parent),
               class: section_class(s, classes, file),
@@ -306,6 +308,11 @@ defmodule Surfex.Scan.Markdown do
 
   defp not_claims!(other),
     do: raise(ArgumentError, "not_claims: must be a list of regexes, got #{inspect(other)}")
+
+  # A unit in several ranges of lines (a folded one, §11.13) carries them all; its `lines`
+  # are the first.
+  defp ranged(scan, [_, _ | _] = ranges), do: put_in(scan.location[:ranges], ranges)
+  defp ranged(scan, _ranges), do: scan
 
   defp record(file, id, body, lines, role, within),
     do: %Scan{

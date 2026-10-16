@@ -635,12 +635,13 @@ defmodule Surfex.Suggest do
   end
 
   # The innermost spec unit whose lines contain `line` in `file`. Sections don't overlap
-  # (each stops at the next heading), but a marked block sits inside its section, and a
-  # citation in the block is about the block's requirement.
+  # (each stops at the next heading, and a folded one holds only its own ranges, §11.13),
+  # but a marked block sits inside its section, and a citation in the block is about the
+  # block's requirement.
   defp section_at(sections, file, line) do
     sections
-    |> Enum.filter(fn %Scan{location: %{file: f, lines: {first, last}}} ->
-      f == file and line >= first and line <= last
+    |> Enum.filter(fn %Scan{location: %{file: f} = location} ->
+      f == file and Enum.any?(Scan.ranges(location), fn {first, last} -> line in first..last end)
     end)
     |> Enum.max_by(fn %Scan{location: %{lines: {first, _}}} -> first end, fn -> nil end)
   end

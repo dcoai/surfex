@@ -175,20 +175,24 @@ defmodule Surfex.Change do
     }
   end
 
-  defp location(%{file: file, lines: {first, last}}), do: "#{file}:#{first}-#{last}"
-  defp location(%{file: file}), do: file
+  defp location(location), do: Surfex.Scan.place(location)
 
   # The unit's text as it stands, quoted from its file.
-  defp text(root, %{file: file, lines: {first, last}}) do
+  # Each range of a folded unit's lines (§11.13), a blank line between.
+  defp text(root, %{file: file, lines: {_, _}} = location) do
     path = Path.join(root, file)
 
     if File.regular?(path) do
-      path
-      |> File.read!()
-      |> String.split("\n")
-      |> Enum.slice((first - 1)..(last - 1)//1)
-      |> Enum.join("\n")
-      |> String.trim_trailing()
+      lines = path |> File.read!() |> String.split("\n")
+
+      location
+      |> Surfex.Scan.ranges()
+      |> Enum.map_join("\n\n", fn {first, last} ->
+        lines
+        |> Enum.slice((first - 1)..(last - 1)//1)
+        |> Enum.join("\n")
+        |> String.trim_trailing()
+      end)
     end
   end
 
