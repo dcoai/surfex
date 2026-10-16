@@ -235,4 +235,41 @@ defmodule Surfex.SpecClassesTest do
 
     assert Config.spec_classes!([], ["spec.md"]) == []
   end
+
+  # #288 (#309): a class marker whose name breaks the class-name rule says the name is the
+  # problem, through the collected scan errors.
+  @tag verifies: ["class-marker-name", "spec-classes"]
+  test "a class marker with a malformed name names it, and the name to write" do
+    text = """
+    # A
+
+    <!-- surfex: class defect log: the recorded judgement -->
+
+    ## B
+
+    <!-- surfex: class odd/name -->
+
+    ## C
+
+    <!-- surfex: class x: -->
+
+    ## D
+
+    Still read.
+    """
+
+    classes = Config.spec_classes!([spec_classes: [{"defect-log", "r"}]], ["spec.md"])
+    {scans, errors} = Markdown.read(text, "spec.md", spec_classes: classes)
+
+    assert Enum.map(errors, &{&1.line, &1.message}) == [
+             {3,
+              "`defect log` is not a class name: letters, digits, - and _ (no spaces); " <>
+                "write `defect-log`"},
+             {7, "`odd/name` is not a class name: letters, digits, - and _"},
+             {11, "a class marker is <!-- surfex: class NAME[: REASON] -->"}
+           ]
+
+    # The text after the errors is still read.
+    assert Enum.any?(scans, &String.ends_with?(&1.id, "D"))
+  end
 end

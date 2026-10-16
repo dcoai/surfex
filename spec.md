@@ -1755,6 +1755,9 @@ leaves the version as it was; without the alias it is section text, as before
 claims: the way to excuse one is not to name it. Every problem raises, naming the file and
 line:
 - a class marker naming a class `spec_classes:` doesn't declare;
+- a class marker whose name breaks the class-name rule: the error names the name as
+  written and, where joining its words with `-` makes a name, the one to write
+  (`` `defect log` is not a class name: letters, digits, - and _ (no spaces); write `defect-log` ``);
 - a class marker in a marked block or in a rule, or a deferral marker in a rule;
 - two class or deferral markers in one unit, a class and a deferral among them;
 - a deferral whose reference is neither an issue nor a spec unit (§13.13);
@@ -1767,6 +1770,12 @@ class and a deferral in one unit; a deferral without a well-formed reference; a 
 under a folded heading: each raises naming the file and line; spec_classes: refuses a
 malformed class, an unknown option, two reasons for one name and a glob matching no spec
 file
+```
+
+```test:class-marker-name
+a class marker whose name holds a space is a scan error naming the name and the name to
+write with -; one with another character names it without a suggestion; a marker whose
+name is well formed but whose form isn't gets the form's message
 ```
 
 **Where they render.** Both markers are own-line HTML comments, like the id comment after

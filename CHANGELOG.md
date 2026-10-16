@@ -87,6 +87,13 @@ release it merely follows.
 
 ### Fixed
 
+- **A class marker with a malformed name says the name is the problem** (#288, #309).
+  `<!-- surfex: class defect log: … -->` got only the marker's form, `a class marker is
+  <!-- surfex: class NAME[: REASON] -->`, which didn't say the space broke it. The scan
+  error now names the name as written and, where joining its words with `-` makes one, the
+  name to write: `` `defect log` is not a class name: letters, digits, - and _ (no spaces);
+  write `defect-log` ``. It is one of the collected scan errors (§11.11). Spec §11.7.
+
 - **`validate`'s refusal names its real cause** (#298, #301). With nothing to record,
   `mix surfex.validate` said `already validated: nothing to record` even when the unit
   still had unvalidated `implements`: when the test's green run in the evidence reached
