@@ -55,31 +55,21 @@ defmodule Surfex.Scan.Markdown do
   """
 
   alias Surfex.Scan
-  alias Surfex.Scan.Markdown.{Contract, Fence}
+  alias Surfex.Scan.Markdown.{ClassMarkers, Contract, Fence, Fold, Ids, Table}
 
-  @id "[A-Za-z0-9][A-Za-z0-9._:-]*"
-  @anchor ~r/^(.*?)\s*\{#([^}\s]*)\}$/
-  @heading_comment ~r/^(.*?)\s*<!--\s*surfex:\s*(\S+)\s*-->$/
+  import Surfex.Scan.Markdown.Lines
+  import Surfex.Scan.Markdown.Ids, only: [explicit_id: 3, grammar_id: 3, read_id: 5]
+
+  import Surfex.Scan.Markdown.ClassMarkers,
+    only: [class_line: 3, class_unit: 3, section_class: 3, marked: 1, own_marker?: 2]
+
+  import Surfex.Scan.Markdown.Rules
+
   @open_block ~r/^ {0,3}<!--\s*surfex:\s*(\S+)\s*-->\s*$/
   @close_block ~r/^ {0,3}<!--\s*\/surfex\s*-->\s*$/
-  @hint ~r/^test(?:\s+|:)(\S+)$/
   @table_marker ~r/^ {0,3}<!--\s*surfex:\s*table\s+(\S+)(.*?)\s*-->\s*$/
   @table_line ~r/^ {0,3}\|/
-  @separator ~r/^ {0,3}\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/
   @rules_marker ~r/^ {0,3}<!--\s*surfex:\s*rules\s+(\S+)\s*-->\s*$/
-  @own_marker ~r/^\s*<!--\s*\/?surfex\b.*-->\s*$/
-  @list_item ~r/^( *)([-*+]|\d{1,9}[.)])(?:([ \t]+)(.*))?$/
-  @lead_comment ~r/^<!--\s*surfex:\s*(\S+)\s*-->\s*(.*)$/
-  @class_marker ~r/^ {0,3}<!--\s*surfex:\s*class\s+(\S.*?)\s*-->\s*$/
-  @deferred_marker ~r/^ {0,3}<!--\s*surfex:\s*deferred\s+(\S.*?)\s*-->\s*$/
-  @comment ~r/^ {0,3}<!--\s*(.*?)\s*-->\s*$/
-  @class_name ~r/^([A-Za-z0-9_-]+)(?:\s*:\s*(\S.*))?$/
-  @deferral ~r/^([^\s:]+)(?:\s*:\s*(\S.*))?$/
-  @issue_ref ~r/^(?:[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*)?#\d+$/
-  # A deferral citing a spec unit (§13.13): the reference (no `:` or `@`), an optional
-  # `@VERSION` pin and an optional reason.
-  @unit_deferral ~r/^([^:@]*[^:@\s])\s*(?:@(\S+?))?(?:\s*:\s*(\S.*))?$/
-  @pin ~r/^[0-9a-f]{8}$/
 
   @doc """
   Every unit of every markdown file of the spec under `root`, in order: the files
@@ -162,8 +152,8 @@ defmodule Surfex.Scan.Markdown do
   """
   @spec sections(String.t(), String.t(), keyword) :: [Scan.t()]
   def sections(text, file, opts \\ []) do
-    grammar = heading_grammars(Keyword.get(opts, :heading_ids), :heading_ids)
-    rule_grammar = heading_grammars(Keyword.get(opts, :rule_ids), :rule_ids)
+    grammar = Ids.heading_grammars(Keyword.get(opts, :heading_ids), :heading_ids)
+    rule_grammar = Ids.heading_grammars(Keyword.get(opts, :rule_ids), :rule_ids)
 
     lines = text |> String.split("\n") |> Enum.with_index(1)
     subjects = Keyword.get(opts, :subjects, [])
@@ -175,7 +165,7 @@ defmodule Surfex.Scan.Markdown do
 
     {sections, owners} =
       if Keyword.get(opts, :fold_paths, false) == true,
-        do: fold(sections, file),
+        do: Fold.fold(sections, file),
         else: {sections, %{}}
 
     sections =
@@ -330,7 +320,7 @@ defmodule Surfex.Scan.Markdown do
           fail(st, st.table.first, "table #{st.table.id} has no table after its marker")
 
         true ->
-          close_table(st)
+          Table.close_table(st)
       end
 
     if st.hint, do: fail(st, st.hint.first, "test hint #{st.hint.id} is never closed")
@@ -342,58 +332,6 @@ defmodule Surfex.Scan.Markdown do
       |> Enum.map(&%{&1 | body: Enum.reverse(&1.body)})
 
     {sections, Enum.reverse(st.units)}
-  end
-
-  # With fold_paths: a section with no id, inside a section that has one (through any path
-  # sections between), is part of that section: its heading line and body join the id'd
-  # section's body, which runs to its last line. The sections left, and %{folded n =>
-  # owner n} for what sat in a folded one.
-  defp fold(sections, file) do
-    by_n = Map.new(sections, &{&1.n, &1})
-
-    owner = fn s ->
-      Stream.iterate(s.parent, &(&1 && by_n[&1].parent))
-      |> Enum.find(fn p -> p == nil or by_n[p].anchor != nil end)
-    end
-
-    owners =
-      for s <- sections,
-          s.heading != nil,
-          s.anchor == nil,
-          o = owner.(s),
-          o != nil,
-          into: %{},
-          do: {s.n, o}
-
-    folded =
-      sections
-      |> Enum.filter(&Map.has_key?(owners, &1.n))
-      |> Enum.group_by(&Map.fetch!(owners, &1.n))
-
-    # A class or deferral marker under a folded heading would class the unit it folds into,
-    # which its author didn't mark (§11.7).
-    for {owner, inside} <- folded,
-        s <- inside,
-        %{line: line} <- [s.class, s.deferred] do
-      raise ArgumentError,
-            "#{file}:#{line}: the marker sits under \"#{s.heading}\", which fold_paths: folds " <>
-              "into \"#{by_n[owner].heading}\": it would class that unit; give the heading an " <>
-              "id of its own or move the marker"
-    end
-
-    kept =
-      for s <- sections, not Map.has_key?(owners, s.n) do
-        case Map.get(folded, s.n, []) do
-          [] ->
-            s
-
-          inside ->
-            body = s.body ++ Enum.flat_map(inside, &[&1.heading | &1.body])
-            %{s | body: body, last: Enum.max([s.last | Enum.map(inside, & &1.last)])}
-        end
-      end
-
-    {kept, owners}
   end
 
   defp section(n, heading, anchor, path, first),
@@ -524,7 +462,7 @@ defmodule Surfex.Scan.Markdown do
       prose? and Regex.match?(@table_marker, line) ->
         [id, options] = Regex.run(@table_marker, line, capture: :all_but_first)
         id = checked_id!(st, no, id, "table")
-        options = table_options(st, no, id, options)
+        options = Table.table_options(st, no, id, options)
 
         table = %{
           id: id,
@@ -653,58 +591,6 @@ defmodule Surfex.Scan.Markdown do
     end
   end
 
-  defp explicit_id(st, text, no) do
-    cond do
-      match = Regex.run(@heading_comment, text, capture: :all_but_first) ->
-        [text, id] = match
-        {text, checked_id!(st, no, id, "heading")}
-
-      match = Regex.run(@anchor, text, capture: :all_but_first) ->
-        [text, id] = match
-        {text, checked_id!(st, no, id, "anchor")}
-
-      true ->
-        {text, nil}
-    end
-  end
-
-  # The first grammar that matches the heading reads its id.
-  defp grammar_id(%{grammar: grammars} = st, text, no),
-    do: read_id(grammars, st, text, no, "heading")
-
-  defp read_id(grammars, st, text, no, what) do
-    Enum.find_value(grammars, fn grammar ->
-      case Regex.named_captures(grammar, text) do
-        %{"id" => id} -> checked_id!(st, no, id, what)
-        nil -> nil
-      end
-    end)
-  end
-
-  # `heading_ids:` (or `rule_ids:`, read the same way) is one grammar or a list of them,
-  # tried in order.
-  defp heading_grammars(nil, _key), do: []
-  defp heading_grammars(list, key) when is_list(list), do: Enum.map(list, &grammar!(&1, key))
-  defp heading_grammars(one, key), do: [grammar!(one, key)]
-
-  defp grammar!(nil, key), do: raise(ArgumentError, "#{key}: a list can't hold nil")
-
-  defp grammar!(named, _key) when named in [:section_sign, :section_number],
-    do: heading_grammar(named)
-
-  defp grammar!(%Regex{} = regex, key) do
-    if "id" in Regex.names(regex),
-      do: regex,
-      else: raise(ArgumentError, "#{key}: #{inspect(regex)} needs a named capture (?<id>…)")
-  end
-
-  defp grammar!(other, key),
-    do:
-      raise(
-        ArgumentError,
-        "#{key}: must be :section_sign, :section_number, a regex with (?<id>…) or a list of them, got #{inspect(other)}"
-      )
-
   @doc """
   The regex a `heading_ids:` setting names, with a named capture `id`: `:section_sign` for
   a leading `§ID` (`§Api.3.2`), `:section_number` for a leading `1.`, `1.2`, `1.2.3`, whose
@@ -713,241 +599,13 @@ defmodule Surfex.Scan.Markdown do
   these, tried in order.
   """
   @spec heading_grammar(atom | Regex.t() | nil) :: Regex.t() | nil
-  def heading_grammar(nil), do: nil
-
-  def heading_grammar(:section_sign),
-    do: ~r/^§\s*(?<id>[A-Za-z0-9][A-Za-z0-9._:-]*?)[.:]?(?=\s|$)/u
-
-  def heading_grammar(:section_number),
-    do: ~r/^(?<id>\d+(?:\.\d+)*(?:[a-z](?=\.))?)\.?(?=\s|$)/
-
-  def heading_grammar(%Regex{} = regex) do
-    if "id" in Regex.names(regex),
-      do: regex,
-      else: raise(ArgumentError, "heading_ids: #{inspect(regex)} needs a named capture (?<id>…)")
-  end
-
-  def heading_grammar(other),
-    do:
-      raise(
-        ArgumentError,
-        "heading_ids: must be :section_sign, :section_number, a regex with (?<id>…) or a list of them, got #{inspect(other)}"
-      )
-
-  # ── Classes and deferrals (§11.7) ───────────────────────────────────────
-
-  # A class or deferral marker on this line: `{:class, name, note, by}`,
-  # `{:deferred, ref, reason}` or `{:deferred_unit, ref, pin, reason}` (§13.13), or nil. A
-  # malformed one is an error, never section text.
-  defp class_line(st, line, no) do
-    cond do
-      match = Regex.run(@class_marker, line, capture: :all_but_first) ->
-        [text] = match
-
-        case Regex.run(@class_name, text, capture: :all_but_first) do
-          [name] -> {:class, declared!(st, no, name), nil, :marker}
-          [name, note] -> {:class, declared!(st, no, name), note, :marker}
-          nil -> fail(st, no, "a class marker is <!-- surfex: class NAME[: REASON] -->")
-        end
-
-      match = Regex.run(@deferred_marker, line, capture: :all_but_first) ->
-        [text] = match
-
-        {ref, reason} =
-          case Regex.run(@deferral, text, capture: :all_but_first) do
-            [ref] -> {ref, nil}
-            [ref, reason] -> {ref, reason}
-            nil -> {text, nil}
-          end
-
-        cond do
-          Regex.match?(@issue_ref, ref) -> {:deferred, ref, reason}
-          String.starts_with?(text, "#") -> fail(st, no, issue_or_unit(ref))
-          true -> unit_deferral(st, no, text)
-        end
-
-      class = alias_class(st, line) ->
-        {:class, class, nil, :alias}
-
-      true ->
-        nil
-    end
-  end
-
-  # A deferral citing a spec unit, `REF[@VERSION][: REASON]` (§13.13): resolved once the
-  # whole spec is scanned (`records/4`), so `cites` is nil until then.
-  defp unit_deferral(st, no, text) do
-    case Regex.run(@unit_deferral, text, capture: :all_but_first) do
-      nil ->
-        fail(st, no, issue_or_unit(text))
-
-      [ref | rest] ->
-        {pin, reason} =
-          case rest do
-            [] -> {nil, nil}
-            [pin] -> {pin, nil}
-            [pin, reason] -> {pin, reason}
-          end
-
-        pin = if pin == "", do: nil, else: pin
-
-        if pin != nil and not Regex.match?(@pin, pin),
-          do:
-            fail(
-              st,
-              no,
-              "a deferral pins the cited unit's version, 8 lowercase hex characters (REF@1a2b3c4d), got #{inspect(pin)}"
-            )
-
-        {:deferred_unit, ref, pin, reason}
-    end
-  end
-
-  defp issue_or_unit(ref),
-    do:
-      "a deferral names its issue, <!-- surfex: deferred #123[: REASON] --> or group/project#123, " <>
-        "or cites a spec unit, <!-- surfex: deferred UNIT[@VERSION][: REASON] -->, got #{inspect(ref)}"
-
-  defp declared!(st, no, name) do
-    Enum.find(st.classes, &(&1.name == name)) ||
-      fail(st, no, "class #{name} isn't declared in spec_classes:")
-  end
-
-  # The first class whose `marker:` reads this own-line comment.
-  defp alias_class(%{classes: []}, _line), do: nil
-
-  defp alias_class(st, line) do
-    case Regex.run(@comment, line, capture: :all_but_first) do
-      [inner] -> Enum.find(st.classes, &(&1.marker != nil and Regex.match?(&1.marker, inner)))
-      nil -> nil
-    end
-  end
-
-  # A marker classes or defers the unit it sits in: the open block (a deferral only), else
-  # the section. One class or deferral per unit.
-  defp class_unit(%{block: block} = st, {:class, _class, _note, _by}, no) when block != nil,
-    do:
-      fail(
-        st,
-        no,
-        "a class marker classes sections only: it can't sit in block #{block.id} (line #{block.first})"
-      )
-
-  defp class_unit(%{block: block} = st, {:deferred, _ref, _reason} = marker, no)
-       when block != nil,
-       do: defer_block(st, deferral(marker, no), no)
-
-  defp class_unit(%{block: block} = st, {:deferred_unit, _, _, _} = marker, no)
-       when block != nil,
-       do: defer_block(st, deferral(marker, no), no)
-
-  defp class_unit(%{cur: cur} = st, {:deferred_unit, _, _, _} = marker, no) do
-    marked_twice!(st, cur, no)
-    %{st | cur: %{cur | deferred: deferral(marker, no)}}
-  end
-
-  defp class_unit(%{cur: cur} = st, {:class, class, note, by}, no) do
-    marked_twice!(st, cur, no)
-    class = %{name: class.name, reason: class.reason, note: note, by: by, line: no}
-    %{st | cur: %{cur | class: class}}
-  end
-
-  defp class_unit(%{cur: cur} = st, {:deferred, _ref, _reason} = marker, no) do
-    marked_twice!(st, cur, no)
-    %{st | cur: %{cur | deferred: deferral(marker, no)}}
-  end
-
-  defp defer_block(%{block: block} = st, deferral, no) do
-    if block.deferred,
-      do: fail(st, no, "block #{block.id} is already deferred (line #{block.deferred.line})")
-
-    %{st | block: %{block | deferred: deferral}}
-  end
-
-  # What a deferral marker records: an issue's `%{ref, reason}`, or a unit citation's
-  # `%{ref, reason, cites, pin}` (§13.13), each with its line until the scan ends. A
-  # citation keeps its line, which a report names where the pin is written.
-  defp deferral({:deferred, ref, reason}, no), do: %{ref: ref, reason: reason, line: no}
-
-  defp deferral({:deferred_unit, ref, pin, reason}, no),
-    do: %{ref: ref, reason: reason, cites: nil, pin: pin, line: no}
-
-  defp marked_twice!(st, cur, no) do
-    case cur.class || cur.deferred do
-      nil ->
-        :ok
-
-      %{line: line} ->
-        fail(
-          st,
-          no,
-          "the section is already classed or deferred by line #{line}: a unit takes one class or deferral"
-        )
-    end
-  end
-
-  # A section's class: its marker's, else the first pattern's that matches it. A deferral
-  # marker is the unit's own word too, so no pattern classes a deferred section.
-  defp section_class(%{class: nil, deferred: nil} = s, classes, file),
-    do: pattern_class(classes, file, s.heading)
-
-  defp section_class(s, _classes, _file), do: marked(s.class)
-
-  # What a record keeps of a marker: everything but its line.
-  defp marked(nil), do: nil
-  defp marked(%{cites: _} = citation), do: citation
-  defp marked(marker), do: Map.delete(marker, :line)
-
-  # The first declared class whose pattern matches a section: `files:` its file, `headings:`
-  # its heading as written, both when both are given. A class with neither is no pattern.
-  defp pattern_class(classes, file, heading) do
-    Enum.find_value(classes, fn class ->
-      pattern? = class.files != nil or class.headings != nil
-
-      files? = class.files == nil or Enum.any?(class.files, &glob_match?(&1, file))
-
-      heading? =
-        class.headings == nil or (heading != nil and Regex.match?(class.headings, heading))
-
-      if pattern? and files? and heading?,
-        do: %{name: class.name, reason: class.reason, note: nil, by: :pattern}
-    end)
-  end
+  defdelegate heading_grammar(setting), to: Ids
 
   @doc false
   # Whether a glob, as `Path.wildcard/1` reads one relative to the root, matches a relative
   # path: `**` any directories, `*` and `?` within one name, `{a,b}` either, `[…]` a class.
   @spec glob_match?(String.t(), String.t()) :: boolean
-  def glob_match?(glob, path), do: Regex.match?(glob_regex(glob), path)
-
-  defp glob_regex(glob) do
-    source =
-      glob
-      |> String.graphemes()
-      |> glob_source([])
-      |> IO.iodata_to_binary()
-
-    Regex.compile!("^" <> source <> "$")
-  end
-
-  defp glob_source([], acc), do: Enum.reverse(acc)
-  defp glob_source(["*", "*", "/" | rest], acc), do: glob_source(rest, ["(?:.*/)?" | acc])
-  defp glob_source(["*", "*" | rest], acc), do: glob_source(rest, [".*" | acc])
-  defp glob_source(["*" | rest], acc), do: glob_source(rest, ["[^/]*" | acc])
-  defp glob_source(["?" | rest], acc), do: glob_source(rest, ["[^/]" | acc])
-  defp glob_source(["{" | rest], acc), do: glob_source(rest, ["(?:" | acc], :alt)
-
-  defp glob_source(["[" | rest], acc) do
-    {class, ["]" | rest]} = Enum.split_while(rest, &(&1 != "]"))
-    glob_source(rest, ["[" <> Enum.join(class) <> "]" | acc])
-  end
-
-  defp glob_source([c | rest], acc), do: glob_source(rest, [Regex.escape(c) | acc])
-
-  defp glob_source(["}" | rest], acc, :alt), do: glob_source(rest, [")" | acc])
-  defp glob_source(["," | rest], acc, :alt), do: glob_source(rest, ["|" | acc], :alt)
-  defp glob_source(["*" | rest], acc, :alt), do: glob_source(rest, ["[^/]*" | acc], :alt)
-  defp glob_source([c | rest], acc, :alt), do: glob_source(rest, [Regex.escape(c) | acc], :alt)
+  defdelegate glob_match?(glob, path), to: ClassMarkers
 
   # ── Tables ──────────────────────────────────────────────────────────────
 
@@ -967,138 +625,8 @@ defmodule Surfex.Scan.Markdown do
         fail(st, table.first, "table #{table.id} has no table after its marker")
 
       true ->
-        step({line, no}, close_table(st))
+        step({line, no}, Table.close_table(st))
     end
-  end
-
-  # The table's unit (its header and separator) and one unit per row, keyed by its key cell.
-  defp close_table(%{table: table} = st) do
-    lines = Enum.reverse(table.lines)
-
-    case lines do
-      [{header, _}, {separator, sep_no} | rows] ->
-        unless Regex.match?(@separator, separator),
-          do: fail(st, sep_no, "table #{table.id} has no separator row under its header")
-
-        header = cells(header)
-        keys = if table.key, do: Enum.map(table.key, &column!(st, table, header, &1)), else: [0]
-        ignored = Enum.map(table.ignore, &column!(st, table, header, &1))
-
-        for {name, c} <- Enum.zip(table.ignore, ignored),
-            c in keys,
-            do:
-              fail(
-                st,
-                table.first,
-                "table #{table.id} can't ignore its key column #{inspect(name)}"
-              )
-
-        {_, last} = List.last(lines)
-
-        table_unit = %{
-          role: :table,
-          id: table.id,
-          first: table.first,
-          last: last,
-          body: [header, separator],
-          within: table.within
-        }
-
-        row_units =
-          for {row, no} <- rows do
-            row_cells = cells(row)
-            parts = for c <- keys, do: row_cells |> Enum.at(c, "") |> key_text()
-            if "" in parts, do: fail(st, no, "a row of table #{table.id} has an empty key")
-
-            %{
-              role: :row,
-              id: "#{table.id}/#{Enum.join(parts, "/")}",
-              first: no,
-              last: no,
-              body: row_version(row, row_cells, ignored),
-              within: {:table, table.id}
-            }
-          end
-
-        %{st | table: nil, units: Enum.reverse(row_units) ++ [table_unit | st.units]}
-
-      _ ->
-        fail(st, table.first, "table #{table.id} has no separator row under its header")
-    end
-  end
-
-  defp column!(st, table, header, name) do
-    Enum.find_index(header, &(key_text(&1) == key_text(name))) ||
-      fail(st, table.first, "table #{table.id} has no column #{inspect(name)}")
-  end
-
-  # A row's version covers its cells, less the columns `ignore:` names.
-  defp row_version(row, _cells, []), do: [row]
-
-  defp row_version(_row, cells, ignored) do
-    kept = for {cell, c} <- Enum.with_index(cells), c not in ignored, do: cell
-    [Enum.join(kept, "|")]
-  end
-
-  # A marker's text after its id: `key:` and `ignore:`, in either order, each a column
-  # header or a bracketed list of them. Anything else is an error, never silently body.
-  defp table_options(st, no, id, text) do
-    text
-    |> String.trim()
-    |> case do
-      "" -> []
-      text -> Regex.split(~r/\s+(?=(?:key|ignore):)/, text)
-    end
-    |> Enum.reduce(%{}, fn option, acc ->
-      case Regex.run(~r/^(key|ignore):\s*(\S.*)$/, option, capture: :all_but_first) do
-        [name, value] ->
-          name = Map.fetch!(%{"key" => :key, "ignore" => :ignore}, name)
-
-          if Map.has_key?(acc, name),
-            do: fail(st, no, "table #{id}'s marker gives #{name}: twice")
-
-          Map.put(acc, name, columns(value))
-
-        nil ->
-          fail(
-            st,
-            no,
-            "table #{id}'s marker has text that isn't key: or ignore: (#{inspect(option)})"
-          )
-      end
-    end)
-  end
-
-  defp columns(value) do
-    case Regex.run(~r/^\[(.*)\]$/, value, capture: :all_but_first) do
-      [list] -> list |> String.split(",") |> Enum.map(&String.trim/1)
-      nil -> [value]
-    end
-  end
-
-  # A row's cells: split on `|` outside code spans and not escaped, without the outer pipes.
-  defp cells(line) do
-    line
-    |> String.trim()
-    |> String.replace_prefix("|", "")
-    |> String.replace_suffix("|", "")
-    |> String.graphemes()
-    |> Enum.reduce({[""], false, false}, fn
-      c, {[cell | done], code, true} -> {[cell <> c | done], code, false}
-      "\\", {[cell | done], code, false} -> {[cell <> "\\" | done], code, true}
-      "`", {[cell | done], code, false} -> {[cell <> "`" | done], not code, false}
-      "|", {cells, false, false} -> {["" | cells], false, false}
-      c, {[cell | done], code, false} -> {[cell <> c | done], code, false}
-    end)
-    |> elem(0)
-    |> Enum.reverse()
-  end
-
-  # A key as written, without its code and emphasis marks: `` `:normal` `` is `:normal`.
-  defp key_text(cell) do
-    text = cell |> String.replace("`", "") |> String.replace("\\|", "|") |> String.trim()
-    stripped = Regex.replace(~r/^(\*\*|__|\*|_)(.+)\1$/, text, "\\2")
-    if stripped == text, do: text |> String.split() |> Enum.join(" "), else: key_text(stripped)
   end
 
   # ── Contracts ───────────────────────────────────────────────────────────
@@ -1169,81 +697,6 @@ defmodule Surfex.Scan.Markdown do
       else: %{st | cur: %{st.cur | body: Enum.reverse(around) ++ st.cur.body}}
   end
 
-  # ── Rules ───────────────────────────────────────────────────────────────
-
-  # A rule opens on its first line: a list item (with its content's indent) or a paragraph
-  # (`content: nil`). Its version is its text without the list marker or the id comment.
-  defp open_rule(st, id, item, no) do
-    text =
-      case lead(item.text) do
-        {_id, rest} -> rest
-        nil -> item.text
-      end
-
-    rule = %{
-      id: id,
-      first: no,
-      last: no,
-      body: [text],
-      within: within(st),
-      content: item.content,
-      blank: false
-    }
-
-    %{st | rule: rule, cur: %{st.cur | last: no}}
-  end
-
-  # A paragraph ends at a blank line or anything that interrupts it. An item takes every
-  # line indented to its content, and a lazy continuation of its text; a less indented
-  # line after a blank one, another item at its level or above, a marker, a fence or a
-  # heading ends it.
-  defp rule_ends?(st, %{content: nil}, line) do
-    String.trim(line) == "" or heading(line) != nil or own_marker?(st, line) or
-      Fence.info(line) != nil or list_item(line) != nil
-  end
-
-  defp rule_ends?(st, rule, line) do
-    cond do
-      String.trim(line) == "" -> false
-      heading(line) != nil -> true
-      indent(line) >= rule.content -> false
-      rule.blank -> true
-      true -> list_item(line) != nil or own_marker?(st, line) or Fence.info(line) != nil
-    end
-  end
-
-  defp rule_line(%{rule: rule} = st, line, no) do
-    {_prose?, fence} = Fence.step(line, st.fence)
-    opened? = st.fence == nil and fence != nil
-    item = if st.fence == nil, do: list_item(line)
-
-    cond do
-      opened? and hint_id(line) != nil ->
-        id = checked_id!(st, no, hint_id(line), "test hint")
-        hint = %{id: id, first: no, body: [], within: within(st)}
-        %{st | fence: fence, hint: hint, cur: extend(st.cur, line, no)}
-
-      item != nil and lead(item.text) != nil ->
-        fail(st, no, "rule #{rule.id} (line #{rule.first}) can't hold another rule")
-
-      st.fence == nil and class_line(st, line, no) != nil ->
-        fail(
-          st,
-          no,
-          "a class or deferral marker can't sit in rule #{rule.id} (line #{rule.first}): a rule is a claim"
-        )
-
-      true ->
-        blank? = String.trim(line) == ""
-        last = if blank?, do: rule.last, else: no
-        rule = %{rule | body: [line | rule.body], last: last, blank: blank? and fence == nil}
-        %{st | fence: fence, rule: rule, cur: extend(st.cur, line, no)}
-    end
-  end
-
-  defp close_rule(%{rule: rule} = st),
-    do: %{st | rule: nil, units: [unit(rule, :rule, rule.last) | st.units]}
-
   # A marked list's items, each a rule whose id it writes: its id comment, or what the
   # project's rule_ids: grammar reads from its text. Anything else ends the list.
   defp rules_step({line, no}, %{rules: rules} = st) do
@@ -1279,126 +732,11 @@ defmodule Surfex.Scan.Markdown do
     end
   end
 
-  # A list item's line: its indent, its content's indent, its kind and its text. A thematic break
-  # (`- - -`) isn't one.
-  defp list_item(line) do
-    if Regex.match?(~r/^ {0,3}([-*_])( *\1){2,} *$/, line) do
-      nil
-    else
-      case Regex.run(@list_item, line) do
-        [_, spaces, marker] ->
-          %{
-            indent: String.length(spaces),
-            content: String.length(spaces <> marker) + 1,
-            kind: list_kind(marker),
-            text: ""
-          }
-
-        [_, spaces, marker, gap, text] ->
-          gap = if String.length(gap) > 4, do: 1, else: String.length(gap)
-
-          %{
-            indent: String.length(spaces),
-            content: String.length(spaces <> marker) + gap,
-            kind: list_kind(marker),
-            text: text
-          }
-
-        nil ->
-          nil
-      end
-    end
-  end
-
-  # Items of one list share a bullet, or an ordered delimiter; another starts a new list.
-  defp list_kind(marker), do: if(marker in ["-", "*", "+"], do: marker, else: String.last(marker))
-
-  # An id comment starting a text, `<!-- surfex: ID --> …`: `{id, the rest}`.
-  defp lead(text) do
-    case Regex.run(@lead_comment, String.trim_leading(text), capture: :all_but_first) do
-      [id, rest] -> {id, rest}
-      nil -> nil
-    end
-  end
-
-  # A list item that starts with an id comment: `{item, id}`.
-  defp item_lead(line) do
-    with %{} = item <- list_item(line),
-         {id, _rest} <- lead(item.text),
-         do: {item, id},
-         else: (_ -> nil)
-  end
-
-  # A paragraph whose first token is an id comment, with text after it on the line.
-  defp paragraph_lead(line) do
-    case indent(line) <= 3 && lead(line) do
-      {id, rest} when rest != "" -> id
-      _ -> nil
-    end
-  end
-
-  defp own_marker?(line), do: Regex.match?(@own_marker, line)
-
-  # A marker, or a comment a class reads as its marker (`marker:`, §11.7).
-  defp own_marker?(st, line), do: own_marker?(line) or alias_class(st, line) != nil
-
-  defp indent(line) do
-    [spaces] = Regex.run(~r/^[ \t]*/, line)
-    spaces |> String.replace("\t", "    ") |> String.length()
-  end
-
   # Whether a line continues a paragraph: prose text, not a heading, a marker or a fence.
   defp text_line?(st, line, fence_before, fence_after),
     do:
       fence_before == nil and fence_after == nil and String.trim(line) != "" and
         heading(line) == nil and not own_marker?(st, line)
-
-  # What a block or hint opened now sits in.
-  defp within(%{rule: %{id: id}}), do: {:rule, id}
-  defp within(%{block: %{id: id}}), do: {:block, id}
-  defp within(%{cur: %{n: n}}), do: {:section, n}
-
-  defp unit(open, role, last),
-    do: %{
-      role: role,
-      id: open.id,
-      first: open.first,
-      last: last,
-      body: Enum.reverse(open.body),
-      within: open.within,
-      deferred: Map.get(open, :deferred)
-    }
-
-  # A section's last line is its last non-blank line, so trailing blank lines before the
-  # next heading are not counted as its content.
-  defp extend(cur, line, no), do: if(String.trim(line) == "", do: cur, else: %{cur | last: no})
-
-  defp hint_id(line) do
-    with info when is_binary(info) <- Fence.info(line),
-         [id] <- Regex.run(@hint, info, capture: :all_but_first),
-         do: id,
-         else: (_ -> nil)
-  end
-
-  defp checked_id!(st, no, id, what) do
-    if Regex.match?(~r/^#{@id}$/, id),
-      do: id,
-      else:
-        fail(
-          st,
-          no,
-          "#{what} id #{inspect(id)} must be letters, digits and . _ - :, starting with a letter or digit"
-        )
-  end
-
-  defp heading(line) do
-    case Regex.run(~r/^(#+)\s+(.+?)\s*#*\s*$/, line, capture: :all_but_first) do
-      [hashes, text] -> {String.length(hashes), text}
-      _ -> nil
-    end
-  end
-
-  defp blank?(body), do: Enum.all?(body, &(String.trim(&1) == ""))
 
   # Only heading paths are numbered: an anchored section is named by its anchor.
   defp number_duplicates(sections) do
@@ -1431,8 +769,6 @@ defmodule Surfex.Scan.Markdown do
         raise ArgumentError, "#{file}:#{second}: #{id} is already the id of line #{first}"
     end
   end
-
-  defp fail(st, no, why), do: raise(ArgumentError, "#{st.file}:#{no}: #{why}")
 
   @doc """
   Whether a spec unit has no text of its own: a heading over subsections, whose version is
