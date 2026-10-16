@@ -4,8 +4,8 @@ defmodule Surfex.Scan.Markdown.Fold do
 
   # With fold_paths: a section with no id, inside a section that has one (through any path
   # sections between), is part of that section: its heading line and body join the id'd
-  # section's body, which runs to its last line. The sections left, and %{folded n =>
-  # owner n} for what sat in a folded one.
+  # section's body, which runs to its last line. The sections left, %{folded n =>
+  # owner n} for what sat in a folded one, and the scan errors.
   def fold(sections, file) do
     by_n = Map.new(sections, &{&1.n, &1})
 
@@ -29,15 +29,20 @@ defmodule Surfex.Scan.Markdown.Fold do
       |> Enum.group_by(&Map.fetch!(owners, &1.n))
 
     # A class or deferral marker under a folded heading would class the unit it folds into,
-    # which its author didn't mark (§11.7).
-    for {owner, inside} <- folded,
-        s <- inside,
-        %{line: line} <- [s.class, s.deferred] do
-      raise ArgumentError,
-            "#{file}:#{line}: the marker sits under \"#{s.heading}\", which fold_paths: folds " <>
+    # which its author didn't mark (§11.7): a scan error.
+    errors =
+      for {owner, inside} <- folded,
+          s <- inside,
+          %{line: line} <- [s.class, s.deferred] do
+        %{
+          file: file,
+          line: line,
+          message:
+            "the marker sits under \"#{s.heading}\", which fold_paths: folds " <>
               "into \"#{by_n[owner].heading}\": it would class that unit; give the heading an " <>
               "id of its own or move the marker"
-    end
+        }
+      end
 
     kept =
       for s <- sections, not Map.has_key?(owners, s.n) do
@@ -51,6 +56,6 @@ defmodule Surfex.Scan.Markdown.Fold do
         end
       end
 
-    {kept, owners}
+    {kept, owners, errors}
   end
 end

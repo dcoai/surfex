@@ -1879,6 +1879,45 @@ where a scanner's calls/3 answers for a call to a dispatcher, the call reaches i
 and not the table; a call it doesn't answer still reaches the table
 ```
 
+### 11.11 Scan errors are reported together
+<!-- surfex: scan-errors -->
+
+Where §11 and its subsections say a spec or a test "raises" or "is an error" naming its
+file and line (a malformed or misplaced marker, an id that breaks the id rule or repeats,
+a block or hint left open, an unplaced contract fence or a signature that doesn't parse,
+a deferral citing no unit, a `verifies` or `deviation` tag that can't be read), that is a
+**scan error**, and the scan doesn't stop at it. It records the error, `%{file, line,
+message}`, reads the line as the error says (a fence no signature places is no unit, a
+malformed marker is no text, a second id or class leaves the first standing, a block left
+open at a heading ends there) and goes on to the end of the file and over every file of the
+spec and the tests. A repeated id is one error at each later use, naming the line that has
+it first; something left open at the end of a file is one error at the line that opened it.
+
+When the scan is done, every error is reported at once, sorted by file and line, as
+`file:line: message`, and the run fails once. A mix task prints them with no stack trace and
+exits non-zero; `mix surfex.status --format json` prints `{"failing": true, "scan_errors":
+[{"file", "line", "message"}, …]}` in place of a status, and a status that scanned carries
+`scan_errors: []`. Nothing is derived from a scan with errors, since a unit misread would
+read as a relation broken. The library functions that scan one text or one spec
+(`Surfex.Scan.Markdown.sections/3`, `records/4`, and `Surfex.Scan.ExUnit.tests/6`,
+`records/6`) raise `ArgumentError` once, naming every error, one per line.
+
+A refusal of a `.surfex.exs` key is not a scan error: it is refused before anything is
+scanned (§13.2).
+
+```test:scan-errors-collected
+a spec with several unplaced contract fences across several files reports every one in one
+run, sorted by file and line, file:line: message each, and fails once with no stack trace;
+the status JSON lists them as scan_errors; a verifies or deviation tag that can't be read
+is one error in the same list, in every test file and support file at once
+```
+
+```test:scan-errors-continue
+a test hint left open at the end of a file is one error at its line; an id used twice is one
+error naming both lines, and the units after it are still read; a malformed marker, a
+nested rule and a second class each are one error and the rest of the text reads as before
+```
+
 ## 12. The relation log
 <!-- surfex: relation-log -->
 

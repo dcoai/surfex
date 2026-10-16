@@ -78,8 +78,13 @@ defmodule Mix.Tasks.Surfex.Status do
     baseline = if opts[:baseline] == false, do: :fail, else: :allow
     deviations = if opts[:deviations] == false, do: :fail, else: :allow
 
-    status =
-      Config.status(
+    format = opts[:format] || "text"
+
+    if format not in ["text", "json"],
+      do: Mix.raise("--format must be text or json, got #{inspect(format)}")
+
+    read =
+      Config.read_status(
         config,
         root,
         namespace,
@@ -93,10 +98,11 @@ defmodule Mix.Tasks.Surfex.Status do
           evidence(opts, root) ++ issues(opts, config, root)
       )
 
-    case opts[:format] || "text" do
+    status = status!(read, format)
+
+    case format do
       "json" -> Mix.shell().info(Report.json(status))
       "text" -> Mix.shell().info(Report.text(status))
-      other -> Mix.raise("--format must be text or json, got #{inspect(other)}")
     end
 
     if Status.failing?(status), do: Mix.raise("relations need attention (see above)")
@@ -112,6 +118,17 @@ defmodule Mix.Tasks.Surfex.Status do
             "mix surfex.completeness lists what's missing"
         )
   end
+
+  # Scan errors are the whole report (§11.11): every one, then one failure. The JSON says
+  # so as `scan_errors`, so a tool reads them as it reads a status.
+  defp status!({:ok, status}, _format), do: status
+
+  defp status!({:error, errors}, "json") do
+    Mix.shell().info(Report.scan_errors_json(errors))
+    Mix.raise("#{length(errors)} scan errors (see above)")
+  end
+
+  defp status!({:error, errors}, "text"), do: raise(Surfex.Scan.Errors, errors: errors)
 
   # With --issues, the tracker is asked for each deferral's issue, through the project's
   # declared command, once the spec is scanned (§13.7).

@@ -246,11 +246,30 @@ defmodule Surfex.Status.Report do
     ])
   end
 
+  @doc """
+  Scan errors as `mix surfex.status --format json` reports them in place of a status
+  (§11.11): failing, with every error as `scan_errors`, sorted by file and line. A status
+  that scanned has `scan_errors: []`.
+  """
+  @spec scan_errors_json([Surfex.Scan.Errors.error()]) :: String.t()
+  def scan_errors_json(errors) do
+    %{
+      "failing" => true,
+      "scan_errors" =>
+        errors
+        |> Surfex.Scan.Errors.sorted()
+        |> Enum.map(&%{"file" => &1.file, "line" => &1.line, "message" => &1.message})
+    }
+    |> :json.encode()
+    |> IO.iodata_to_binary()
+  end
+
   @doc "The status as JSON: the summary, every relation, the new and the unmet."
   @spec json(Status.t()) :: String.t()
   def json(status) do
     %{
       "failing" => Status.failing?(status),
+      "scan_errors" => [],
       "summary" =>
         Map.new(Status.summary(status), fn {type, counts} ->
           {Atom.to_string(type), Map.new(counts, fn {state, n} -> {Atom.to_string(state), n} end)}
