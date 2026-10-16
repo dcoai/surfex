@@ -58,4 +58,49 @@ defmodule Surfex.Scan.Markdown.Fold do
 
     {kept, owners, errors}
   end
+
+  # A heading with no id among siblings (the same level, under the same parent) the heading
+  # grammar numbered is almost always a missed id, not a subsection (§11.12): each is a
+  # warning on the unit it reads as, its owner where fold_paths: folds it, else its own.
+  # %{unit id => [%{kind: :path_heading, line, message}]}.
+  def path_headings(sections, ids, owners) do
+    for s <- sections,
+        s.heading != nil and s.anchor == nil,
+        siblings = numbered_siblings(sections, s),
+        siblings != [],
+        unit = Map.fetch!(ids, Map.get(owners, s.n, s.n)),
+        reduce: %{} do
+      acc ->
+        warning = %{
+          kind: :path_heading,
+          line: s.first,
+          message: path_message(s, siblings, owners, unit)
+        }
+
+        Map.update(acc, unit, [warning], &(&1 ++ [warning]))
+    end
+  end
+
+  defp numbered_siblings(sections, s),
+    do:
+      Enum.filter(
+        sections,
+        &(&1.n != s.n and Map.get(&1, :numbered) == true and Map.get(&1, :parent) == s.parent and
+            Map.get(&1, :level) == s.level)
+      )
+
+  # Names the numbered siblings nearest it, before and after.
+  defp path_message(s, siblings, owners, unit) do
+    {before, later} = Enum.split_with(siblings, &(&1.n < s.n))
+    near = Enum.reject([List.last(before), List.first(later)], &is_nil/1)
+    named = Enum.map_join(near, ", ", &"#{&1.anchor}")
+
+    reads =
+      if Map.has_key?(owners, s.n),
+        do: "fold_paths: folds it into #{unit}",
+        else: "it is a unit of its own, #{unit}"
+
+    "\"#{String.duplicate("#", s.level)} #{s.heading}\" has no id among numbered siblings " <>
+      "(#{named}): a missed id? #{reads}"
+  end
 end

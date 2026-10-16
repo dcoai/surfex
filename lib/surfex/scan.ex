@@ -39,6 +39,9 @@ defmodule Surfex.Scan do
     * `not_claims` — for a section or block whose own text has lines a `not_claims:`
       pattern matches (§13.12), `%{lines, own_text}`: the lines each pattern matched (by
       the pattern's `inspect/1` form) and whether any own text is left. `nil` otherwise.
+    * `warnings` — for a spec unit, what its scan saw that is probably a mistake in the
+      spec's shape but reads as written (§11.12), each `%{kind, line, message}`: a path
+      heading among numbered siblings is listed on the unit it reads as. `[]` otherwise.
 
   A test record (`Surfex.Scan.ExUnit`) can also **declare** what it relates to, in its
   own source: `declares` is a list of `{type, id}`, such as `{:verifies, "cart-add"}`
@@ -91,7 +94,8 @@ defmodule Surfex.Scan do
     check: nil,
     class: nil,
     deferred: nil,
-    not_claims: nil
+    not_claims: nil,
+    warnings: []
   ]
 
   @type location :: %{file: String.t(), lines: {pos_integer, pos_integer} | nil}
@@ -151,7 +155,9 @@ defmodule Surfex.Scan do
               }
             | nil,
           # The lines of a unit's own text that aren't claims (§13.12).
-          not_claims: %{lines: %{String.t() => pos_integer}, own_text: boolean} | nil
+          not_claims: %{lines: %{String.t() => pos_integer}, own_text: boolean} | nil,
+          # What the spec scan saw that is probably a shape mistake (§11.12).
+          warnings: [%{kind: atom, line: pos_integer, message: String.t()}]
         }
 
   @doc """

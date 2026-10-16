@@ -10,6 +10,7 @@ defmodule Surfex.Status.Report do
   alias Surfex.Golden.Span
   alias Surfex.Log.Entry
   alias Surfex.Status
+  alias Surfex.Status.SpecShape
 
   @doc "The status as text: the summary per relation type, then everything needing attention."
   @spec text(Status.t()) :: String.t()
@@ -180,12 +181,8 @@ defmodule Surfex.Status.Report do
         status.not_claims,
         &"#{&1.pattern}: #{not_claims_text(&1)}"
       ),
-      # A warning, not a failure (§11.2).
-      items(
-        "List-shaped keys (a table row's key that may name two things)",
-        Status.list_keys(status),
-        &"row #{&1.row.id} in table #{&1.table}: its key holds #{inspect(&1.separator)}#{at(&1.row)}"
-      )
+      # Warnings, never a failure (§11.12): one listing, a group per kind.
+      spec_shape_text(status)
     ]
 
     verdict = if Status.failing?(status), do: "FAILING", else: "ok"
@@ -285,6 +282,16 @@ defmodule Surfex.Status.Report do
             "declaration" => s.check.declaration,
             "inputs" => s.check.inputs
           })
+        end),
+      "spec_warnings" =>
+        Enum.map(SpecShape.warnings(status), fn w ->
+          %{
+            "kind" => Atom.to_string(w.kind),
+            "file" => w.file,
+            "line" => w.line,
+            "unit" => w.unit,
+            "message" => w.message
+          }
         end),
       "list_keys" =>
         Enum.map(Status.list_keys(status), fn k ->
@@ -827,6 +834,28 @@ defmodule Surfex.Status.Report do
   # Where a moved unit sits now, and what settles it (§13.1).
   defp moved_text(%{now: now}),
     do: "it now sits in #{now}: retire it and relate the new one (mix surfex.suggest --accept)"
+
+  defp spec_shape_text(status) do
+    by_kind = status |> SpecShape.warnings() |> Enum.group_by(& &1.kind)
+
+    case for({kind, title} <- SpecShape.kinds(), list = by_kind[kind], do: {title, list}) do
+      [] ->
+        []
+
+      groups ->
+        [
+          "\nSpec shape (warnings; none fails):\n",
+          for {title, list} <- groups do
+            [
+              "  ",
+              title,
+              ":\n",
+              Enum.map(list, &["    ", &1.message, " (#{&1.file}:#{&1.line})\n"])
+            ]
+          end
+        ]
+    end
+  end
 
   defp items(_title, [], _fun), do: []
   defp items(title, list, fun), do: ["\n", title, ":\n", Enum.map(list, &["  ", fun.(&1), "\n"])]

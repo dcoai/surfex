@@ -1424,9 +1424,9 @@ almost always two things in one row, so their relations can't be told apart.
 `Surfex.Status.list_keys/1` lists every row whose key holds `, `, ` / ` or ` and `, with
 its table and the separator it holds, in file and line order. The key parts of a
 composite key (`key: [A, B]`) are joined by a bare `/`, which is no separator. The status
-reports them in a list of their own, and the JSON as `list_keys`. It is a **warning**, never
-a failure, since a key may hold a comma on purpose. The scan is unchanged: the rows are
-units as before.
+lists them among its spec-shape warnings (§11.12), and the JSON also as `list_keys`. It is
+a **warning**, never a failure, since a key may hold a comma on purpose. The scan is
+unchanged: the rows are units as before.
 
 ```test:list-keys
 a row key holding ", ", " / " or " and " is listed with its table and separator, in the text
@@ -1916,6 +1916,33 @@ is one error in the same list, in every test file and support file at once
 a test hint left open at the end of a file is one error at its line; an id used twice is one
 error naming both lines, and the units after it are still read; a malformed marker, a
 nested rule and a second class each are one error and the rest of the text reads as before
+```
+
+### 11.12 Spec-shape warnings
+<!-- surfex: spec-shape -->
+
+Some of what a spec scan reads is almost always a mistake in how the spec is written, yet
+reads as written, so it is a **warning**: listed, never failing, never changing a unit.
+The status lists every spec-shape warning in one listing, `Spec shape`, a group per kind
+in a fixed order, each warning with its file and line; the JSON gives them as
+`spec_warnings`, each `{kind, file, line, unit, message}` in file and line order, where
+`unit` is the spec unit it is on. A new kind of warning joins this listing rather than
+adding a list of its own. The kinds:
+
+- `list_key`: a marked table's row key that reads as a list (§11.2);
+- `path_heading`: a heading with no id whose siblings, the headings at its level under the
+  same parent heading, include one whose id the project's heading grammar read
+  (`heading_ids:`, §11). A `## 3-raw.` among `## 5.` and `## 6.` is almost always a missed
+  id, not a subsection. The warning names its nearest numbered siblings before and after
+  it and the unit it reads as: the id'd section `fold_paths:` folds it into (§11.1), or its
+  own path unit. It sits on that unit (the scan record's `warnings`). A heading among
+  siblings with no grammar id, or with written ids only, is not warned.
+
+```test:path-heading-warning
+under :section_number, a heading 3-raw. among 1., 2. and 4. is warned naming 2 and 4 and
+the unit it reads as, folded into the chapter with fold_paths: true and its own unit
+without; among siblings with no numbered id nothing is warned; the status lists it under
+Spec shape and the JSON in spec_warnings, and the status doesn't fail
 ```
 
 ## 12. The relation log

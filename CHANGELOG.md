@@ -21,8 +21,22 @@ release it merely follows.
   is unchanged. Spec §6.7. Measured on an adopter's spec: 1 of its 21 broken citations
   (a supervisor registered by name) goes, and none other changes.
 
+- **A path heading among numbered siblings is warned** (#292, #306). A heading with no id
+  whose siblings (the headings at its level under the same parent) carry ids the
+  `heading_ids:` grammar read, such as `## 3-raw.` between `## 5.` and `## 6.`, is almost
+  always a missed id. The status now lists it, never failing, naming its nearest numbered
+  siblings and the unit it reads as: the section `fold_paths:` folds it into, or its own
+  path unit. The scan record carries it in a new `warnings` field. Spec §11.12. Measured:
+  none of the nine adopters with a relation log has one; one volunteer spec read under
+  `:section_number` with `fold_paths: true` has exactly the one that motivated this.
+
 ### Changed
 
+- **Spec-shape warnings share one listing** (#292, #306). The text report's
+  `List-shaped keys` list is now a group of one `Spec shape (warnings; none fails)` listing,
+  beside the path-heading warnings and any later kind; the JSON gives every such warning
+  as `spec_warnings` (`kind`, `file`, `line`, `unit`, `message`), and keeps `list_keys` as it
+  was. Nothing fails that didn't. Spec §11.2, §11.12.
 - **Scan errors are collected and reported once** (#292, #305). A spec or test that can't
   be read as written (an unplaced contract fence, a malformed marker, a repeated id, a
   block or hint left open, a deferral citing no unit, an unreadable `verifies` or
