@@ -67,11 +67,13 @@ all name `spec/03-wire-format.md#4`.
 that has an id (`### run/2` under `## §Engine.13`) is part of that unit: its text counts in
 the id'd section's version, and its hints sit in that section. Give a sub-heading an id
 when it should be a unit of its own. It is the default wherever `heading_ids:` is set
-(`fold_paths: false` opts out).
+(`fold_paths: false` opts out). A heading with no id among numbered siblings (`## 3-raw.`
+between `## 5.` and `## 6.`) is probably a missed id: the status warns of it under "Spec
+shape", naming the unit it folds into.
 
 **One claim per row**: a table row whose key reads as a list (`1001, 1005`, `a / b`,
-`a and b`) is probably two claims in one row; the status lists it under "List-shaped keys"
-as a warning. Split the row.
+`a and b`) is probably two claims in one row; the status lists it under "Spec shape",
+"List-shaped keys", as a warning. Split the row.
 
 **Not a claim**: bold. A bold-lead sentence without an id comment is its section's text.
 

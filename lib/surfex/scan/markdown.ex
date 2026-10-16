@@ -214,6 +214,8 @@ defmodule Surfex.Scan.Markdown do
     {sections, units, errors} =
       split(lines, file, {grammar, rule_grammar, subjects, classes}, unclosed(lines))
 
+    read = sections
+
     {sections, owners, fold_errors} =
       if Keyword.get(opts, :fold_paths, false) == true,
         do: Fold.fold(sections, file),
@@ -231,6 +233,7 @@ defmodule Surfex.Scan.Markdown do
     ids = Map.new(sections, &{&1.n, &1.id})
     ids = Map.merge(ids, Map.new(owners, fn {n, owner} -> {n, Map.fetch!(ids, owner)} end))
     errors = errors ++ fold_errors ++ duplicates(sections, units, file)
+    warnings = Fold.path_headings(read, ids, owners)
 
     # A section sits under the section of the nearest heading above it at a higher level
     # (§13.4); one under a folded heading sits under its owner.
@@ -242,7 +245,8 @@ defmodule Surfex.Scan.Markdown do
               under: Map.get(s, :parent) && Map.fetch!(ids, s.parent),
               class: section_class(s, classes, file),
               deferred: marked(s.deferred),
-              not_claims: not_claims(s.body, patterns)
+              not_claims: not_claims(s.body, patterns),
+              warnings: Map.get(warnings, s.id, [])
           }
 
     unit_records =
@@ -624,7 +628,11 @@ defmodule Surfex.Scan.Markdown do
     stack = [{level, text, n} | above]
     path = stack |> Enum.reverse() |> Enum.map_join("/", &elem(&1, 1))
     parent = with [{_, _, p} | _] <- above, do: p, else: (_ -> nil)
-    next = Map.put(section(n, text, anchor, path, no), :parent, parent)
+    # Its level, and whether its id is one the heading grammar numbered (§11.12).
+    next =
+      section(n, text, anchor, path, no)
+      |> Map.merge(%{parent: parent, level: level, numbered: written == nil and anchor != nil})
+
     %{st | done: [st.cur | st.done], cur: next, stack: stack}
   end
 
