@@ -7,6 +7,10 @@ defmodule Surfex.Status.SpecShape do
 
     * `:list_key` — a marked table's row key that reads as a list (§11.2,
       `Surfex.Status.list_keys/1`);
+    * `:slash_key` — a row key holding a `/` outside code spans and not spaced as ` / `,
+      so its id reads as a path one level deeper;
+    * `:span_key` — a row key cell that is a code span followed by prose, whose span alone
+      is probably the key;
     * `:path_heading` — a heading with no id among siblings the heading grammar numbered
       (§11.12), which is almost always a missed id;
     * `:contract_arity` — a citation of `Module.name/arity` that names no code, where the
@@ -29,6 +33,8 @@ defmodule Surfex.Status.SpecShape do
 
   @kinds [
     list_key: "List-shaped keys (a table row's key that may name two things)",
+    slash_key: "Keys holding a / (a table row's id that reads as a path one level deeper)",
+    span_key: "Keys that are a code span and prose (the span alone is probably the key)",
     path_heading: "Path headings among numbered siblings (a heading with no id: a missed id?)",
     contract_arity:
       "Cited arities no contract states (the contracts state the function at others)"
