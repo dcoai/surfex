@@ -3000,8 +3000,15 @@ several spec files whose statements differ is **restated**, listed and never fai
 - Two contract units state the same contract when their ids after the file are equal:
   the same `Module.name/arity` and the same kind, so a `@callback` never pairs with a
   `@spec` of the same name (§11.9).
-- Their statements differ when their versions do (§11.1): a signature's text with its
-  whitespace collapsed, so reflowing one changes nothing.
+- Their statements differ when their **parsed signatures** do, not their text: each
+  clause is parsed as Elixir and compared with its metadata, its whitespace and line
+  breaks and its head's module qualification dropped, and a bare type name read as the
+  zero-arity type it names, so `feed(t, binary)` and `feed(t(), binary())` are one
+  statement. A name the clause's `when` binds (`f(a) :: a when a: term`) is a type
+  variable and stays one. Several clauses of one function compare as a list, in order. Any
+  type that differs, `keyword()` against `[opt: atom()]`, is a different statement. The
+  record carries the comparison's digest as `signature` (`Surfex.Scan`); a unit's version
+  is still its text (§11.1), so an edit to the text dangles its relations as before.
 - `Surfex.Status.derive/4` gives `restated`, one entry per such contract, `%{contract,
   units}` with the units' ids sorted, whatever its other units' versions; the same
   statement in several files is not listed. It never makes the status fail.
@@ -3015,6 +3022,13 @@ the status doesn't fail; the same statement in two files is not listed, nor are 
 functions of one name in two modules, nor a callback and a spec of one name; a statement
 differing only in whitespace is the same; text, JSON and golden show the list only where
 it has an entry
+```
+
+```test:restated-parsed
+feed(t(), binary()) and feed(t, binary) in two files are not listed, nor are two
+statements differing in line breaks or in the head's module; check(keyword()) and
+check([opt: atom()]) are listed, as is a two-clause spec differing in one clause, and
+f(a) :: a when a: term against f(a()) :: a(); the units' versions still differ
 ```
 
 ### 13.11 A deviation holds back what it sits in

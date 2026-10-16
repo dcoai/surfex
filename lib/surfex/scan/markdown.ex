@@ -272,6 +272,7 @@ defmodule Surfex.Scan.Markdown do
         %{
           record(file, "#{file}##{u.id}", u.body, {u.first, u.last}, u.role, within)
           | contract: Map.get(u, :contract),
+            signature: Map.get(u, :signature),
             deferred: marked(Map.get(u, :deferred)),
             not_claims: if(u.role == :block, do: not_claims(u.body, patterns))
         }
@@ -806,7 +807,8 @@ defmodule Surfex.Scan.Markdown do
           last: sig.last,
           body: sig.body,
           within: contract.within,
-          contract: sig.contract
+          contract: sig.contract,
+          signature: sig.signature
         }
       end
 

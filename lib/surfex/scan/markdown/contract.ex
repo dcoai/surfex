@@ -37,7 +37,8 @@ defmodule Surfex.Scan.Markdown.Contract do
 
   @doc """
   The signatures among a fence's content lines (`{line, number}`), grouped by function in
-  the order each first appears, as `%{key, contract, first, last, body}`, and the lines that
+  the order each first appears, as `%{key, contract, first, last, body, signature}`
+  (`signature` the digest of its clauses' normalised forms, §13.10), and the lines that
   belong to no signature. `fence` is the marker's module, or the headings around the fence
   (`headings/4`). A signature's module is its head's, else the `defmodule` around it in the
   fence, else the marker's, else the one the headings place it in (§11.9, §11.14).
@@ -62,7 +63,8 @@ defmodule Surfex.Scan.Markdown.Contract do
           contract: "#{module}.#{name}",
           first: first,
           last: last,
-          body: Enum.map(group, &elem(&1, 0))
+          body: Enum.map(group, &elem(&1, 0)),
+          forms: [normalised(text)]
         }
 
         {:cont, {:ok, [sig | acc], rest}}
@@ -213,9 +215,60 @@ defmodule Surfex.Scan.Markdown.Contract do
     sigs
     |> Enum.group_by(& &1.key)
     |> Enum.map(fn {_key, [one | _] = same} ->
-      %{one | last: List.last(same).last, body: Enum.flat_map(same, & &1.body)}
+      forms = Enum.flat_map(same, & &1.forms)
+
+      one
+      |> Map.merge(%{last: List.last(same).last, body: Enum.flat_map(same, & &1.body)})
+      |> Map.delete(:forms)
+      |> Map.put(:signature, digest(forms))
     end)
     |> Enum.sort_by(& &1.first)
+  end
+
+  # §13.10: a signature as a typespec means it, not as written. Parsed, with metadata and
+  # the head's module qualification dropped, and a bare type name (`t`) read as the
+  # zero-arity type it names (`t()`), except a name the clause's `when` binds: that is a
+  # type variable, and `f(a) :: a when a: term` is not `f(a()) :: a()`. key/1 has already
+  # parsed the text.
+  defp normalised(text) do
+    {:ok, {:@, _, [{_kind, _, [spec]}]}} = Code.string_to_quoted(text)
+
+    variables =
+      case spec do
+        {:when, _, [_spec, guards]} when is_list(guards) ->
+          for {name, _} <- guards, is_atom(name), into: MapSet.new(), do: name
+
+        _ ->
+          MapSet.new()
+      end
+
+    spec |> unqualified() |> plain(variables)
+  end
+
+  defp unqualified({:when, meta, [spec, guards]}), do: {:when, meta, [unqualified(spec), guards]}
+
+  defp unqualified({:"::", meta, [{{:., _, [_module, name]}, head, args}, return]}),
+    do: {:"::", meta, [{name, head, args}, return]}
+
+  defp unqualified(spec), do: spec
+
+  defp plain({name, _meta, context}, variables) when is_atom(name) and is_atom(context) do
+    if MapSet.member?(variables, name), do: {:variable, name}, else: {name, [], []}
+  end
+
+  defp plain({form, _meta, args}, variables) when is_list(args),
+    do: {plain(form, variables), [], Enum.map(args, &plain(&1, variables))}
+
+  defp plain({a, b}, variables), do: {plain(a, variables), plain(b, variables)}
+  defp plain(list, variables) when is_list(list), do: Enum.map(list, &plain(&1, variables))
+  defp plain(literal, _variables), do: literal
+
+  # The clauses in order, as one short digest a scan record carries.
+  defp digest(forms) do
+    :sha256
+    |> :crypto.hash(:erlang.term_to_binary(forms))
+    |> Base.encode16(case: :lower)
+    |> binary_part(0, 16)
   end
 
   # `name/arity` of a typespec's head, read by parsing it as Elixir, and the module the head

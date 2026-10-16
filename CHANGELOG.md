@@ -55,6 +55,17 @@ release it merely follows.
 
 ### Changed
 
+- **Restated contracts compare parsed signatures** (#287, #313). A contract stated in
+  several files was listed as restated when the texts differed, so `feed(t, binary)` against
+  `feed(t(), binary())`, one contract in two notations, read as a drift. Each clause is now
+  parsed and compared with its metadata, line breaks and head module dropped and a bare type
+  read as its zero-arity type; a type variable the clause's `when` binds stays a variable.
+  Any differing type is still listed. The record carries the comparison's digest in a new
+  `Surfex.Scan` field, `signature`; a unit's version is still its text. Spec §13.10.
+  Measured on three volunteer specs with their fences marked (in a scratch copy): the four
+  restated listings of one, all notation, are gone; the real drift another reported stays
+  listed, and the two statement pairs a third reported still compare different.
+
 - **A heading naming a qualified function names its module** (#287, #312). Under
   ``### `MyApp.Feed.Telemetry.emit/3` ``, an unqualified `@spec emit(…)` in a contract fence
   was keyed by an outer heading's module, or found none; it is now keyed
