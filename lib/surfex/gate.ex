@@ -8,6 +8,8 @@ defmodule Surfex.Gate do
   that are being checked.
   """
 
+  alias Surfex.Golden.Span
+
   @doc """
   Writes `golden` to `path` when `write?`; otherwise checks the file against it. Returns
   the failures, one message each: `[]` when the file is current or was just written.
@@ -166,7 +168,7 @@ defmodule Surfex.Gate do
     text
     |> String.split("\n")
     |> Enum.reduce({[], nil, nil}, fn line, {acc, heading, header} ->
-      cells = if String.starts_with?(line, "|"), do: cells(line), else: nil
+      cells = if String.starts_with?(line, "|"), do: Span.cells(line), else: nil
 
       cond do
         cells == nil -> {acc, heading_after(line, heading), nil}
@@ -187,28 +189,12 @@ defmodule Surfex.Gate do
     end
   end
 
-  # A row's cells as GFM reads them: split on every `|` not escaped as `\|`, the outer
-  # pipes dropped.
-  defp cells(line) do
-    [_lead | cells] = Regex.split(~r/(?<!\\)\|/, String.trim(line))
-    cells = if List.last(cells) == "", do: Enum.drop(cells, -1), else: cells
-    Enum.map(cells, &String.trim/1)
-  end
-
-  # A code span as `Surfex.Golden.code/1` writes it, read back to its text: the N-backtick
-  # delimiters, the one-space padding and the `\|` escape undone.
-  defp unquote_code(text) do
-    case Regex.run(~r/\A(`+)(.*)\1\z/s, text) do
-      [_, _fence, inner] -> inner |> unpad() |> String.replace("\\|", "|")
-      nil -> text
+  # A cell that is one code span, as `Surfex.Golden.code/1` writes it, read back to its
+  # text (`Surfex.Golden.Span.inline/1`); any other cell as GFM split it.
+  defp unquote_code(cell) do
+    case Span.inline(cell) do
+      [{:code, text}] -> text
+      _ -> cell
     end
   end
-
-  defp unpad(" " <> rest = inner) do
-    if String.ends_with?(rest, " ") and String.trim(inner, " ") != "",
-      do: String.slice(rest, 0..-2//1),
-      else: inner
-  end
-
-  defp unpad(inner), do: inner
 end

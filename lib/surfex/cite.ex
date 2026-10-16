@@ -31,7 +31,8 @@ defmodule Surfex.Cite do
     `#` heading, or the `defmodule` in an `.ex` source), or `(preamble)` before the first.
   - **Headings of subject sections** (`Surfex.Profile` `:subjects`), which cite the items
     the section is about.
-  - **Table cells** under the profile's `:table_columns`, backticked or not.
+  - **Table cells** under the profile's `:table_columns`, backticked or not, a row split
+    into cells as GFM splits it (an escaped `\\|` stays in its cell).
   - **Fenced code blocks**, whose shape-matching tokens are credited to `(code block)` at
     their line, once per fence. A fence is CommonMark's (`Surfex.Scan.Markdown.Fence`): any
     info string opens one, and only a matching closer closes it, so prose is never read as
@@ -43,6 +44,7 @@ defmodule Surfex.Cite do
   """
 
   alias Surfex.{Item, Profile}
+  alias Surfex.Golden.Span
   alias Surfex.Scan.Markdown.Fence
 
   @type status ::
@@ -191,7 +193,7 @@ defmodule Surfex.Cite do
         {subject_cites(subjects, text, no, ctx) ++ span_cites(line, no, st, ctx), st}
 
       table_row?(line) ->
-        cells = cells(line)
+        cells = Span.cells(line)
         spans = span_cites(line, no, st, ctx)
 
         cond do
@@ -279,15 +281,6 @@ defmodule Surfex.Cite do
   end
 
   defp table_row?(line), do: String.starts_with?(String.trim_leading(line), "|")
-
-  defp cells(line) do
-    line
-    |> String.trim()
-    |> String.trim_leading("|")
-    |> String.trim_trailing("|")
-    |> String.split("|")
-    |> Enum.map(&String.trim/1)
-  end
 
   defp separator?(cells), do: cells != [] and Enum.all?(cells, &Regex.match?(~r/^:?-+:?$/, &1))
 

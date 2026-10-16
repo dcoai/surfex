@@ -117,6 +117,7 @@ as `\|`. The delimiter is one backtick longer than the longest run of backticks 
 text. One space pads each side when the text starts or ends with a backtick, or starts
 and ends with a space without being all spaces. surfex's own goldens build their
 composite `{:raw, text}` cells by the same rule, and escape the `|` in their free text.
+The reader beside this writer is the one surfex reads every GFM table row with (§11.15).
 
 ```test:golden-code-spans
 a backticked cell holding a pipe, backtick runs or only backticks, split as a GFM table
@@ -592,7 +593,8 @@ contract is not cited, since it names what isn't built yet by declaration.
   heading, or the `defmodule` in an `.ex` source), or `(preamble)` before the first. A
   heading's anchor (`{#id}`, §11) is not part of its name.
 - **Subject headings** (§6.6) cite the items their section is about.
-- **Table cells** under the profile's `table_columns`, backticked or not. A cell holding a
+- **Table cells** under the profile's `table_columns`, backticked or not, the row split into
+  cells as GFM splits it (§11.15), so an escaped `\|` stays in its cell. A cell holding a
   code span is already cited as one.
 - **Fenced code blocks**: shape-matching tokens are credited to `(code block)`. Inside a
   fence nothing else is read, so a `# comment` in a code block is not a heading.
@@ -2074,6 +2076,46 @@ a signature whose nearer heading names another of its module's functions, keyed 
 outer heading's module the code doesn't define it in while the nearer module does, is one
 scan error naming both lines; with the function in the outer module too, without code, or
 under a marker's module:, it reads
+```
+
+### 11.15 How a marked table's cells are read
+<!-- surfex: table-cells-section -->
+
+A marked table's row (§11) is read as GFM reads it, by the one reader surfex also reads its
+own goldens with (§2.2), so a row the golden writer can write is a row the scan reads:
+
+- **Cells.** The row splits on every `|` not preceded by a backslash. A code span gives a
+  pipe no protection, so a pipe inside one is written `\|`. The outer pipes are dropped,
+  each `\|` is a `|` in its cell, and each cell is trimmed. A row `` | `ESC \` | ST | `` is
+  two cells, `` `ESC \` `` and `ST`.
+- **Code spans** are CommonMark's. A run of N backticks opens a span that closes at the next
+  run of exactly N, so ``` `` CSI Ps ` `` ``` is one span holding a backtick. Inside a span a
+  backslash is a backslash, and one space is stripped from each side of content that
+  starts and ends with a space and isn't all spaces. A run with no closer is literal.
+- **KEY** is the key cell's text as a reader sees it. A code span gives its text as
+  written: ``` `` CSI Ps ` `` ``` is `` CSI Ps ` ``, and `` `*ptr` `` is `*ptr`. Outside code
+  spans a backslash escape is undone, so `\*` is a literal `*`. Emphasis marks are dropped
+  where CommonMark reads them as emphasis, by its delimiter-run rule: flanking runs of `*`
+  or `_`, an `_` inside a word neither opening nor closing, the rule of 3, and pairing
+  nearest first. `Generated test *files*` keys `Generated test files`. `snake_case_name`
+  keeps its underscores, and an unpaired or spaced `*` stays. Nothing inside a code span
+  is emphasis. Whitespace is then collapsed. A marker's `key:` and `ignore:` headers are
+  matched with the header cells by the same reading.
+
+A row that reads otherwise since an older surfex has a new id: its relations are re-keyed
+with `mix surfex.move` (§14).
+
+```test:table-cell-reading
+GFM's table and code-span examples split and read as GFM does: every unescaped pipe splits,
+in a code span too, \| is a pipe, an N-backtick span closes at exactly N with one padding
+space stripped and no escapes inside; a row ESC \ in a span and a double-backtick span
+holding a backtick each key as written; the golden writer's cells read back as their text
+```
+
+```test:table-key-text
+a key drops emphasis CommonMark reads as emphasis, inside the cell as around it, and undoes
+backslash escapes outside code spans; snake_case keeps its underscores, a code span keeps
+its * and backticks, an unpaired or spaced * stays; a key: header matches the same way
 ```
 
 ## 12. The relation log

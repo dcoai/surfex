@@ -216,41 +216,9 @@ defmodule Surfex.GoldenTest do
     end
   end
 
-  # #199: a cell is read back the way GitLab reads it. GFM splits the row on every `|` not
-  # preceded by a backslash and turns `\|` into `|`; then a code span opens with a run of N
-  # backticks and closes at the next run of exactly N, and one space is stripped from each
-  # side of content that begins and ends with a space and is not all spaces.
-  defp gfm_row_cells(line) do
-    line
-    |> String.trim()
-    |> String.trim_leading("|")
-    |> String.trim_trailing("|")
-    |> then(&Regex.split(~r/(?<!\\)\|/, &1))
-    |> Enum.map(&(&1 |> String.trim() |> String.replace("\\|", "|")))
-  end
-
-  defp gfm_code_span(cell) do
-    [opener] = Regex.run(~r/\A`+/, cell)
-    n = byte_size(opener)
-    rest = binary_part(cell, n, byte_size(cell) - n)
-
-    # the first backtick run of exactly n closes the span; it must end the cell
-    {start, ^n} =
-      ~r/`+/
-      |> Regex.scan(rest, return: :index)
-      |> Enum.map(&hd/1)
-      |> Enum.find(fn {_at, len} -> len == n end)
-
-    assert start + n == byte_size(rest), "the span closes before the cell ends: #{cell}"
-    inner = binary_part(rest, 0, start)
-
-    if String.starts_with?(inner, " ") and String.ends_with?(inner, " ") and
-         String.trim(inner, " ") != "",
-       do: binary_part(inner, 1, byte_size(inner) - 2),
-       else: inner
-  end
-
-  # The one row of a golden whose Item is `cell`, read back as [item_text, other_text].
+  # #199, #286: a cell is read back the way GitLab reads it, by the one GFM reader
+  # (`Span.cells/1`, `Span.inline/1`), which the GFM-example oracle in span_test.exs pins.
+  # The one row of a golden whose Item is `cell`, read back as its code span's text.
   defp gfm_read_back(cell) do
     line =
       spec(%{columns: ["Item", "Other"], rows: [%{"Item" => cell, "Other" => "x"}]})
@@ -258,8 +226,12 @@ defmodule Surfex.GoldenTest do
       |> String.split("\n", trim: true)
       |> List.last()
 
-    assert [item, "x"] = gfm_row_cells(line), "the row splits into other than 2 cells: #{line}"
-    gfm_code_span(item)
+    assert [item, "x"] = Span.cells(line), "the row splits into other than 2 cells: #{line}"
+
+    assert [{:code, text}] = Span.inline(item),
+           "the span doesn't close at the cell's end: #{item}"
+
+    text
   end
 
   describe "code spans read back under GFM" do
@@ -313,7 +285,7 @@ defmodule Surfex.GoldenTest do
         |> String.split("\n", trim: true)
         |> Enum.take(-1)
 
-      assert gfm_row_cells(line) == ["`i`", "x | y"]
+      assert Span.cells(line) == ["`i`", "x | y"]
     end
   end
 

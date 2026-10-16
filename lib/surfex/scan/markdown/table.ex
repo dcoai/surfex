@@ -4,6 +4,8 @@ defmodule Surfex.Scan.Markdown.Table do
 
   import Surfex.Scan.Markdown.Lines, only: [fail: 3]
 
+  alias Surfex.Golden.Span
+
   @separator ~r/^ {0,3}\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/
 
   # The table's unit (its header and separator) and one unit per row, keyed by its key cell.
@@ -35,7 +37,7 @@ defmodule Surfex.Scan.Markdown.Table do
   # The key and ignored columns, by header: each one missing is an error, as is an ignored
   # key column, and then the table is no unit.
   defp columns(st, table, [{header_line, _} | _] = lines) do
-    header = cells(header_line)
+    header = Span.cells(header_line)
     named = if table.key, do: table.key, else: []
     found = Map.new(named ++ table.ignore, &{&1, column(header, &1)})
 
@@ -74,7 +76,7 @@ defmodule Surfex.Scan.Markdown.Table do
 
     {st, row_units} =
       Enum.reduce(rows, {st, []}, fn {row, no}, {st, units} ->
-        row_cells = cells(row)
+        row_cells = Span.cells(row)
         parts = for c <- keys, do: row_cells |> Enum.at(c, "") |> key_text()
 
         if "" in parts do
@@ -142,28 +144,132 @@ defmodule Surfex.Scan.Markdown.Table do
     end
   end
 
-  # A row's cells: split on `|` outside code spans and not escaped, without the outer pipes.
-  defp cells(line) do
-    line
-    |> String.trim()
-    |> String.replace_prefix("|", "")
-    |> String.replace_suffix("|", "")
-    |> String.graphemes()
-    |> Enum.reduce({[""], false, false}, fn
-      c, {[cell | done], code, true} -> {[cell <> c | done], code, false}
-      "\\", {[cell | done], code, false} -> {[cell <> "\\" | done], code, true}
-      "`", {[cell | done], code, false} -> {[cell <> "`" | done], not code, false}
-      "|", {cells, false, false} -> {["" | cells], false, false}
-      c, {[cell | done], code, false} -> {[cell <> c | done], code, false}
+  # A key as a reader sees it (§11.15): code spans' text as written, backslash escapes
+  # outside them undone, emphasis that CommonMark reads as emphasis dropped, whitespace
+  # collapsed. `` `:normal` `` is `:normal`, `*Mode*` is `Mode`, `snake_case` is itself.
+  defp key_text(cell) do
+    tokens = cell |> Span.inline() |> Enum.flat_map(&tokens/1) |> List.to_tuple()
+
+    tokens
+    |> emphasis()
+    |> Enum.map_join(fn
+      {:delim, ch, n} -> String.duplicate(ch, n)
+      {_, text} -> text
     end)
-    |> elem(0)
-    |> Enum.reverse()
+    |> String.split()
+    |> Enum.join(" ")
   end
 
-  # A key as written, without its code and emphasis marks: `` `:normal` `` is `:normal`.
-  defp key_text(cell) do
-    text = cell |> String.replace("`", "") |> String.replace("\\|", "|") |> String.trim()
-    stripped = Regex.replace(~r/^(\*\*|__|\*|_)(.+)\1$/, text, "\\2")
-    if stripped == text, do: text |> String.split() |> Enum.join(" "), else: key_text(stripped)
+  # A cell's tokens: a code span is one token, a backslash escape of punctuation its
+  # character, a run of `*` or `_` one delimiter run, anything else a character.
+  defp tokens({:code, text}), do: [{:code, text}]
+  defp tokens({:text, text}), do: text_tokens(text, [])
+
+  defp text_tokens("", acc), do: Enum.reverse(acc)
+
+  defp text_tokens(<<"\\", c, rest::binary>>, acc)
+       when c in ~c"!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+       do: text_tokens(rest, [{:escaped, <<c>>} | acc])
+
+  defp text_tokens(<<ch, _::binary>> = text, acc) when ch in [?*, ?_] do
+    [run] = Regex.run(~r/\A#{Regex.escape(<<ch>>)}+/, text)
+    n = byte_size(run)
+    text_tokens(binary_part(text, n, byte_size(text) - n), [{:delim, <<ch>>, n} | acc])
   end
+
+  defp text_tokens(<<c::utf8, rest::binary>>, acc),
+    do: text_tokens(rest, [{:char, <<c::utf8>>} | acc])
+
+  # CommonMark's emphasis (its "process emphasis", bounded to `*` and `_`): each closing
+  # run pairs with the nearest opener of its character before it, two delimiters at a time
+  # where both have two, under the rule of 3; runs between a pair become literal; what is
+  # left unpaired stays literal. The tokens come back with each run's unpaired count.
+  defp emphasis(tokens) do
+    runs =
+      for i <- 0..(tuple_size(tokens) - 1)//1,
+          {:delim, ch, n} <- [elem(tokens, i)],
+          into: %{} do
+        {open, close} = flanking(tokens, i, ch)
+        {i, %{ch: ch, n: n, orig: n, open: open, close: close, active: true}}
+      end
+
+    order = runs |> Map.keys() |> Enum.sort()
+    runs = Enum.reduce(order, runs, &close_run(&1, &2, order))
+
+    for i <- 0..(tuple_size(tokens) - 1)//1 do
+      case elem(tokens, i) do
+        {:delim, ch, _} -> {:delim, ch, runs[i].n}
+        token -> token
+      end
+    end
+  end
+
+  defp close_run(c, runs, order) do
+    closer = runs[c]
+
+    if closer.active and closer.close and closer.n > 0 do
+      opener =
+        order
+        |> Enum.filter(&(&1 < c))
+        |> Enum.reverse()
+        |> Enum.find(fn o ->
+          r = runs[o]
+          r.active and r.open and r.n > 0 and r.ch == closer.ch and rule_of_3?(r, closer)
+        end)
+
+      case opener do
+        nil ->
+          if closer.open, do: runs, else: Map.update!(runs, c, &%{&1 | active: false})
+
+        o ->
+          k = if runs[o].n >= 2 and closer.n >= 2, do: 2, else: 1
+
+          runs =
+            order
+            |> Enum.filter(&(&1 > o and &1 < c))
+            |> Enum.reduce(runs, fn between, acc ->
+              Map.update!(acc, between, &%{&1 | active: false})
+            end)
+            |> Map.update!(o, &%{&1 | n: &1.n - k, active: &1.n - k > 0})
+            |> Map.update!(c, &%{&1 | n: &1.n - k})
+
+          close_run(c, runs, order)
+      end
+    else
+      runs
+    end
+  end
+
+  # When either run can both open and close, the pair's lengths must not sum to a multiple
+  # of 3 unless both are multiples of 3.
+  defp rule_of_3?(opener, closer) do
+    sum = opener.orig + closer.orig
+
+    not ((opener.open and opener.close) or (closer.open and closer.close)) or
+      rem(sum, 3) != 0 or (rem(opener.orig, 3) == 0 and rem(closer.orig, 3) == 0)
+  end
+
+  # Whether the run at `i` can open and close: left- and right-flanking by the characters
+  # around it in the source (a code span's are its backticks, an escape's its backslash and
+  # character; the cell's ends count as whitespace), and for `_`, not inside a word.
+  defp flanking(tokens, i, ch) do
+    before = if i == 0, do: " ", else: tokens |> elem(i - 1) |> edge(:right)
+    next = if i == tuple_size(tokens) - 1, do: " ", else: tokens |> elem(i + 1) |> edge(:left)
+    left = not space?(next) and (not punct?(next) or space?(before) or punct?(before))
+    right = not space?(before) and (not punct?(before) or space?(next) or punct?(next))
+
+    case ch do
+      "*" -> {left, right}
+      "_" -> {left and (not right or punct?(before)), right and (not left or punct?(next))}
+    end
+  end
+
+  defp edge({:code, _}, _side), do: "`"
+  defp edge({:escaped, _}, :left), do: "\\"
+  defp edge({:escaped, c}, :right), do: c
+  defp edge({:char, c}, _side), do: c
+  defp edge({:delim, ch, _}, _side), do: ch
+
+  defp space?(c), do: Regex.match?(~r/\A\s\z/u, c)
+  defp punct?(c), do: Regex.match?(~r/\A[\p{P}\p{S}]\z/u, c)
 end

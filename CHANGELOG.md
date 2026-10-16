@@ -170,6 +170,32 @@ release it merely follows.
 
 ### Fixed
 
+- **A marked table's row is read as GFM reads it, and its KEY as a reader sees it**
+  (#286, #317). The row splitter toggled "in code" on every backtick and read `\` as an
+  escape everywhere, so a row holding `` `ESC \` `` or a double-backtick span holding a
+  backtick (``` `` CSI Ps ` `` ```, what surfex's own golden writer writes) read as one key
+  swallowing the rest of the row. Rows now split on every `|` not preceded by a backslash,
+  in a code span too (GFM: write `\|`), and code spans are CommonMark's: an N-backtick span
+  closes at a run of exactly N, with no escapes inside. KEY keeps a code span's text as
+  written (its backticks included), undoes backslash escapes outside spans, and drops
+  emphasis wherever CommonMark reads it as emphasis, not only around the whole cell:
+  `Generated test *files*` keys `Generated test files`, while `snake_case_name` and
+  `` `*ptr` `` are unchanged. One reader does all of this, beside the golden writer, and
+  the gate, the citation pass's table rows and the golden tests read cells with it too: a
+  cell with `\|` in it no longer shifts the citation columns. Spec §11.15, §2.2.
+
+  **Upgrade step (re-keyed rows).** A row whose key reads differently has a new id, and
+  its recorded relations dangle under the old one. Move each with
+  `mix surfex.move OLD NEW`. The rows that change are those whose key holds emphasis
+  inside the cell (`a *b* c`), a backslash escape (`\*`), a backtick inside a
+  double-backtick span, an unpaired backtick, or an unescaped `|` inside a code span (which
+  now splits the row: write it `\|`). Measured: the three adopters with marked tables (279
+  rows, with recorded relations) have no row re-keyed, and the citations of the nine
+  adopters with a relation log and of two volunteer specs are unchanged. With every table
+  of their specs marked (a scratch copy), 13 of 2,410 rows across ten projects would
+  re-key: 11 for emphasis inside the cell (in five projects) and 2 that now split as GFM
+  does (in one).
+
 - **A fence is read by CommonMark's rule in the citation pass** (#287, #311). The citation
   pass found fenced code blocks with a pattern that only opened on a lowercase info string,
   so an `elixir contract` or `test:id` fence was skipped and its closing line was taken as

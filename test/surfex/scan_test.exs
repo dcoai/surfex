@@ -763,7 +763,7 @@ defmodule Surfex.ScanTest do
                table_units(String.replace(@modes, "<!-- surfex: table modes -->\n", ""))
     end
 
-    test "key: names the key column; a key may hold spaces, and a code span may hold a pipe" do
+    test "key: names the key column; a key may hold spaces, and a code span an escaped pipe" do
       text = """
       # S
 
@@ -771,7 +771,7 @@ defmodule Surfex.ScanTest do
       | Mode | Started by |
       |:---|---:|
       | a | double click |
-      | b | `x|y` |
+      | b | `x\\|y` |
       """
 
       ids = for %{role: :row, id: id} <- table_units(text), do: id
