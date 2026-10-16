@@ -2034,6 +2034,46 @@ folding straight after its owner extends one range; reports name both ranges and
 gives them as ranges; a citation in the folded heading's lines is the chapter's
 ```
 
+### 11.14 A heading naming a qualified function
+<!-- surfex: qualified-heading -->
+
+A spec often heads a function's subsection with the function itself, ``### `MyApp.Feed.Telemetry.emit/3` ``.
+That heading names a module for the function it names, refining §11.9's fourth rule:
+
+- A heading's qualified function in backticks, `` `M.f/3` `` or `` `M.f` `` (every arity),
+  names module `M` for an unqualified signature of that function, `f/3` (or any `f`), in a
+  contract fence under it. It places no other signature: a fence's `@spec other(t)` under
+  that heading climbs on to the headings above, as §11.9 says.
+- Nearest first, a heading naming the signature's function places it; else one naming
+  modules (§11.9) does. A heading naming several modules for it is the error §11.9 lists.
+- When the code is scanned (`Surfex.Status.Config.scans/2`), `M.f/3` is resolved as a
+  citation resolves (§6.4): the profile's `normalise` rewrites, then an item key or an alias,
+  so a short module a rewrite expands names the module the code defines the function in.
+  With no code, or a name the code doesn't have, `M` is read as written.
+- **A silent mis-key is never the outcome.** When a nearer heading names a module only
+  through functions other than the signature's, the signature is placed by an outer
+  heading's module; if the code is scanned, has no such function in that outer module and
+  has it in the nearer heading's, that is a scan error (§11.11) at the signature's line,
+  naming both headings' lines: `` `emit/3` would be keyed `MyApp.emit/3` from the heading at
+  line 1, but only `MyApp.Telemetry`, which the nearer heading at line 3 names, has
+  `emit/3`: mark the fence module: ``. A marker's `module:` is never second-guessed.
+  `Surfex.Scan.Markdown.sections/3` takes the code's names as `code:`; without it, it reads
+  a heading as written and raises no such error.
+
+```test:qualified-heading-module
+a fence under a heading naming A.B.emit/3 keys emit/3 as A.B.emit/3 though the top heading
+names A; a heading naming A.C.close keys close at every arity; another signature in the
+fence takes the outer module; through the config a short module a normalise rewrite expands
+keys the function under the module the code defines it in
+```
+
+```test:qualified-heading-conflict
+a signature whose nearer heading names another of its module's functions, keyed from an
+outer heading's module the code doesn't define it in while the nearer module does, is one
+scan error naming both lines; with the function in the outer module too, without code, or
+under a marker's module:, it reads
+```
+
 ## 12. The relation log
 <!-- surfex: relation-log -->
 

@@ -180,7 +180,10 @@ defmodule Surfex.Scan.Markdown do
   project's heading grammar (`heading_grammar/1`), and `rule_ids:` the grammar a marked
   list's items are read by, in the same forms. With `fold_paths: true`, a heading with no
   id inside one that has an id is part of that unit. `subjects:` (the profile's, §6.6) says
-  which module a contract fence in a subject section is about. `not_claims:` (regexes, §13.12)
+  which module a contract fence in a subject section is about. `code:`, a function from a
+  written function name (`M.f/3`, `M.f`) to the module the code defines it in, or `nil`,
+  resolves a heading's qualified function and tells a nearer heading's module from an outer
+  one's (§11.14); without it a heading's names are read as written. `not_claims:` (regexes, §13.12)
   names the lines of a section's or marked block's own text that aren't claims: each unit
   records the lines each pattern matched and whether any own text is left (`not_claims`,
   `claimless?/1`), and its version still covers every line.
@@ -212,7 +215,12 @@ defmodule Surfex.Scan.Markdown do
     patterns = not_claims!(Keyword.get(opts, :not_claims, []))
 
     {sections, units, errors} =
-      split(lines, file, {grammar, rule_grammar, subjects, classes}, unclosed(lines))
+      split(
+        lines,
+        file,
+        {grammar, rule_grammar, subjects, classes, Keyword.get(opts, :code)},
+        unclosed(lines)
+      )
 
     read = sections
 
@@ -330,12 +338,13 @@ defmodule Surfex.Scan.Markdown do
   # hints (%{role, id, first, last, body, within}). A line belongs to exactly one body:
   # the open hint's, else the open rule's, else the open block's, else the current
   # section's. Markers and a hint's fences belong to none.
-  defp split(lines, file, {grammar, rule_grammar, subjects, classes}, unclosed) do
+  defp split(lines, file, {grammar, rule_grammar, subjects, classes, code}, unclosed) do
     start = %{
       file: file,
       grammar: grammar,
       rule_grammar: rule_grammar,
       subjects: subjects,
+      code: code,
       classes: classes,
       contract: nil,
       unclosed: unclosed,
@@ -630,11 +639,11 @@ defmodule Surfex.Scan.Markdown do
 
     {st, anchor} = if written, do: {st, written}, else: grammar_id(st, text, no)
 
-    above = Enum.drop_while(st.stack, fn {l, _, _} -> l >= level end)
+    above = Enum.drop_while(st.stack, fn {l, _, _, _} -> l >= level end)
     n = st.cur.n + 1
-    stack = [{level, text, n} | above]
+    stack = [{level, text, n, no} | above]
     path = stack |> Enum.reverse() |> Enum.map_join("/", &elem(&1, 1))
-    parent = with [{_, _, p} | _] <- above, do: p, else: (_ -> nil)
+    parent = with [{_, _, p, _} | _] <- above, do: p, else: (_ -> nil)
     # Its level, and whether its id is one the heading grammar numbered (§11.12).
     next =
       section(n, text, anchor, path, no)
@@ -753,12 +762,12 @@ defmodule Surfex.Scan.Markdown do
     end
   end
 
-  # The fence opens: its module is the marker's, else the nearest heading's that names one
-  # (§11.9). Only a signature its head or a defmodule doesn't place needs it, so a heading
-  # naming several is an error only then (close_contract/1).
+  # The fence opens: its module is the marker's, else what the headings around it name
+  # (§11.9, §11.14), asked per signature. Only a signature its head or a defmodule doesn't
+  # place needs them, so a heading naming several is an error only then (close_contract/1).
   defp open_contract(st, line, no) do
-    headings = Enum.map(st.stack, &elem(&1, 1))
-    module = st.contract.module || Contract.subject(st.subjects, st.file, headings)
+    headings = Enum.map(st.stack, fn {_, text, _, at} -> {text, at} end)
+    module = st.contract.module || Contract.headings(st.subjects, st.file, headings, st.code)
 
     contract =
       Map.merge(st.contract, %{module: module, open: true, open_line: line, lines: [], close: nil})

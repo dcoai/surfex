@@ -39,6 +39,29 @@ defmodule Surfex.Cite.Contracts do
     |> Enum.sort_by(&{&1.file, &1.line, &1.span})
   end
 
+  @doc """
+  The code's function names for the spec scan (§11.14): a function from a name as a
+  heading writes it, `M.f/3` or `M.f`, to the module the code defines that function in, or
+  `nil`. The name is rewritten by `rewrites` (the profile's `normalise`) first, then looked
+  up as an item key or an alias, as a citation is (§6.4).
+  """
+  @spec code([Item.t()], [{Regex.t(), String.t()}]) :: (String.t() -> String.t() | nil)
+  def code(items, rewrites) do
+    names =
+      for %Item{parent: parent} = item <- items,
+          is_binary(parent),
+          name <- [Item.key(item) | item.aliases],
+          into: %{},
+          do: {name, parent}
+
+    fn written ->
+      name =
+        Enum.reduce(rewrites, String.trim(written), fn {re, to}, s -> Regex.replace(re, s, to) end)
+
+      Map.get(names, name)
+    end
+  end
+
   # `Module.name` => the arities the code defines it at.
   defp families(items) do
     for %Item{parent: parent, name: name} <- items,
