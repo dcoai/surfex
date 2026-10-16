@@ -3258,6 +3258,49 @@ shape and in the JSON's spec_warnings, never failing; M.f/2, a bare M.f and a fu
 contract states are not warned, nor is M.f/1 when the code defines it
 ```
 
+### 13.16 The spec side alone
+<!-- surfex: spec-only -->
+
+A repository may hold only a spec, one another repository implements and pins. There a
+full status has nothing to say: no code, so every citation names nothing, and no log, so
+no relations. `mix surfex.status --spec` reads the spec side alone. It is a task flag, not
+a config key: the user knows the repository is a spec, and a code-less `.surfex.exs` in a
+repository that has code stays an error rather than silently becoming a spec repository.
+
+- **What it reads.** `.surfex.exs` is read and every key validated as always (§13.14), and
+  it still needs `sources:`. Then only the spec is scanned
+  (`Surfex.Status.Config.read_spec/3`): no code scanner runs, and no test, check, class,
+  log, evidence, `require:` or completeness floor is read, so a repository with no `lib/`,
+  no `.surfex/` and no tests reads clean. The status is derived over the spec's units
+  alone, so each list it gives is the one a full run gives for the same spec.
+- **What fails.** Scan errors (§11.11), reported as a full run reports them, an unresolved
+  deferral citation (§13.13) among them. A citation of an arity no contract states
+  (§13.15): with no code to vouch for `Module.name/arity`, the spec's own contracts are the
+  only judge, so the warning fails here. A deferral citing a spec unit that went stale
+  (§13.13). Nothing else fails: restated contracts (§13.10), list-shaped keys (§11.2) and
+  the other spec-shape warnings (§11.12) are listed. A citation of a function no contract
+  states at any arity is not checked: nothing can judge it without code.
+- **It says so.** The text report opens with
+  `spec only (--spec): code, relations, the log and evidence are not read`, then
+  `spec status: ok` or `FAILING`. The JSON carries `mode: "spec"`, `failing`,
+  `scan_errors`, and the full JSON's `units`, `spec_warnings`, `list_keys`, `restated` and
+  `stale_deferrals`; its scan-error form carries `mode: "spec"` too.
+- The flags that read what it skips (`--verify`, `--evidence`, `--merge`, `--validated`,
+  `--issues`, `--no-planned`, `--no-marks`, `--no-baseline`, `--no-deviations`) are refused
+  with it, naming them, so none is silently ignored.
+
+```test:spec-only-reads
+with only spec/ and a .surfex.exs, --spec reads clean, opening with its header and
+mode: "spec"; a cited arity no contract states fails, an unresolved deferral citation is a
+scan error, restated contracts are listed and don't fail; a flag reading what --spec skips
+is refused; without --spec the same repository reads as a full status does
+```
+
+```test:spec-only-parity
+in a project with code and a log, --spec gives the same spec-side lists as the full run:
+units, spec_warnings, list_keys, restated and stale_deferrals
+```
+
 ## 14. Recording
 <!-- surfex: recording -->
 

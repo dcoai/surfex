@@ -10,6 +10,15 @@ fail on unvalidated relations), `--no-planned` (fail on planned), `--no-marks` (
 marks), `--no-baseline` (fail on relations resting on an adoption baseline),
 `--no-deviations` (fail on declared deviations).
 
+**A repository that holds only a spec** (one another repository implements) runs
+`mix surfex.status --spec`: the spec side alone. `.surfex.exs` is still read and needs
+`sources:`; code, tests, relations, the log, evidence, `require:` and completeness are not
+read, and the report opens saying so (`spec only (--spec): …`; the JSON has
+`mode: "spec"`). It fails on scan errors, a citation `M.f/n` where the spec's contracts
+state `M.f` at other arities only, and a stale deferral citing a spec unit; restated
+contracts and the other spec-shape warnings are listed. Flags that read what it skips are
+refused with it (spec §13.16).
+
 **What fails, and the usual fix:**
 
 | Group | Fix |

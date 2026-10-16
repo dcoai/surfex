@@ -11,6 +11,24 @@ release it merely follows.
 
 ### Added
 
+- **`mix surfex.status --spec` reads the spec side alone** (#297, #316). For a repository
+  that holds only a spec, one another repository implements and pins, where a full status
+  says `FAILING`, `(no relations)` and lists every citation as naming nothing. `--spec`
+  reads `.surfex.exs` (still required, every key validated) and scans only the spec: no
+  code, tests, checks, classes, log, evidence, `require:` or completeness floor. It fails
+  on scan errors (an unresolved deferral citation among them), on each citation of an
+  arity the spec's own contracts don't state (§13.15's warning, failing here because no
+  code can vouch for it), and on a stale deferral citing a spec unit; restated contracts,
+  list-shaped keys and the other spec-shape warnings are listed. The text report opens
+  `spec only (--spec): code, relations, the log and evidence are not read` and the JSON
+  carries `mode: "spec"`. Flags that read what it skips (`--evidence`, `--verify`,
+  `--issues`, …) are refused with it. `Surfex.Status.Config.read_spec/3` gives its status.
+  Spec §13.16. Measured: on a volunteer spec repository (contract fences marked in a
+  scratch copy), `--spec` fails on exactly the one cited arity its team found by hand,
+  lists one restated contract and one path-heading warning, and says nothing about code;
+  on the nine adopters with a relation log and two volunteers with code, `--spec` gives
+  the same spec-side lists as the full run.
+
 - **A citation of an arity no contract states is warned** (#287, #315). A citation
   `MyApp.Env.check/1` in the spec's text, where the spec's contracts state
   `MyApp.Env.check` only at other arities and the code has no such function, is now a
