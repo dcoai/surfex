@@ -64,6 +64,40 @@ defmodule Surfex.RestatedContractsTest do
              restated([{"a.md", one}, {"b.md", one}, {"c.md", two}])
   end
 
+  # #313 (for #287): restated compares parsed signatures, so a notation isn't a drift.
+  @tag verifies: ["restated-parsed", "restated-contracts"]
+  test "statements are compared parsed: a bare type is its zero-arity type, a when variable stays one" do
+    pair = fn a, b -> restated([{"a.md", fence("M", a)}, {"b.md", fence("M", b)}]) end
+
+    assert pair.(
+             "@spec feed(t(), binary()) :: {t(), [effect()]}\n",
+             "@spec feed(t, binary) :: {t, [effect]}\n"
+           ) == []
+
+    assert pair.("@spec feed(t, binary) :: t\n", "@spec feed(\n  t,\n  binary\n) :: t\n") == []
+    assert pair.("@spec feed(t, binary) :: t\n", "@spec M.feed(t(), binary) :: t\n") == []
+
+    assert [%{contract: "M.check/1"}] =
+             pair.("@spec check(keyword()) :: :ok\n", "@spec check([opt: atom()]) :: :ok\n")
+
+    assert [%{contract: "M.f/1"}] =
+             pair.("@spec f(a) :: a when a: term\n", "@spec f(a()) :: a()\n")
+
+    assert [%{contract: "M.g/1"}] =
+             pair.(
+               "@spec g(t) :: t\n@spec g(nil) :: nil\n",
+               "@spec g(t) :: t\n@spec g(nil) :: :none\n"
+             )
+
+    # The version is still the text: notation changes it, the comparison doesn't.
+    [a] = for %{role: :contract} = s <- scans([{"a.md", fence("M", "@spec f(t) :: t\n")}]), do: s
+
+    [b] =
+      for %{role: :contract} = s <- scans([{"a.md", fence("M", "@spec f(t()) :: t()\n")}]), do: s
+
+    assert a.hash != b.hash
+  end
+
   test "text, JSON and golden show the list only where it has an entry" do
     differ = [
       {"a.md", fence("M", "@spec f(t) :: t\n")},

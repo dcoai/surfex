@@ -3,8 +3,9 @@ defmodule Surfex.Status.Restated do
   # §13.10: a contract stated in several spec files whose statements differ is listed,
   # never failing. A contract unit's id after its file (`Module.name/arity`, a callback
   # `Module.callback:name/arity`, §11.9) names the same function in every file, so a spec
-  # and a callback of one name never pair; its version is its signatures' text with
-  # whitespace collapsed, so statements differ exactly when the versions do.
+  # and a callback of one name never pair. Statements differ when their parsed, normalised
+  # signatures do (the record's `signature`, `Surfex.Scan.Markdown.Contract`), so `t` and
+  # `t()` are one statement, while the version stays the text.
 
   alias Surfex.Scan
 
@@ -20,7 +21,7 @@ defmodule Surfex.Status.Restated do
     |> Enum.group_by(&elem(&1, 0), &Tuple.delete_at(&1, 0))
     |> Enum.filter(fn {_key, stated} ->
       several?(stated, fn {file, _} -> file end) and
-        several?(stated, fn {_, scan} -> scan.hash end)
+        several?(stated, fn {_, scan} -> scan.signature || scan.hash end)
     end)
     |> Enum.map(fn {key, stated} ->
       %{contract: key, units: stated |> Enum.map(fn {_, scan} -> scan.id end) |> Enum.sort()}

@@ -91,6 +91,7 @@ defmodule Surfex.Scan do
     shape: false,
     named: false,
     contract: nil,
+    signature: nil,
     check: nil,
     class: nil,
     deferred: nil,
@@ -136,6 +137,9 @@ defmodule Surfex.Scan do
           named: boolean,
           # A contract unit's function, `Module.name/arity` (§11.1).
           contract: String.t() | nil,
+          # A contract unit's clauses as parsed and normalised, digested: what restated
+          # compares (§13.10). Its version stays its text.
+          signature: String.t() | nil,
           # A check's command, its declaration's version and its inputs' versions (§11.4).
           check:
             %{run: String.t(), declaration: String.t(), inputs: %{String.t() => String.t()}}
