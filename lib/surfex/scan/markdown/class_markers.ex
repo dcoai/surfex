@@ -8,6 +8,7 @@ defmodule Surfex.Scan.Markdown.ClassMarkers do
   @deferred_marker ~r/^ {0,3}<!--\s*surfex:\s*deferred\s+(\S.*?)\s*-->\s*$/
   @comment ~r/^ {0,3}<!--\s*(.*?)\s*-->\s*$/
   @class_name ~r/^([A-Za-z0-9_-]+)(?:\s*:\s*(\S.*))?$/
+  @valid_name ~r/^[A-Za-z0-9_-]+$/
   @deferral ~r/^([^\s:]+)(?:\s*:\s*(\S.*))?$/
   @issue_ref ~r/^(?:[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*)?#\d+$/
   # A deferral citing a spec unit (§13.13): the reference (no `:` or `@`), an optional
@@ -28,7 +29,7 @@ defmodule Surfex.Scan.Markdown.ClassMarkers do
         case Regex.run(@class_name, text, capture: :all_but_first) do
           [name] -> declared(st, no, name, nil)
           [name, note] -> declared(st, no, name, note)
-          nil -> malformed(st, no, "a class marker is <!-- surfex: class NAME[: REASON] -->")
+          nil -> malformed(st, no, malformed_class(text))
         end
 
       match = Regex.run(@deferred_marker, line, capture: :all_but_first) ->
@@ -56,6 +57,24 @@ defmodule Surfex.Scan.Markdown.ClassMarkers do
   end
 
   defp malformed(st, no, why), do: {fail(st, no, why), :malformed}
+
+  # What is wrong with a class marker's text: its name, the text before any `:`, when that
+  # breaks the class-name rule (§11.7), with the name to write where joining its words with
+  # `-` makes one; else the marker's form.
+  defp malformed_class(text) do
+    name = text |> String.split(":", parts: 2) |> hd() |> String.trim()
+
+    cond do
+      Regex.match?(@valid_name, name) ->
+        "a class marker is <!-- surfex: class NAME[: REASON] -->"
+
+      Regex.match?(@valid_name, joined = String.replace(name, ~r/\s+/, "-")) ->
+        "`#{name}` is not a class name: letters, digits, - and _ (no spaces); write `#{joined}`"
+
+      true ->
+        "`#{name}` is not a class name: letters, digits, - and _"
+    end
+  end
 
   # A deferral citing a spec unit, `REF[@VERSION][: REASON]` (§13.13): resolved once the
   # whole spec is scanned (`records/4`), so `cites` is nil until then.
