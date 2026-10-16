@@ -22,87 +22,21 @@ defmodule Surfex.Scan.Checks do
       is against its code's (§17.1).
     * **location** — `.surfex.exs`, with no lines: the config is evaluated data.
 
-  A function of the config and the inputs' content.
+  `run` is a command string, run through the system's shell, or an argv, run with no
+  shell (`Surfex.Check.run/3`). A function of the config and the inputs' content.
   """
 
   alias Surfex.Scan
 
-  @id ~r/^[A-Za-z0-9][A-Za-z0-9._-]*$/
-
   @doc """
-  The project's checks (`checks:` in `config`), validated: each a keyword list with `id`
-  (unique), `run` (a non-empty command), `verifies` (a reference or a non-empty list of
-  them) and optionally `inputs` (globs). `[]` without the key. Raises `ArgumentError`
-  naming what is wrong.
+  One record per declared check, sorted by id, its inputs read under `root`: the checks
+  as `Surfex.Status.Config.checks!/1` validates `checks:` (§13.14). An input glob that
+  matches no file raises: a misspelt input would leave the check's version blind to what
+  it inspects.
   """
-  @spec declared!(keyword) :: [
-          %{id: String.t(), run: String.t(), verifies: [String.t()], inputs: [String.t()]}
-        ]
-  def declared!(config) do
-    checks =
-      case Keyword.get(config, :checks, []) do
-        list when is_list(list) -> Enum.map(list, &check!/1)
-        other -> raise ArgumentError, "checks: must be a list of checks, got #{inspect(other)}"
-      end
-
-    case checks |> Enum.frequencies_by(& &1.id) |> Enum.find(fn {_, n} -> n > 1 end) do
-      nil -> checks
-      {id, _} -> raise ArgumentError, "checks: the id #{inspect(id)} is declared twice"
-    end
-  end
-
-  defp check!(check) do
-    unless is_list(check) and Keyword.keyword?(check),
-      do: raise(ArgumentError, "checks: each check is a keyword list, got #{inspect(check)}")
-
-    case Keyword.keys(check) -- [:id, :run, :verifies, :inputs] do
-      [] -> :ok
-      unknown -> raise ArgumentError, "checks: unknown keys #{inspect(unknown)}"
-    end
-
-    id = Keyword.get(check, :id)
-
-    unless is_binary(id) and Regex.match?(@id, id),
-      do:
-        raise(
-          ArgumentError,
-          "checks: id must be letters, digits and . _ -, starting with a letter or digit, got #{inspect(id)}"
-        )
-
-    run = Keyword.get(check, :run)
-
-    unless is_binary(run) and String.trim(run) != "",
-      do: raise(ArgumentError, "checks: #{id} needs run: a command, got #{inspect(run)}")
-
-    verifies = check |> Keyword.get(:verifies) |> List.wrap()
-
-    unless verifies != [] and Enum.all?(verifies, &(is_binary(&1) and &1 != "")),
-      do:
-        raise(
-          ArgumentError,
-          "checks: #{id} needs verifies: a spec unit or a list of them, got #{inspect(check[:verifies])}"
-        )
-
-    inputs = Keyword.get(check, :inputs, [])
-
-    unless is_list(inputs) and Enum.all?(inputs, &is_binary/1),
-      do:
-        raise(
-          ArgumentError,
-          "checks: #{id} inputs: must be a list of globs, got #{inspect(inputs)}"
-        )
-
-    %{id: id, run: run, verifies: verifies, inputs: inputs}
-  end
-
-  @doc """
-  One record per declared check (`declared!/1`), sorted by id, its inputs read under
-  `root`. An input glob that matches no file raises: a misspelt input would leave the
-  check's version blind to what it inspects.
-  """
-  @spec records(keyword, String.t()) :: [Scan.t()]
-  def records(config, root) do
-    for check <- declared!(config) do
+  @spec records([Surfex.Status.Config.check()], String.t()) :: [Scan.t()]
+  def records(checks, root) do
+    for check <- checks do
       inputs = inputs!(check, root)
       declaration = declaration(check)
 

@@ -11,6 +11,14 @@ release it merely follows.
 
 ### Added
 
+- **`.surfex.exs` names take the forms the rest of the file does** (#288, #308).
+  `namespace:` takes a module (`namespace: MyApp` reads as `"MyApp"`) or a list of roots,
+  where it took only a string and a module crashed the scan with a `FunctionClauseError`
+  from inside the Elixir scanner (`Surfex.Status.Config.namespace!/1`). A `spec_classes:`
+  name may be an atom (`{:informative, "…"}` names the class `"informative"`). A check's
+  `run:` takes an argv, a non-empty list of strings run with no shell, as `issues: command:`
+  does; a string still runs through `sh -c`. Spec §13.14, §11.4.
+
 - **A citation of a registered process name resolves** (#299, #303). A span naming exactly
   a module alias that the Elixir scanner's source uses as a process name, `name: MyApp.Sessions`
   (a literal alias, in a call or a child-spec tuple alike; not `{:global, …}`, `{:via, …}`
@@ -32,6 +40,21 @@ release it merely follows.
 
 ### Changed
 
+- **Every `.surfex.exs` key is validated before scanning, and refused all at once**
+  (#288, #308). A known key with a value of the wrong type was refused only when its
+  reader ran, after part of the scan, or crashed inside it; now every key has a validator
+  (`Surfex.Status.Config.validate!/1`, asked by `read!/1` and by `items/2`, where every
+  scan starts), and one `ArgumentError` lists every refusal, an unknown key among them, one
+  per line: `KEY: must be FORM, got VALUE`, the value as written. Where one element is
+  wrong (a class's name, its reason, an unknown option), the refusal names that element and
+  quotes the whole entry as written, never a normalised one. The profile keys, the
+  `heading_ids:`/`rule_ids:` grammars, `unit_refs:` and `not_claims:` are refused up front
+  with the rest, and so is a `rules:` entry naming a class `classes:` lacks. Some messages
+  are reworded to that one shape (`require:`, `spec_classes:`, `checks:`, `goldens:`).
+  `checks:` is validated by `Surfex.Status.Config.checks!/1`: the `declared!` function of
+  `Surfex.Scan.Checks` is gone, and `Surfex.Scan.Checks.records/2` takes the validated checks in place of the
+  config. Spec §13.14. Measured on the nine adopters with a `.surfex.exs`: every config
+  reads with no refusal, so none needs a change.
 - **A folded unit keeps its own line ranges** (#292, #307). A unit `fold_paths:` folds a
   heading into was located from its first line to its last folded one, so a chapter whose
   path heading sat after §5 claimed the lines of §1–§5, units of their own. It is now

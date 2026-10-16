@@ -1,6 +1,8 @@
 # Configuration: .surfex.exs
 
-A keyword list, evaluated as data. An unknown key is refused, naming it.
+A keyword list, evaluated as data. An unknown key is refused, naming it, and so is a known
+key whose value isn't in the form it takes: before anything is scanned, every refusal at
+once, each naming the key, the value as written and the accepted form (spec §13.14).
 
 **What is scanned**
 - `sources: ["spec.md"]`: the spec files (required).
@@ -19,7 +21,8 @@ A keyword list, evaluated as data. An unknown key is refused, naming it.
   (`{:tag, KEY}`) or a module attribute before a test (`{:attribute, NAME}`), with `strip:`
   removed from each id. `mix test --only` can't select by them; `mix surfex.test` does
   (spec §11.6).
-- `namespace:`: the code's namespace (defaults to the app name).
+- `namespace:`: the code's namespace (defaults to the app name): a string, a module
+  (`MyApp`), or a list of them where the code has several roots.
 - `scanners: [:elixir, {MyApp.DslScanner, opts}]`: code scanners whose items are combined
   (`Surfex.Scanner`); one key from two scanners is an error. `scanner:` with
   `scanner_opts:` is the one-element list. A scanner for a DSL gives each block it declares
@@ -40,7 +43,8 @@ A keyword list, evaluated as data. An unknown key is refused, naming it.
   it reaches; one whose table isn't literal is listed as unresolved, never failing. A
   scanner's `calls/3` answer for a call still wins (spec §11.10).
 - `checks: [[id:, run:, verifies:, inputs:]]`: gates that verify claims, such as a linter
-  rule or a project's own verification task: a command that can fail, the spec units it
+  rule or a project's own verification task: a command that can fail (`run: "mix x && mix y"`
+  through the shell, or `run: ["mix", "x"]`, an argv with no shell), the spec units it
   verifies (a table's every row as `TABLE/*`), and the files it inspects, which with the
   declaration make its version (`mix surfex.info validation`, spec §11.4).
 - Citation profile: `exclude`, `shape`, `token`, `known_shape`, `normalise`, `subjects`,
@@ -58,7 +62,8 @@ A keyword list, evaluated as data. An unknown key is refused, naming it.
   it shipped behind, is refused (true or false). Delete it; `mix surfex.migrate --report`
   lists what to move to claims.
 - `spec_classes: [{name, reason} | {name, reason, files: globs, headings: regex, marker: regex}]`:
-  classes of spec text that asserts nothing, selected by a marker in the section, a
+  classes of spec text that asserts nothing (a name is a string or an atom), selected by a
+  marker in the section, a
   pattern, or the project's own comment (`mix surfex.info claims`).
 - `not_claims: [regex]`: lines of a section's own text that aren't claims (provenance), each
   matched as written; left out of verdicts and completeness, never out of versions

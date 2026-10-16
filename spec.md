@@ -1533,11 +1533,21 @@ checks: [
   table at once. A reference that resolves to nothing is broken (§13.1), as a test's is.
 - **Its location** is `.surfex.exs`, with no lines.
 
-`Surfex.Scan.Checks.declared!/1` validates the key: each check is a keyword list of `id`
-(unique), `run` (a command), `verifies` (a reference or a list of them) and, optionally,
-`inputs` (a list of globs), and nothing else. Anything else raises, naming it, as does an
-input glob that matches no file: a misspelt input would leave the version blind to what
-the check inspects.
+`Surfex.Status.Config.checks!/1` validates the key, with every other key (§13.14): each
+check is a keyword list of `id` (unique), `run` (a command), `verifies` (a reference or a
+list of them) and, optionally, `inputs` (a list of globs), and nothing else. Anything else
+is refused, naming it, as is an input glob that matches no file: a misspelt input would
+leave the version blind to what the check inspects.
+
+`run` is a string, run through the system's shell (`sh -c`), or an argv, a non-empty list
+of strings run with no shell, its first element the program, as `issues: command:` is
+(§13.7): `run: ["mix", "my_app.layout"]`. The argv needs no quoting, and a pipe or a `&&`
+needs the string.
+
+```test:check-run-argv
+a check's run: given as an argv runs with no shell, each element one argument; given as a
+string it runs through sh -c; a run: of any other form is refused naming both forms
+```
 
 ```test:check-records
 a check is a record of kind check, its version changing with its command, its verifies,
@@ -1562,8 +1572,9 @@ dropped; a unit only a check verifies has no triangle gap for the code in its in
 counts as verified in completeness; status, its JSON and the golden list the checks
 ```
 
-`mix surfex.check [ID…]` runs checks, every one or those named, with the system's shell
-in the project's root (`Surfex.Check.run/3`), and records each result as evidence
+`mix surfex.check [ID…]` runs checks, every one or those named, in the project's root, a
+string `run` with the system's shell and an argv with none (`Surfex.Check.run/3`), and
+records each result as evidence
 (§17.1) in the file the test formatter writes, or in `--evidence PATH`. Exit status 0
 passed and anything else failed; the task then fails, so it is the gate as well. An
 unknown id, or a project with no checks, is an error before anything runs
@@ -3062,6 +3073,50 @@ cited unit disappears would need no pin, but a deferral would never be judged ag
 its decision text is edited, which is the point of citing it. The pin costs one hash in the
 marker, rewritten by hand from the status report each time the deferral is judged again.
 Nothing needs a tracker, so it is judged offline and in every CI job.
+
+### 13.14 Every key is validated before scanning
+<!-- surfex: config-keys -->
+
+Every key a `.surfex.exs` may hold (`Surfex.Status.Config.keys/0`: the log's own and the
+profile's) has a validator, and `Surfex.Status.Config.read!/1` checks every one, with the
+unknown keys, before anything is scanned. `Surfex.Status.Config.validate!/1` does the same
+for a config built in code, and `Surfex.Status.Config.items/2`, where every scan starts,
+asks it first. So no value of the wrong type reaches a scan: it is refused, never a crash
+inside a scanner.
+
+- A refusal names the key, the value as written (the config's own term, never a normalised
+  one) and the form the key takes:
+  `namespace: must be a string ("MyApp"), a module (MyApp), or a non-empty list of them, got 42`.
+  Where one element of a list is wrong, the refusal names that element and quotes the
+  whole entry it sits in.
+- Every refusal of a config is reported at once, one per line, in one `ArgumentError`, an
+  unknown key and `claim_grain:` among them: fixing one key never only reveals the next.
+- Each key's own reader (`Surfex.Status.Config.require!/1`,
+  `Surfex.Status.Config.checks!/1`, `Surfex.Goldens.entries!/1`, …) refuses in the same
+  words, so a library caller's config is held to the same forms. What needs the files (a
+  glob that matches nothing, a named router the source doesn't define) is checked where
+  it is read.
+
+```test:config-keys-refused
+every key a .surfex.exs may hold has a validator; each refuses a wrong-typed value naming
+the key, the value as written and the form, never a crash from inside a scan; several
+refusals are raised together, one per line, before anything is scanned
+```
+
+**Names take the forms the rest of the file takes.**
+- `namespace:` takes a string, a module (`MyApp` reads as `"MyApp"`, as `router:` and
+  `dispatch:` take modules), or a list of either where the project has several roots.
+  `Surfex.Status.Config.namespace!/1` gives them as names.
+- A `spec_classes:` name may be an atom: `:informative` names the class `"informative"`,
+  as `adoption: :trust` names a setting. A refusal says which part of a class is wrong:
+  its name (letters, digits, `-` and `_`), its reason (a non-empty string), or an option
+  other than `files:`, `headings:` and `marker:`.
+
+```test:config-name-forms
+namespace: given a module reads as its name, and a list of roots as each; a spec_classes:
+atom name names the class its string does; a class with a bad name, an empty reason or an
+unknown option is refused naming that part and quoting the class as written
+```
 
 ## 14. Recording
 <!-- surfex: recording -->

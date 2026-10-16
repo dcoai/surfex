@@ -1111,7 +1111,7 @@ defmodule Surfex.StatusTest do
         Config.require!(require: [cod: [:implements]])
       end
 
-      assert_raise ArgumentError, ~r/code needs a non-empty list/, fn ->
+      assert_raise ArgumentError, ~r/code must be a non-empty list/, fn ->
         Config.require!(require: [code: [:likes]])
       end
     end

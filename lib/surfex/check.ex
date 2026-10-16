@@ -14,6 +14,9 @@ defmodule Surfex.Check do
 
   alias Surfex.{Evidence, Scan}
 
+  @typedoc "A check's `run:`: a string run with the shell, or an argv run with none."
+  @type command :: String.t() | [String.t(), ...]
+
   @doc """
   The checks among `scans` that `ids` name, in id order; every check when `ids` is empty.
   An id no check has is an error naming it, as is a project with no checks: running
@@ -40,12 +43,12 @@ defmodule Surfex.Check do
   end
 
   @doc """
-  Runs each check's command with `shell` (by default `shell/2`, the system's shell in
-  `root`), in order, and gives one evidence record per check: passed when the command
-  exits 0, failed otherwise, at the check's declaration's version against its inputs'
-  versions as scanned before the run. One run id and time for them all, as a test run has.
+  Runs each check's command with `shell` (by default `shell/2`, in `root`), in order, and
+  gives one evidence record per check: passed when the command exits 0, failed otherwise,
+  at the check's declaration's version against its inputs' versions as scanned before the
+  run. One run id and time for them all, as a test run has.
   """
-  @spec run([Scan.t()], String.t(), (String.t(), String.t() -> non_neg_integer)) ::
+  @spec run([Scan.t()], String.t(), (command, String.t() -> non_neg_integer)) ::
           [Evidence.t()]
   def run(checks, root, shell \\ &shell/2) do
     run = :crypto.strong_rand_bytes(4) |> Base.encode16(case: :lower)
@@ -67,14 +70,22 @@ defmodule Surfex.Check do
   end
 
   @doc """
-  Runs `command` with the system's shell (`sh -c`) in `root`, its output streamed to
-  standard output, and gives its exit status.
+  Runs `command` in `root`, its output streamed to standard output, and gives its exit
+  status: a string with the system's shell (`sh -c`), an argv with no shell, its first
+  element the program (§11.4).
   """
-  @spec shell(String.t(), String.t()) :: non_neg_integer
-  def shell(command, root) do
+  @spec shell(command, String.t()) :: non_neg_integer
+  def shell(command, root) when is_binary(command), do: shell(["sh", "-c", command], root)
+
+  def shell([program | args], root) do
     {_, status} =
-      System.cmd("sh", ["-c", command], cd: root, into: IO.stream(), stderr_to_stdout: true)
+      System.cmd(program, args, cd: root, into: IO.stream(), stderr_to_stdout: true)
 
     status
   end
+
+  @doc "A check's command as one line to show: a string as written, an argv joined by spaces."
+  @spec display(command) :: String.t()
+  def display(command) when is_binary(command), do: command
+  def display(argv), do: Enum.join(argv, " ")
 end

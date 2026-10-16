@@ -125,7 +125,7 @@ defmodule Mix.Tasks.Surfex.Test do
     cond do
       opts[:list] ->
         for t <- tests, do: Mix.shell().info("#{t.id}  #{hd(Select.args([t]))}")
-        for c <- checks, do: Mix.shell().info("check #{c.id}  #{c.check.run}")
+        for c <- checks, do: Mix.shell().info("check #{c.id}  #{Check.display(c.check.run)}")
 
       true ->
         status = if tests == [], do: 0, else: run_tests(tests, selection, passed, what, root)
@@ -168,7 +168,7 @@ defmodule Mix.Tasks.Surfex.Test do
   defp run_checks(checks, root) do
     records =
       Check.run(checks, root, fn command, root ->
-        Mix.shell().info("running: #{command}")
+        Mix.shell().info("running: #{Check.display(command)}")
         Check.shell(command, root)
       end)
 

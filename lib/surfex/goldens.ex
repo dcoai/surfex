@@ -28,44 +28,9 @@ defmodule Surfex.Goldens do
   @doc "The validated entries of a `.surfex.exs` config. Raises naming a bad entry."
   @spec entries!(keyword) :: [entry]
   def entries!(config) do
-    entries = Keyword.get(config, :goldens, [:status])
-
-    unless is_list(entries) and entries != [],
-      do: raise(ArgumentError, "goldens must be a non-empty list, got #{inspect(entries)}")
-
-    if :trace in entries,
-      do:
-        raise(
-          ArgumentError,
-          "goldens entry :trace was removed in 0.4.0 with the v0.2 trace: " <>
-            "the relation log (:status) replaces it"
-        )
-
-    for entry <- entries, not valid?(entry) do
-      raise ArgumentError,
-            "goldens entry #{inspect(entry)} is not :status, :completeness, {:status | :completeness, output} or {output, module, opts}"
-    end
-
-    outputs = Enum.map(entries, &output/1)
-
-    case outputs -- Enum.uniq(outputs) do
-      [] -> entries
-      dups -> raise ArgumentError, "two goldens write #{inspect(Enum.uniq(dups))}"
-    end
+    Config.Keys.check!(config, :goldens)
+    Keyword.get(config, :goldens, [:status])
   end
-
-  defp valid?(:status), do: true
-  defp valid?({:status, out}), do: is_binary(out)
-  defp valid?(:completeness), do: true
-  defp valid?({:completeness, out}), do: is_binary(out)
-  defp valid?({out, mod, opts}), do: is_binary(out) and is_atom(mod) and Keyword.keyword?(opts)
-  defp valid?(_), do: false
-
-  defp output(:status), do: "RELATIONS.md"
-  defp output({:status, out}), do: out
-  defp output(:completeness), do: "COMPLETENESS.md"
-  defp output({:completeness, out}), do: out
-  defp output({out, _mod, _opts}), do: out
 
   @doc """
   Whether running `entries` needs the project compiled: a project golden's module is

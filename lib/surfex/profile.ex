@@ -182,6 +182,12 @@ defmodule Surfex.Profile do
   defp rule(other),
     do: raise(ArgumentError, "profile rule needs :class and :kinds, got #{inspect(other)}")
 
+  @doc false
+  # Whether `value` is in the form profile key `key` takes; what `.surfex.exs` is validated
+  # by too (`Surfex.Status.Config`, §13.14).
+  @spec valid_key?(atom, term) :: boolean
+  def valid_key?(key, value), do: valid?(key, value)
+
   defp check!(key, value) do
     if valid?(key, value),
       do: :ok,
