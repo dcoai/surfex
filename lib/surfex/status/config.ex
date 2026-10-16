@@ -622,15 +622,30 @@ defmodule Surfex.Status.Config do
   @doc """
   The spec's citations that resolve to nothing (`:unresolved`) or to more than one item
   (`:ambiguous`), read with `Surfex.Cite` under the config's profile (`profile!/2`). A
-  name the profile declares external, or a documented absence, is not broken.
+  name the profile declares external, or a documented absence, is not broken, nor is a
+  process name the Elixir scanner's source registers (§6.7).
   """
   @spec broken_citations(keyword, [Surfex.Item.t()], String.t(), String.t() | nil) :: [
           Surfex.Cite.t()
         ]
   def broken_citations(config, items, root, namespace) do
     items
-    |> Surfex.Cite.citations(profile!(config, namespace, items), root)
+    |> Surfex.Cite.citations(profile!(config, namespace, items), root,
+      registered: registered_names(config, root)
+    )
     |> Enum.filter(&(&1.status in [:unresolved, :ambiguous]))
+  end
+
+  # The process names the Elixir scanner's source registers (its `:paths`); none without
+  # the Elixir scanner.
+  defp registered_names(config, root) do
+    case List.keyfind(scanners!(config), :elixir, 0) do
+      {:elixir, opts} ->
+        Surfex.SourceScan.Registered.names(root, Keyword.get(opts, :paths, ["lib/**/*.ex"]))
+
+      nil ->
+        []
+    end
   end
 
   @doc """
