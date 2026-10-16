@@ -454,9 +454,22 @@ defmodule Surfex.Status.Config do
   deferrals name, and derive gets its answer (§13.7).
   """
   @spec status(keyword, String.t(), String.t(), keyword) :: Surfex.Status.t()
-  def status(config, root, namespace, extra) do
+  def status(config, root, namespace, extra),
+    do: config |> read_status(root, namespace, extra) |> ok!()
+
+  @doc """
+  The status `status/4` derives, as `{:ok, status}`, or `{:error, errors}` when the spec or
+  the tests have scan errors (§11.11): every one, sorted by file and line, and no status.
+  """
+  @spec read_status(keyword, String.t(), String.t(), keyword) ::
+          {:ok, Surfex.Status.t()} | {:error, [Scan.Errors.error()]}
+  def read_status(config, root, namespace, extra) do
+    with {:ok, {scans, options}} <- read(config, root, namespace),
+         do: {:ok, derive(config, root, scans, options, extra)}
+  end
+
+  defp derive(config, root, scans, options, extra) do
     entries = if File.dir?(Surfex.Log.dir(root)), do: Surfex.Log.load(root), else: []
-    {scans, options} = load(config, root, namespace)
     adoption = [adoption: adoption!(config, root)]
 
     extra =
@@ -593,30 +606,57 @@ defmodule Surfex.Status.Config do
   @doc """
   Every scan record under `root`: each markdown section of the `sources`, and each item
   the code scanner finds. Raises when `sources` is missing or matches nothing, since a
-  status over no spec would report every relation orphaned without saying why.
+  status over no spec would report every relation orphaned without saying why. Scan
+  errors in the spec or the tests raise `Surfex.Scan.Errors` once, naming every one
+  (§11.11).
   """
   @spec scans(keyword, String.t()) :: [Scan.t()]
-  def scans(config, root), do: scans(config, root, items(config, root))
+  def scans(config, root) do
+    case scans(config, root, items(config, root)) do
+      {scans, []} -> scans
+      {_scans, errors} -> raise Scan.Errors, errors: errors
+    end
+  end
+
+  # A tagged result's value, or its scan errors raised once.
+  defp ok!({:ok, value}), do: value
+  defp ok!({:error, errors}), do: raise(Scan.Errors, errors: errors)
 
   @doc """
   Everything `Surfex.Status.derive/4` needs, scanning the code once: the scans, and the
   options (`options!/1`'s, plus the spec's broken citations, `broken_citations/3`, and the
   `verifies` tags that verify nothing, `Surfex.Scan.ExUnit.inert/2`).
   `namespace` is the Elixir scanner's root module when the config doesn't name one.
+  Scan errors raise `Surfex.Scan.Errors` once (`read/3`).
   """
   @spec load(keyword, String.t(), String.t() | nil) :: {[Scan.t()], keyword}
-  def load(config, root, namespace) do
+  def load(config, root, namespace), do: config |> read(root, namespace) |> ok!()
+
+  @doc """
+  What `load/3` gives, as `{:ok, {scans, options}}`, or `{:error, errors}`: every scan
+  error in the spec and the tests (§11.11), sorted by file and line.
+  """
+  @spec read(keyword, String.t(), String.t() | nil) ::
+          {:ok, {[Scan.t()], keyword}} | {:error, [Scan.Errors.error()]}
+  def read(config, root, namespace) do
     items = items(config, root)
 
-    inert =
-      case Keyword.get(config, :tests) do
-        nil -> []
-        globs -> Scan.ExUnit.inert(root, globs, declares!(config))
-      end
+    case scans(config, root, items) do
+      {scans, []} ->
+        inert =
+          case Keyword.get(config, :tests) do
+            nil -> []
+            globs -> Scan.ExUnit.inert(root, globs, declares!(config))
+          end
 
-    {scans(config, root, items),
-     options!(config) ++
-       [citations: broken_citations(config, items, root, namespace), inert: inert]}
+        {:ok,
+         {scans,
+          options!(config) ++
+            [citations: broken_citations(config, items, root, namespace), inert: inert]}}
+
+      {_scans, errors} ->
+        {:error, errors}
+    end
   end
 
   @doc """
@@ -683,8 +723,8 @@ defmodule Surfex.Status.Config do
 
     exclude = Keyword.get(config, :exclude, [])
 
-    spec =
-      Scan.Markdown.records(root, sources, exclude,
+    {spec, spec_errors} =
+      Scan.Markdown.read_files(root, sources, exclude,
         heading_ids: Keyword.get(config, :heading_ids),
         rule_ids: Keyword.get(config, :rule_ids),
         subjects: Keyword.get(config, :subjects, []),
@@ -694,16 +734,17 @@ defmodule Surfex.Status.Config do
         unit_refs: unit_refs!(config)
       )
 
-    if spec == [],
+    if spec == [] and spec_errors == [],
       do: raise(ArgumentError, "no spec sections found in #{inspect(sources)} under #{root}")
 
     code = Scan.code(items)
     checks = config |> Scan.Checks.records(root) |> rows(spec, unit_refs!(config))
+    {tests, test_errors} = tests(config, root, code)
 
-    spec ++
-      code ++
-      declared(tests(config, root, code) ++ checks, spec, unit_refs!(config)) ++
-      classes(config)
+    {spec ++
+       code ++
+       declared(tests ++ checks, spec, unit_refs!(config)) ++
+       classes(config), Scan.Errors.sorted(spec_errors ++ test_errors)}
   end
 
   # A check may verify every row of a marked table at once, `TABLE/*` (§11.4): the
@@ -996,7 +1037,7 @@ defmodule Surfex.Status.Config do
   defp tests(config, root, code) do
     case Keyword.get(config, :tests) do
       nil ->
-        []
+        {[], []}
 
       globs ->
         files = Enum.flat_map(globs, &Path.wildcard(Path.join(root, &1)))
@@ -1004,7 +1045,7 @@ defmodule Surfex.Status.Config do
         if files == [],
           do: raise(ArgumentError, "tests: #{inspect(globs)} matches no file under #{root}")
 
-        Scan.ExUnit.records(
+        Scan.ExUnit.read_files(
           root,
           globs,
           code,

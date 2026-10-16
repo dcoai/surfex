@@ -21,6 +21,23 @@ release it merely follows.
   is unchanged. Spec §6.7. Measured on an adopter's spec: 1 of its 21 broken citations
   (a supervisor registered by name) goes, and none other changes.
 
+### Changed
+
+- **Scan errors are collected and reported once** (#292, #305). A spec or test that can't
+  be read as written (an unplaced contract fence, a malformed marker, a repeated id, a
+  block or hint left open, a deferral citing no unit, an unreadable `verifies` or
+  `deviation` tag) no longer stops the scan at the first one with a stack trace. The scan
+  reads past each error to the end of every file, and every mix task reports them all at
+  once, sorted, `file:line: message` each, with no stack trace, failing once.
+  `mix surfex.status --format json` prints `{"failing": true, "scan_errors": [...]}` in place
+  of a status, and a status that scanned has `scan_errors: []`. Messages are unchanged. A
+  team marking a spec for the first time used to need one run per error (8 unplaced fences
+  took 9 runs). `Surfex.Scan.Markdown.sections/3`, `records/4` and
+  `Surfex.Scan.ExUnit.tests/6`, `records/6` still raise `ArgumentError`, once, naming every
+  error one per line. A repeated id is now reported at each later use, not only the
+  first. Spec §11.11. Measured on the nine adopters with a relation log: none has a scan
+  error at its HEAD, so none sees a change.
+
 ### Fixed
 
 - **`validate`'s refusal names its real cause** (#298, #301). With nothing to record,

@@ -17,18 +17,18 @@ defmodule Surfex.Scan.Markdown.ClassMarkers do
 
   # ── Classes and deferrals (§11.7) ───────────────────────────────────────
 
-  # A class or deferral marker on this line: `{:class, name, note, by}`,
+  # A class or deferral marker on this line, as `{st, marker}`: `{:class, name, note, by}`,
   # `{:deferred, ref, reason}` or `{:deferred_unit, ref, pin, reason}` (§13.13), or nil. A
-  # malformed one is an error, never section text.
+  # malformed one is a scan error and `:malformed`, never section text.
   def class_line(st, line, no) do
     cond do
       match = Regex.run(@class_marker, line, capture: :all_but_first) ->
         [text] = match
 
         case Regex.run(@class_name, text, capture: :all_but_first) do
-          [name] -> {:class, declared!(st, no, name), nil, :marker}
-          [name, note] -> {:class, declared!(st, no, name), note, :marker}
-          nil -> fail(st, no, "a class marker is <!-- surfex: class NAME[: REASON] -->")
+          [name] -> declared(st, no, name, nil)
+          [name, note] -> declared(st, no, name, note)
+          nil -> malformed(st, no, "a class marker is <!-- surfex: class NAME[: REASON] -->")
         end
 
       match = Regex.run(@deferred_marker, line, capture: :all_but_first) ->
@@ -42,25 +42,27 @@ defmodule Surfex.Scan.Markdown.ClassMarkers do
           end
 
         cond do
-          Regex.match?(@issue_ref, ref) -> {:deferred, ref, reason}
-          String.starts_with?(text, "#") -> fail(st, no, issue_or_unit(ref))
+          Regex.match?(@issue_ref, ref) -> {st, {:deferred, ref, reason}}
+          String.starts_with?(text, "#") -> malformed(st, no, issue_or_unit(ref))
           true -> unit_deferral(st, no, text)
         end
 
       class = alias_class(st, line) ->
-        {:class, class, nil, :alias}
+        {st, {:class, class, nil, :alias}}
 
       true ->
-        nil
+        {st, nil}
     end
   end
+
+  defp malformed(st, no, why), do: {fail(st, no, why), :malformed}
 
   # A deferral citing a spec unit, `REF[@VERSION][: REASON]` (§13.13): resolved once the
   # whole spec is scanned (`records/4`), so `cites` is nil until then.
   defp unit_deferral(st, no, text) do
     case Regex.run(@unit_deferral, text, capture: :all_but_first) do
       nil ->
-        fail(st, no, issue_or_unit(text))
+        malformed(st, no, issue_or_unit(text))
 
       [ref | rest] ->
         {pin, reason} =
@@ -74,13 +76,12 @@ defmodule Surfex.Scan.Markdown.ClassMarkers do
 
         if pin != nil and not Regex.match?(@pin, pin),
           do:
-            fail(
+            malformed(
               st,
               no,
               "a deferral pins the cited unit's version, 8 lowercase hex characters (REF@1a2b3c4d), got #{inspect(pin)}"
-            )
-
-        {:deferred_unit, ref, pin, reason}
+            ),
+          else: {st, {:deferred_unit, ref, pin, reason}}
     end
   end
 
@@ -89,9 +90,11 @@ defmodule Surfex.Scan.Markdown.ClassMarkers do
       "a deferral names its issue, <!-- surfex: deferred #123[: REASON] --> or group/project#123, " <>
         "or cites a spec unit, <!-- surfex: deferred UNIT[@VERSION][: REASON] -->, got #{inspect(ref)}"
 
-  defp declared!(st, no, name) do
-    Enum.find(st.classes, &(&1.name == name)) ||
-      fail(st, no, "class #{name} isn't declared in spec_classes:")
+  defp declared(st, no, name, note) do
+    case Enum.find(st.classes, &(&1.name == name)) do
+      nil -> malformed(st, no, "class #{name} isn't declared in spec_classes:")
+      class -> {st, {:class, class, note, :marker}}
+    end
   end
 
   # The first class whose `marker:` reads this own-line comment.
@@ -122,27 +125,29 @@ defmodule Surfex.Scan.Markdown.ClassMarkers do
       when block != nil,
       do: defer_block(st, deferral(marker, no), no)
 
-  def class_unit(%{cur: cur} = st, {:deferred_unit, _, _, _} = marker, no) do
-    marked_twice!(st, cur, no)
-    %{st | cur: %{cur | deferred: deferral(marker, no)}}
-  end
-
-  def class_unit(%{cur: cur} = st, {:class, class, note, by}, no) do
-    marked_twice!(st, cur, no)
+  # A second class or deferral on a section is an error, and the first stands.
+  def class_unit(%{cur: %{class: nil, deferred: nil} = cur} = st, {:class, class, note, by}, no) do
     class = %{name: class.name, reason: class.reason, note: note, by: by, line: no}
     %{st | cur: %{cur | class: class}}
   end
 
-  def class_unit(%{cur: cur} = st, {:deferred, _ref, _reason} = marker, no) do
-    marked_twice!(st, cur, no)
-    %{st | cur: %{cur | deferred: deferral(marker, no)}}
+  def class_unit(%{cur: %{class: nil, deferred: nil} = cur} = st, marker, no),
+    do: %{st | cur: %{cur | deferred: deferral(marker, no)}}
+
+  def class_unit(%{cur: cur} = st, _marker, no) do
+    %{line: line} = cur.class || cur.deferred
+
+    fail(
+      st,
+      no,
+      "the section is already classed or deferred by line #{line}: a unit takes one class or deferral"
+    )
   end
 
   defp defer_block(%{block: block} = st, deferral, no) do
     if block.deferred,
-      do: fail(st, no, "block #{block.id} is already deferred (line #{block.deferred.line})")
-
-    %{st | block: %{block | deferred: deferral}}
+      do: fail(st, no, "block #{block.id} is already deferred (line #{block.deferred.line})"),
+      else: %{st | block: %{block | deferred: deferral}}
   end
 
   # What a deferral marker records: an issue's `%{ref, reason}`, or a unit citation's
@@ -152,20 +157,6 @@ defmodule Surfex.Scan.Markdown.ClassMarkers do
 
   defp deferral({:deferred_unit, ref, pin, reason}, no),
     do: %{ref: ref, reason: reason, cites: nil, pin: pin, line: no}
-
-  defp marked_twice!(st, cur, no) do
-    case cur.class || cur.deferred do
-      nil ->
-        :ok
-
-      %{line: line} ->
-        fail(
-          st,
-          no,
-          "the section is already classed or deferred by line #{line}: a unit takes one class or deferral"
-        )
-    end
-  end
 
   # A section's class: its marker's, else the first pattern's that matches it. A deferral
   # marker is the unit's own word too, so no pattern classes a deferred section.

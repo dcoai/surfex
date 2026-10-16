@@ -2,37 +2,38 @@ defmodule Surfex.Scan.Markdown.Ids do
   @moduledoc false
   # The ids a heading or rule is given: written, or read by the project's grammars.
 
-  import Surfex.Scan.Markdown.Lines, only: [checked_id!: 4]
+  import Surfex.Scan.Markdown.Lines, only: [checked_id: 4]
 
   @anchor ~r/^(.*?)\s*\{#([^}\s]*)\}$/
   @heading_comment ~r/^(.*?)\s*<!--\s*surfex:\s*(\S+)\s*-->$/
 
+  # A heading's written id: `{st, text, id}`, the heading's text without it.
   def explicit_id(st, text, no) do
     cond do
       match = Regex.run(@heading_comment, text, capture: :all_but_first) ->
         [text, id] = match
-        {text, checked_id!(st, no, id, "heading")}
+        {st, id} = checked_id(st, no, id, "heading")
+        {st, text, id}
 
       match = Regex.run(@anchor, text, capture: :all_but_first) ->
         [text, id] = match
-        {text, checked_id!(st, no, id, "anchor")}
+        {st, id} = checked_id(st, no, id, "anchor")
+        {st, text, id}
 
       true ->
-        {text, nil}
+        {st, text, nil}
     end
   end
 
-  # The first grammar that matches the heading reads its id.
+  # The first grammar that matches the heading reads its id: `{st, id}`.
   def grammar_id(%{grammar: grammars} = st, text, no),
     do: read_id(grammars, st, text, no, "heading")
 
   def read_id(grammars, st, text, no, what) do
-    Enum.find_value(grammars, fn grammar ->
-      case Regex.named_captures(grammar, text) do
-        %{"id" => id} -> checked_id!(st, no, id, what)
-        nil -> nil
-      end
-    end)
+    case Enum.find_value(grammars, &Regex.named_captures(&1, text)) do
+      %{"id" => id} -> checked_id(st, no, id, what)
+      nil -> {st, nil}
+    end
   end
 
   # `heading_ids:` (or `rule_ids:`, read the same way) is one grammar or a list of them,

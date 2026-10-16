@@ -39,8 +39,9 @@ defmodule Surfex.Scan.ExUnit do
       deviation test by.
 
   A `verifies` value that isn't a literal string or list of strings, or a `deviation`
-  that isn't a literal string, raises, naming the file and line: a declaration that can't
-  be read must not be silently dropped.
+  that isn't a literal string, is a scan error naming the file and line (§11.11): a
+  declaration that can't be read must not be silently dropped. `read/6` reports every one
+  in every file at once; `records/6` and `tests/6` raise `ArgumentError` once naming them.
   """
 
   alias Surfex.{Scan, SourceScan}
@@ -49,6 +50,9 @@ defmodule Surfex.Scan.ExUnit do
   # What defines a test: ExUnit's `test`, and ExUnitProperties' `property`, which ExUnit runs
   # as a test named "property …" (#141).
   @definers [:test, :property]
+
+  # Where support code lives: compiled for the tests, never run as one (§11.5).
+  @support ["test/support/**/*.ex", "test/support/**/*.exs"]
 
   @doc """
   Every test in every file matching `globs` under `root`, in file then source order.
@@ -71,16 +75,46 @@ defmodule Surfex.Scan.ExUnit do
           [map]
         ) :: [Scan.t()]
   def records(root, globs, code \\ [], scanners \\ [], routes \\ [], forms \\ []) do
+    case read_files(root, globs, code, scanners, routes, forms) do
+      {tests, []} -> tests
+      {_tests, errors} -> raise ArgumentError, Surfex.Scan.Errors.lines(errors)
+    end
+  end
+
+  @doc """
+  The tests `records/6` gives, and the scan errors of the files `globs` match and of the
+  support code under `test/support` (§11.11), as `{tests, errors}`: every declaration that
+  can't be read, at its line, in file and line order. Each file is read once.
+  """
+  @spec read_files(
+          String.t(),
+          [String.t()],
+          [Scan.t()],
+          [{atom, keyword}],
+          [Surfex.SourceScan.Routes.route()],
+          [map]
+        ) :: {[Scan.t()], [Surfex.Scan.Errors.error()]}
+  def read_files(root, globs, code \\ [], scanners \\ [], routes \\ [], forms \\ []) do
     root = Path.expand(root)
     known = known(code, scanners, routes, forms)
+    tests = files(root, globs)
 
-    globs
-    |> Enum.flat_map(&Path.wildcard(Path.join(root, &1)))
-    |> Enum.uniq()
-    |> Enum.sort()
-    |> Enum.flat_map(fn path ->
-      path |> File.read!() |> scan_text(Path.relative_to(path, root), known)
-    end)
+    {found, errors} =
+      tests
+      |> Enum.map(fn path ->
+        file = Path.relative_to(path, root)
+        ast = quoted(path, file)
+        {scan_ast(ast, file, known), unreadable(ast, %{file: file, forms: forms})}
+      end)
+      |> Enum.unzip()
+
+    support =
+      for path <- files(root, @support) -- tests,
+          error <-
+            support_unreadable(quoted(path, Path.relative_to(path, root)), forms, path, root),
+          do: error
+
+    {List.flatten(found), Surfex.Scan.Errors.sorted(List.flatten(errors) ++ support)}
   end
 
   @doc """
@@ -106,19 +140,109 @@ defmodule Surfex.Scan.ExUnit do
           ],
           [map]
         ) :: [Scan.t()]
-  def tests(text, file, code \\ [], scanners \\ [], routes \\ [], forms \\ []),
-    do: scan_text(text, file, known(code, scanners, routes, forms))
+  def tests(text, file, code \\ [], scanners \\ [], routes \\ [], forms \\ []) do
+    ast = Code.string_to_quoted!(text, file: file, token_metadata: true)
 
-  defp scan_text(text, file, known) do
-    text
-    |> Code.string_to_quoted!(file: file, token_metadata: true)
+    case unreadable(ast, %{file: file, forms: forms}) do
+      [] -> scan_ast(ast, file, known(code, scanners, routes, forms))
+      errors -> raise ArgumentError, Surfex.Scan.Errors.lines(errors)
+    end
+  end
+
+  defp scan_ast(ast, file, known) do
+    ast
     |> SourceScan.defmodules()
     |> Enum.flat_map(&module_tests(&1, file, known))
     |> number_duplicates()
   end
 
-  # Where support code lives: compiled for the tests, never run as one (§11.5).
-  @support ["test/support/**/*.ex", "test/support/**/*.exs"]
+  # ── Declarations that can't be read (§11.11) ────────────────────────────
+
+  # Every tag a test file's tests take that can't be read, where the scan reads tags: a
+  # `@tag` or declared attribute form at a module's, describe's or comprehension's level,
+  # a `@moduletag` at a module's and a `@describetag` at a describe's.
+  defp unreadable(ast, src) do
+    ast
+    |> SourceScan.defmodules()
+    |> Enum.flat_map(fn
+      {:defmodule, _, [_aliases, [do: body]]} -> level_unreadable(exprs(body), :moduletag, src)
+      _other -> []
+    end)
+  end
+
+  defp level_unreadable(exprs, level, src) do
+    Enum.flat_map(exprs, fn
+      {:@, _, [{attribute, _, [value]}]} = expr when attribute == :tag or attribute == level ->
+        tag_unreadable(value, expr, src)
+
+      {:@, _, [{name, _, [value]}]} = expr when is_atom(name) ->
+        form_unreadable(name, value, expr, src)
+
+      {:describe, _, [_name, [do: block]]} ->
+        level_unreadable(exprs(block), :describetag, src)
+
+      {:for, _, args} when is_list(args) ->
+        {_generators, [[do: block]]} = Enum.split(args, -1)
+        level_unreadable(exprs(block), nil, src)
+
+      _ ->
+        []
+    end)
+  end
+
+  # Support code's tags, at any level, as `inert/3` reads them.
+  defp support_unreadable(ast, forms, path, root) do
+    src = %{file: Path.relative_to(path, root), forms: forms}
+
+    {_, found} =
+      Macro.prewalk(ast, [], fn
+        {:@, _, [{attribute, _, [value]}]} = expr, acc
+        when attribute in [:tag, :describetag, :moduletag] ->
+          {expr, acc ++ tag_unreadable(value, expr, src)}
+
+        {:@, _, [{name, _, [value]}]} = expr, acc when is_atom(name) ->
+          {expr, acc ++ form_unreadable(name, value, expr, src)}
+
+        node, acc ->
+          {node, acc}
+      end)
+
+    found
+  end
+
+  # A tag's keys surfex reads that hold what can't be read: `verifies:` and each declared
+  # tag form's (a string or a list of strings), `deviation:` (a string or nil).
+  defp tag_unreadable(value, expr, src) do
+    pairs = tag_pairs(value)
+    keys = [:verifies | for(%{kind: :tag, name: name} <- src.forms, do: name)]
+
+    ids =
+      for key <- keys,
+          Keyword.has_key?(pairs, key),
+          not ids?(Keyword.get(pairs, key)),
+          do: unreadable_error(expr, src, "#{key}: must be a string or a list of strings")
+
+    deviation =
+      with {:ok, ref} when not is_binary(ref) and ref != nil <- Keyword.fetch(pairs, :deviation),
+           do: [unreadable_error(expr, src, "deviation: must be a string")],
+           else: (_ -> [])
+
+    deviation ++ ids
+  end
+
+  defp form_unreadable(name, value, expr, src) do
+    if Enum.any?(src.forms, &match?(%{kind: :attribute, name: ^name}, &1)) and not ids?(value),
+      do: [unreadable_error(expr, src, "#{name}: must be a string or a list of strings")],
+      else: []
+  end
+
+  defp ids?(value),
+    do: value == nil or is_binary(value) or (is_list(value) and Enum.all?(value, &is_binary/1))
+
+  defp unreadable_error(expr, src, message) do
+    {line, _} = SourceScan.line_range(expr) || {0, 0}
+    %{file: src.file, line: line, message: message}
+  end
 
   @typedoc "A `verifies` tag that verifies nothing, and why (§11.5)."
   @type inert :: %{
@@ -499,13 +623,7 @@ defmodule Surfex.Scan.ExUnit do
   @read [:verifies, :deviation, :skip]
 
   defp read_tags(value, expr, src) do
-    pairs =
-      case value do
-        list when is_list(list) -> if Keyword.keyword?(list), do: list, else: []
-        {:%{}, _, pairs} -> pairs
-        atom when is_atom(atom) -> [{atom, true}]
-        _ -> []
-      end
+    pairs = tag_pairs(value)
 
     own =
       for key <- @read, Keyword.has_key?(pairs, key), into: %{} do
@@ -539,24 +657,32 @@ defmodule Surfex.Scan.ExUnit do
     verifies ++ formed
   end
 
+  defp tag_pairs(value) do
+    case value do
+      list when is_list(list) -> if Keyword.keyword?(list), do: list, else: []
+      {:%{}, _, pairs} -> pairs
+      atom when is_atom(atom) -> [{atom, true}]
+      _ -> []
+    end
+  end
+
   defp read(:verifies, value, expr, file), do: ids(value, expr, file, :verifies)
   defp read(:deviation, ref, _expr, _file) when is_binary(ref) or is_nil(ref), do: ref
 
   defp read(:skip, value, _expr, _file), do: skip(value)
 
-  defp read(:deviation, _other, expr, file) do
-    {line, _} = SourceScan.line_range(expr) || {0, 0}
-    raise ArgumentError, "#{file}:#{line}: deviation: must be a string"
-  end
+  # A value that can't be read is a scan error `unreadable/2` reports at its line; read,
+  # it declares nothing.
+  defp read(:deviation, _other, _expr, _file), do: nil
 
   defp ids(nil, _expr, _file, _key), do: []
   defp ids(id, _expr, _file, _key) when is_binary(id), do: id
 
-  defp ids(list, expr, file, key) when is_list(list) do
-    if Enum.all?(list, &is_binary/1), do: list, else: bad(expr, file, key)
+  defp ids(list, _expr, _file, _key) when is_list(list) do
+    if Enum.all?(list, &is_binary/1), do: list, else: []
   end
 
-  defp ids(_other, expr, file, key), do: bad(expr, file, key)
+  defp ids(_other, _expr, _file, _key), do: []
 
   # ExUnit's skip tag as `mix test --include skip:VALUE` matches it: a literal string or
   # `true` by its text, `false` or nil as not skipped, anything else (computed when the
@@ -573,11 +699,6 @@ defmodule Surfex.Scan.ExUnit do
     do: ids |> Enum.uniq() |> Enum.reject(&(&1 == Enum.join(ids)))
 
   defp unselectable(_id), do: []
-
-  defp bad(expr, file, key) do
-    {line, _} = SourceScan.line_range(expr) || {0, 0}
-    raise ArgumentError, "#{file}:#{line}: #{key}: must be a string or a list of strings"
-  end
 
   # A test's or describe's name as written: a literal, or an interpolation shown as source.
   defp text(name) when is_binary(name), do: name

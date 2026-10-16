@@ -45,9 +45,10 @@ defmodule Surfex.Scan.Markdown do
 
   Written ids and block, hint and table ids share one namespace per file with the section
   ids: letters, digits and `. _ - :`, starting with a letter or digit. A duplicate is an
-  error naming both lines. Every error raises
-  `ArgumentError` naming the file and line: a spec that can't be read as written must not
-  scan as something else.
+  error naming both lines. Every error names the file and line: a spec that can't be read
+  as written must not scan as something else. The scan reads past each one and reports
+  them together (`read/3`, `read_files/4`, §11.11); `sections/3` and `records/4` raise
+  `ArgumentError` once, naming every one.
 
   A line inside a fenced code block is never a heading or a marker; the block is part of
   the body. Fences follow CommonMark: backticks or tildes, closed only by the same
@@ -55,6 +56,7 @@ defmodule Surfex.Scan.Markdown do
   """
 
   alias Surfex.Scan
+  alias Surfex.Scan.Errors
   alias Surfex.Scan.Markdown.{ClassMarkers, Contract, Fence, Fold, Ids, Table}
 
   import Surfex.Scan.Markdown.Lines
@@ -73,52 +75,85 @@ defmodule Surfex.Scan.Markdown do
 
   @doc """
   Every unit of every markdown file of the spec under `root`, in order: the files
-  `globs` match, less those under an `exclude` prefix (`files/3`).
+  `globs` match, less those under an `exclude` prefix (`files/3`). A spec with scan errors
+  (`read_files/4`) raises `ArgumentError` once, naming every error.
   """
   @spec records(String.t(), [String.t()], [String.t()], keyword) :: [Scan.t()]
   def records(root, globs, exclude \\ [], opts \\ []) do
-    root
-    |> files(globs, exclude)
-    |> Enum.flat_map(fn file ->
-      root |> Path.join(file) |> File.read!() |> sections(file, opts)
-    end)
-    |> cited(Keyword.get(opts, :unit_refs, []))
+    case read_files(root, globs, exclude, opts) do
+      {scans, []} -> scans
+      {_scans, errors} -> raise ArgumentError, Errors.lines(errors)
+    end
+  end
+
+  @doc """
+  The units `records/4` gives, and every scan error in every file of the spec (§11.11)
+  sorted by file and line, as `{scans, errors}`: each file is read to its end (`read/3`),
+  and every file is read.
+  """
+  @spec read_files(String.t(), [String.t()], [String.t()], keyword) ::
+          {[Scan.t()], [Errors.error()]}
+  def read_files(root, globs, exclude \\ [], opts \\ []) do
+    {scans, errors} =
+      root
+      |> files(globs, exclude)
+      |> Enum.map(fn file -> root |> Path.join(file) |> File.read!() |> read(file, opts) end)
+      |> Enum.unzip()
+
+    {scans, cite_errors} = scans |> List.flatten() |> cited(Keyword.get(opts, :unit_refs, []))
+
+    {scans, Errors.sorted(List.flatten(errors) ++ cite_errors)}
   end
 
   # Each deferral that cites a spec unit (§13.13), resolved against the whole spec with the
   # project's `unit_refs:`: its `cites` is the unit's full id. One that names no unit, or
-  # several, raises naming its file and line, as a malformed marker does.
+  # several, is a scan error naming its file and line, as a malformed marker is.
   defp cited(scans, unit_refs) do
     if Enum.any?(scans, &cites?/1) do
       resolver = Scan.resolver(scans, unit_refs)
 
-      for scan <- scans do
-        if cites?(scan),
-          do: %{scan | deferred: %{scan.deferred | cites: cite!(resolver, scan)}},
-          else: scan
-      end
+      Enum.map_reduce(scans, [], fn scan, errors ->
+        if cites?(scan) do
+          case cite(resolver, scan) do
+            {:ok, id} -> {%{scan | deferred: %{scan.deferred | cites: id}}, errors}
+            {:error, error} -> {scan, [error | errors]}
+          end
+        else
+          {scan, errors}
+        end
+      end)
     else
-      scans
+      {scans, []}
     end
   end
 
   defp cites?(%Scan{deferred: %{cites: nil}}), do: true
   defp cites?(_scan), do: false
 
-  defp cite!(resolver, %Scan{deferred: %{ref: ref, line: line}, location: %{file: file}}) do
+  defp cite(resolver, %Scan{deferred: %{ref: ref, line: line}, location: %{file: file}}) do
     case Scan.resolve(resolver, ref) do
       {:ok, unit} ->
-        unit.id
+        {:ok, unit.id}
 
       {:error, :unknown} ->
-        raise ArgumentError,
-              "#{file}:#{line}: the deferral cites #{inspect(ref)}, which is no spec unit: " <>
-                "a deferral names an issue (#123) or a spec unit the spec's sources scan"
+        {:error,
+         %{
+           file: file,
+           line: line,
+           message:
+             "the deferral cites #{inspect(ref)}, which is no spec unit: " <>
+               "a deferral names an issue (#123) or a spec unit the spec's sources scan"
+         }}
 
       {:error, {:ambiguous, ids}} ->
-        raise ArgumentError,
-              "#{file}:#{line}: the deferral cites #{inspect(ref)}, which names several spec " <>
-                "units (#{Enum.join(ids, ", ")}): cite one by its full id"
+        {:error,
+         %{
+           file: file,
+           line: line,
+           message:
+             "the deferral cites #{inspect(ref)}, which names several spec " <>
+               "units (#{Enum.join(ids, ", ")}): cite one by its full id"
+         }}
     end
   end
 
@@ -149,9 +184,25 @@ defmodule Surfex.Scan.Markdown do
   names the lines of a section's or marked block's own text that aren't claims: each unit
   records the lines each pattern matched and whether any own text is left (`not_claims`,
   `claimless?/1`), and its version still covers every line.
+
+  A text with scan errors (`read/3`) raises `ArgumentError` once, naming every error.
   """
   @spec sections(String.t(), String.t(), keyword) :: [Scan.t()]
   def sections(text, file, opts \\ []) do
+    case read(text, file, opts) do
+      {scans, []} -> scans
+      {_scans, errors} -> raise ArgumentError, Errors.lines(errors)
+    end
+  end
+
+  @doc """
+  The units of one markdown text, as `sections/3` reads them, and its scan errors (§11.11):
+  `{scans, errors}`, each error `%{file, line, message}`, in line order. A line in error is
+  read as the error says (an unplaced fence is no unit, a malformed marker no text) and the
+  scan goes on to the end of the text, so one run reports every error in it.
+  """
+  @spec read(String.t(), String.t(), keyword) :: {[Scan.t()], [Errors.error()]}
+  def read(text, file, opts \\ []) do
     grammar = Ids.heading_grammars(Keyword.get(opts, :heading_ids), :heading_ids)
     rule_grammar = Ids.heading_grammars(Keyword.get(opts, :rule_ids), :rule_ids)
 
@@ -160,13 +211,13 @@ defmodule Surfex.Scan.Markdown do
     classes = Keyword.get(opts, :spec_classes, [])
     patterns = not_claims!(Keyword.get(opts, :not_claims, []))
 
-    {sections, units} =
+    {sections, units, errors} =
       split(lines, file, {grammar, rule_grammar, subjects, classes}, unclosed(lines))
 
-    {sections, owners} =
+    {sections, owners, fold_errors} =
       if Keyword.get(opts, :fold_paths, false) == true,
         do: Fold.fold(sections, file),
-        else: {sections, %{}}
+        else: {sections, %{}, []}
 
     sections =
       sections
@@ -179,7 +230,7 @@ defmodule Surfex.Scan.Markdown do
 
     ids = Map.new(sections, &{&1.n, &1.id})
     ids = Map.merge(ids, Map.new(owners, fn {n, owner} -> {n, Map.fetch!(ids, owner)} end))
-    unique!(sections, units, file)
+    errors = errors ++ fold_errors ++ duplicates(sections, units, file)
 
     # A section sits under the section of the nearest heading above it at a higher level
     # (§13.4); one under a folded heading sits under its owner.
@@ -212,7 +263,8 @@ defmodule Surfex.Scan.Markdown do
         }
       end
 
-    Enum.sort_by(section_records ++ unit_records, &elem(&1.location.lines, 0))
+    {Enum.sort_by(section_records ++ unit_records, &elem(&1.location.lines, 0)),
+     Errors.sorted(errors)}
   end
 
   # The lines of a unit's own text that a `not_claims:` pattern matches (§13.12): each
@@ -287,7 +339,8 @@ defmodule Surfex.Scan.Markdown do
       rules: nil,
       pending: nil,
       after_text: false,
-      units: []
+      units: [],
+      errors: []
     }
 
     st =
@@ -297,8 +350,8 @@ defmodule Surfex.Scan.Markdown do
         %{st | after_text: text_line?(st, line, fence, st.fence)}
       end)
 
-    if st.pending, do: names_nothing(st, st.pending)
-
+    # What is still open at the end of the text: each one left unfinished is one error.
+    st = if st.pending, do: names_nothing(st, st.pending), else: st
     st = if st.rule, do: close_rule(st), else: st
 
     st =
@@ -308,8 +361,10 @@ defmodule Surfex.Scan.Markdown do
         marker -> fail(st, marker.first, "the contract marker has no fence after it")
       end
 
-    if st.rules && st.rules.kind == nil,
-      do: fail(st, st.rules.first, "rules #{st.rules.name} has no list after its marker")
+    st =
+      if st.rules && st.rules.kind == nil,
+        do: fail(st, st.rules.first, "rules #{st.rules.name} has no list after its marker"),
+        else: st
 
     st =
       cond do
@@ -323,15 +378,18 @@ defmodule Surfex.Scan.Markdown do
           Table.close_table(st)
       end
 
-    if st.hint, do: fail(st, st.hint.first, "test hint #{st.hint.id} is never closed")
-    if st.block, do: fail(st, st.block.first, "block #{st.block.id} is never closed")
+    st =
+      if st.hint, do: fail(st, st.hint.first, "test hint #{st.hint.id} is never closed"), else: st
+
+    st =
+      if st.block, do: fail(st, st.block.first, "block #{st.block.id} is never closed"), else: st
 
     sections =
       [st.cur | st.done]
       |> Enum.reverse()
       |> Enum.map(&%{&1 | body: Enum.reverse(&1.body)})
 
-    {sections, Enum.reverse(st.units)}
+    {sections, Enum.reverse(st.units), st.errors}
   end
 
   defp section(n, heading, anchor, path, first),
@@ -353,17 +411,21 @@ defmodule Surfex.Scan.Markdown do
 
     cond do
       Fence.info(line) != nil or own_marker?(line) or heading(line) != nil ->
-        names_nothing(st, pending)
+        step({line, no}, names_nothing(st, pending))
 
       item = list_item(line) ->
-        if lead(item.text), do: fail(st, no, "the list item has two ids, #{id} and its own")
+        st =
+          if lead(item.text),
+            do: fail(st, no, "the list item has two ids, #{id} and its own"),
+            else: st
+
         open_rule(st, id, item, no)
 
       String.trim(line) != "" and not Regex.match?(@table_line, line) ->
         open_rule(st, id, %{indent: nil, content: nil, text: line}, no)
 
       true ->
-        names_nothing(st, pending)
+        step({line, no}, names_nothing(st, pending))
     end
   end
 
@@ -398,15 +460,22 @@ defmodule Surfex.Scan.Markdown do
   defp step({line, no}, st) do
     {prose?, fence} = Fence.step(line, st.fence)
     opened? = st.fence == nil and fence != nil
-    classing = if prose?, do: class_line(st, line, no)
+    {st, classing} = if prose?, do: class_line(st, line, no), else: {st, nil}
 
     cond do
-      # A contract marker's fence: blank lines may come between, nothing else.
+      # A contract marker's fence: blank lines may come between, nothing else. A marker with
+      # none is an error, and the line is read as if the marker weren't there.
       st.contract != nil ->
         cond do
-          opened? -> open_contract(%{st | fence: fence}, line, no)
-          String.trim(line) == "" -> st
-          true -> fail(st, st.contract.first, "the contract marker has no fence after it")
+          opened? ->
+            open_contract(%{st | fence: fence}, line, no)
+
+          String.trim(line) == "" ->
+            st
+
+          true ->
+            st = fail(st, st.contract.first, "the contract marker has no fence after it")
+            step({line, no}, %{st | contract: nil})
         end
 
       prose? and contract_marker(st, line, no) != :none ->
@@ -418,7 +487,7 @@ defmodule Surfex.Scan.Markdown do
         open_contract(%{st | fence: fence, contract: contract}, line, no)
 
       opened? and hint_id(line) != nil ->
-        id = checked_id!(st, no, hint_id(line), "test hint")
+        {st, id} = checked_id(st, no, hint_id(line), "test hint")
         hint = %{id: id, first: no, body: [], within: within(st)}
         %{st | fence: fence, hint: hint, cur: extend(st.cur, line, no)}
 
@@ -430,7 +499,7 @@ defmodule Surfex.Scan.Markdown do
       # Any other id comment of its own names the paragraph or list item after it.
       prose? and Map.has_key?(st.unclosed, no) ->
         {id, why} = Map.fetch!(st.unclosed, no)
-        id = checked_id!(st, no, id, "rule")
+        {st, id} = checked_id(st, no, id, "rule")
         %{st | pending: {no, id, why}, cur: extend(st.cur, line, no)}
 
       # A marked list: its items are rules, until something that isn't one of them.
@@ -439,30 +508,41 @@ defmodule Surfex.Scan.Markdown do
 
       prose? and Regex.match?(@rules_marker, line) ->
         [name] = Regex.run(@rules_marker, line, capture: :all_but_first)
-        name = checked_id!(st, no, name, "rules")
+        {st, name} = checked_id(st, no, name, "rules")
         %{st | rules: %{name: name, first: no, kind: nil}, cur: extend(st.cur, line, no)}
 
       prose? and item_lead(line) != nil ->
         {item, id} = item_lead(line)
-        open_rule(st, checked_id!(st, no, id, "rule"), item, no)
+        {st, id} = checked_id(st, no, id, "rule")
+        open_rule(st, id, item, no)
 
       prose? and not st.after_text and list_item(line) == nil and paragraph_lead(line) != nil ->
-        id = checked_id!(st, no, paragraph_lead(line), "rule")
+        {st, id} = checked_id(st, no, paragraph_lead(line), "rule")
         open_rule(st, id, %{indent: nil, content: nil, text: line}, no)
+
+      # A malformed marker is an error (`class_line/3`) and no text.
+      classing == :malformed ->
+        %{st | cur: extend(st.cur, line, no)}
 
       classing != nil ->
         class_unit(%{st | cur: extend(st.cur, line, no)}, classing, no)
 
+      # A block left open at a heading is an error, and no unit.
       prose? and heading(line) != nil ->
-        if st.block,
-          do: fail(st, no, "block #{st.block.id} (line #{st.block.first}) spans a heading")
+        st =
+          if st.block,
+            do: %{
+              fail(st, no, "block #{st.block.id} (line #{st.block.first}) spans a heading")
+              | block: nil
+            },
+            else: st
 
         new_section(st, heading(line), no)
 
       prose? and Regex.match?(@table_marker, line) ->
         [id, options] = Regex.run(@table_marker, line, capture: :all_but_first)
-        id = checked_id!(st, no, id, "table")
-        options = Table.table_options(st, no, id, options)
+        {st, id} = checked_id(st, no, id, "table")
+        {st, options} = Table.table_options(st, no, id, options)
 
         table = %{
           id: id,
@@ -477,18 +557,24 @@ defmodule Surfex.Scan.Markdown do
 
       prose? and Regex.match?(@open_block, line) ->
         [id] = Regex.run(@open_block, line, capture: :all_but_first)
-        id = checked_id!(st, no, id, "block")
+        {st, id} = checked_id(st, no, id, "block")
 
-        if st.block,
-          do:
-            fail(st, no, "block #{id} opens inside block #{st.block.id} (line #{st.block.first})")
+        # A block opening inside another is an error, and its marker no text.
+        if st.block do
+          st
+          |> fail(no, "block #{id} opens inside block #{st.block.id} (line #{st.block.first})")
+          |> Map.update!(:cur, &extend(&1, line, no))
+        else
+          block = %{id: id, first: no, body: [], within: within(st), deferred: nil}
+          %{st | block: block, cur: extend(st.cur, line, no)}
+        end
 
-        block = %{id: id, first: no, body: [], within: within(st), deferred: nil}
-        %{st | block: block, cur: extend(st.cur, line, no)}
+      prose? and Regex.match?(@close_block, line) and st.block == nil ->
+        st
+        |> fail(no, "<!-- /surfex --> closes no block")
+        |> Map.update!(:cur, &extend(&1, line, no))
 
       prose? and Regex.match?(@close_block, line) ->
-        unless st.block, do: fail(st, no, "<!-- /surfex --> closes no block")
-
         %{
           st
           | block: nil,
@@ -514,14 +600,24 @@ defmodule Surfex.Scan.Markdown do
     # An id the author wrote wins: a comment at the end of the heading or on the line after
     # it, or a {#anchor}. Then the project's heading grammar (heading_ids:). Neither: the
     # heading path.
-    {text, explicit} = explicit_id(st, text, no)
+    {st, text, explicit} = explicit_id(st, text, no)
     after_id = with {id, _why} when id != "contract" <- Map.get(st.unclosed, no + 1), do: id
 
-    if explicit && after_id,
-      do: fail(st, no + 1, "heading of line #{no} already has a written id, #{explicit}")
+    # A second written id is an error; the first stands.
+    {st, written} =
+      cond do
+        explicit && after_id ->
+          {fail(st, no + 1, "heading of line #{no} already has a written id, #{explicit}"),
+           explicit}
 
-    written = explicit || (after_id && checked_id!(st, no + 1, after_id, "heading"))
-    anchor = written || grammar_id(st, text, no)
+        after_id ->
+          checked_id(st, no + 1, after_id, "heading")
+
+        true ->
+          {st, explicit}
+      end
+
+    {st, anchor} = if written, do: {st, written}, else: grammar_id(st, text, no)
 
     above = Enum.drop_while(st.stack, fn {l, _, _} -> l >= level end)
     n = st.cur.n + 1
@@ -621,8 +717,10 @@ defmodule Surfex.Scan.Markdown do
       table.lines == [] and String.trim(line) == "" ->
         st
 
+      # A marker with no table is an error, and the line is read as if it weren't there.
       table.lines == [] ->
-        fail(st, table.first, "table #{table.id} has no table after its marker")
+        st = fail(st, table.first, "table #{table.id} has no table after its marker")
+        step({line, no}, %{st | table: nil})
 
       true ->
         step({line, no}, Table.close_table(st))
@@ -654,27 +752,26 @@ defmodule Surfex.Scan.Markdown do
   end
 
   # One unit per function the fence's signatures name; its other lines, and its fences,
-  # stay in the body around it.
+  # stay in the body around it. A fence with no signature, or one that can't be read, is an
+  # error and no unit: its lines are all body.
   defp close_contract(%{contract: contract} = st) do
     lines = Enum.reverse(contract.lines)
 
-    sigs =
+    {st, sigs, rest} =
       case Contract.signatures(lines, contract.module) do
         {:ok, [], _rest} ->
-          fail(
-            st,
-            contract.first,
-            "the contract fence holds no @spec, @callback or @macrocallback"
-          )
+          {fail(
+             st,
+             contract.first,
+             "the contract fence holds no @spec, @callback or @macrocallback"
+           ), [], lines}
 
         {:ok, sigs, rest} ->
-          {sigs, rest}
+          {st, sigs, rest}
 
         {:error, no, why} ->
-          fail(st, no, "the contract signature #{why}")
+          {fail(st, no, "the contract signature #{why}"), [], lines}
       end
-
-    {sigs, rest} = sigs
 
     units =
       for sig <- sigs do
@@ -704,28 +801,32 @@ defmodule Surfex.Scan.Markdown do
 
     cond do
       item != nil and rules.kind in [nil, item.kind] ->
-        id =
-          case lead(item.text) do
-            {id, _rest} ->
-              id
+        st = %{st | rules: %{rules | kind: item.kind}}
 
-            nil ->
-              read_id(st.rule_grammar, st, String.trim(item.text), no, "rule") ||
-                fail(
-                  st,
-                  no,
-                  "an item of rules #{rules.name} has no id: it needs an id comment or an id rule_ids: reads"
-                )
+        {st, id} =
+          case lead(item.text) do
+            {id, _rest} -> checked_id(st, no, id, "rule")
+            nil -> read_id(st.rule_grammar, st, String.trim(item.text), no, "rule")
           end
 
-        st = %{st | rules: %{rules | kind: item.kind}}
-        open_rule(st, checked_id!(st, no, id, "rule"), item, no)
+        # An item with no id is an error, and no rule: its line is the section's.
+        if id,
+          do: open_rule(st, id, item, no),
+          else:
+            st
+            |> fail(
+              no,
+              "an item of rules #{rules.name} has no id: it needs an id comment or an id rule_ids: reads"
+            )
+            |> Map.update!(:cur, &extend(&1, line, no))
 
       rules.kind == nil and String.trim(line) == "" ->
         %{st | cur: extend(st.cur, line, no)}
 
+      # A marker with no list is an error, and the line is read as if it weren't there.
       rules.kind == nil ->
-        fail(st, rules.first, "rules #{rules.name} has no list after its marker")
+        st = fail(st, rules.first, "rules #{rules.name} has no list after its marker")
+        step({line, no}, %{st | rules: nil})
 
       true ->
         step({line, no}, %{st | rules: nil})
@@ -754,20 +855,15 @@ defmodule Surfex.Scan.Markdown do
     numbered
   end
 
-  defp unique!(sections, units, file) do
+  # Every id used again: one error at each later use, naming the line that has it first.
+  defp duplicates(sections, units, file) do
     named =
       Enum.map(sections, &{&1.id, &1.first}) ++ Enum.map(units, &{"#{file}##{&1.id}", &1.first})
 
-    named
-    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
-    |> Enum.find(fn {_id, lines} -> length(lines) > 1 end)
-    |> case do
-      nil ->
-        :ok
-
-      {id, [first, second | _]} ->
-        raise ArgumentError, "#{file}:#{second}: #{id} is already the id of line #{first}"
-    end
+    for {id, lines} <- Enum.group_by(named, &elem(&1, 0), &elem(&1, 1)),
+        [first | again] = Enum.sort(lines),
+        line <- again,
+        do: %{file: file, line: line, message: "#{id} is already the id of line #{first}"}
   end
 
   @doc """

@@ -60,26 +60,43 @@ defmodule Surfex.Scan.Markdown.Rules do
 
     cond do
       opened? and hint_id(line) != nil ->
-        id = checked_id!(st, no, hint_id(line), "test hint")
+        {st, id} = checked_id(st, no, hint_id(line), "test hint")
         hint = %{id: id, first: no, body: [], within: within(st)}
         %{st | fence: fence, hint: hint, cur: extend(st.cur, line, no)}
 
+      # The nested rule is an error; its line stays the rule's text.
       item != nil and lead(item.text) != nil ->
-        fail(st, no, "rule #{rule.id} (line #{rule.first}) can't hold another rule")
-
-      st.fence == nil and class_line(st, line, no) != nil ->
-        fail(
-          st,
-          no,
-          "a class or deferral marker can't sit in rule #{rule.id} (line #{rule.first}): a rule is a claim"
-        )
+        st
+        |> fail(no, "rule #{rule.id} (line #{rule.first}) can't hold another rule")
+        |> rule_text(line, no, fence)
 
       true ->
-        blank? = String.trim(line) == ""
-        last = if blank?, do: rule.last, else: no
-        rule = %{rule | body: [line | rule.body], last: last, blank: blank? and fence == nil}
-        %{st | fence: fence, rule: rule, cur: extend(st.cur, line, no)}
+        {st, classing} = if st.fence == nil, do: class_line(st, line, no), else: {st, nil}
+
+        # A marker in a rule, well formed or not, is an error and no text of the rule's.
+        case classing do
+          nil ->
+            rule_text(st, line, no, fence)
+
+          :malformed ->
+            %{st | cur: extend(st.cur, line, no)}
+
+          _marker ->
+            st
+            |> fail(
+              no,
+              "a class or deferral marker can't sit in rule #{rule.id} (line #{rule.first}): a rule is a claim"
+            )
+            |> Map.update!(:cur, &extend(&1, line, no))
+        end
     end
+  end
+
+  defp rule_text(%{rule: rule} = st, line, no, fence) do
+    blank? = String.trim(line) == ""
+    last = if blank?, do: rule.last, else: no
+    rule = %{rule | body: [line | rule.body], last: last, blank: blank? and fence == nil}
+    %{st | fence: fence, rule: rule, cur: extend(st.cur, line, no)}
   end
 
   def close_rule(%{rule: rule} = st),

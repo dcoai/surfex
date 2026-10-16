@@ -35,15 +35,17 @@ defmodule Surfex.Scan.Markdown.Lines do
          else: (_ -> nil)
   end
 
-  def checked_id!(st, no, id, what) do
+  # An id as written, `{st, id}`: one that breaks the id rule is a scan error, and the scan
+  # goes on with it as written (it fails at the end).
+  def checked_id(st, no, id, what) do
     if Regex.match?(~r/^#{@id}$/, id),
-      do: id,
+      do: {st, id},
       else:
-        fail(
-          st,
-          no,
-          "#{what} id #{inspect(id)} must be letters, digits and . _ - :, starting with a letter or digit"
-        )
+        {fail(
+           st,
+           no,
+           "#{what} id #{inspect(id)} must be letters, digits and . _ - :, starting with a letter or digit"
+         ), id}
   end
 
   def heading(line) do
@@ -62,5 +64,8 @@ defmodule Surfex.Scan.Markdown.Lines do
     spaces |> String.replace("\t", "    ") |> String.length()
   end
 
-  def fail(st, no, why), do: raise(ArgumentError, "#{st.file}:#{no}: #{why}")
+  # A scan error at line `no` (§11.11): recorded, never raised, so the scan reads on to the
+  # end of the file and every error is reported at once.
+  def fail(st, no, why),
+    do: %{st | errors: [%{file: st.file, line: no, message: why} | st.errors]}
 end
