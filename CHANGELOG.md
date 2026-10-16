@@ -55,6 +55,23 @@ release it merely follows.
 
 ### Changed
 
+- **A heading naming a qualified function names its module** (#287, #312). Under
+  ``### `MyApp.Feed.Telemetry.emit/3` ``, an unqualified `@spec emit(…)` in a contract fence
+  was keyed by an outer heading's module, or found none; it is now keyed
+  `MyApp.Feed.Telemetry.emit/3`. `` `M.f` `` names `M` for every arity of `f`; another
+  function in the fence still climbs to the headings above. With the code scanned, the name
+  resolves as a citation does (the profile's `normalise:` rewrites, then an item key or an
+  alias). And where a nearer heading names a module only through other functions, the
+  signature's outer module lacks it and the nearer one has it, the scan stops with an error
+  naming both headings' lines rather than keying it silently to a function that doesn't
+  exist. `Surfex.Scan.Markdown.sections/3` takes the code's names as `code:`. Spec §11.14.
+  **Upgrade step:** a contract under such a heading changes id, so its relations show as
+  orphaned: `mix surfex.suggest` proposes the move. Measured: none of the nine adopters with
+  a relation log has a contract fence; on three volunteer specs with their fences marked (in
+  a scratch copy), two fences that no module placed now read, one keyed by the qualified
+  function its team expected, the other by its short module as written (a broken citation
+  until a rewrite names the module), and none raises the new error.
+
 - **Every `.surfex.exs` key is validated before scanning, and refused all at once**
   (#288, #308). A known key with a value of the wrong type was refused only when its
   reader ran, after part of the scan, or crashed inside it; now every key has a validator

@@ -692,7 +692,8 @@ defmodule Surfex.Status.Config do
         fold_paths: fold_paths!(config),
         spec_classes: spec_classes!(config, Scan.Markdown.files(root, sources, exclude)),
         not_claims: not_claims!(config),
-        unit_refs: unit_refs!(config)
+        unit_refs: unit_refs!(config),
+        code: Surfex.Cite.Contracts.code(items, rewrites(config))
       )
 
     if spec == [] and spec_errors == [],
@@ -706,6 +707,21 @@ defmodule Surfex.Status.Config do
        code ++
        declared(tests ++ checks, spec, unit_refs!(config)) ++
        classes(config), Scan.Errors.sorted(spec_errors ++ test_errors)}
+  end
+
+  # The profile's `normalise:` rewrites, as profile!/3 gives them, without needing the
+  # namespace: the config's, else the Elixir scanner's defaults when it is a code scanner.
+  defp rewrites(config) do
+    cond do
+      Keyword.has_key?(config, :normalise) ->
+        Keyword.fetch!(config, :normalise)
+
+      elixir_scanner?(config) ->
+        Keyword.fetch!(Surfex.Scanner.Elixir.profile_defaults([]), :normalise)
+
+      true ->
+        []
+    end
   end
 
   # A check may verify every row of a marked table at once, `TABLE/*` (§11.4): the
