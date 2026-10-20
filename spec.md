@@ -228,11 +228,10 @@ A public type's version, from `Surfex.SourceScan.types/1`, is the hash of its de
 alone: changing one type changes it and nothing else's.
 
 **A version covers definitions, not their documentation.** A function's or type's
-version leaves out its `@doc` or `@typedoc`, so rewriting a docstring dangles nothing, and
-surfex doesn't hold a published docstring to the spec: a `@doc` that states a contract
-(its return values, its errors) can drift from the spec without any relation noticing.
-Read the two together when either changes. A module's version does cover its
-`@moduledoc` (above). Holding docstrings to the spec is planned with claim-level relations.
+version leaves out its `@doc` or `@typedoc`, so rewriting a docstring re-versions nothing.
+A module's version does cover its `@moduledoc` (above). The docstring has a version of its
+own (§3.4), which only a relation to a contract unit reads (§13.18): a `@doc` that states
+a contract can't drift from the contract unit without that relation dangling.
 
 A module's version, from `Surfex.SourceScan.module_hash/1`, covers its **public surface**,
 not its whole body:
@@ -317,7 +316,8 @@ give it as `doc`, beside `hash`:
   which then has no item. Metadata alone (`@doc since: "1.2"`) states no text either.
 - A docstring that isn't a literal (an interpolation, an attribute) is versioned by its
   expression.
-- It never reaches `hash`, so a docstring edit changes no version.
+- It never reaches `hash`, so a docstring edit changes no version. A relation to a
+  contract unit reads it apart (§13.18).
 - A module has none: its version covers its `@moduledoc` (§3.3).
 
 The Elixir scanner (§5.2) puts it on each function, macro and type item it reports (`doc`,
@@ -2254,7 +2254,7 @@ only state surfex keeps. Scanners never read or write it (§11).
 | `parents` | the entry ids it follows for the same relation; two means it resolves a fork |
 | `op` | `relate`, `retire`, `mark` or `observe` (`Surfex.Log.Entry.ops/0`) |
 | `type` | a relation's: `implements`, `refines`, `depends_on`, `tests`, `verifies` (a test or a check verifies a spec unit, §11.4) or `excuses` (`Surfex.Log.Entry.types/0`); or a mark's: `needs_update` (`Surfex.Log.Entry.mark_types/0`); or an observation's: `red_green` or `baseline` (`Surfex.Log.Entry.observation_types/0`) |
-| `ends` | a relation's two `{kind, id, hash}`, of the kinds `Surfex.Log.Entry.kinds/0` lists (`spec`, `code`, `test`, `class`, `check`) and the grammar below allows. A `null` hash is a **planned** end: an id that didn't exist when the relation was recorded (§14). At most one end is planned. A mark's one end: the spec unit, at its hash. An observation's one end: the test, at its version, or for a `red_green`, a check at its declaration's version (§17.1) |
+| `ends` | a relation's two `{kind, id, hash}`, of the kinds `Surfex.Log.Entry.kinds/0` lists (`spec`, `code`, `test`, `class`, `check`) and the grammar below allows. A `null` hash is a **planned** end: an id that didn't exist when the relation was recorded (§14). At most one end is planned. The code end of an `implements` to a contract unit also has `doc`, the code's doc version (§13.18), after `hash`; only that end carries one, and an end without it keeps its line and id. A mark's one end: the spec unit, at its hash. An observation's one end: the test, at its version, or for a `red_green`, a check at its declaration's version (§17.1) |
 | `by` | who recorded it |
 | `note` | why, optionally |
 | `basis` | how the entry validates the relation (§18): `evidence`, `review`, `judgement`, `baseline` (§18.1) or `proposed` (`Surfex.Log.Entry.bases/0`); absent when it validates nothing, which keeps every older entry's canonical line and id |
@@ -2344,6 +2344,11 @@ observation carries exactly its own
 ```test:through-entry
 through is written after basis only when set, so an entry without it keeps its line and
 id; an entry other than a reviewed implements carrying it, or a blank one, is refused
+```
+
+```test:doc-entry
+an end's doc is written after its hash only when set, so an end without it keeps its
+entry's line and id; doc on any end but an implements' code end, or a blank one, is refused
 ```
 
 ```test:migrates-entry
@@ -3498,6 +3503,46 @@ mode after the failing and reported counts, and the JSON's gaps carry file and m
 ```test:triangle-file-refused
 any other triangle: shape is refused, by the config and by derive alike, and a glob
 matching no spec file is refused, naming it
+```
+
+### 13.18 A contract relation dangles when its doc changes
+<!-- surfex: contract-doc-versions -->
+
+A contract unit (§11.1) states a function's signature and behaviour, and so does the
+function's `@doc`: the same thing in two places, which can drift. So an `implements`
+relation whose spec end is a contract unit also holds the code's **doc version** (§3.4):
+- **Recorded.** Each relate, confirm and review of such a relation records the code end's
+  doc version beside its version, as `doc` (§12.1). No other relation records one: a
+  section's, a rule's or a row's relation to the same function records its version alone,
+  since only a contract restates the documentation.
+- **Dangles.** When the code's doc version differs from the one recorded, the relation is
+  **dangling** and names the end apart: the status lists it with "doc changed", beside
+  "changed" for a version, so a reviewer knows which moved. The JSON's end says
+  `doc_changed`. Rewording, adding or removing a docstring changes the doc version;
+  re-wrapping one doesn't (§3.4), and `@doc false` hides the function, whose relations are
+  then orphaned as before.
+- **Settled by a review.** A passing run reads no docstring, so `mix surfex.confirm
+  --evidence` leaves a relation whose doc changed dangling. `mix surfex.validate` settles
+  it, recording the new doc version, its note saying the doc and the contract still agree.
+- **Not recorded yet is not changed.** A relation recorded without a doc version, as every
+  one before doc versions existed, doesn't dangle for a doc edit: there is nothing to
+  differ from. Its next relate, confirm or review records one. Until then the status
+  counts it, "N contract relations have no doc version recorded yet" (the JSON lists them
+  under `doc_unrecorded`), so the gap is visible and shrinks on its own, with no wave of
+  dangling relations on upgrade.
+- There is no key to opt out: marking a contract states its behaviour, and a minimal
+  `@doc` rarely changes.
+
+```test:contract-doc-dangles
+a contract relation records its code's doc version and dangles, as doc changed, when the
+@doc is reworded, added or removed, not when it is re-wrapped; a section relation to the
+same code doesn't; evidence leaves a doc change dangling and a review records the new one
+```
+
+```test:contract-doc-unrecorded
+a contract relation recorded without a doc version doesn't dangle on a doc edit and is
+counted as having none recorded yet; a section relation is never counted; the next relate
+records it
 ```
 
 ## 14. Recording

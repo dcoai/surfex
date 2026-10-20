@@ -72,8 +72,13 @@ or a check-confirmed claim reads as not run. Checks verify: they never carry
 right verifier for a rule over the whole code (style, safety, layout); a behaviour is a
 test's.
 
-**Docstrings aren't covered.** A function's version leaves out its `@doc`, so a docstring
-that states a contract can drift from the spec unnoticed. Read them together.
+**Docstrings and contracts.** A function's version leaves out its `@doc`, which has a doc
+version of its own. Only a relation to a contract unit records it: rewording, adding or
+removing the `@doc` dangles that relation as "doc changed", and `mix surfex.confirm
+--evidence` leaves it, since a run reads no docstring. Review it with `mix
+surfex.validate`, the note saying the doc and the contract still agree. A relation
+recorded before doc versions existed is counted ("N contract relations have no doc
+version recorded yet") until its next relate, confirm or review records one.
 
 **Judgement**: `mix surfex.confirm FROM TO --type T --note N`. For a spec reworded with
 no change in behaviour (`verifies`), or an excuse. It refuses `implements`.

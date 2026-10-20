@@ -291,10 +291,9 @@ defmodule Surfex.Migrate do
   defp carry_baseline(scans, entries, code, claim, unit, meta) do
     by = Map.new(scans, &{{&1.kind, &1.id}, &1})
 
+    # A claim that is a contract unit records the code's doc version too (§13.18).
     ends =
-      for {kind, id} <- [{:code, code}, {:spec, claim}],
-          s = by[{kind, id}],
-          do: %{kind: kind, id: id, hash: s.hash}
+      Record.ends(:implements, for(key <- [{:code, code}, {:spec, claim}], s = by[key], do: s))
 
     relation = Entry.relation(:implements, hd(ends), List.last(ends))
 

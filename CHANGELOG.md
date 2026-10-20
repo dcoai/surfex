@@ -11,6 +11,27 @@ release it merely follows.
 
 ### Added
 
+- **A contract relation dangles when its function's `@doc` changes** (#325, #332, plan v2
+  B.6). A contract unit and its function's docstring state the same thing twice, and
+  until now nothing noticed when one moved. An `implements` relation whose spec end is a
+  contract unit now records the code's doc version (#331) on its code end, as `doc` in the
+  log (written only when set, so every existing entry keeps its line and id). Rewording,
+  adding or removing the `@doc` dangles that relation, and the status names it apart:
+  `(doc changed: …)` beside `(changed: …)`, `doc_changed` in the JSON's end and on
+  `Surfex.Status` relation statuses. Re-wrapping a docstring doesn't, and `@doc false`
+  keeps its meaning (the function is hidden). A passing run reads no docstring, so
+  `mix surfex.confirm --evidence` leaves a doc change dangling: `mix surfex.validate`
+  settles it. Relations to sections, rules and rows record no doc version; there is no
+  opt-out key. Spec §13.18, §12.1, §3.3, §3.4. **Upgrade step:** none, and no wave of
+  dangling relations: a contract relation recorded before this has no doc version, so it
+  doesn't dangle on a doc edit; the status counts them, `N contract relations have no doc
+  version recorded yet` (`doc_unrecorded` in `Surfex.Status` and the JSON), and each
+  gets one on its next relate, confirm or review. Measured read-only on the two adopters
+  that asked for this: neither has a contract fence or a relation log yet, so a doc edit
+  dangles nothing there today; over their 1,003 and 4,289 code items no code version
+  changes, and 852 and 3,414 functions, macros and types carry a doc version (174 and 671
+  of them undocumented).
+
 - **`known_external:` can take its vocabulary from a committed golden** (#322, #330). A
   spec that names a peer system's or a C header's symbols no longer copies a golden that
   already lists them into `.surfex.exs`: `known_external:` takes a list of maps and
