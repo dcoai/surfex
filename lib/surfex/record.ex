@@ -40,7 +40,7 @@ defmodule Surfex.Record do
     with {:ok, a} <- find(scans, from),
          {:ok, b} <- find(scans, to),
          basis = relate_basis(type, a, Keyword.get(opts, :evidence, [])),
-         [a, b] = [end_(a), end_(b)],
+         [a, b] = ends(type, [a, b]),
          {:ok, entry} <-
            entry(:relate, type, [a, b], parents(entries, type, a, b), with_basis(meta, basis)) do
       {:ok, [entry]}
@@ -943,7 +943,7 @@ defmodule Surfex.Record do
           note -> {note, meta}
         end
 
-      ends = Enum.map(tip.ends, &end_(Map.fetch!(status.scans, {&1.kind, &1.id})))
+      ends = ends(type, Enum.map(tip.ends, &Map.fetch!(status.scans, {&1.kind, &1.id})))
 
       parents = Enum.map(r.tips, & &1.id)
 
@@ -1014,7 +1014,12 @@ defmodule Surfex.Record do
     do: versions |> Enum.sort() |> Enum.map_join(", ", fn {id, h} -> "#{id}@#{h}" end)
 
   # An implements relation: some test verifying the spec unit (exactly, when the spec is
-  # what changed) and exercising the code, with evidence green against the code now.
+  # what changed) and exercising the code, with evidence green against the code now. A
+  # contract relation whose doc changed is not one evidence settles (§13.18): a run reads
+  # no docstring, so a review does.
+  defp implements_evidence(%{state: :dangling, doc_changed: [_ | _]}, _status, _evidence),
+    do: nil
+
   defp implements_evidence(
          %{relation: {:implements, {:code, c}, {:spec, s}}} = r,
          status,
@@ -1510,7 +1515,7 @@ defmodule Surfex.Record do
 
   defp confirm_each(dangling, status, meta) do
     Enum.reduce_while(dangling, {:ok, []}, fn r, {:ok, acc} ->
-      ends = Enum.map(r.tip.ends, fn e -> end_(Map.fetch!(status.scans, {e.kind, e.id})) end)
+      ends = ends(r.type, Enum.map(r.tip.ends, &Map.fetch!(status.scans, {&1.kind, &1.id})))
 
       case entry(:relate, r.type, ends, Enum.map(r.tips, & &1.id), meta) do
         {:ok, entry} -> {:cont, {:ok, [entry | acc]}}
@@ -1638,6 +1643,25 @@ defmodule Surfex.Record do
   end
 
   defp end_(%Scan{kind: kind, id: id, hash: hash}), do: %{kind: kind, id: id, hash: hash}
+
+  @doc false
+  # The ends of a `type` relation between `scans`, each at its current version (§12.1). An
+  # implements to a contract unit records its code end's doc version too (§13.18): the one
+  # relation a docstring edit dangles. Every relate, confirm and review goes through here,
+  # so each records it, and one recorded before it existed gets it then.
+  @spec ends(atom, [Scan.t()]) :: [Entry.end_()]
+  def ends(type, scans) do
+    contract? =
+      type == :implements and Enum.any?(scans, &match?(%Scan{kind: :spec, role: :contract}, &1))
+
+    Enum.map(scans, fn
+      %Scan{kind: :code, doc: doc} = scan when contract? and is_binary(doc) ->
+        Map.put(end_(scan), :doc, doc)
+
+      scan ->
+        end_(scan)
+    end)
+  end
 
   # ── Ids ─────────────────────────────────────────────────────────────────
 

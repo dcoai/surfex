@@ -215,6 +215,14 @@ defmodule Surfex.Status.Report do
         n -> "  reviewed through a named path: #{n} relations\n"
       end
 
+    # Counted, not listed: the gap closes on its own as relations are re-recorded (§13.18).
+    doc_unrecorded =
+      case length(status.doc_unrecorded) do
+        0 -> []
+        1 -> "  1 contract relation has no doc version recorded yet\n"
+        n -> "  #{n} contract relations have no doc version recorded yet\n"
+      end
+
     IO.iodata_to_binary([
       "relation status: #{verdict}\n",
       Enum.map(counts, &[&1, "\n"]),
@@ -222,6 +230,7 @@ defmodule Surfex.Status.Report do
       unselectable,
       baseline,
       through,
+      doc_unrecorded,
       units,
       claims_text(status),
       unearned_count(status),
@@ -507,6 +516,17 @@ defmodule Surfex.Status.Report do
         end),
       "unvalidated" =>
         Enum.map(status.unvalidated, fn %{relation: {type, {ak, a}, {bk, b}}} ->
+          %{
+            "type" => Atom.to_string(type),
+            "ends" => [
+              %{"kind" => Atom.to_string(ak), "id" => a},
+              %{"kind" => Atom.to_string(bk), "id" => b}
+            ]
+          }
+        end),
+      # Contract relations with no doc version recorded yet (§13.18).
+      "doc_unrecorded" =>
+        Enum.map(status.doc_unrecorded, fn {type, {ak, a}, {bk, b}} ->
           %{
             "type" => Atom.to_string(type),
             "ends" => [
@@ -803,11 +823,15 @@ defmodule Surfex.Status.Report do
       "Other end" => {:code, "#{bk} #{bid}"},
       "State" => state,
       "Changed" =>
-        if(r.changed == [],
+        if(r.changed == [] and r.doc_changed == [],
           do: :absent,
           else:
             {:raw,
-             Enum.map_intersperse(r.changed, ", ", fn {k, id} -> Span.code("#{k} #{id}") end)}
+             Enum.intersperse(
+               Enum.map(r.changed, fn {k, id} -> Span.code("#{k} #{id}") end) ++
+                 Enum.map(r.doc_changed, fn {k, id} -> [Span.code("#{k} #{id}"), " (doc)"] end),
+               ", "
+             )}
         )
     }
   end
@@ -825,6 +849,14 @@ defmodule Surfex.Status.Report do
           if r.changed == [],
             do: "",
             else: " (#{label}: #{Enum.map_join(r.changed, ", ", &describe(&1, status))})"
+
+        # Which end moved (§13.18): a contract's doc reads apart from its code.
+        changed =
+          if r.doc_changed == [],
+            do: changed,
+            else:
+              changed <>
+                " (doc changed: #{Enum.map_join(r.doc_changed, ", ", &describe(&1, status))})"
 
         tips =
           if r.state == :conflicted,
@@ -1249,6 +1281,7 @@ defmodule Surfex.Status.Report do
             "now" => scan && scan.hash,
             # A planned relation's `changed` names the ends still waiting to exist.
             "changed" => r.state != :planned and key in r.changed,
+            "doc_changed" => key in r.doc_changed,
             "planned" => r.state == :planned and key in r.changed,
             "location" => scan && location_json(scan.location)
           }

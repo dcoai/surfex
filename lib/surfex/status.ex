@@ -17,7 +17,10 @@ defmodule Surfex.Status do
     * **planned** — an end was recorded without a hash, before it existed, and still
       isn't scanned. When it appears, the relation dangles on that end until confirmed.
     * **dangling** — both ids are scanned, but at least one is at a different hash than
-      the tip recorded; the report names which ends changed
+      the tip recorded; the report names which ends changed. A relation to a contract unit
+      also dangles when its code's doc version differs from the one recorded (§13.18),
+      named apart in `doc_changed`; one recorded without a doc version is listed under
+      `doc_unrecorded` instead, until its next relate, confirm or review records one
     * **current** — both ends are at the hashes the tip recorded
 
   A relation is also **impacted** when one of its ends depends on something (a
@@ -131,6 +134,8 @@ defmodule Surfex.Status do
           type: atom,
           state: state,
           changed: [{atom, String.t()}],
+          # The code ends of a contract relation whose doc version changed (§13.18).
+          doc_changed: [{atom, String.t()}],
           impacted: boolean,
           deviates: [String.t()],
           migrates: String.t() | nil,
@@ -152,6 +157,8 @@ defmodule Surfex.Status do
           broken: [%{scan: Scan.t(), type: atom, ref: String.t(), reason: term}],
           triangle: [gap],
           unvalidated: [%{relation: tuple}],
+          # Live contract relations whose judgement records no doc version yet (§13.18).
+          doc_unrecorded: [tuple],
           undeclared: [%{test: String.t(), spec: String.t()}],
           unrecorded: [
             %{test: String.t(), spec: String.t(), retired: nil | %{note: String.t() | nil}}
@@ -466,6 +473,7 @@ defmodule Surfex.Status do
       unchecked: unchecked,
       triangle: triangle(scans, relations, exercises, verdict.verdicts, triangle),
       unvalidated: unvalidated(relations, baselined, scans),
+      doc_unrecorded: doc_unrecorded(relations, by_id),
       baselined: baselined,
       adoption: adoption.setting,
       marks: marks(mark_entries, by_id),
@@ -751,10 +759,10 @@ defmodule Surfex.Status do
     tips = tips_of(group)
     tip = representative(tips)
 
-    {state, changed} =
+    {state, changed, doc_changed} =
       case tip do
         %Entry{} -> judge_tip(tip, by_id)
-        nil -> {:conflicted, []}
+        nil -> {:conflicted, [], []}
       end
 
     %{
@@ -762,6 +770,7 @@ defmodule Surfex.Status do
       type: type,
       state: state,
       changed: changed,
+      doc_changed: doc_changed,
       impacted: false,
       deviates: [],
       migrates: migrates(type, group),
@@ -799,9 +808,9 @@ defmodule Surfex.Status do
   end
 
   defp judgement(%Entry{} = e),
-    do: {e.op, e.type, Enum.map(e.ends, &{&1.kind, &1.id, &1.hash}), e.basis}
+    do: {e.op, e.type, Enum.map(e.ends, &{&1.kind, &1.id, &1.hash, Map.get(&1, :doc)}), e.basis}
 
-  defp judge_tip(%Entry{op: :retire}, _by_id), do: {:retired, []}
+  defp judge_tip(%Entry{op: :retire}, _by_id), do: {:retired, [], []}
 
   # An end recorded at a hash and no longer scanned is gone: orphaned. An end recorded
   # without one (planned) and still not scanned is waiting: planned. Once a planned id is
@@ -815,22 +824,52 @@ defmodule Surfex.Status do
 
     cond do
       gone != [] ->
-        {:orphaned, gone}
+        {:orphaned, gone, []}
 
       waiting != [] ->
-        {:planned, waiting}
+        {:planned, waiting, []}
 
       true ->
         changed = for {key, hash, scan} <- looked, scan.hash != hash, do: key
+        doc_changed = doc_changed(ends, by_id)
 
         cond do
           # A claim nothing has validated (§18): it fails like a dangling relation until
           # evidence or a review validates it.
-          basis == :proposed -> {:proposed, changed}
-          changed == [] -> {:current, []}
-          true -> {:dangling, changed}
+          basis == :proposed -> {:proposed, changed, doc_changed}
+          changed == [] and doc_changed == [] -> {:current, [], []}
+          true -> {:dangling, changed, doc_changed}
         end
     end
+  end
+
+  # The code ends whose doc version moved since a contract relation recorded it (§13.18):
+  # only while the other end is a contract unit, and only where a doc version was
+  # recorded. An end recorded without one has none to differ from, so a relation recorded
+  # before doc versions existed doesn't dangle for one (`doc_unrecorded/2`).
+  defp doc_changed(ends, by_id) do
+    if Enum.any?(ends, &match?(%Scan{role: :contract}, by_id[{&1.kind, &1.id}])),
+      do:
+        for(
+          %{kind: :code, doc: doc} = e <- ends,
+          by_id[{:code, e.id}].doc != doc,
+          do: {:code, e.id}
+        ),
+      else: []
+  end
+
+  # The live implements relations to a contract unit whose judgement in force records no
+  # doc version for code that has one (§13.18): they can't dangle on a doc edit until a
+  # relate, confirm or review records it. Counted, so the gap is visible as it shrinks.
+  defp doc_unrecorded(relations, by_id) do
+    for %{type: :implements, state: state, tip: %Entry{ends: ends}, relation: relation} <-
+          relations,
+        state in [:current, :dangling, :proposed],
+        Enum.any?(ends, &match?(%Scan{role: :contract}, by_id[{&1.kind, &1.id}])),
+        %{kind: :code} = code <- ends,
+        not Map.has_key?(code, :doc),
+        is_binary(by_id[{:code, code.id}].doc),
+        do: relation
   end
 
   # A current implements or verifies relation whose tip has no validating basis (§18): one

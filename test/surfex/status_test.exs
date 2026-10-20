@@ -918,6 +918,7 @@ defmodule Surfex.StatusTest do
                "recorded" => "c1",
                "now" => "c2",
                "changed" => true,
+               "doc_changed" => false,
                "planned" => false,
                "location" => %{"file" => "f", "lines" => [1, 2]}
              }

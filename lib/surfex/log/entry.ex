@@ -11,7 +11,7 @@ defmodule Surfex.Log.Entry do
   | `parents` | the entry ids it follows for the same relation; two means it resolves a fork |
   | `op` | `:relate` or `:retire` |
   | `type` | `:implements`, `:refines`, `:depends_on`, `:tests`, `:verifies` (a test or a check verifies a spec unit) or `:excuses` |
-  | `ends` | two `%{kind, id, hash}`: in order, from → to, for a directed type; sorted for an undirected one, so A↔B and B↔A are one relation. A `nil` hash (JSON `null`) is a **planned** end: an id that didn't exist when the relation was recorded. At most one end is planned. |
+  | `ends` | two `%{kind, id, hash}`: in order, from → to, for a directed type; sorted for an undirected one, so A↔B and B↔A are one relation. A `nil` hash (JSON `null`) is a **planned** end: an id that didn't exist when the relation was recorded. At most one end is planned. The code end of an `implements` to a contract unit also carries `doc`, the code's doc version (§13.18); absent otherwise |
   | `by` | who recorded it |
   | `note` | why, optionally |
   | `basis` | how it validates the relation: `:evidence`, `:review`, `:judgement`, `:baseline` or `:proposed`; absent when it validates nothing |
@@ -71,7 +71,13 @@ defmodule Surfex.Log.Entry do
   # "A depends on B" is not "B depends on A": these keep their ends in the order given.
   @directed [:depends_on, :refines, :tests, :verifies]
 
-  @type end_ :: %{kind: atom, id: String.t(), hash: String.t() | nil}
+  # `doc`, the code's doc version, only on an implements' code end (§12.1, §13.18).
+  @type end_ :: %{
+          required(:kind) => atom,
+          required(:id) => String.t(),
+          required(:hash) => String.t() | nil,
+          optional(:doc) => String.t()
+        }
   @type t :: %__MODULE__{
           id: String.t(),
           at: String.t(),
@@ -262,11 +268,7 @@ defmodule Surfex.Log.Entry do
       {"parents", entry.parents},
       {"op", Atom.to_string(entry.op)},
       {"type", Atom.to_string(entry.type)},
-      {"ends",
-       Enum.map(
-         entry.ends,
-         &{:object, [{"kind", Atom.to_string(&1.kind)}, {"id", &1.id}, {"hash", &1.hash}]}
-       )},
+      {"ends", Enum.map(entry.ends, &end_object/1)},
       {"by", entry.by},
       {"note", entry.note}
     ]
@@ -280,6 +282,21 @@ defmodule Surfex.Log.Entry do
     fields = if with_id?, do: [{"id", entry.id} | fields], else: fields
     IO.iodata_to_binary(value({:object, fields}))
   end
+
+  # An end's object. `doc` is written only when set, so every end recorded without it keeps
+  # its entry's line and id (§12.1).
+  defp end_object(%{doc: doc} = end_) when is_binary(doc),
+    do:
+      {:object,
+       [
+         {"kind", Atom.to_string(end_.kind)},
+         {"id", end_.id},
+         {"hash", end_.hash},
+         {"doc", doc}
+       ]}
+
+  defp end_object(end_),
+    do: {:object, [{"kind", Atom.to_string(end_.kind)}, {"id", end_.id}, {"hash", end_.hash}]}
 
   # JSON with keys in the given order: `:json.encode/1` makes no promise about a map's.
   defp value({:object, pairs}),
@@ -301,23 +318,39 @@ defmodule Surfex.Log.Entry do
 
   defp ends(list) when is_list(list) do
     if Enum.all?(list, &end?/1),
-      do: {:ok, Enum.map(list, &Map.take(&1, [:kind, :id, :hash]))},
+      do: {:ok, Enum.map(list, &end_fields/1)},
       else: bad(:ends, list)
   end
 
   defp ends(other), do: bad(:ends, other)
 
-  defp end?(%{kind: kind, id: id, hash: hash}),
-    do: is_atom(kind) and is_binary(id) and (is_binary(hash) or is_nil(hash))
+  # An end's fields, with `doc` only when it has one.
+  defp end_fields(%{doc: doc} = end_) when is_binary(doc),
+    do: Map.take(end_, [:kind, :id, :hash, :doc])
+
+  defp end_fields(end_), do: Map.take(end_, [:kind, :id, :hash])
+
+  defp end?(%{kind: kind, id: id, hash: hash} = end_),
+    do:
+      is_atom(kind) and is_binary(id) and (is_binary(hash) or is_nil(hash)) and
+        (is_binary(Map.get(end_, :doc)) or is_nil(Map.get(end_, :doc)))
 
   defp end?(_), do: false
 
   defp decode_ends(list) when is_list(list) do
     Enum.reduce_while(list, {:ok, []}, fn
-      %{"kind" => kind, "id" => id, "hash" => hash}, {:ok, acc} ->
+      %{"kind" => kind, "id" => id, "hash" => hash} = object, {:ok, acc} ->
         case atom(kind, @kinds, "kind") do
-          {:ok, kind} -> {:cont, {:ok, acc ++ [%{kind: kind, id: id, hash: hash}]}}
-          error -> {:halt, error}
+          {:ok, kind} ->
+            end_ = %{kind: kind, id: id, hash: hash}
+
+            end_ =
+              if Map.has_key?(object, "doc"), do: Map.put(end_, :doc, object["doc"]), else: end_
+
+            {:cont, {:ok, acc ++ [end_]}}
+
+          error ->
+            {:halt, error}
         end
 
       other, _acc ->
@@ -427,6 +460,16 @@ defmodule Surfex.Log.Entry do
 
       e.migrates != nil and not (is_binary(e.migrates) and String.trim(e.migrates) != "") ->
         bad(:migrates, e.migrates)
+
+      # A doc version is read only by a contract relation (§13.18): it sits on the code end
+      # of an implements, and nowhere else.
+      Enum.any?(e.ends, &Map.has_key?(&1, :doc)) and
+          not (e.type == :implements and
+                   Enum.all?(e.ends, &(&1.kind == :code or not Map.has_key?(&1, :doc)))) ->
+        {:error, "only an implements' code end carries doc, got #{e.type} #{kinds(e.ends)}"}
+
+      Enum.any?(e.ends, &(Map.has_key?(&1, :doc) and String.trim(&1.doc) == "")) ->
+        bad(:ends, e.ends)
 
       true ->
         :ok
