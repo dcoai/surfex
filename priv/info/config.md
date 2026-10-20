@@ -49,6 +49,9 @@ once, each naming the key, the value as written and the accepted form (spec §13
   declaration make its version (`mix surfex.info validation`, spec §11.4).
 - Citation profile: `exclude`, `shape`, `token`, `known_shape`, `normalise`, `subjects`,
   `table_columns`, `file_targets`, `known_external`, `documented_absences`.
+  `known_external:` takes a map of name => reason, or a list of maps and
+  `{:golden, "REFERENCE.md", column: "Item"}` entries: a committed golden's column as
+  the external vocabulary, read when the config is (spec §6.11).
 - `classes: [{name, reason}]`, `rules: [%{class:, kinds:, name:, parent_cited:, parent:}]`,
   `never_excused:`: kinds of code the spec deliberately doesn't describe.
 

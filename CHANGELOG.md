@@ -11,6 +11,24 @@ release it merely follows.
 
 ### Added
 
+- **`known_external:` can take its vocabulary from a committed golden** (#322, #330). A
+  spec that names a peer system's or a C header's symbols no longer copies a golden that
+  already lists them into `.surfex.exs`: `known_external:` takes a list of maps and
+  `{:golden, "REFERENCE.md", column: "Item"}` entries, and `Surfex.Status.Config.read!/1`
+  reads each golden's column, relative to the config's directory, into the one map the
+  profile holds. The names are versioned with the golden: one it stops listing makes its
+  citations broken again. A missing file, an unknown column or an empty column is a
+  refusal, reported with the config's others. For library users,
+  `Surfex.Profile.external_from_golden/3` gives a golden's names as a `known_external`
+  map (`{:ok, map}` or `{:error, message}`, never raising), so a project calling
+  `Surfex.Profile.new!/1` directly gets the same vocabulary; `Surfex.Profile`'s
+  `known_external` stays a plain map. An `:external` citation now carries its reason as
+  `why` (a golden's names: `"listed in PATH"`), so a later reader can tell a golden's
+  vocabulary apart. Spec §6.11. Measured read-only on an adopter whose golden lists 464
+  names: with that vocabulary and no map entries, its spec's 142 distinct broken names
+  fall to 16, the rest becoming external (588 citations); the 16 left are its vendored
+  file names, a documented absence and the two names it lists in its own map.
+
 - **A citation says how it was made: `kind`** (#321, #328). For library users,
   `Surfex.Cite.t()` gains `kind: :span | :subject | :cell`: a code span in prose or a
   fenced token, a subject heading or a contract's own function, or a cell under a citing

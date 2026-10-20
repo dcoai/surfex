@@ -736,6 +736,37 @@ a code span in prose is a span, a subject section's heading a subject, and a cel
 citing column a cell
 ```
 
+### 6.11 External vocabulary from a golden
+<!-- surfex: external-golden -->
+
+A spec may name a whole vocabulary that is real but not the project's code, such as a C
+header's symbols or a peer system's API, which a committed golden already lists. Such a
+golden is the vocabulary: `known_external:` takes it as an entry,
+`{:golden, "REFERENCE_SURFACE.md", column: "Item"}`, beside its map, in a list:
+`known_external: [%{"x" => "why"}, {:golden, path, column: header}]`. The first entry
+listing a name gives its reason.
+
+- **`Surfex.Profile.external_from_golden/3`** reads it, the path relative to `:root`:
+  every table of the file with a column of that header (a fenced table is no table), each
+  cell read as the golden renders it (§2.2). Each code span in a cell is a name, a cell
+  with none is its text, and an empty cell names nothing. It gives
+  `{:ok, %{name => "listed in PATH"}}`, a `known_external` map, so `Surfex.Profile` keeps
+  its plain map and reads no file. It never raises: a file that can't be read, no table
+  with the column, or a column naming nothing is `{:error, message}`.
+- **`Surfex.Status.Config.read!/1` resolves the goldens**, relative to the config's
+  directory, into that one map. Each golden that gives no names is a refusal, reported
+  with every other refusal of the config (§13.14), never an empty vocabulary.
+- **The vocabulary is versioned with the golden.** A name the golden stops listing stops
+  being external, so a citation of it is broken again: the drift it should report. A
+  citation of a golden's name is `:external` with the golden's path as its reason.
+
+```test:golden-vocabulary
+a citation of a name the golden's column lists is external, its reason the golden's path,
+and a name it doesn't list, or no longer lists, is broken; the map form works as before
+and the two combine; a missing file, an unknown column and an empty column are each
+refused, together in one error, and the library function returns them without raising
+```
+
 ## 7. Coverage
 <!-- surfex: coverage -->
 
