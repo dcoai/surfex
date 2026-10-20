@@ -71,7 +71,9 @@ once, each naming the key, the value as written and the accepted form (spec §13
 - `issues: [command: argv, state: key, project: name]`: how `mix surfex.status --issues`
   asks the tracker whether a deferral's issue is open; `{ref}`, `{n}` and `{project}` are
   substituted, no shell, nothing stored.
-- `triangle: :report | :fail`: whether a unit, its tests and its code must meet.
+- `triangle: :report | :fail`: whether a unit, its tests and its code must meet; or by spec
+  file, `[default: :report, fail: globs]` or `[default: :fail, report: globs]`, to close it
+  chapter by chapter (each glob must match a spec file).
 - `require_red:`: whether a `tests` relation needs its test's red run.
 - `adoption: :reevaluate | :trust | [trust: globs, reevaluate: globs]` (`mix surfex.info adoption`).
 - `completeness: [min: N]`: fail status below N percent.

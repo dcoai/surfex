@@ -74,11 +74,7 @@ defmodule Surfex.Status.Report do
         status.unearned,
         &"implements  code #{&1.code} → spec #{&1.unit}: #{unearned_text(&1.why)}"
       ),
-      items(
-        "Triangle (a spec unit, its tests and its code don't meet)",
-        status.triangle,
-        &gap_text/1
-      ),
+      triangle(status.triangle),
       items(
         "Broken citations (the spec names what the code doesn't have)",
         status.citations,
@@ -410,7 +406,14 @@ defmodule Surfex.Status.Report do
         end),
       "triangle" =>
         Enum.map(status.triangle, fn g ->
-          %{"spec" => g.spec, "gap" => Atom.to_string(g.gap), "test" => g.test, "code" => g.code}
+          %{
+            "spec" => g.spec,
+            "gap" => Atom.to_string(g.gap),
+            "test" => g.test,
+            "code" => g.code,
+            "file" => g.file,
+            "mode" => Atom.to_string(g.mode)
+          }
         end),
       "restated" =>
         Enum.map(status.restated, fn r -> %{"contract" => r.contract, "units" => r.units} end),
@@ -947,6 +950,28 @@ defmodule Surfex.Status.Report do
   end
 
   defp gap_text(g), do: IO.iodata_to_binary(["spec #{g.spec}: ", gap_what(g, & &1)])
+
+  # The triangle's gaps by their unit's file, each file with its mode (§13.17), after a
+  # count of those failing and those only reported. A unit no longer scanned has no file.
+  defp triangle([]), do: []
+
+  defp triangle(gaps) do
+    failing = Enum.count(gaps, &(&1.mode == :fail))
+
+    files =
+      gaps
+      |> Enum.group_by(&{&1.file || "(not scanned)", &1.mode})
+      |> Enum.sort()
+      |> Enum.map(fn {{file, mode}, in_file} ->
+        ["  #{file} (#{mode}):\n", Enum.map(in_file, &["    ", gap_text(&1), "\n"])]
+      end)
+
+    [
+      "\nTriangle (a spec unit, its tests and its code don't meet): ",
+      "#{failing} failing (in fail files), #{length(gaps) - failing} reported\n",
+      files
+    ]
+  end
 
   # What a triangle gap lacks, naming its test or code through `name` (plain in the text
   # report, a code span in the golden).

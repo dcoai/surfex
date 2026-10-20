@@ -11,6 +11,19 @@ release it merely follows.
 
 ### Added
 
+- **`triangle:` takes a mode per spec file, so a project can close its triangle chapter
+  by chapter** (#326, #327). Besides `:report` and `:fail`, it takes
+  `[default: :report, fail: ["spec/03-*.md"]]`, where a gap fails when its unit's file
+  matches a glob and is reported otherwise, or the mirror `[default: :fail, report: globs]`
+  for a project that is mostly closed. Any other key, both lists, or a glob matching no
+  spec file is refused, so a renamed chapter can't drop out of the list in silence.
+  `Surfex.Status.derive/4`'s `triangle:` option takes the same forms, `policy.triangle`
+  keeps the resolved one, and each gap carries its unit's `file` and its `mode`; the check
+  fails on any gap whose mode is `:fail`. Spec §13.17. Measured: on an adopter with 30
+  gaps in 5 of its 11 spec files, a scratch `fail:` list of its 6 closed files fails on
+  none, and adding one open file fails on exactly that file's 3 gaps; on an adopter with
+  529 gaps in 17 of 18 files, adding one open file fails on exactly its 33.
+
 - **`TABLE/*` declares every row in a test's `verifies`, as in a check's** (#286, #319).
   The expansion ran only over checks, so `@tag verifies: ["spec/x.md#modes/*"]` on a
   table-driven test was broken ("no spec unit has that id") and each tag had to list every
@@ -122,6 +135,11 @@ release it merely follows.
   `:section_number` with `fold_paths: true` has exactly the one that motivated this.
 
 ### Changed
+
+- **The status lists triangle gaps by spec file** (#326, #327). The text report's
+  `Triangle` list now opens with `N failing (in fail files), M reported` and groups the
+  gaps under each file with its mode (`spec/03-keys.md (fail):`); the JSON's gaps carry
+  `file` and `mode`. The golden is unchanged. A refusal of `triangle:` names the new forms.
 
 - **Restated contracts compare parsed signatures** (#287, #313). A contract stated in
   several files was listed as restated when the texts differed, so `feed(t, binary)` against

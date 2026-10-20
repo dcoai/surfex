@@ -2639,7 +2639,8 @@ log's own: `heading_ids` (§11), `rule_ids`, `fold_paths` and `unit_refs` (§11.
   A missing `sources`, or one that matches no section, raises. So does a `tests:` that
   matches no file.
 - `Surfex.Status.Config.options!/1` reads `triangle: :report | :fail` (`:report` by
-  default) for `Surfex.Status.derive/4`, and raises on any other value. When `classes:`
+  default), or its form by spec file (§13.17), for `Surfex.Status.derive/4`, and raises on
+  any other value. When `classes:`
   is present it also gives the class rules as `coverage:`, for judging stale excuses. It is the
   project maintainer's intent, and a wrong value is loud: the gaps are reported either
   way.
@@ -3386,6 +3387,45 @@ is refused; without --spec the same repository reads as a full status does
 ```test:spec-only-parity
 in a project with code and a log, --spec gives the same spec-side lists as the full run:
 units, spec_warnings, list_keys, restated and stale_deferrals
+```
+
+### 13.17 Triangle modes by file
+<!-- surfex: triangle-modes -->
+
+A project closes its triangle (§13.1) chapter by chapter, so it sets the mode by spec
+file. `triangle:` takes, besides `:report` and `:fail`, a default and the files that
+differ from it:
+- `[default: :report, fail: globs]`: a gap fails when its unit's file matches one of the
+  globs, and is reported otherwise. A project closing its triangle lists the chapters it
+  has closed.
+- `[default: :fail, report: globs]`: the mirror, for a project that is mostly closed and
+  lists the chapters still open.
+
+The globs are read as `sources:` are, relative to the root. Any other key, both lists
+together, or a list naming the default's own mode is refused (§13.14). So is a glob that
+matches no spec file (`Surfex.Status.Config.triangle!/2`, asked where the spec's files are
+read), so a renamed chapter can't silently drop out of its list. Removing a glob still
+loosens the gate. That is a change to the config, visible in its diff.
+
+`Surfex.Status.derive/4` takes the same forms as its `triangle:` option and keeps the
+resolved one, `default:` first, as the policy's `triangle`. Each gap carries its unit's
+`file` and the `mode` it takes, and the check fails on any gap whose mode is `:fail`. A
+unit no longer scanned has no file and takes the default. The plain forms give every gap
+the one mode, as before.
+
+The text report lists the gaps grouped by file, each file with its mode, after the count
+`N failing (in fail files), M reported`. The JSON's gaps carry `file` and `mode`.
+
+```test:triangle-file-modes
+under [default: :report, fail: globs] a gap in a matching file fails and one elsewhere is
+reported, and [default: :fail, report: globs] is the mirror; the plain :report and :fail
+forms give every gap their one mode; the report groups the gaps by file with each file's
+mode after the failing and reported counts, and the JSON's gaps carry file and mode
+```
+
+```test:triangle-file-refused
+any other triangle: shape is refused, by the config and by derive alike, and a glob
+matching no spec file is refused, naming it
 ```
 
 ## 14. Recording

@@ -31,7 +31,9 @@ defmodule Surfex.Status.Config do
       `[verifies: [{:tag, :validates, strip: ~r/@[0-9a-f]+$/}]]` reads
       `@tag validates: ["Engine.15.2@abc123"]` as declaring `Engine.15.2`
     * `:triangle` — `:report` (the default) or `:fail`: whether gaps in the spec/test/code
-      triangle fail the check or are only reported
+      triangle fail the check or are only reported; or by spec file (§13.17),
+      `[default: :report, fail: ["spec/03-*.md"]]` or `[default: :fail, report: globs]`,
+      each glob matching some spec file
     * `:require_red` — `true` to refuse confirming a `tests` relation, by evidence or by
       hand, until its test's current version has failed first (`false` by default)
     * `:claim_implements` — `true` to have `mix surfex.suggest` propose `implements` between
@@ -385,6 +387,23 @@ defmodule Surfex.Status.Config do
       end
 
     [triangle: triangle] ++ coverage ++ not_claims
+  end
+
+  @doc """
+  Checks the `triangle:` setting's globs (§13.17) against the spec's `files`: a glob
+  matching none of them is refused, naming it, so a renamed chapter can't silently drop
+  out of the list. The setting's form is checked first (§13.14).
+  """
+  @spec triangle!(keyword, [String.t()]) :: :ok
+  def triangle!(config, files) do
+    Keys.check!(config, :triangle)
+    {:ok, setting} = Surfex.Status.Triangle.resolve(Keyword.get(config, :triangle, :report))
+
+    for glob <- Surfex.Status.Triangle.globs(setting),
+        not Enum.any?(files, &Scan.Markdown.glob_match?(glob, &1)),
+        do: raise(ArgumentError, Keys.format(:triangle, "#{inspect(glob)} matches no spec file"))
+
+    :ok
   end
 
   @doc "The `require_red:` policy (`false` by default), validated."
@@ -757,6 +776,8 @@ defmodule Surfex.Status.Config do
         raise(ArgumentError, ".surfex.exs needs sources: (the spec's globs)")
 
     exclude = Keyword.get(config, :exclude, [])
+    files = Scan.Markdown.files(root, sources, exclude)
+    :ok = triangle!(config, files)
 
     {spec, spec_errors} =
       Scan.Markdown.read_files(root, sources, exclude,
@@ -764,7 +785,7 @@ defmodule Surfex.Status.Config do
         rule_ids: Keyword.get(config, :rule_ids),
         subjects: Keyword.get(config, :subjects, []),
         fold_paths: fold_paths!(config),
-        spec_classes: spec_classes!(config, Scan.Markdown.files(root, sources, exclude)),
+        spec_classes: spec_classes!(config, files),
         not_claims: not_claims!(config),
         unit_refs: unit_refs!(config),
         code: Surfex.Cite.Contracts.code(items, rewrites(config))

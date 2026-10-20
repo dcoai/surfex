@@ -606,7 +606,7 @@ defmodule Surfex.StatusTest do
       status = Status.derive(tri_scans(), entries)
 
       assert Report.text(status) =~
-               "Triangle (a spec unit, its tests and its code don't meet):\n  spec #{@spec_id}: no test verifies it"
+               "Triangle (a spec unit, its tests and its code don't meet): 0 failing (in fail files), 1 reported\n  f (report):\n    spec #{@spec_id}: no test verifies it"
 
       {json, :ok, _} = status |> Report.json() |> :json.decode(:ok, %{null: nil})
       assert [%{"spec" => @spec_id, "gap" => "no_test", "test" => nil}] = json["triangle"]
@@ -1117,11 +1117,15 @@ defmodule Surfex.StatusTest do
     end
 
     @tag verifies: ["status-config-read", "status-config"]
-    test "triangle: is :report by default, or :fail, and nothing else" do
+    test "triangle: is :report by default, :fail or by file, and nothing else" do
       assert Config.options!([]) == [triangle: :report]
       assert Config.options!(triangle: :fail) == [triangle: :fail]
 
-      assert_raise ArgumentError, ~r/triangle: must be :report or :fail/, fn ->
+      # Or by spec file (§13.17), handed to derive as written.
+      by_file = [default: :report, fail: ["spec/03-*.md"]]
+      assert Config.options!(triangle: by_file) == [triangle: by_file]
+
+      assert_raise ArgumentError, ~r/triangle: must be :report, :fail, \[default: :report/, fn ->
         Config.options!(triangle: :loud)
       end
 
