@@ -28,6 +28,7 @@ defmodule Surfex.Cite.Contracts do
 
       %{
         span: unit.contract,
+        kind: :subject,
         file: unit.location.file,
         section: "(contract)",
         line: elem(unit.location.lines, 0),

@@ -66,10 +66,10 @@ defmodule Surfex.ClaimSuggestTest do
       ]
   end
 
-  defp suggest(root, entries, claims? \\ true) do
+  defp suggest(root, entries) do
     scans = world(root)
     profile = Config.profile!([sources: ["spec.md"]], "M")
-    {Suggest.all(profile, [], scans, entries, root, claims: claims?), scans}
+    {Suggest.all(profile, [], scans, entries, root), scans}
   end
 
   defp pairs(s), do: s.implements |> Enum.map(&{&1.spec.id, &1.code.id}) |> Enum.sort()
@@ -103,20 +103,9 @@ defmodule Surfex.ClaimSuggestTest do
   end
 
   @tag verifies: ["claim-suggestions", "claim-implements"]
-  test "no verifying test, no proposal; the section gets none; off by default", %{
-    tmp_dir: root
-  } do
+  test "no verifying test, no proposal; the section gets none", %{tmp_dir: root} do
     {s, _} = suggest(root, [])
     refute Enum.any?(s.implements, &(&1.spec.id in ["spec.md#lone", "spec.md#carts"]))
-
-    {off, _} = suggest(root, [], false)
-    assert off.implements == [] and off.reached == []
-    assert Config.claim_implements?([]) == false
-    assert Config.claim_implements?(claim_implements: true)
-
-    assert_raise ArgumentError, ~r/claim_implements: must be true or false/, fn ->
-      Config.claim_implements?(claim_implements: :yes)
-    end
   end
 
   test "a declined pair isn't proposed again, and accepting records the rest as proposed", %{

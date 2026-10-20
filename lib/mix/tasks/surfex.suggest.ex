@@ -20,10 +20,15 @@ defmodule Mix.Tasks.Surfex.Suggest do
     * **migrated** — a section's `implements` that `mix surfex.migrate` moved to claims
       whose relations are all validated now: accepting retires the section's.
 
-  With `claim_implements: true` in `.surfex.exs`, **implements** also pairs each claim (a
-  block, test hint, row, rule or contract) with the code its verifying tests call
-  directly, and a `reached` line says, per claim, which called item reaches more code and
-  how much: name the ones that realise the claim with `mix surfex.relate` (spec §15.1).
+  **implements** also pairs each claim (a block, test hint, row, rule or contract) with the
+  code its verifying tests call directly, and a `reached` line says, per claim, which
+  called item reaches more code and how much: name the ones that realise the claim with
+  `mix surfex.relate` (spec §15.1).
+
+  Once the log is established (it holds a validated `implements`), a code span in prose
+  proposes nothing outside a contract: subject headings, citing cells, contracts and a
+  claim's tests still do. One line counts the prose citations not proposed, when there
+  are any (spec §15.4).
 
   Pairs already related, in any state, are left out.
 
@@ -63,8 +68,7 @@ defmodule Mix.Tasks.Surfex.Suggest do
     scans = Config.scans(config, root)
     entries = if File.dir?(Log.dir(root)), do: Log.load(root), else: []
 
-    suggestions =
-      Suggest.all(profile, items, scans, entries, root, claims: Config.claim_implements?(config))
+    suggestions = Suggest.all(profile, items, scans, entries, root)
 
     for m <- suggestions.moves, do: Mix.shell().info("move        #{m.from} → #{m.to.id}")
 
@@ -127,8 +131,29 @@ defmodule Mix.Tasks.Surfex.Suggest do
               "name the ones that realise this claim with mix surfex.relate"
           )
 
+    # The bootstrap's end, made visible rather than silent (§15.4).
+    case suggestions.withheld do
+      [] ->
+        :ok
+
+      [_] ->
+        Mix.shell().info(
+          "1 prose citation not proposed (log established: relate the claim, not the sentence)"
+        )
+
+      withheld ->
+        Mix.shell().info(
+          "#{length(withheld)} prose citations not proposed " <>
+            "(log established: relate the claim, not the sentence)"
+        )
+    end
+
     count =
-      suggestions |> Map.delete(:reached) |> Map.values() |> Enum.map(&length/1) |> Enum.sum()
+      suggestions
+      |> Map.drop([:reached, :withheld])
+      |> Map.values()
+      |> Enum.map(&length/1)
+      |> Enum.sum()
 
     cond do
       count == 0 ->

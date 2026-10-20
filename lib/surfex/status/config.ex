@@ -36,9 +36,6 @@ defmodule Surfex.Status.Config do
       each glob matching some spec file
     * `:require_red` — `true` to refuse confirming a `tests` relation, by evidence or by
       hand, until its test's current version has failed first (`false` by default)
-    * `:claim_implements` — `true` to have `mix surfex.suggest` propose `implements` between
-      each claim and the code its verifying tests call directly (§15.1); `false` by
-      default until the release that completes claim grain
     * `:router` — the router module (or a list of them) whose routes a test's requests
       resolve through (§11); found from the project's endpoint when not given, and `false`
       turns route resolution off
@@ -95,7 +92,6 @@ defmodule Surfex.Status.Config do
     :require_red,
     :router,
     :dispatch,
-    :claim_implements,
     :spec_classes,
     :issues,
     :not_claims,
@@ -132,7 +128,9 @@ defmodule Surfex.Status.Config do
   @doc """
   Reads and validates a `.surfex.exs`: it must evaluate to a keyword list of known keys,
   each in its accepted form (`validate!/1`). `claim_grain:`, the transitional switch claim
-  grain shipped behind, is refused, saying claim grain is now the only reading (§13.2); a
+  grain shipped behind, is refused, saying claim grain is now the only reading (§13.2);
+  `claim_implements:` is refused, saying a claim's tests are now always a source of
+  `implements` suggestions (§15.1); a
   key of the removed v0.2 trace is refused saying so; any other unknown key is refused
   naming it. Every refusal is raised at once, one per line (§13.14). Every task reads its
   config through this, so a misspelt key is never ignored.
@@ -150,8 +148,17 @@ defmodule Surfex.Status.Config do
         ],
         else: []
 
+    claim_implements =
+      if Keyword.has_key?(config, :claim_implements),
+        do: [
+          "claim_implements: is no longer a key: mix surfex.suggest always proposes " <>
+            "implements from what a claim's tests call (spec §15.1). Delete the key; " <>
+            "the CHANGELOG's upgrade step says what changes"
+        ],
+        else: []
+
     unknown =
-      case Keyword.keys(config) -- [:claim_grain | keys()] do
+      case Keyword.keys(config) -- [:claim_grain, :claim_implements | keys()] do
         [] ->
           []
 
@@ -168,7 +175,7 @@ defmodule Surfex.Status.Config do
           end
       end
 
-    case claim_grain ++ unknown ++ Keys.refusals(config) do
+    case claim_grain ++ claim_implements ++ unknown ++ Keys.refusals(config) do
       [] -> config
       refusals -> raise ArgumentError, refused(path <> ": ", refusals)
     end
@@ -861,17 +868,6 @@ defmodule Surfex.Status.Config do
   defp declared_form({kind, name}), do: declared_form({kind, name, []})
   defp declared_form({kind, name, []}), do: %{kind: kind, name: name, strip: nil}
   defp declared_form({kind, name, [strip: strip]}), do: %{kind: kind, name: name, strip: strip}
-
-  @doc """
-  Whether `mix surfex.suggest` proposes a claim's `implements` from what its verifying
-  tests call (`claim_implements:`, §15.1): `false` by default; anything but a boolean is
-  refused.
-  """
-  @spec claim_implements?(keyword) :: boolean
-  def claim_implements?(config) do
-    Keys.check!(config, :claim_implements)
-    Keyword.get(config, :claim_implements, false)
-  end
 
   @doc """
   The spec's classes (`spec_classes:`, §11.7), each as
