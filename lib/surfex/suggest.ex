@@ -13,6 +13,9 @@ defmodule Surfex.Suggest do
       overrule a decision already on record
     * a citation inside a fenced code block, which has no line to place it in a section
     * a named item that is not a code scan (a file target, say)
+    * in an **established** log (`established?/1`), a prose citation outside a contract
+      unit: once something is related on a validated basis, code relates to the claim
+      it realises, not to the sentence that names it (§15.4)
 
   This is also how a project adopts the relation log: `mix surfex.log --init`, then
   `mix surfex.suggest --accept`.
@@ -22,8 +25,8 @@ defmodule Surfex.Suggest do
   alias Surfex.Log.Entry
 
   @typedoc """
-  A candidate `implements` relation: from a citation (`cited_at` its file and line), or,
-  with `claims: true`, from what a claim's verifying tests call (`cited_at` nil, `tests`
+  A candidate `implements` relation: from a citation (`cited_at` its file and line), or
+  from what a claim's verifying tests call (`cited_at` nil, `tests`
   the tests that call it, §15.1).
   """
   @type candidate :: %{
@@ -36,32 +39,71 @@ defmodule Surfex.Suggest do
   # The spec units that are claims (§11.1, §15.1): what a claim's tests call relates to it.
   @claim_roles [:block, :test_hint, :row, :rule, :contract]
 
+  # The bases that record a validation (§18): a proposal records none.
+  @validating [:evidence, :review, :judgement, :baseline]
+
   @doc """
   The candidates, sorted by section then item, one per pair: the first citation that
-  proposes a pair is where it was cited.
+  proposes a pair is where it was cited. In an established log (`established?/1`), a
+  prose citation (`kind: :span`) proposes only inside a contract unit; subject headings,
+  contract keys and citing cells still do (§15.4).
   """
   @spec candidates(Profile.t(), [Surfex.Item.t()], [Scan.t()], [Entry.t()], String.t()) :: [
           candidate
         ]
-  def candidates(profile, items, scans, entries, root) do
+  def candidates(profile, items, scans, entries, root),
+    do: profile |> cited(items, scans, entries, root) |> elem(0)
+
+  @doc """
+  Whether the log is **established** (§15.4): it holds a live `implements` whose judgement
+  in force records a validation (evidence, a review, a judgement or a baseline). Derived
+  from the log alone: the first such relation ends the citation bootstrap, and retiring
+  the last one brings it back.
+  """
+  @spec established?([Entry.t()]) :: boolean
+  def established?(entries) do
+    entries
+    |> Enum.filter(&(&1.type == :implements))
+    |> live_tips()
+    |> Enum.any?(&(&1.op == :relate and &1.basis in @validating))
+  end
+
+  # Candidates, and the pairs a prose citation would have proposed but for the
+  # established log (§15.4), each with the citation's span.
+  defp cited(profile, items, scans, entries, root) do
     citations = Cite.citations(items, profile, root)
     sections = Enum.filter(scans, &(&1.kind == :spec))
     code = for s <- scans, s.kind == :code, into: %{}, do: {s.id, s}
     related = MapSet.new(entries, &Entry.relation/1)
+    established = established?(entries)
 
-    for %{status: :resolved} = c <- citations,
-        c.section != "(code block)",
-        section = section_at(sections, c.file, c.line),
-        section != nil,
-        key <- c.items,
-        item = Map.get(code, key),
-        item != nil,
-        not MapSet.member?(related, Entry.relation(:implements, section, item)) do
-      %{spec: section, code: item, cited_at: {c.file, c.line}}
-    end
-    |> Enum.uniq_by(&{&1.spec.id, &1.code.id})
-    |> Enum.sort_by(&{&1.spec.id, &1.code.id})
+    pairs =
+      for %{status: :resolved} = c <- citations,
+          c.section != "(code block)",
+          section = section_at(sections, c.file, c.line),
+          section != nil,
+          key <- c.items,
+          item = Map.get(code, key),
+          item != nil,
+          not MapSet.member?(related, Entry.relation(:implements, section, item)) do
+        {proposes?(c, section, established),
+         %{spec: section, code: item, cited_at: {c.file, c.line}}, c.span}
+      end
+
+    {proposed, withheld} = Enum.split_with(pairs, &elem(&1, 0))
+
+    {proposed
+     |> Enum.map(&elem(&1, 1))
+     |> Enum.uniq_by(&{&1.spec.id, &1.code.id})
+     |> Enum.sort_by(&{&1.spec.id, &1.code.id}),
+     Enum.map(withheld, fn {false, c, span} -> Map.put(c, :span, span) end)}
   end
+
+  # A subject or a cell names what its unit is about; a span is narration unless its unit
+  # is a contract, whose text states the code (§15.4).
+  defp proposes?(_citation, _unit, false), do: true
+  defp proposes?(%{kind: kind}, _unit, true) when kind in [:subject, :cell], do: true
+  defp proposes?(%{kind: :span}, %Scan{role: role}, true), do: role == :contract
 
   @doc """
   The command that declines a judgement suggestion (§14, §15): a `retire` of the
@@ -119,6 +161,7 @@ defmodule Surfex.Suggest do
           tests: [pair],
           excuses: [pair],
           reached: [%{spec: String.t(), through: String.t(), count: pos_integer}],
+          withheld: [%{spec: String.t(), span: String.t(), cited_at: {String.t(), pos_integer}}],
           undeclared: [%{test: String.t(), spec: String.t()}],
           moved: [%{from: String.t(), to: String.t(), now: String.t()}],
           migrated: [%{code: String.t(), section: String.t(), claims: [String.t()]}],
@@ -161,11 +204,14 @@ defmodule Surfex.Suggest do
   Refines and implements are computed as if the moves were already recorded, so a moved
   section's relations aren't suggested again under its new id.
 
-  With `claims: true` (`claim_implements: true` in `.surfex.exs`, §15.1), **implements**
-  also pairs each claim (a block, test hint, row, rule or contract) with the scanned code
-  its verifying tests call directly, and **reached** lists, per claim, each code item
-  those tests call that reaches more code: `%{spec, through, count}`, information for a
-  person to act on with `relate`, never recorded.
+  **implements** also pairs each claim (a block, test hint, row, rule or contract) with
+  the scanned code its verifying tests call directly (§15.1), and **reached** lists, per
+  claim, each code item those tests call that reaches more code: `%{spec, through,
+  count}`, information for a person to act on with `relate`, never recorded.
+
+  **withheld** lists, in an established log, each prose citation that proposed nothing
+  because of it (§15.4): `%{spec, span, cited_at}`, one per citation whose pair no other
+  source proposes. It is information, never recorded and not counted as a suggestion.
 
   A citation in a classed section's own text (§15.2) proposes no `implements`, and a
   declaration naming a classed unit proposes no `verifies`: the class says that text
@@ -174,9 +220,9 @@ defmodule Surfex.Suggest do
   # Only for computing what the moves would leave; never recorded.
   @epoch "1970-01-01T00:00:00Z"
 
-  @spec all(Profile.t(), [Surfex.Item.t()], [Scan.t()], [Entry.t()], String.t(), keyword) ::
+  @spec all(Profile.t(), [Surfex.Item.t()], [Scan.t()], [Entry.t()], String.t()) ::
           suggestions
-  def all(profile, items, scans, entries, root, opts \\ []) do
+  def all(profile, items, scans, entries, root) do
     {moves, ambiguous} = moves(scans, entries)
     {moves, ambiguous} = {ordered(moves), ordered(ambiguous)}
 
@@ -194,15 +240,12 @@ defmodule Surfex.Suggest do
     owned = MapSet.new(own, &{&1.spec.id, &1.code.id})
 
     # The class says a classed unit's own text asserts nothing (§15.2).
-    cited =
-      profile
-      |> candidates(items, scans, moved, root)
-      |> Enum.reject(&(&1.spec.class != nil or MapSet.member?(owned, {&1.spec.id, &1.code.id})))
+    {cited, held} = cited(profile, items, scans, moved, root)
+    cited = Enum.reject(cited, &(&1.spec.class != nil or MapSet.member?(owned, pair(&1))))
 
-    {claimed, reached} =
-      if Keyword.get(opts, :claims, false),
-        do: claims(scans, moved, own ++ cited),
-        else: {[], []}
+    # A claim's tests are always a source (§15.1): once the log is established they are
+    # the route left for code a prose citation names (§15.4).
+    {claimed, reached} = claims(scans, moved, own ++ cited)
 
     implements = own ++ cited ++ claimed
     status = Surfex.Status.derive(scans, moved)
@@ -214,6 +257,7 @@ defmodule Surfex.Suggest do
       implements: ordered(own) ++ ordered(cited ++ claimed),
       excuses: ordered(excusals(profile, items, scans, moved, implements)),
       reached: ordered(reached),
+      withheld: withheld(held, implements),
       verifies: ordered(Enum.reject(verifications(scans, moved), &(&1.to.class != nil))),
       undeclared: ordered(status.undeclared),
       moved: ordered(status.moved),
@@ -227,6 +271,21 @@ defmodule Surfex.Suggest do
       refresh: ordered(refreshed(scans, status)),
       tests: ordered(exercised(scans, moved))
     }
+  end
+
+  defp pair(candidate), do: {candidate.spec.id, candidate.code.id}
+
+  # The prose citations an established log didn't turn into candidates (§15.4), one per
+  # citation: those with a pair no other source proposes, outside a classed unit (whose
+  # own text proposes nothing anyway, §15.2).
+  defp withheld(held, implements) do
+    proposed = MapSet.new(implements, &pair/1)
+
+    held
+    |> Enum.reject(&(&1.spec.class != nil or MapSet.member?(proposed, pair(&1))))
+    |> Enum.uniq_by(&{&1.cited_at, &1.span})
+    |> Enum.map(&%{spec: &1.spec.id, span: &1.span, cited_at: &1.cited_at})
+    |> Enum.sort_by(&{&1.cited_at, &1.span})
   end
 
   # §15.3: each contract unit and the code item of its own key, a `@spec`'s

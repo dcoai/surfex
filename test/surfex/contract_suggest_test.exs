@@ -36,7 +36,7 @@ defmodule Surfex.ContractSuggestTest do
     Markdown.records(root, ["spec.md"]) ++ Enum.map(code, &cs_code/1)
   end
 
-  defp cs_suggest(root, scans, entries, opts \\ []) do
+  defp cs_suggest(root, scans, entries) do
     profile = Config.profile!([sources: ["spec.md"]], "App")
 
     other = %Item{
@@ -47,14 +47,15 @@ defmodule Surfex.ContractSuggestTest do
       hash: "h"
     }
 
-    Suggest.all(profile, [other], scans, entries, root, opts)
+    Suggest.all(profile, [other], scans, entries, root)
   end
 
   defp cs_pairs(s), do: Enum.map(s.implements, &{&1.spec.id, &1.code.id, &1.cited_at})
 
   @tag verifies: ["contract-own-function", "contract-suggestions"]
-  test "a contract and the code of its key are proposed, with or without claims:, cited at the contract",
-       %{tmp_dir: root} do
+  test "a contract and the code of its key are proposed, cited at the contract", %{
+    tmp_dir: root
+  } do
     scans = cs_world(root, ["App.Feed.feed/2", "App.Feed.callback:handle/1", "App.Other.reset/1"])
 
     # Listed before the citation-derived candidate, though its section sorts first; reset/1
@@ -66,7 +67,6 @@ defmodule Surfex.ContractSuggestTest do
     ]
 
     assert cs_pairs(cs_suggest(root, scans, [])) == expected
-    assert cs_pairs(cs_suggest(root, scans, [], claims: true)) == expected
   end
 
   @tag verifies: ["contract-own-function", "contract-suggestions"]

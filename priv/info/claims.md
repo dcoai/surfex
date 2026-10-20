@@ -131,10 +131,16 @@ An unearned `implements` meets no `require: code:` rule: the
 status lists it as **Unearned**, and fails on it where the policy asks code for an
 `implements` (spec §13.9). Completeness counts code described only by an earning one.
 
-**Code relates to the claim it realises.** With `claim_implements: true` in `.surfex.exs`
-(off by default), `mix surfex.suggest` proposes
+**Code relates to the claim it realises.** `mix surfex.suggest` proposes
 `implements` between each claim and the code its verifying tests call directly (their
 own calls, private helpers, and resolved routes, events and messages), and prints one
 `reached … through X: N more items` line where a called function reaches more: name the
 ones that realise the claim with `mix surfex.relate`. A claim with no verifying test gets
-nothing, and a section gets no proposals of its own (spec §15.1).
+nothing, and a section gets no proposals of its own (spec §15.1). There is no key for it:
+a `.surfex.exs` that still sets `claim_implements:` is refused.
+
+**Relate the claim, not the sentence.** Once the log holds a validated `implements`, a
+code span in prose proposes nothing outside a contract: a subject heading, a cell under a
+citing column, a contract's own function and a claim's tests still propose. The citation
+still resolves or is broken. `suggest` prints `N prose citations not proposed`, when there
+are any (spec §15.4).

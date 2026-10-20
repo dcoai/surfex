@@ -56,12 +56,22 @@ defmodule Surfex.Cite do
           | :registered_name
 
   @typedoc """
-  One citation: the span as written, where it is, and what it resolved to. A contract's
-  citation of its own function (§6.9) that names nothing says why, `why`.
+  How a citation was made (§6.10): `:span`, a code span in prose or a token in a fenced
+  code block; `:subject`, a subject section's heading (§6.6) or a contract's own key
+  (§6.9), naming what the unit is about; `:cell`, a cell under a citing column, naming
+  its row's subject as a heading does.
+  """
+  @type kind :: :span | :subject | :cell
+
+  @typedoc """
+  One citation: the span as written, how it was made (`kind`), where it is, and what it
+  resolved to. A contract's citation of its own function (§6.9) that names nothing says
+  why, `why`.
   """
   @type t :: %{
           optional(:why) => String.t(),
           span: String.t(),
+          kind: kind,
           file: String.t(),
           section: String.t(),
           line: pos_integer,
@@ -176,7 +186,7 @@ defmodule Surfex.Cite do
       Enum.flat_map(tokens, fn token ->
         case named(token, token, ctx) do
           nil -> []
-          found -> [citation(found, ctx.path, "(code block)", no)]
+          found -> [citation(found, :span, ctx.path, "(code block)", no)]
         end
       end)
 
@@ -216,7 +226,7 @@ defmodule Surfex.Cite do
     ~r/`([^`\n]+)`/
     |> Regex.scan(line, capture: :all_but_first)
     |> Enum.flat_map(fn [span] -> resolve(span, scopes(st.stack), ctx) end)
-    |> Enum.map(&citation(&1, ctx.path, section(st.stack), no))
+    |> Enum.map(&citation(&1, :span, ctx.path, section(st.stack), no))
   end
 
   # A subject section's heading cites what it is about. A subject key that names nothing
@@ -229,7 +239,7 @@ defmodule Surfex.Cite do
           :error -> {heading, :unresolved, []}
         end
 
-      citation(found, ctx.path, heading, no)
+      citation(found, :subject, ctx.path, heading, no)
     end)
   end
 
@@ -253,11 +263,19 @@ defmodule Surfex.Cite do
       MapSet.member?(cols, strip(col)) and cell != "" and not String.contains?(cell, "`")
     end)
     |> Enum.flat_map(fn {_col, cell} -> resolve(strip(cell), scopes(st.stack), ctx) end)
-    |> Enum.map(&citation(&1, ctx.path, section(st.stack), no))
+    |> Enum.map(&citation(&1, :cell, ctx.path, section(st.stack), no))
   end
 
-  defp citation({span, status, items}, file, section, line),
-    do: %{span: span, file: file, section: section, line: line, status: status, items: items}
+  defp citation({span, status, items}, kind, file, section, line),
+    do: %{
+      span: span,
+      kind: kind,
+      file: file,
+      section: section,
+      line: line,
+      status: status,
+      items: items
+    }
 
   defp heading(path, line) do
     cond do

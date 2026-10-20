@@ -41,7 +41,6 @@ defmodule Surfex.ConfigKeysTest do
     require_red: [42, "yes"],
     router: [42, "MyAppWeb.Router", [], true],
     dispatch: [42, [{MyApp.Ops, :run}], [{MyApp.Ops, :run, -1}]],
-    claim_implements: [42, nil],
     spec_classes: [42, [:x], [{"a b", "r"}], [{"x", ""}], [{"x", "r", file: []}]],
     issues: [42, [command: "gh"], [command: ["gh"], state: 1], [command: ["gh"], host: "x"]],
     not_claims: [42, ["^Legacy"]],

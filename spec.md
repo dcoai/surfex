@@ -721,6 +721,21 @@ carries it; a contract deferred by its section is not broken; a callback resolve
 behaviour module and one whose module is missing is broken
 ```
 
+### 6.10 A citation's kind
+<!-- surfex: citation-kinds -->
+
+Every citation says how it was made, its `kind`: `:span`, a code span in prose or a
+token in a fenced code block (§6.3); `:subject`, a subject heading (§6.6) or a contract's
+own function (§6.9), which names what its unit is about; `:cell`, a cell under a citing
+column, which names its row's subject the way a heading does. The kind changes nothing
+about how a citation resolves or breaks. It is what suggesting reads to tell narration
+from a statement of the code (§15.4).
+
+```test:citation-kind
+a code span in prose is a span, a subject section's heading a subject, and a cell under a
+citing column a cell
+```
+
 ## 7. Coverage
 <!-- surfex: coverage -->
 
@@ -2616,7 +2631,7 @@ suggest --accept retires it
 log's own: `heading_ids` (§11), `rule_ids`, `fold_paths` and `unit_refs` (§11.1),
 `scanners` (§5.3), `scanner`, `scanner_opts`, `namespace`, `goldens` (§10.3), `require`,
 `tests`, `declares` (§11.6), `triangle`,
-`require_red` (§17), `router` (§11.3), `claim_implements` (§15.1),
+`require_red` (§17), `router` (§11.3),
 `spec_classes` (§11.7), `issues` (§13.7), `adoption` (§18.1),
 `process` (§19) and
 `completeness` (§20).
@@ -3714,6 +3729,7 @@ relates the block, not its section. A family names every member. Left out:
   overrule a decision already on record
 - a citation inside a fenced code block, which has no line to place it in a section
 - a named item that is not a code scan
+- in an established log, a prose citation outside a contract unit (§15.4)
 
 Each candidate records where it was first cited. `Surfex.Suggest.accept/4` records one
 `relate` per candidate, at the current hashes. It only ever creates relations that don't
@@ -3841,10 +3857,17 @@ suggest proposes relations the spec and tests already imply and records them onl
 
 A citation is how a spec names code, not why code belongs to a claim. Code realises a
 claim (§11.1) when the claim's tests exercise it, so `suggest` also proposes `implements`
-from what a claim's tests call. It is **opt-in until the release that completes claim
-grain**: `claim_implements: true` in `.surfex.exs` (`Surfex.Status.Config.claim_implements?/1`,
-`false` by default; anything but a boolean is refused), passed as `claims: true` to
-`Surfex.Suggest.all/6`. Off, nothing below is proposed and `reached` is empty.
+from what a claim's tests call. This is **always on**, in every log, with no key: once a
+log is established it is the route left for code a prose citation names (§15.4), and a
+default that flipped with the log's state would be a flag to discover. Both this and the
+citations dedupe by pair, so an empty log gets the union. `claim_implements:`, the key
+it shipped behind, is refused, `true` or `false`: the message names the key, says a
+claim's tests are now always a source, and points to the upgrade step.
+
+```test:claim-implements-refused
+a .surfex.exs setting claim_implements: true or false is refused, naming the key and
+saying a claim's tests now always propose
+```
 
 - **A claim** is a spec unit of role block, test hint, row, rule or contract. A section is
   not one.
@@ -3882,14 +3905,14 @@ relations as its input while the section is migrated; that ends with the migrati
 a claim's verifying tests' direct calls are proposed, a hidden callback as its module and
 a module named alone not at all; code reached only through a called item is one reached
 line with its count; a claim with no verifying test, or a section, gets nothing; a
-declined pair isn't proposed again; nothing without claim_implements: true
+declined pair isn't proposed again
 ```
 
 ### 15.2 Classed text suggests nothing
 <!-- surfex: classed-suggestions -->
 
 A classed section's citations are narration: an architecture map names modules to orient a
-reader, not to say what they realise. `mix surfex.suggest` (`Surfex.Suggest.all/6`)
+reader, not to say what they realise. `mix surfex.suggest` (`Surfex.Suggest.all/5`)
 proposes no
 `implements` from a citation in a classed section's own text, and no `verifies` to a
 classed unit from a declaration, which is contradicted instead (§13.6). The citation is
@@ -3907,10 +3930,10 @@ suggestion; the same citation unclassed does
 <!-- surfex: contract-suggestions -->
 
 A contract unit's key names the function it states (§11.9), so the contract is the claim
-that function realises, whatever prose cites it. `Surfex.Suggest.all/6` proposes, for each
+that function realises, whatever prose cites it. `Surfex.Suggest.all/5` proposes, for each
 contract unit, `implements` between it and the code item whose id is its key: a `@spec`'s
 `Module.name/arity`, a callback's `Module.callback:name/arity` where a scanner lists one.
-It needs no `claims: true`, since the key is the claim, not what a test calls. A pair a
+A pair a
 relation relates in any state, retired included, is not proposed, as for any candidate
 (§15). The candidate is cited at the contract's first line, and these candidates are
 listed before the citation-derived ones; a citation proposing the same pair adds nothing.
@@ -3918,9 +3941,49 @@ A function of the same name in another module is not the contract's.
 
 ```test:contract-own-function
 a contract keyed M.f/2 with code M.f/2 and no relation yields one implements suggestion,
-cited at the contract's line, with or without claims:, listed before citation-derived
-ones; a callback pairs with the code item of its callback id; related or retired yields
-none, and no code of its key none
+cited at the contract's line, listed before citation-derived ones; a callback pairs with
+the code item of its callback id; related or retired yields none, and no code of its key
+none
+```
+
+### 15.4 Once the log is established, prose proposes nothing
+<!-- surfex: established-citations -->
+
+Mentioning code is not how code comes to realise a claim (§11.1): a spec that narrates
+its implementation would otherwise satisfy the gate by naming functions. So prose
+citations propose `implements` only while the log is new. A log is **established** when
+it holds a live `implements` whose judgement in force records a validation, evidence, a
+review, a judgement or a baseline (`Surfex.Suggest.established?/1`). That is read from
+the log, with no key: a project starting from nothing keeps the citation bootstrap, the
+first validated `implements` ends it, and retiring the last one brings it back. A
+proposed `implements` establishes nothing.
+
+In an established log a citation proposes by its kind (§6.10), decided by the unit's role
+and never by reading the text:
+- a **subject** heading or a **cell** under a citing column still proposes: it names what
+  its unit or row is about
+- a **span** proposes only when its innermost unit is a contract (role `contract`), whose
+  text states the code
+- a contract's own function (§15.3) and a claim's tests (§15.1) propose as before
+
+A prose citation still resolves or is broken (§6, §13.1): only its role as a source of
+suggestions changes. **What is no longer proposed is shown.** `Surfex.Suggest.all/5`
+lists under `withheld` each prose citation that proposed nothing because the log is
+established, one per citation whose pair no other source proposes, outside a classed unit
+(§15.2): `%{spec, span, cited_at}`. It is never recorded and not counted as a suggestion.
+`mix surfex.suggest` prints one line for them, `N prose citations not proposed (log
+established: relate the claim, not the sentence)`, and only when there are any.
+
+```test:established-log
+with an empty log a prose span, a subject heading and a citing cell all propose; once one
+implements is validated the span proposes nothing and is withheld, while the heading, the
+cell, a span in a contract unit and a claim's tests still propose; a proposed implements
+establishes nothing, and retiring the validated one restores the bootstrap
+```
+
+```test:withheld-count
+suggest prints the count of prose citations not proposed once the log is established, and
+no such line before
 ```
 
 ## 16. The specification guide

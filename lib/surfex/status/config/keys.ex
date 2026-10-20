@@ -55,7 +55,6 @@ defmodule Surfex.Status.Config.Keys do
     require_red: "true or false",
     router: "a module, a non-empty list of modules, or false",
     dispatch: "a list of {Module, :fun, arity}",
-    claim_implements: "true or false",
     spec_classes:
       "a list of {name, reason} or {name, reason, files: [glob], headings: regex, marker: regex}",
     issues:
@@ -149,7 +148,7 @@ defmodule Surfex.Status.Config.Keys do
 
   defp check(:unit_refs, value), do: whole(:unit_refs, value)
 
-  defp check(key, value) when key in [:fold_paths, :require_red, :claim_implements],
+  defp check(key, value) when key in [:fold_paths, :require_red],
     do: if(is_boolean(value), do: [], else: whole(key, value))
 
   defp check(:scanner, value), do: if(scanner?(value), do: [], else: whole(:scanner, value))
