@@ -146,7 +146,13 @@ defmodule Surfex.ConfigKeysTest do
       assert head == "#{path}: 4 refusals:"
       assert Enum.any?(lines, &(&1 =~ "unknown keys [:bogus]"))
       assert Enum.any?(lines, &(&1 =~ "namespace: must be"))
-      assert Enum.any?(lines, &(&1 =~ "triangle: must be :report or :fail, got :maybe"))
+
+      assert Enum.any?(
+               lines,
+               &(&1 =~
+                   "triangle: must be :report, :fail, [default: :report, fail: [glob, …]] or [default: :fail, report: [glob, …]], got :maybe")
+             )
+
       assert Enum.any?(lines, &(&1 =~ "spec_classes: a class's reason"))
     end
 

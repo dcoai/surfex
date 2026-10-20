@@ -51,7 +51,7 @@ defmodule Surfex.Status.Config.Keys do
     tests: "a list of globs (strings)",
     declares:
       "[verifies: [form, …]], each form {:tag, key} or {:attribute, name}, with [strip: regex] as an option",
-    triangle: ":report or :fail",
+    triangle: Surfex.Status.Triangle.form(),
     require_red: "true or false",
     router: "a module, a non-empty list of modules, or false",
     dispatch: "a list of {Module, :fun, arity}",
@@ -214,8 +214,12 @@ defmodule Surfex.Status.Config.Keys do
     end
   end
 
-  defp check(:triangle, value),
-    do: if(value in [:report, :fail], do: [], else: whole(:triangle, value))
+  defp check(:triangle, value) do
+    case Surfex.Status.Triangle.resolve(value) do
+      {:ok, _} -> []
+      :error -> whole(:triangle, value)
+    end
+  end
 
   defp check(:router, value) do
     case value do

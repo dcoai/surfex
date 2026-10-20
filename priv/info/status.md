@@ -35,7 +35,7 @@ refused with it (spec §13.16).
 | Unrecorded | a tag with no `verifies` relation: record it (`suggest`, then validate), or remove the tag; one whose relation was retired: remove the tag, or reinstate the relation |
 | Moved | a block or hint now sits in another unit: `mix surfex.suggest --accept` relates the new one and retires the old |
 | Stale deviations | a test tagged `deviation:` passed: the code meets the unit now, so drop the tag and validate |
-| Triangle | the unit's verifying test must call the implementing code (`triangle: :fail`) |
+| Triangle | the unit's verifying test must call the implementing code; listed by spec file, each with its mode (`triangle: :fail`, or `fail:`/`report:` globs by file) |
 | Unvalidated (`--validated`) | review it (`mix surfex.validate`) |
 
 **Known deviations.** When the spec is right and the code isn't yet, write the test from

@@ -116,7 +116,10 @@ defmodule Surfex.Status do
   **triangle** lists each side missing:
   `:no_test`, `:test_misses_code` (a verifying test reaches none of the code), and
   `:code_untested` (implementing code no verifying test reaches). It is reported, and
-  fails the check only when derived with `triangle: :fail`.
+  fails the check when derived with `triangle: :fail`. The mode may also be set by spec
+  file, `triangle: [default: :report, fail: globs]` or `[default: :fail, report: globs]`:
+  each gap carries its unit's `file` and the `mode` it takes, and fails when that is
+  `:fail` (§13.17).
   """
 
   alias Surfex.Log.Entry
@@ -138,7 +141,9 @@ defmodule Surfex.Status do
           spec: String.t(),
           gap: :no_test | :test_misses_code | :code_untested,
           test: String.t() | nil,
-          code: String.t() | nil
+          code: String.t() | nil,
+          file: String.t() | nil,
+          mode: :report | :fail
         }
   @type t :: %{
           relations: [relation_status],
@@ -203,7 +208,7 @@ defmodule Surfex.Status do
           baselined: MapSet.t({String.t(), String.t()}),
           adoption: term,
           policy: %{
-            triangle: :report | :fail,
+            triangle: Surfex.Status.Triangle.setting(),
             validated: boolean,
             marks: :allow | :fail,
             baseline: :allow | :fail,
@@ -288,13 +293,19 @@ defmodule Surfex.Status do
           "baseline: must be :allow or :fail, got #{inspect(baseline_policy)}"
         )
 
-    triangle = Keyword.get(opts, :triangle, :report)
+    triangle =
+      case Surfex.Status.Triangle.resolve(Keyword.get(opts, :triangle, :report)) do
+        {:ok, resolved} ->
+          resolved
+
+        :error ->
+          raise ArgumentError,
+                "triangle: must be #{Surfex.Status.Triangle.form()}, got " <>
+                  inspect(Keyword.get(opts, :triangle))
+      end
 
     unless planned in [:allow, :fail],
       do: raise(ArgumentError, "planned: must be :allow or :fail, got #{inspect(planned)}")
-
-    unless triangle in [:report, :fail],
-      do: raise(ArgumentError, "triangle: must be :report or :fail, got #{inspect(triangle)}")
 
     marks_policy = Keyword.get(opts, :marks, :allow)
 
@@ -453,7 +464,7 @@ defmodule Surfex.Status do
       failed: failed,
       unproven: unproven,
       unchecked: unchecked,
-      triangle: triangle(scans, relations, exercises, verdict.verdicts),
+      triangle: triangle(scans, relations, exercises, verdict.verdicts, triangle),
       unvalidated: unvalidated(relations, baselined, scans),
       baselined: baselined,
       adoption: adoption.setting,
@@ -550,7 +561,7 @@ defmodule Surfex.Status do
       status.moved != [] or
       status.failed != [] or
       status.unproven != [] or
-      (status.policy.triangle == :fail and status.triangle != []) or
+      Enum.any?(status.triangle, &(&1.mode == :fail)) or
       (status.policy.marks == :fail and status.marks != []) or
       (status.policy.baseline == :fail and baseline_count(status) > 0) or
       (deviations_fail and status.deviating != []) or
@@ -997,7 +1008,7 @@ defmodule Surfex.Status do
   # should verify it (or a block or hint inside it), and that test should exercise the code
   # that implements it. Only when tests are scanned at all; otherwise every unit would
   # report no test for a project that doesn't scan them.
-  defp triangle(scans, relations, exercises, verdicts) do
+  defp triangle(scans, relations, exercises, verdicts, setting) do
     if Enum.any?(scans, &(&1.kind in [:test, :check])) do
       live = Enum.reject(relations, &(&1.state == :retired))
       implements = pairs(live, :implements, fn {{:code, c}, {:spec, s}} -> {s, c} end)
@@ -1024,6 +1035,10 @@ defmodule Surfex.Status do
                      &MapSet.put(&1, definition.(c))
                    ))
 
+      # Each gap fails or is reported by its unit's file (§13.17); a unit no longer
+      # scanned has no file and takes the default.
+      files = for %Scan{kind: :spec, location: %{file: f}} = s <- scans, into: %{}, do: {s.id, f}
+
       # An excused or deferred unit isn't judged: a relation to one is contradicted, or
       # waits on its issue (§13.6).
       for {spec, codes} <- Enum.sort(implements),
@@ -1032,8 +1047,10 @@ defmodule Surfex.Status do
           stated = Map.get(through, spec, MapSet.new()),
           exercised =
             Map.new(tests, &{&1, MapSet.union(Map.get(exercises, &1, MapSet.new()), stated)}),
+          file = Map.get(files, spec),
+          mode = Surfex.Status.Triangle.mode(setting, file),
           gap <- gaps(spec, codes, tests, exercised, definition),
-          do: gap
+          do: Map.merge(gap, %{file: file, mode: mode})
     else
       []
     end
