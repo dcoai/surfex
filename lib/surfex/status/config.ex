@@ -134,6 +134,10 @@ defmodule Surfex.Status.Config do
   key of the removed v0.2 trace is refused saying so; any other unknown key is refused
   naming it. Every refusal is raised at once, one per line (§13.14). Every task reads its
   config through this, so a misspelt key is never ignored.
+
+  The goldens a `known_external:` list names are read here, relative to the config's
+  directory, and the config given back holds the one map they and its maps make (§6.11);
+  a golden that gives no names is refused with the rest.
   """
   @spec read!(String.t()) :: keyword
   def read!(path) do
@@ -175,9 +179,37 @@ defmodule Surfex.Status.Config do
           end
       end
 
-    case claim_grain ++ claim_implements ++ unknown ++ Keys.refusals(config) do
+    {config, external} = resolve_external(config, Path.dirname(path))
+
+    case claim_grain ++ claim_implements ++ unknown ++ Keys.refusals(config) ++ external do
       [] -> config
       refusals -> raise ArgumentError, refused(path <> ": ", refusals)
+    end
+  end
+
+  # `known_external:` given as a list (§6.11): its maps and its goldens, each golden read
+  # with `Surfex.Profile.external_from_golden/3` relative to the config's directory, made
+  # one map, the first entry listing a name giving its reason. A golden that gives no
+  # names is a refusal, among the config's others. A malformed list is `Keys`' to refuse.
+  defp resolve_external(config, root) do
+    with {:ok, [_ | _] = entries} <- Keyword.fetch(config, :known_external),
+         [] <- Keys.refusals(known_external: entries) do
+      results = Enum.map(entries, &external_entry(&1, root))
+
+      merged = first_listed(for {:ok, map} <- results, do: map)
+      config = List.keyreplace(config, :known_external, 0, {:known_external, merged})
+      {config, for({:error, refusal} <- results, do: refusal)}
+    else
+      _ -> {config, []}
+    end
+  end
+
+  defp external_entry(map, _root) when is_map(map), do: {:ok, map}
+
+  defp external_entry({:golden, path, column: column} = entry, root) do
+    case Surfex.Profile.external_from_golden(path, column, root: root) do
+      {:ok, map} -> {:ok, map}
+      {:error, why} -> {:error, Keys.format(:known_external, "#{inspect(entry)}: #{why}")}
     end
   end
 
@@ -723,8 +755,40 @@ defmodule Surfex.Status.Config do
         []
       end
 
-    Surfex.Profile.new!(Keyword.merge(defaults, Keyword.take(config, Surfex.Profile.keys())))
+    own =
+      config
+      |> Keyword.take(Surfex.Profile.keys())
+      |> Keyword.replace_lazy(:known_external, fn _ -> known_external!(config) end)
+
+    Surfex.Profile.new!(Keyword.merge(defaults, own))
   end
+
+  # The profile's `known_external` map: the key's map, or the maps of its list. A golden
+  # in the list is read from its file, which `read!/1` does (§6.11); one still here came
+  # from a config built in code, which reads it with `Surfex.Profile.external_from_golden/3`.
+  defp known_external!(config) do
+    Keys.check!(config, :known_external)
+
+    case Keyword.fetch!(config, :known_external) do
+      map when is_map(map) ->
+        map
+
+      entries ->
+        if golden = Enum.find(entries, &is_tuple/1) do
+          raise ArgumentError,
+                Keys.format(
+                  :known_external,
+                  "#{inspect(golden)} is read from its file by Surfex.Status.Config.read!/1; " <>
+                    "a config built in code gives the map Surfex.Profile.external_from_golden/3 returns"
+                )
+        end
+
+        first_listed(entries)
+    end
+  end
+
+  # Maps made one, a name taking its reason from the first map that lists it.
+  defp first_listed(maps), do: maps |> Enum.reverse() |> Enum.reduce(%{}, &Map.merge(&2, &1))
 
   @doc """
   The config's `namespace:` (§13.14) as root module names, or `nil` without the key: a

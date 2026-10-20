@@ -66,7 +66,8 @@ defmodule Surfex.Cite do
   @typedoc """
   One citation: the span as written, how it was made (`kind`), where it is, and what it
   resolved to. A contract's citation of its own function (§6.9) that names nothing says
-  why, `why`.
+  why, `why`, and an external citation carries its `known_external` reason as `why`
+  (§6.11): a golden's names, the golden's path.
   """
   @type t :: %{
           optional(:why) => String.t(),
@@ -266,6 +267,10 @@ defmodule Surfex.Cite do
     |> Enum.map(&citation(&1, :cell, ctx.path, section(st.stack), no))
   end
 
+  # An external citation carries its reason, `why` (§6.11).
+  defp citation({span, status, items, why}, kind, file, section, line),
+    do: Map.put(citation({span, status, items}, kind, file, section, line), :why, why)
+
   defp citation({span, status, items}, kind, file, section, line),
     do: %{
       span: span,
@@ -315,7 +320,7 @@ defmodule Surfex.Cite do
         [{span, :documented_absence, []}]
 
       Map.has_key?(profile.known_external, name) ->
-        [{span, :external, []}]
+        [{span, :external, [], Map.fetch!(profile.known_external, name)}]
 
       # Inside a section about a structure, its member wins over a global of the same name:
       # that is what declaring the subject says.

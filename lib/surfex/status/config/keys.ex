@@ -28,7 +28,8 @@ defmodule Surfex.Status.Config.Keys do
     subjects: "a list of %{file: path or regex, heading: regex, items: [string, …]}",
     table_columns: "a list of strings",
     file_targets: "a list of file names (strings) or :item_files",
-    known_external: "a map of name => reason",
+    known_external:
+      ~s(a map of name => reason, or a list of such maps and {:golden, path, column: "header"}),
     documented_absences: "a map of {name, file} => reason, name and file strings",
     classes: "a list of {class, reason}, both strings",
     rules:
@@ -128,6 +129,15 @@ defmodule Surfex.Status.Config.Keys do
   end
 
   defp check(:rules, value), do: whole(:rules, value)
+
+  # A map as the profile takes it, or a list of maps and goldens that `Config.read!/1`
+  # resolves into one (§6.11); the golden's file is checked where it is read.
+  defp check(:known_external, value) when is_list(value) do
+    for entry <- value, not external_entry?(entry) do
+      {~s(an entry must be a map of name => reason or {:golden, path, column: "header"}), entry,
+       value}
+    end
+  end
 
   # The other profile keys take the form `Surfex.Profile.new!/1` checks.
   defp check(key, value) when key in @profile,
@@ -378,6 +388,13 @@ defmodule Surfex.Status.Config.Keys do
   end
 
   # ── The parts ───────────────────────────────────────────────────────────
+
+  defp external_entry?(map) when is_map(map), do: Profile.valid_key?(:known_external, map)
+
+  defp external_entry?({:golden, path, [column: column]}),
+    do: is_binary(path) and path != "" and is_binary(column) and column != ""
+
+  defp external_entry?(_), do: false
 
   defp nil_or(nil, _valid?), do: true
   defp nil_or(v, valid?), do: valid?.(v)

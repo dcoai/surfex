@@ -44,7 +44,9 @@ defmodule Surfex.Profile do
       a code reference. A cell holding a code span is already cited as one.
     * `:file_targets` — file names that are citation targets in their own right.
       `:item_files` in the list adds every file an item is declared in.
-    * `:known_external` — `%{name => reason}`: real, but outside the scanned tree
+    * `:known_external` — `%{name => reason}`: real, but outside the scanned tree. A
+      committed golden that already lists such names gives them with
+      `external_from_golden/3`, so the vocabulary is versioned with the golden
     * `:documented_absences` — `%{{name, file} => reason}`: a section that names something
       deliberately *because* the code does not have it
 
@@ -171,6 +173,51 @@ defmodule Surfex.Profile do
     Enum.each(coverage, fn {key, value} -> check!(key, value) end)
     check_rules!(coverage)
     coverage
+  end
+
+  @doc """
+  The names a committed golden lists in its column `column`, as a `:known_external` map:
+  `{:ok, %{name => "listed in PATH"}}`, `PATH` as given. Every table of the file with a
+  column of that header counts. A cell is read as the golden renders it
+  (`Surfex.Golden`'s GFM notation): each code span in it is a name, and a cell with none
+  is its text; an empty cell names nothing.
+
+  Never raises. `{:error, message}` when the file can't be read, no table has the column,
+  or the column names nothing. A name that leaves the golden leaves the map, so a
+  citation of it reads as broken again.
+
+  Options: `:root`, the directory `path` is relative to (default: the current one).
+  """
+  @spec external_from_golden(String.t(), String.t(), keyword) ::
+          {:ok, %{String.t() => String.t()}} | {:error, String.t()}
+  def external_from_golden(path, column, opts \\ [])
+      when is_binary(path) and is_binary(column) do
+    file = Path.expand(path, Keyword.get(opts, :root, File.cwd!()))
+
+    with {:read, {:ok, text}} <- {:read, File.read(file)},
+         {:column, {:ok, cells}} <- {:column, Surfex.Golden.Span.column(text, column)},
+         names = cells |> Enum.flat_map(&cell_names/1) |> Enum.uniq(),
+         {:names, [_ | _]} <- {:names, names} do
+      {:ok, Map.new(names, &{&1, "listed in #{path}"})}
+    else
+      {:read, {:error, reason}} ->
+        {:error, "#{path} can't be read: #{:file.format_error(reason)}"}
+
+      {:column, :error} ->
+        {:error, "#{path} has no table with a column #{inspect(column)}"}
+
+      {:names, []} ->
+        {:error, "#{path}'s column #{inspect(column)} names nothing"}
+    end
+  end
+
+  defp cell_names(cell) do
+    segments = Surfex.Golden.Span.inline(cell)
+
+    case for {:code, name} <- segments, name = String.trim(name), name != "", do: name do
+      [] -> if (text = String.trim(cell)) == "", do: [], else: [text]
+      names -> names
+    end
   end
 
   defp rules(rules) when is_list(rules), do: Enum.map(rules, &rule/1)

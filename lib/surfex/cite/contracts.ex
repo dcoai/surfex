@@ -14,7 +14,7 @@ defmodule Surfex.Cite.Contracts do
   sits in (§13.6, §13.13), resolved against `items` under `profile`, sorted by file and
   line. Its `span` is the contract (`Module.name/arity`), its section `(contract)`, its line
   the signature's first. An unresolved one carries `why`: no such module, no such function
-  in it, or the function at other arities only.
+  in it, or the function at other arities only; an external one, its `known_external` reason.
   """
   @spec citations([Scan.t()], [Item.t()], Profile.t()) :: [Cite.t()]
   def citations(scans, items, %Profile{} = profile) do
@@ -143,8 +143,9 @@ defmodule Surfex.Cite.Contracts do
       Enum.any?([contract, "#{module}.#{fun}"], &Map.has_key?(p.documented_absences, {&1, file})) ->
         {:documented_absence, [], nil}
 
-      Enum.any?([contract, "#{module}.#{fun}", module], &Map.has_key?(p.known_external, &1)) ->
-        {:external, [], nil}
+      external =
+          Enum.find([contract, "#{module}.#{fun}", module], &Map.has_key?(p.known_external, &1)) ->
+        {:external, [], Map.fetch!(p.known_external, external)}
 
       callback != nil and Map.has_key?(index, callback) ->
         found(Map.fetch!(index, callback))

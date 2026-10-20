@@ -59,6 +59,61 @@ defmodule Surfex.Golden.Span do
   @spec inline(String.t()) :: [segment]
   def inline(cell), do: cell |> spans("", []) |> Enum.reverse()
 
+  @doc false
+  # Every cell under the header `header`, in every table of the Markdown `text` that has
+  # such a column, in order (spec §6.11): a table is a row followed by a separator row,
+  # and runs until the first line that is not a row. A table inside a fenced code block
+  # is not one. `:error` when no table has the column.
+  @spec column(String.t(), String.t()) :: {:ok, [String.t()]} | :error
+  def column(text, header) do
+    tables = text |> String.split(~r/\r?\n/) |> unfenced() |> tables([])
+
+    case for(cells <- tables, at = Enum.find_index(hd(cells), &(&1 == header)), do: {cells, at}) do
+      [] -> :error
+      found -> {:ok, for({[_ | rows], at} <- found, row <- rows, do: Enum.at(row, at, ""))}
+    end
+  end
+
+  # The lines outside fenced code blocks (a blank line stands in for each line inside, so a
+  # table never runs across a fence).
+  defp unfenced(lines) do
+    lines
+    |> Enum.map_reduce(nil, fn line, fence ->
+      opener = Regex.run(~r/^\s{0,3}(`{3,}|~{3,})/, line, capture: :all_but_first)
+
+      cond do
+        fence == nil and opener != nil ->
+          {"", hd(opener)}
+
+        fence != nil and Regex.match?(~r/^\s{0,3}#{fence}#{String.first(fence)}*\s*$/, line) ->
+          {"", nil}
+
+        fence != nil ->
+          {"", fence}
+
+        true ->
+          {line, nil}
+      end
+    end)
+    |> elem(0)
+  end
+
+  # Each table as its header's cells followed by its rows' cells.
+  defp tables([head, sep | rest], acc) do
+    if row?(head) and row?(sep) and separator?(cells(sep)) do
+      {rows, rest} = Enum.split_while(rest, &row?/1)
+      tables(rest, [[cells(head) | Enum.map(rows, &cells/1)] | acc])
+    else
+      tables([sep | rest], acc)
+    end
+  end
+
+  defp tables(_lines, acc), do: Enum.reverse(acc)
+
+  defp row?(line), do: String.starts_with?(String.trim_leading(line), "|")
+
+  defp separator?(cells), do: cells != [] and Enum.all?(cells, &Regex.match?(~r/^:?-+:?$/, &1))
+
   defp spans("", "", acc), do: acc
   defp spans("", text, acc), do: [{:text, text} | acc]
 
