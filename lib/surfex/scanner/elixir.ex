@@ -35,6 +35,11 @@ defmodule Surfex.Scanner.Elixir do
   shares the alias and a citation of it cites them all (`Surfex.Item` `:aliases`). A
   citation naming two unrelated items is still ambiguous; a family is not.
 
+  **A function, macro or type carries its doc version** (`Surfex.Item` `:doc`), from
+  `Surfex.SourceScan.defs/1` and `Surfex.SourceScan.types/1`: its `@doc` or `@typedoc`,
+  apart from its code version. A module carries none, since its version covers its
+  `@moduledoc`.
+
   ## Options
 
     * `:paths` — globs relative to the root. Default: `["lib/**/*.ex"]`, one project's
@@ -216,7 +221,7 @@ defmodule Surfex.Scanner.Elixir do
           )
       }
     ] ++
-      for %{name: name, arity: arity, kind: kind, hash: hash, lines: lines} <-
+      for %{name: name, arity: arity, kind: kind, hash: hash, doc: doc, lines: lines} <-
             SourceScan.defs(node) do
         key = {name, arity}
         local = runs(key, calls, module, hidden)
@@ -234,19 +239,22 @@ defmodule Surfex.Scanner.Elixir do
           parent: module,
           file: file,
           hash: hash,
+          doc: doc,
           aliases: ["#{module}.#{name}"],
           lines: lines,
           calls: Map.fetch!(calls, key),
           runs: runs
         }
       end ++
-      for %{name: name, arity: arity, hash: hash, lines: lines} <- SourceScan.types(node) do
+      for %{name: name, arity: arity, hash: hash, doc: doc, lines: lines} <-
+            SourceScan.types(node) do
         # Keyed as ExDoc writes a type, so a function of the same name keeps its own key.
         %Item{
           kind: :type,
           name: "t:#{module}.#{name}/#{arity}",
           file: file,
           hash: hash,
+          doc: doc,
           aliases: ["#{module}.#{name}"],
           lines: lines,
           shape: true

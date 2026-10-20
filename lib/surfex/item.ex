@@ -30,6 +30,7 @@ defmodule Surfex.Item do
     :type,
     :detail,
     :lines,
+    :doc,
     aliases: [],
     shape: false,
     calls: [],
@@ -58,6 +59,11 @@ defmodule Surfex.Item do
           # them all, as a family (`Mod.fun` cites every arity of `fun`). Unlike two items
           # sharing a *key*, which is ambiguous, a shared alias is declared on purpose.
           aliases: [String.t()],
+          # Its doc version: a hash of its documentation, kept apart from `hash` so a doc edit
+          # changes no code version (§3.4); a relation to a contract unit reads it (§11.1).
+          # `nil` when the scanner doesn't version documentation apart, as for a module, whose
+          # version covers its `@moduledoc`.
+          doc: String.t() | nil,
           # First and last line in `file`, when the scanner knows them. Where the item is,
           # for people and tools; never part of its identity or its version.
           lines: {pos_integer, pos_integer} | nil,

@@ -48,6 +48,7 @@ defmodule Surfex.LibraryApiTest do
              calls: false,
              detail: false,
              dispatch: false,
+             doc: false,
              file: true,
              hash: true,
              hidden: false,
