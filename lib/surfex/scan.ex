@@ -80,6 +80,7 @@ defmodule Surfex.Scan do
     :role,
     :within,
     :under,
+    :doc,
     declares: [],
     unselectable: [],
     deviation: nil,
@@ -115,6 +116,8 @@ defmodule Surfex.Scan do
           within: String.t() | nil,
           # A section's enclosing section, by heading level (§13.4).
           under: String.t() | nil,
+          # A code record's doc version (`Surfex.Item` `:doc`, §3.4), or `nil`.
+          doc: String.t() | nil,
           declares: [{atom, String.t()}],
           # Declared ids the test's runner can't select it by (§11).
           unselectable: [String.t()],
@@ -323,7 +326,7 @@ defmodule Surfex.Scan do
   end
 
   @doc """
-  Code records from a scanner's items: the item's key, version and place, with its kind as
+  Code records from a scanner's items: the item's key, version, doc version and place, with its kind as
   `role` (`:function`, `:module`, …) and its parent as `within`, as a spec record has them.
 
   The id is the item's key. When two items share a key (a C function and a constant both
@@ -340,6 +343,7 @@ defmodule Surfex.Scan do
         kind: :code,
         id: code_id(item, shared),
         hash: item.hash,
+        doc: item.doc,
         location: %{file: item.file, lines: item.lines},
         role: item.kind,
         within: item.parent,

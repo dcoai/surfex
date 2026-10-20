@@ -674,5 +674,45 @@ defmodule Surfex.Scanner.ElixirTest do
       assert %{status: :resolved, items: items} = by_span["Shapes.t()"]
       assert Enum.sort(items) == ["Shapes.t/0", "t:Shapes.t/0"]
     end
+
+    # #331 (for #325): the doc version rides on the item, and on its code record (§3.4).
+    @tag verifies: ["doc-version", "doc-versions"]
+    test "a function's, macro's and type's item carries its doc version; a module's is nil" do
+      documented =
+        @shapes
+        |> String.replace("  def area(", "  @doc \"The area.\"\n  def area(")
+        |> String.replace("  @type pair(", "  @typedoc \"Two of a kind.\"\n  @type pair(")
+        |> Kernel.<>("""
+
+        defmodule Shapes.Guards do
+          @moduledoc "Guards."
+          @doc "A square."
+          defguard is_square(s) when s == 4
+        end
+        """)
+
+      items = Map.new(Scanner.items(shapes(documented)), &{Item.key(&1), &1})
+      plain = Map.new(Scanner.items(shapes()), &{Item.key(&1), &1})
+      doc = &Map.get(items[&1], :doc)
+
+      for key <-
+            ~w(Shapes.area/1 Shapes.t/0 t:Shapes.pair/2 t:Shapes.t/0 Shapes.Guards.is_square/1),
+          do: assert(is_binary(doc.(key)), "#{key} carries a doc version")
+
+      assert doc.("Shapes") == nil
+      assert doc.("Shapes.Guards") == nil
+
+      # Documenting area/1 and pair/2 moved their doc versions and nothing's version.
+      refute doc.("Shapes.area/1") == Map.get(plain["Shapes.area/1"], :doc)
+      refute doc.("t:Shapes.pair/2") == Map.get(plain["t:Shapes.pair/2"], :doc)
+      assert doc.("Shapes.t/0") == Map.get(plain["Shapes.t/0"], :doc)
+
+      for {key, item} <- plain, do: assert(items[key].hash == item.hash, "#{key}'s version")
+
+      # A code record carries its item's doc version.
+      records = Map.new(Surfex.Scan.code(Map.values(items)), &{&1.id, &1})
+      assert Map.get(records["Shapes.area/1"], :doc) == doc.("Shapes.area/1")
+      assert Map.get(records["Shapes"], :doc) == nil
+    end
   end
 end

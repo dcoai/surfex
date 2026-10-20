@@ -545,4 +545,97 @@ defmodule Surfex.SourceScanTest do
                Map.new(types, fn {k, v} -> {k, v.hash} end)
     end
   end
+
+  # #331 (for #325): a definition's documentation has a version of its own (§3.4).
+  describe "doc versions" do
+    @describetag verifies: "doc-version"
+
+    @docv_source ~S'''
+    defmodule Docs do
+      @moduledoc "Docs."
+
+      @typedoc "A count of things."
+      @type t :: non_neg_integer
+      @type bare :: atom
+
+      @doc """
+      Adds one to its argument.
+      """
+      def f(x), do: x + 1
+
+      def g(x \\ 1), do: x
+
+      @doc since: "1.0"
+      @doc ~S"Says hello."
+      def h, do: :hello
+
+      @doc "A guard."
+      defmacro m(x), do: x
+    end
+    '''
+
+    defp docv_scan(source) do
+      [mod] = source |> Code.string_to_quoted!() |> SourceScan.defmodules()
+
+      Map.merge(
+        Map.new(SourceScan.defs(mod), &{{&1.name, &1.arity}, &1}),
+        Map.new(SourceScan.types(mod), &{{:type, &1.name}, &1})
+      )
+    end
+
+    @tag verifies: ["doc-version", "doc-versions"]
+    test "a @doc or @typedoc edit changes the doc version and never the version" do
+      before = docv_scan(@docv_source)
+
+      reworded =
+        docv_scan(
+          @docv_source
+          |> String.replace("Adds one to its argument.", "Increments its argument.")
+          |> String.replace("A count of things.", "How many things.")
+          |> String.replace("A guard.", "A macro.")
+          |> String.replace(~S|~S"Says hello."|, ~S|"Greets."|)
+        )
+
+      for key <- [{:f, 1}, {:m, 1}, {:h, 0}, {:type, :t}] do
+        refute reworded[key].doc == before[key].doc, "#{inspect(key)}'s doc version"
+        assert reworded[key].hash == before[key].hash, "#{inspect(key)}'s version"
+      end
+
+      # What wasn't reworded keeps its doc version.
+      assert reworded[{:g, 1}].doc == before[{:g, 1}].doc
+      assert reworded[{:type, :bare}].doc == before[{:type, :bare}].doc
+    end
+
+    @tag verifies: ["doc-version", "doc-versions"]
+    test "whitespace is normalised; no doc text is a version of its own" do
+      before = docv_scan(@docv_source)
+
+      rewrapped =
+        docv_scan(
+          String.replace(
+            @docv_source,
+            "  Adds one to its argument.\n",
+            "    Adds one\n  to   its argument.\n\n"
+          )
+        )
+
+      assert rewrapped[{:f, 1}].doc == before[{:f, 1}].doc
+
+      # Every arity a default generates shares one doc version. No text is one version for
+      # every undocumented definition, apart from any text, and metadata alone states none.
+      assert before[{:g, 0}].doc == before[{:g, 1}].doc
+      assert before[{:type, :bare}].doc == before[{:g, 1}].doc
+      refute before[{:f, 1}].doc == before[{:g, 1}].doc
+      refute before[{:h, 0}].doc == before[{:g, 1}].doc
+
+      # Adding a docstring, or removing one, changes the doc version and not the version.
+      added = docv_scan(String.replace(@docv_source, "  def g(", "  @doc \"Echoes.\"\n  def g("))
+      refute added[{:g, 1}].doc == before[{:g, 1}].doc
+      assert added[{:g, 1}].hash == before[{:g, 1}].hash
+
+      removed = docv_scan(String.replace(@docv_source, ~s(  @doc "A guard."\n), ""))
+      assert removed[{:m, 1}].doc == before[{:g, 1}].doc
+      assert removed[{:m, 1}].hash == before[{:m, 1}].hash
+    end
+  end
 end

@@ -98,6 +98,8 @@ defmodule Surfex.SourceScan do
           arity: non_neg_integer,
           kind: :function | :macro,
           hash: String.t(),
+          # Its doc version: the hash of its @doc text, whitespace normalised.
+          doc: String.t(),
           # First and last line of all its clauses (see line_range/1), or nil.
           lines: {pos_integer, pos_integer} | nil
         }
@@ -109,6 +111,11 @@ defmodule Surfex.SourceScan do
   Clauses are grouped by `{name, arity}` and hashed together with `definition_hash/1`, so
   editing any clause changes the function's hash and moving it does not. A default
   argument (`\\\\`) declares every arity it generates, each with the function's one hash.
+
+  Each also has its **doc version**, `doc`: the hash of its `@doc` text, kept apart from
+  `hash` so a docstring edit changes no code version. It is whitespace normalised, so
+  re-wrapping a docstring is no change, and a definition with no `@doc` has a doc version
+  of its own, so adding or removing one is.
 
   Public means `def`, `defmacro`, `defdelegate` and `defguard`, minus what the module
   hides from its docs: `@doc false`, and an `@impl` callback without an explicit `@doc`
@@ -126,9 +133,10 @@ defmodule Surfex.SourceScan do
         hash = Surfex.SourceScan.Closure.hash(key, groups, attributes)
         defaults = groups[key].defaults
         lines = line_range(groups[key].nodes)
+        doc = grouped[key] |> Enum.find_value(& &1.doc) |> doc_version()
 
         for a <- (arity - defaults)..arity//1,
-            do: %{name: name, arity: a, kind: first.kind, hash: hash, lines: lines}
+            do: %{name: name, arity: a, kind: first.kind, hash: hash, doc: doc, lines: lines}
       else
         []
       end
@@ -139,25 +147,30 @@ defmodule Surfex.SourceScan do
   @doc """
   The module's public types: each `@type` and `@opaque`, minus one under `@typedoc false`,
   as Elixir's docs leave it out. A `@typep` is private. Each has its name, arity, version
-  (the hash of its declaration, so it changes with the type alone) and lines.
+  (the hash of its declaration, so it changes with the type alone), doc version (`doc`,
+  the hash of its `@typedoc` text, as `defs/1` versions a `@doc`) and lines.
   """
   @spec types(Macro.t()) :: [
           %{
             name: atom,
             arity: non_neg_integer,
             hash: String.t(),
+            doc: String.t(),
             lines: {pos_integer, pos_integer} | nil
           }
         ]
   def types({:defmodule, _, [_aliases, [do: body]]}) do
-    {types, _hidden} =
-      Enum.reduce(exprs(body), {[], false}, fn
-        {:@, _, [{:typedoc, _, [false]}]}, {acc, _hidden} ->
-          {acc, true}
+    {types, _hidden, _text} =
+      Enum.reduce(exprs(body), {[], false, nil}, fn
+        {:@, _, [{:typedoc, _, [false]}]}, {acc, _hidden, _text} ->
+          {acc, true, nil}
 
-        {:@, _, [{kind, _, [{:"::", _, [head, _body]}]}]} = node, {acc, hidden}
+        {:@, _, [{:typedoc, _, [text]}]}, {acc, hidden, _text} ->
+          {acc, hidden, doc_text(text)}
+
+        {:@, _, [{kind, _, [{:"::", _, [head, _body]}]}]} = node, {acc, hidden, text}
         when kind in [:type, :opaque] ->
-          {if(hidden, do: acc, else: [type(head, node) | acc]), false}
+          {if(hidden, do: acc, else: [type(head, node, text) | acc]), false, nil}
 
         _other, state ->
           state
@@ -166,11 +179,12 @@ defmodule Surfex.SourceScan do
     Enum.sort_by(types, &{&1.name, &1.arity})
   end
 
-  defp type({name, _meta, args}, node),
+  defp type({name, _meta, args}, node, text),
     do: %{
       name: name,
       arity: if(is_list(args), do: length(args), else: 0),
       hash: definition_hash(node),
+      doc: doc_version(text),
       lines: line_range(node)
     }
 
@@ -229,7 +243,7 @@ defmodule Surfex.SourceScan do
   # hashing needs them (%{nodes, defaults, private}), and its attributes' values.
   defp definitions(body) do
     {clauses, _} =
-      Enum.flat_map_reduce(exprs(body), %{doc: nil, impl: false, seen: %{}}, &clause/2)
+      Enum.flat_map_reduce(exprs(body), %{doc: nil, impl: false, text: nil, seen: %{}}, &clause/2)
 
     grouped = Enum.group_by(clauses, &{&1.name, &1.arity})
 
@@ -346,16 +360,21 @@ defmodule Surfex.SourceScan do
   defp exprs(expr), do: [expr]
 
   # `@doc` and `@impl` apply to the next definition; the first clause of a function decides
-  # its visibility for every later clause, which carry no attributes of their own.
-  defp clause({:@, _, [{:doc, _, [false]}]}, st), do: {[], %{st | doc: :hidden}}
-  defp clause({:@, _, [{:doc, _, [_]}]}, st), do: {[], %{st | doc: :shown}}
+  # its visibility for every later clause, which carry no attributes of their own. The
+  # `@doc` text goes with the clause it precedes, for the doc version.
+  defp clause({:@, _, [{:doc, _, [false]}]}, st), do: {[], %{st | doc: :hidden, text: nil}}
+
+  defp clause({:@, _, [{:doc, _, [value]}]}, st),
+    do: {[], %{st | doc: :shown, text: doc_text(value) || st.text}}
+
   defp clause({:@, _, [{:impl, _, [false]}]}, st), do: {[], st}
   defp clause({:@, _, [{:impl, _, [_]}]}, st), do: {[], %{st | impl: true}}
 
   defp clause({definer, _, [head | _]} = node, st) when definer in @definers do
     hidden = st.doc == :hidden or (st.doc == nil and st.impl)
     impl = st.impl
-    st = %{st | doc: nil, impl: false}
+    text = st.text
+    st = %{st | doc: nil, impl: false, text: nil}
 
     case signature(head) do
       {name, args} ->
@@ -372,6 +391,7 @@ defmodule Surfex.SourceScan do
           defaults: Enum.count(args, &match?({:\\, _, _}, &1)),
           visible: visible,
           impl: impl,
+          doc: text,
           node: node
         }
 
@@ -431,6 +451,32 @@ defmodule Surfex.SourceScan do
     |> Base.encode16(case: :lower)
     |> binary_part(0, 8)
   end
+
+  # A definition's doc version (spec §3.4): the `definition_hash/1` of its `@doc` (or
+  # `@typedoc`) text with whitespace normalised, so re-wrapping or re-indenting a docstring
+  # is not a change and rewording it is. `nil` is a definition with no doc text, which has
+  # a version of its own: adding or removing a docstring changes it. A docstring that isn't
+  # a literal (an interpolation, an attribute) is versioned by its expression. `hash` never
+  # covers it.
+  defp doc_version(nil), do: definition_hash({:doc, nil})
+
+  defp doc_version(text) when is_binary(text),
+    do: definition_hash({:doc, text |> String.split() |> Enum.join(" ")})
+
+  defp doc_version(expression), do: definition_hash({:doc, expression})
+
+  # A `@doc` or `@typedoc` value's text: a string or a `~S`/`~s` sigil without
+  # interpolation as its text, any other expression as itself, and `nil` for metadata
+  # alone (`@doc since: "1.2"`), which states no text.
+  defp doc_text(text) when is_binary(text), do: text
+
+  defp doc_text({sigil, _, [{:<<>>, _, parts}, _modifiers]} = expression)
+       when sigil in [:sigil_S, :sigil_s] do
+    if Enum.all?(parts, &is_binary/1), do: Enum.join(parts), else: expression
+  end
+
+  defp doc_text(list) when is_list(list), do: nil
+  defp doc_text(expression), do: expression
 
   # Drop ALL AST metadata (line, column, delimiter/closing, end_of_expression, …) so the hash is a
   # function of structure alone. A positional or cosmetic shift must not restamp the version, or the

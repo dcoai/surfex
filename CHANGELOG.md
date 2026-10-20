@@ -159,6 +159,17 @@ release it merely follows.
 
 ### Changed
 
+- **For scanner authors and library users: a function's, macro's or type's documentation
+  has a doc version of its own** (#325, #331, plan v2 B.6). `Surfex.Item` gains `doc`
+  (default `nil`, so an existing scanner's items are unchanged): a hash of the item's
+  documentation, kept apart from `hash`. `Surfex.Scanner.Elixir` fills it for functions,
+  macros and types from their `@doc` or `@typedoc` text, whitespace normalised; a
+  definition with no doc text has a doc version of its own, and a module has none, since
+  its version already covers its `@moduledoc`. `@doc false` keeps its meaning: the
+  definition is hidden and has no item. `Surfex.SourceScan.defs/1`'s and `types/1`'s maps
+  gain the same `doc` key, and `Surfex.Scan` code records carry it (`Surfex.Scan.code/1`).
+  No code version changes: a docstring edit still re-versions nothing. Spec §3.4, §4.
+
 - **Breaking: once the log is established, prose citations stop proposing `implements`,
   and a claim's tests always do; `claim_implements:` is refused** (#321, #328, plan v2
   D.3). A log is established when it holds a live `implements` whose judgement in force

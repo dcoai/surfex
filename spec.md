@@ -304,6 +304,31 @@ and no other; changing a public function it calls changes that function's alone;
 hidden module has no items, and a module nested in it is scanned
 ```
 
+### 3.4 Doc versions
+<!-- surfex: doc-versions -->
+
+A public function's, macro's or type's documentation has a **doc version** of its own,
+apart from its version (§3.3). `Surfex.SourceScan.defs/1` and `Surfex.SourceScan.types/1`
+give it as `doc`, beside `hash`:
+- It is a hash of the `@doc` text, or the `@typedoc` text for a type, with whitespace
+  normalised: re-wrapping or re-indenting a docstring is no change, and rewording it is.
+- A definition with no doc text has a doc version of its own, so adding a docstring or
+  removing one changes it. `@doc false` is no doc text: it hides the definition (§3.2),
+  which then has no item. Metadata alone (`@doc since: "1.2"`) states no text either.
+- A docstring that isn't a literal (an interpolation, an attribute) is versioned by its
+  expression.
+- It never reaches `hash`, so a docstring edit changes no version.
+- A module has none: its version covers its `@moduledoc` (§3.3).
+
+The Elixir scanner (§5.2) puts it on each function, macro and type item it reports (`doc`,
+§4), and a code record carries it.
+
+```test:doc-version
+a definition's doc version changes with its @doc or @typedoc text, not with its
+whitespace, and is its own with no text; the code version never changes with it; the
+scanner's function, macro and type items carry it, a module's is nil
+```
+
 ## 4. Items
 <!-- surfex: items -->
 
@@ -321,6 +346,7 @@ source of a code record (§11).
 | `type` | the key of the item a member is an instance of (a field holding a struct) |
 | `aliases` | other names that cite it (§6.4) |
 | `lines` | its first and last line in `file`, when the scanner knows them: never part of its key or its hash |
+| `doc` | its doc version (§3.4), kept apart from `hash`. `nil` when the scanner doesn't version documentation apart, as for a module, whose version covers its `@moduledoc` |
 | `shape` | `true` for an item with no behaviour of its own (a type): no test run exercises it, so an `implements` relation to it is validated by judgement (§18). The scanner says so; surfex never infers it from a kind |
 | `calls` | the keys of the code it calls, as far as its source says (§5.2). A fact about the source, never part of its key or its hash. Empty when the scanner doesn't know: the item is then reached only by a test calling it (§13.1) |
 | `hidden` | code the item covers that isn't an item of its own (a module's hidden definitions, §3.3), keyed as a call names it (`Mix.Tasks.Foo.run/1`), each with its calls. Its version is in the item's; a call naming it reaches the item and goes on through its calls (§13.1). Empty for most items |
