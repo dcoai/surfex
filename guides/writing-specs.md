@@ -488,7 +488,8 @@ only way through. An agent working in it should:
   that the work was done.
 - **Treat a suggestion as a claim.** `suggest --accept` records what the spec and the tests
   imply, and validates none of it: code relations are proposed until evidence or a review
-  validates them.
+  validates them. The code a claim's tests call is never recorded by `--accept`: relate
+  each pair that realises its claim with the printed `relate` command, one at a time.
 - **Write what was checked.** A judgement's note, and a review's, say which claim was
   checked against what. It is the record of the work.
 - **When a relation doesn't hold, change something.** If the test doesn't reflect the

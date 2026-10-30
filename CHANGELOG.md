@@ -192,26 +192,43 @@ release it merely follows.
   No code version changes: a docstring edit still re-versions nothing. Spec §3.4, §4.
 
 - **Breaking: once the log is established, prose citations stop proposing `implements`,
-  and a claim's tests always do; `claim_implements:` is refused** (#321, #328, plan v2
-  D.3). A log is established when it holds a live `implements` whose judgement in force
-  records a validation (`Surfex.Suggest.established?/1`), read from the log with no key.
+  and a claim's tests always do, for review rather than `--accept`; `claim_implements:` is
+  refused** (#321, #328, #329, #335, plan v2 D.3). A log is established when it holds a
+  live `implements` whose judgement in force records a validation
+  (`Surfex.Suggest.established?/1`), read from the log with no key.
   There, a code span in prose proposes only inside a contract unit; a subject heading, a
   citing cell, a contract's own function and a claim's tests still propose. A prose
   citation still resolves or is broken. `Surfex.Suggest.all/5` lists what it didn't
   propose under `withheld`, and `mix surfex.suggest` prints `N prose citations not
   proposed (log established: relate the claim, not the sentence)` when there are any.
   Claim-derived candidates (§15.1) are always on: `Surfex.Suggest.all/6` and its
-  `claims:` option are gone, as is `Surfex.Status.Config.claim_implements?/1`. Spec §15.4,
-  §15.1. Measured read-only on the nine adopters with a relation log and the elixir
-  scanner, all established: prose citation candidates fall from 5 to 0 across them (4 now
-  withheld, 1 still proposed through a claim's tests); no contract-unit candidates before
-  or after; and claim-derived candidates, previously proposed to no one (no adopter set
-  the key), now number 26, 83, 83, 2,758 and 4,028 in five of them and none in four. No
-  accepted relation changes: only suggestions do.
+  `claims:` option are gone, as is `Surfex.Status.Config.claim_implements?/1`. They are
+  proposed only for a claim nothing implements: neither it nor a unit it sits in has a
+  live `implements` or one a citation or a contract proposes in the same run. Per claim,
+  only its most specific calls are proposed: each candidate carries `shared`, how many
+  other claims' tests call the same code, only the lowest is listed (`also called by the
+  tests of N other claims` when N > 0), and `also_called` counts the rest in one line per
+  claim. **`--accept` never records a claim-derived `implements`**: it records structural
+  suggestions, excuses and the citation and contract candidates as before, and prints
+  each claim-derived pair with the `mix surfex.relate` command that records it, its
+  decline command and a count line, `N claim-derived implements to review one at a time:
+  not recorded by --accept` (`Surfex.Suggest.claim_derived?/1`,
+  `Surfex.Suggest.relate_command/2`). `mix surfex.suggest --format json` gives every list
+  as JSON, each `implements` candidate with `shared` and `accept` (`Surfex.Suggest.json/1`).
+  Spec §15.4, §15.1, §15.5. Measured read-only on the nine adopters with a relation log
+  and the elixir scanner, all established: prose citation candidates fall from 5 to 0
+  across them (4 now withheld, 1 still proposed through a claim's tests); no
+  contract-unit candidates before or after. Claim-derived candidates, previously proposed
+  to no one (no adopter set the key), measured again on five adopters with a relation
+  log: proposed for every claim, they would number 83, 250, 2,788, 4,090 and 68; with
+  the two rules they are 7, 15, 70 and 746, over 2, 7, 48 and 570 claims, and none in
+  the fifth, whose claims are all implemented.
+  No accepted relation changes: only suggestions do.
   **Upgrade step:** delete `claim_implements:` from `.surfex.exs` if it is there (no
-  adopter's sets it); a config that still does is refused, naming the key. Expect
-  `mix surfex.suggest` to list each claim's directly called code as `implements`
-  candidates, and review them before `--accept`, which records every one as proposed.
+  adopter's sets it); a config that still does is refused, naming the key. Routine
+  `mix surfex.suggest --accept` stays safe to run after every change. Review the listed
+  claim-derived candidates one at a time: relate the ones that realise their claim with
+  the printed `relate` command, and decline the rest.
 
 - **The status lists triangle gaps by spec file** (#326, #327). The text report's
   `Triangle` list now opens with `N failing (in fail files), M reported` and groups the

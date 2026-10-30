@@ -140,6 +140,14 @@ ones that realise the claim with `mix surfex.relate`. A claim with no verifying 
 nothing, and a section gets no proposals of its own (spec §15.1). There is no key for it:
 a `.surfex.exs` that still sets `claim_implements:` is refused.
 
+**Only for a claim with no code, most specific first.** A claim that has an `implements`,
+or sits in a unit that has one, gets no proposals from its tests. Of a claim's calls,
+only those the fewest other claims' tests also make are listed, saying `also called by
+the tests of N other claims`; one `also called` line counts the rest. These are
+judgements: `--accept` never records them. Each is printed with the `relate` command that
+records it and the command that declines it, then `N claim-derived implements to review
+one at a time` (spec §15.1, §15.5). `mix surfex.suggest --format json` carries `shared`.
+
 **Relate the claim, not the sentence.** Once the log holds a validated `implements`, a
 code span in prose proposes nothing outside a contract: a subject heading, a cell under a
 citing column, a contract's own function and a claim's tests still propose. The citation

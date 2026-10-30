@@ -26,14 +26,15 @@ defmodule Surfex.Suggest do
 
   @typedoc """
   A candidate `implements` relation: from a citation (`cited_at` its file and line), or
-  from what a claim's verifying tests call (`cited_at` nil, `tests`
-  the tests that call it, §15.1).
+  from what a claim's verifying tests call (`cited_at` nil, `tests` the tests that call
+  it, `shared` how many other claims' verifying tests call it too, §15.1).
   """
   @type candidate :: %{
           required(:spec) => Scan.t(),
           required(:code) => Scan.t(),
           required(:cited_at) => {String.t(), pos_integer} | nil,
-          optional(:tests) => [String.t()]
+          optional(:tests) => [String.t()],
+          optional(:shared) => non_neg_integer
         }
 
   # The spec units that are claims (§11.1, §15.1): what a claim's tests call relates to it.
@@ -120,6 +121,25 @@ defmodule Surfex.Suggest do
 
   def decline_command(_structural, _from, _to), do: nil
 
+  @doc """
+  The command that records a claim-derived candidate after review (§15.5): a `relate` of
+  the pair as `implements`, ids kind-prefixed and quoted, with a note the reviewer
+  replaces.
+  """
+  @spec relate_command(String.t(), String.t()) :: String.t()
+  def relate_command(spec, code),
+    do:
+      "mix surfex.relate #{quoted("spec:" <> spec)} #{quoted("code:" <> code)} " <>
+        ~s(--type implements --note "what the claim's tests show it realises")
+
+  @doc """
+  Whether a candidate comes from a claim's tests (§15.1) rather than a citation or a
+  contract's own function: a judgement reviewed pair by pair, which `accept_all/5` never
+  records (§15.5).
+  """
+  @spec claim_derived?(candidate) :: boolean
+  def claim_derived?(%{cited_at: cited_at}), do: cited_at == nil
+
   defp retire_command(type, from, to),
     do:
       ~s(mix surfex.retire #{quoted(from)} #{quoted(to)} --type #{type} --note "why it isn't one")
@@ -161,6 +181,7 @@ defmodule Surfex.Suggest do
           tests: [pair],
           excuses: [pair],
           reached: [%{spec: String.t(), through: String.t(), count: pos_integer}],
+          also_called: [%{spec: String.t(), count: pos_integer}],
           withheld: [%{spec: String.t(), span: String.t(), cited_at: {String.t(), pos_integer}}],
           undeclared: [%{test: String.t(), spec: String.t()}],
           moved: [%{from: String.t(), to: String.t(), now: String.t()}],
@@ -205,9 +226,14 @@ defmodule Surfex.Suggest do
   section's relations aren't suggested again under its new id.
 
   **implements** also pairs each claim (a block, test hint, row, rule or contract) with
-  the scanned code its verifying tests call directly (§15.1), and **reached** lists, per
-  claim, each code item those tests call that reaches more code: `%{spec, through,
-  count}`, information for a person to act on with `relate`, never recorded.
+  the scanned code its verifying tests call directly (§15.1), only when neither the claim
+  nor a unit it sits in has a live `implements` or one proposed in this run, and only the
+  calls with the claim's lowest `shared`: how many other claims' tests make the same call.
+  **also_called** counts, per claim, the calls left out that way: `%{spec, count}`.
+  **reached** lists, per such claim, each code item those tests call that reaches more
+  code: `%{spec, through, count}`. Both are information for a person to act on with
+  `relate`, never recorded. A claim-derived candidate (`claim_derived?/1`) is a judgement
+  reviewed pair by pair: `accept_all/5` never records it (§15.5).
 
   **withheld** lists, in an established log, each prose citation that proposed nothing
   because of it (§15.4): `%{spec, span, cited_at}`, one per citation whose pair no other
@@ -245,7 +271,7 @@ defmodule Surfex.Suggest do
 
     # A claim's tests are always a source (§15.1): once the log is established they are
     # the route left for code a prose citation names (§15.4).
-    {claimed, reached} = claims(scans, moved, own ++ cited)
+    {claimed, reached, also_called} = claims(scans, moved, own ++ cited)
 
     implements = own ++ cited ++ claimed
     status = Surfex.Status.derive(scans, moved)
@@ -257,6 +283,7 @@ defmodule Surfex.Suggest do
       implements: ordered(own) ++ ordered(cited ++ claimed),
       excuses: ordered(excusals(profile, items, scans, moved, implements)),
       reached: ordered(reached),
+      also_called: ordered(also_called),
       withheld: withheld(held, implements),
       verifies: ordered(Enum.reject(verifications(scans, moved), &(&1.to.class != nil))),
       undeclared: ordered(status.undeclared),
@@ -411,10 +438,45 @@ defmodule Surfex.Suggest do
                error -> {:halt, error}
              end
            end),
-         {:ok, implemented} <- accept(suggestions.implements, scans, entries ++ recorded, meta) do
+         {:ok, implemented} <-
+           suggestions.implements
+           |> Enum.reject(&claim_derived?/1)
+           |> accept(scans, entries ++ recorded, meta) do
       {:ok, recorded ++ implemented}
     end
   end
+
+  @doc """
+  The suggestions as JSON (§15.5), for tools and agents: each list under its key, a scan
+  given by its id and a place as `"file:line"`. Each `implements` candidate carries
+  `spec`, `code`, `cited_at` (`null` for a claim's tests), `tests`, `shared` (`null` for
+  a citation's) and `accept`, whether `--accept` records it.
+  """
+  @spec json(suggestions) :: String.t()
+  def json(suggestions) do
+    suggestions
+    |> Map.new(fn
+      {:implements, list} -> {:implements, Enum.map(list, &candidate_json/1)}
+      {key, list} -> {key, Enum.map(list, &plain/1)}
+    end)
+    |> JSON.encode!()
+  end
+
+  defp candidate_json(c),
+    do: %{
+      spec: c.spec.id,
+      code: c.code.id,
+      cited_at: plain(c.cited_at),
+      tests: Map.get(c, :tests, []),
+      shared: Map.get(c, :shared),
+      accept: not claim_derived?(c)
+    }
+
+  defp plain(%Scan{id: id}), do: id
+  defp plain({file, line}) when is_binary(file), do: "#{file}:#{line}"
+  defp plain(list) when is_list(list), do: Enum.map(list, &plain/1)
+  defp plain(%{} = map), do: Map.new(map, fn {k, v} -> {k, plain(v)} end)
+  defp plain(other), do: other
 
   defp prefixed(kind, id), do: "#{kind}:#{id}"
   defp prefixed(%Scan{kind: kind, id: id}), do: prefixed(kind, id)
@@ -522,7 +584,12 @@ defmodule Surfex.Suggest do
   # a call names (a LiveView's `mount/3`, a server's `handle_call/3`) is its module's
   # code: the module is the item. A module named by itself is not proposed: a test names
   # every module it calls into.
-  defp claims(scans, entries, cited) do
+  #
+  # Only a claim nothing implements is proposed for (#329): neither it nor a unit it sits
+  # in (`within`, else `under`) has a live `implements` or one proposed in this run by a
+  # citation or a contract's key. Of its candidates, only those other claims' tests call
+  # least (`shared`) are proposed; the rest are counted per claim (`also_called`).
+  defp claims(scans, entries, proposed) do
     code = for %Scan{kind: :code} = s <- scans, s.role != :module, into: %{}, do: {s.id, s}
 
     owner =
@@ -538,8 +605,26 @@ defmodule Surfex.Suggest do
 
     within = for %Scan{kind: :spec, within: w} = s <- scans, w != nil, into: %{}, do: {s.id, w}
     related = MapSet.new(entries, &Entry.relation/1)
-    cited = MapSet.new(cited, &{&1.spec.id, &1.code.id})
+    cited = MapSet.new(proposed, &{&1.spec.id, &1.code.id})
     resolver = Scan.resolver(scans)
+
+    up =
+      for %Scan{kind: :spec} = s <- scans,
+          parent = s.within || s.under,
+          parent != nil,
+          into: %{},
+          do: {s.id, parent}
+
+    implemented =
+      MapSet.new(
+        for(
+          %Entry{op: :relate, type: :implements, ends: ends} <- live_tips(entries),
+          %{kind: :spec, id: id} <- ends,
+          do: id
+        ) ++ Enum.map(proposed, & &1.spec.id)
+      )
+
+    open? = fn claim -> not Enum.any?(enclosing(claim, up), &MapSet.member?(implemented, &1)) end
 
     verifies =
       for(
@@ -571,19 +656,37 @@ defmodule Surfex.Suggest do
         {claim, called}
       end
 
-    candidates =
-      for {claim, called} <- per_claim,
-          {code_id, group} <- Enum.group_by(called, &elem(&1, 1).id),
-          spec = claims[claim],
-          scan = elem(hd(group), 1),
-          not MapSet.member?(cited, {claim, code_id}),
-          not MapSet.member?(related, Entry.relation(:implements, spec, scan)),
-          do: %{
-            spec: spec,
-            code: scan,
-            cited_at: nil,
-            tests: group |> Enum.map(&elem(&1, 2)) |> Enum.uniq() |> Enum.sort()
-          }
+    # Every claim whose tests call each code item, whether or not it is proposed for.
+    callers =
+      for {claim, called} <- per_claim, {_id, scan, _t} <- called, reduce: %{} do
+        acc -> Map.update(acc, scan.id, MapSet.new([claim]), &MapSet.put(&1, claim))
+      end
+
+    open = for {claim, called} <- per_claim, open?.(claim), do: {claim, called}
+
+    per_open =
+      for {claim, called} <- open do
+        found =
+          for {code_id, group} <- Enum.group_by(called, &elem(&1, 1).id),
+              spec = claims[claim],
+              scan = elem(hd(group), 1),
+              not MapSet.member?(cited, {claim, code_id}),
+              not MapSet.member?(related, Entry.relation(:implements, spec, scan)),
+              do: %{
+                spec: spec,
+                code: scan,
+                cited_at: nil,
+                tests: group |> Enum.map(&elem(&1, 2)) |> Enum.uniq() |> Enum.sort(),
+                shared: MapSet.size(callers[code_id]) - 1
+              }
+
+        {claim, most_specific(found)}
+      end
+
+    candidates = for {_claim, {kept, _rest}} <- per_open, c <- kept, do: c
+
+    also_called =
+      for {claim, {_kept, rest}} <- per_open, rest > 0, do: %{spec: claim, count: rest}
 
     # Each call's reach once, however many claims' tests make it.
     reaches =
@@ -594,7 +697,7 @@ defmodule Surfex.Suggest do
           do: {id, reach.([id])}
 
     reached =
-      for {claim, called} <- per_claim,
+      for {claim, called} <- open,
           direct = MapSet.new(called, &elem(&1, 1).id),
           calls = called |> Enum.map(&elem(&1, 0)) |> Enum.uniq(),
           id <- calls,
@@ -606,7 +709,16 @@ defmodule Surfex.Suggest do
           beyond > 0,
           do: %{spec: claim, through: id, count: beyond}
 
-    {candidates, reached}
+    {candidates, reached, also_called}
+  end
+
+  # A claim's candidates with the lowest `shared`, and how many others there were.
+  defp most_specific([]), do: {[], 0}
+
+  defp most_specific(found) do
+    least = found |> Enum.map(& &1.shared) |> Enum.min()
+    {kept, rest} = Enum.split_with(found, &(&1.shared == least))
+    {kept, length(rest)}
   end
 
   # `unit` and every unit it sits in, innermost first.

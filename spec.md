@@ -3980,8 +3980,8 @@ saying a claim's tests now always propose
   messages §11.3 resolves. A call naming a hidden definition (a LiveView's `mount/3`, a
   server's `handle_call/3`) proposes its module, the item that versions it (§3.3). A
   module the test names by itself is not proposed: a test names every module it calls
-  into. Each candidate lists its tests (`tests`), and the task prints how many and its
-  decline command (§15).
+  into. Each candidate lists its tests (`tests`), and the task prints how many, and the
+  commands that relate and decline it (§15.5).
 - **Reached code isn't proposed item by item.** For each code a claim's tests call that
   reaches further code (§13.1) the test doesn't call itself, `reached` lists one line,
   `%{spec, through, count}`: `reached spec.md#x through MyApp.Protocol.handle/2: 41 more
@@ -3992,9 +3992,32 @@ saying a claim's tests now always propose
   asked once per called item.
 - **A claim with no verifying test gets nothing**: a claim without evidence earns no
   relation.
+- **Only a claim nothing implements gets candidates.** When the claim, or a unit it sits
+  in (`within`, else `under`, §11), has a live `implements`, or one a citation or a
+  contract's own function proposes in the same run, its tests' calls aren't proposed,
+  and it gets no `reached` line. The claim route replaces the citation bootstrap for a
+  claim with no code; it isn't a second route for a claim already related. Code a
+  related claim's tests newly reach is reach's and unearned's business (§13.9).
+- **Most specific calls first.** Each candidate carries `shared`: how many other claims'
+  verifying tests call the same code. Per claim, only the candidates with its lowest
+  `shared` are proposed. `also_called` counts the rest, `%{spec, count}`, and the task
+  prints one line per claim, `also called spec.md#x: +N calls also made by the tests of
+  other claims`. A candidate whose `shared` is above 0 says `also called by the tests of
+  N other claims`. It is derived from the scans, with no threshold and no key.
 - A pair related in any state, a declined (retired) one included, is left out, as are
-  the pairs a citation already proposes. Accepting records each as proposed, as for any
-  `implements` (§18).
+  the pairs a citation already proposes. `--accept` never records a claim-derived
+  candidate: each is reviewed pair by pair (§15.5).
+
+```test:claim-candidates-unimplemented
+a test hint inside a section that implements code proposes nothing from its tests; the
+same hint with no implementing section proposes its tests' calls; a claim with its own
+live implements proposes nothing claim-derived
+```
+
+```test:claim-candidates-specific
+of two calls a claim's tests make, the one other claims' tests also call is counted per
+claim, not proposed; each candidate carries shared, and the text and the JSON show it
+```
 
 **The filter is the direct-call rule, not the section.** Decided at #206's evaluation: a
 claim's proposals are bounded by what its test author wrote, plus the one-line reached
@@ -4086,6 +4109,34 @@ establishes nothing, and retiring the validated one restores the bootstrap
 ```test:withheld-count
 suggest prints the count of prose citations not proposed once the log is established, and
 no such line before
+```
+
+### 15.5 What `--accept` records
+<!-- surfex: accept-records -->
+
+`mix surfex.suggest --accept` records the structural suggestions (moves, refines,
+verifies, tests, a refresh, and the retirements of undeclared, moved and migrated
+relations), excuses, and the `implements` a citation or a contract's own function
+proposes (§15.3, §15.4). It **never records a claim-derived `implements`** (§15.1): which
+of the code a claim's tests call realises the claim is a judgement, made pair by pair.
+`Surfex.Suggest.accept_all/5` leaves them out (`Surfex.Suggest.claim_derived?/1`). They
+stay listed: `mix surfex.suggest` prints each with the `mix surfex.relate` command that
+records it (`Surfex.Suggest.relate_command/2`) and the command that declines it, and one
+count line, `N claim-derived implements to review one at a time: not recorded by
+--accept`. Nothing is switched off, and routine upkeep runs `--accept` after every change
+without filling the log with unreviewed judgements. When only claim-derived candidates
+are left, the listing doesn't say `--accept` records them.
+
+`mix surfex.suggest --format json` gives the same lists as JSON, for tools and agents
+(`Surfex.Suggest.json/1`): each list under its key, a scan as its id and a place as
+`"file:line"`. An `implements` candidate carries `spec`, `code`, `cited_at` (`null` for
+a claim's tests), `tests`, `shared` (`null` for a citation's) and `accept`, whether
+`--accept` records it. `--format json` with `--accept` is refused.
+
+```test:accept-skips-claim-candidates
+--accept records refines, tests and citation candidates and no claim-derived implements;
+each claim-derived candidate is printed with its relate and decline commands, then the
+count line
 ```
 
 ## 16. The specification guide

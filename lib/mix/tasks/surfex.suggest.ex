@@ -20,10 +20,14 @@ defmodule Mix.Tasks.Surfex.Suggest do
     * **migrated** — a section's `implements` that `mix surfex.migrate` moved to claims
       whose relations are all validated now: accepting retires the section's.
 
-  **implements** also pairs each claim (a block, test hint, row, rule or contract) with the
-  code its verifying tests call directly, and a `reached` line says, per claim, which
-  called item reaches more code and how much: name the ones that realise the claim with
-  `mix surfex.relate` (spec §15.1).
+  **implements** also pairs each claim (a block, test hint, row, rule or contract) that
+  nothing implements, itself or a unit it sits in, with the code its verifying tests call
+  directly, most specific first: only the calls fewest other claims' tests make are
+  listed, each with `also called by the tests of N other claims` when N > 0, and one line
+  per claim counts the rest. A `reached` line says, per claim, which called item reaches
+  more code and how much (spec §15.1). These are judgements: each is printed with the
+  `mix surfex.relate` command that records it and the command that declines it, and
+  `--accept` never records them (spec §15.5).
 
   Once the log is established (it holds a validated `implements`), a code span in prose
   proposes nothing outside a contract: subject headings, citing cells, contracts and a
@@ -35,6 +39,7 @@ defmodule Mix.Tasks.Surfex.Suggest do
       mix surfex.suggest                         # list them; nothing is written
       mix surfex.suggest --accept                # record them
       mix surfex.suggest --accept --note "adopted the relation log"
+      mix surfex.suggest --format json           # the same lists, for tools and agents
 
   `--accept` only creates relations that don't exist, and carries judgements across
   moves. It never confirms a dangling relation: that stays `mix surfex.confirm`, one named
@@ -53,8 +58,22 @@ defmodule Mix.Tasks.Surfex.Suggest do
   def run(args) do
     {opts, _rest} =
       OptionParser.parse!(args,
-        strict: [accept: :boolean, note: :string, config: :string, merge: :keep]
+        strict: [
+          accept: :boolean,
+          note: :string,
+          config: :string,
+          merge: :keep,
+          format: :string
+        ]
       )
+
+    format = opts[:format] || "text"
+
+    if format not in ["text", "json"],
+      do: Mix.raise("--format must be text or json, got #{inspect(format)}")
+
+    if format == "json" and opts[:accept],
+      do: Mix.raise("--format json lists the suggestions; run --accept without it")
 
     root = File.cwd!()
     # Read first: a --merge file that isn't there fails whether or not there's work to do.
@@ -70,6 +89,12 @@ defmodule Mix.Tasks.Surfex.Suggest do
 
     suggestions = Suggest.all(profile, items, scans, entries, root)
 
+    if format == "json",
+      do: Mix.shell().info(Suggest.json(suggestions)),
+      else: report(suggestions, root, opts, evidence)
+  end
+
+  defp report(suggestions, root, opts, evidence) do
     for m <- suggestions.moves, do: Mix.shell().info("move        #{m.from} → #{m.to.id}")
 
     for a <- suggestions.ambiguous,
@@ -108,13 +133,25 @@ defmodule Mix.Tasks.Surfex.Suggest do
       Mix.shell().info("  decline: " <> Suggest.decline_command(:excuses, x.from.id, x.to.id))
     end
 
-    for c <- suggestions.implements do
+    {claimed, cited} = Enum.split_with(suggestions.implements, &Suggest.claim_derived?/1)
+
+    for c <- cited ++ claimed do
       Mix.shell().info("implements  #{c.spec.id} ↔ #{c.code.id}  (#{why(c)})")
+
+      if Suggest.claim_derived?(c),
+        do: Mix.shell().info("  relate:  " <> Suggest.relate_command(c.spec.id, c.code.id))
 
       Mix.shell().info(
         "  decline: " <> Suggest.decline_command(:implements, c.spec.id, c.code.id)
       )
     end
+
+    for a <- suggestions.also_called,
+        do:
+          Mix.shell().info(
+            "also called #{a.spec}: +#{a.count} #{plural(a.count, "call")} also made by " <>
+              "the tests of other claims"
+          )
 
     if suggestions.implements != [] or suggestions.excuses != [],
       do:
@@ -148,16 +185,28 @@ defmodule Mix.Tasks.Surfex.Suggest do
         )
     end
 
+    # A claim's tests' calls are judgements, reviewed one at a time (§15.5).
+    if claimed != [],
+      do:
+        Mix.shell().info(
+          "#{length(claimed)} claim-derived implements to review one at a time: " <>
+            "not recorded by --accept"
+        )
+
     count =
       suggestions
-      |> Map.drop([:reached, :withheld])
+      |> Map.drop([:reached, :withheld, :also_called])
       |> Map.values()
       |> Enum.map(&length/1)
       |> Enum.sum()
+      |> Kernel.-(length(claimed))
 
     cond do
-      count == 0 ->
+      count == 0 and claimed == [] ->
         Mix.shell().info("nothing to suggest: everything the spec implies is already related")
+
+      count == 0 ->
+        :ok
 
       opts[:accept] ->
         {^root, scans, entries, meta} = R.context(Keyword.take(opts, [:note, :config]))
@@ -170,6 +219,14 @@ defmodule Mix.Tasks.Surfex.Suggest do
 
   defp why(%{cited_at: {file, line}}), do: "cited at #{file}:#{line}"
 
-  defp why(%{tests: [test]}), do: "called by its test #{test}"
-  defp why(%{tests: [test | more]}), do: "called by its test #{test} and #{length(more)} more"
+  defp why(%{tests: tests, shared: shared}), do: called(tests) <> also(shared)
+
+  defp called([test]), do: "called by its test #{test}"
+  defp called([test | more]), do: "called by its test #{test} and #{length(more)} more"
+
+  defp also(0), do: ""
+  defp also(n), do: "; also called by the tests of #{n} other #{plural(n, "claim")}"
+
+  defp plural(1, word), do: word
+  defp plural(_n, word), do: word <> "s"
 end
