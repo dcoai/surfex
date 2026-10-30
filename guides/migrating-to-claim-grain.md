@@ -136,6 +136,15 @@ Once every claim relation of a code item is validated, the pair is **settled**, 
 section's relation is retired with a note naming the claims, by the next `--accept` or by
 `mix surfex.suggest --accept`. A section never loses a relation before its claim holds one.
 
+## A library's API as contracts
+
+A contract signature is the finest claim a spec makes: one function. A library whose
+public API is described in prose can state it as contract fences instead (spec §11.1),
+one unit per `@spec`, related to its function. A changed signature or a reworded `@doc`
+then dangles that one relation and no other (spec §13.18), and `mix surfex.validate`
+settles it once a review finds the two still agree. The library guide shows the form, and
+surfex's own spec §23.2 is a worked example.
+
 ## A baseline carries
 
 A project that adopted its suite with a baseline (`adoption: :trust`, `mix surfex.baseline`,

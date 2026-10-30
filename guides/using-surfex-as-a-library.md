@@ -73,6 +73,31 @@ A project scanner, such as one giving the blocks a DSL declares as items, is wri
 callbacks and fields keep their names and shapes, and anything added is optional or has a
 default.
 
+## Stating your own API as contracts
+
+A library that keeps a relation log can hold its public API to its spec the same way. A
+contract fence states a module's signatures in the spec (spec §11.1): each `@spec`,
+`@callback` or `@macrocallback` line in it is a unit of its own, keyed by the function it
+states.
+
+````markdown
+<!-- surfex: contract module: MyLib.Feed -->
+```elixir
+# The entries since cursor, oldest first, and the cursor to ask from next.
+@spec since(cursor, keyword) :: {[entry], cursor}
+```
+````
+
+Relate each contract to its function (`mix surfex.relate`) and validate it with a test that
+calls it. The relation then dangles when the signature changes, and also when the
+function's `@doc` changes (spec §13.18), so the spec and the docs can't drift apart
+unnoticed. Use the marker before a plain `elixir` fence, as here: an `elixir contract` info
+string reads the same, but ex_doc renders it as text.
+
+Surfex does this for its own library API. Spec §23.1.1 and §23.2 state the functions and
+callbacks above as contracts, and a test checks that they and the pinned API list the same
+functions, each with the `@spec` the code declares.
+
 ## This isn't adoption
 
 A surface golden says what the code declares. Surfex's purpose is keeping a spec, its tests

@@ -11,6 +11,21 @@ release it merely follows.
 
 ### Added
 
+- **surfex states its own library API as contract fences** (#334, #336). Spec §23.2 holds
+  the pinned functions of `Surfex.Golden` and `Surfex.SourceScan`, and §23.1.1
+  `Surfex.Scanner`'s two callbacks, each with the `@spec` or `@callback` the code
+  declares. Each contract is related to its function (a callback to `Surfex.Scanner`, as
+  the built-in scanner lists no callback item) and validated by a test that calls it, so
+  a changed signature or a reworded `@doc` of the supported API now dangles exactly one
+  relation in surfex's own log. A test reads the contracts as the scanner does and checks
+  them against the pinned API both ways, and each signature against the code's. The
+  pinned types stay pinned by the test alone. This is the first real log the contract
+  machinery runs on: the doc dangle of #325 was exercised on it before merge (a reworded
+  `@doc` dangled with `doc changed`, `confirm --evidence` left it, `validate` settled it).
+  The library guide and the claim-grain guide now recommend contract fences for a
+  library's public API, with this as the worked example. **Upgrade step:** none. Nothing
+  changes for a project; surfex's spec gained units of its own.
+
 - **A contract relation dangles when its function's `@doc` changes** (#325, #332, plan v2
   B.6). A contract unit and its function's docstring state the same thing twice, and
   until now nothing noticed when one moved. An `implements` relation whose spec end is a
