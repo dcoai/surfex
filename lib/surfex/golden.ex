@@ -113,7 +113,10 @@ defmodule Surfex.Golden do
           optional(:sort) => (row -> term)
         }
 
-  @doc "Render `spec` to golden markdown. Pure; order-invariant per the moduledoc."
+  @doc """
+  Render `spec` to golden markdown. Pure: the same bytes for any order of its rows and of
+  a row's keys (see "Determinism" in the moduledoc).
+  """
   @spec render(spec) :: String.t()
   def render(spec) do
     prefix =

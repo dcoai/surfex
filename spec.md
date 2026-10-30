@@ -5114,3 +5114,105 @@ A test pins both.
 Surfex.Scanner's callbacks and Surfex.Item's fields are exactly the pinned ones, only kind,
 name, file and hash are enforced, and key/1 keeps its rule
 ```
+
+#### 23.1.1 The scanner callbacks as contracts
+<!-- surfex: scanner-api-contracts -->
+
+`Surfex.Scanner`'s two callbacks are stated here as contracts (§11.1), as the behaviour
+declares them, so changing a signature dangles its contract's relation:
+
+<!-- surfex: contract module: Surfex.Scanner -->
+```elixir
+# Every item under root, each with a stable key and a content hash that ignores position
+# and layout; file is relative to root, opts is the scanner's own configuration.
+@callback items(root :: String.t(), opts :: keyword) :: [Surfex.Item.t()]
+
+# Optional: the keys of the items a remote call names, beyond the function it calls
+# (§5.4). call is the call's AST as written (a piped call has its piped value as its first
+# argument), aliases maps each alias in scope to the module it names, and a call the
+# scanner doesn't recognise answers [].
+@callback calls(call :: Macro.t(), aliases :: %{atom => String.t()}, opts :: keyword) ::
+            [String.t()]
+```
+
+The built-in scanner lists no callback as an item, so each callback's contract is
+realised by the behaviour module, `Surfex.Scanner` (§6.9).
+
+```test:scanner-callback-contracts
+the contract units this section states are exactly Surfex.Scanner's callbacks, items/2 and
+calls/3, and each callback has one
+```
+
+### 23.2 The library functions as contracts
+<!-- surfex: library-api-contracts -->
+
+The documented functions of `Surfex.Golden` and `Surfex.SourceScan` that §23 promises are
+stated here as contracts (§11.1), each with its `@spec` as the code has it. A contract's
+relation records its function's doc version (§13.18), so rewording a function's `@doc`, or
+changing its signature, dangles that relation until a review finds the two still agree.
+The pinned types stay pinned by §23's test alone, since a fence yields units only from
+`@spec`, `@callback` and `@macrocallback` lines.
+
+<!-- surfex: contract module: Surfex.Golden -->
+```elixir
+# Renders a spec to golden markdown: pure, and the same for any order of its rows.
+@spec render(spec) :: String.t()
+
+# A stat: its lead, its dimensions and its rendered line.
+@spec stat(iodata, [{iodata, term} | iodata]) :: stat
+
+# The stats line as a string: the bold lead, then each dimension's label and value.
+@spec stat_line(iodata, [{iodata, term} | iodata]) :: iodata
+
+# A natural sort key: alternating text and integer chunks, so Foo.9 sorts before Foo.10.
+@spec natural_key(String.t()) :: [String.t() | {0, integer}]
+```
+
+<!-- surfex: contract module: Surfex.SourceScan -->
+```elixir
+# The project root: the first directory at or above start (the working directory by
+# default) that holds marker, else start. marker has no default, deliberately.
+@spec project_root(String.t(), String.t()) :: String.t()
+
+# Every .ex source in a first-party lib/ under root, sorted: a lib/ whose parent has a
+# mix.exs, with no deps, _build, test, tmp or hidden directory between root and it.
+@spec lib_sources(String.t()) :: [String.t()]
+
+# The public definitions in a defmodule node's own body, sorted by name and arity, each
+# with its version and its doc version.
+@spec defs(Macro.t()) :: [definition]
+
+# The module's public types (@type and @opaque, minus one under @typedoc false), each
+# with its version and doc version.
+@spec types(Macro.t()) :: [
+        %{
+          name: atom,
+          arity: non_neg_integer,
+          hash: String.t(),
+          doc: String.t(),
+          lines: {pos_integer, pos_integer} | nil
+        }
+      ]
+
+# The first and last source lines a quoted node spans, from its metadata, or nil.
+@spec line_range(Macro.t()) :: {pos_integer, pos_integer} | nil
+
+# A module's version, over its public surface rather than its whole body.
+@spec module_hash(Macro.t()) :: String.t()
+
+# Whether a defmodule declares @moduledoc false in its own body.
+@spec hidden_module?(Macro.t()) :: boolean
+
+# Every defmodule node in a quoted ast, in source order, nested ones included.
+@spec defmodules(Macro.t()) :: [Macro.t()]
+
+# The version of a definition, given as source or AST: the same for the same code,
+# whatever its position or layout, release to release.
+@spec definition_hash(Macro.t() | String.t()) :: String.t()
+```
+
+```test:library-function-contracts
+the contract units this section states are exactly the pinned functions of Surfex.Golden
+and Surfex.SourceScan, a pinned function with no contract and a contract for an unpinned
+function both fail, and each contract's signature is its function's @spec
+```

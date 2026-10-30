@@ -71,4 +71,127 @@ defmodule Surfex.LibraryApiTest do
   test "definition_hash/1's output is stable: the same code gives the same version, release to release" do
     assert Surfex.SourceScan.definition_hash("def f(x), do: x + 1") == "f9bc39cf"
   end
+
+  # #334: §23.1.1 and §23.2 state the pinned functions and callbacks as contract fences.
+  # The pins above and the contracts below are one list: each is checked against the
+  # other in both directions, reading the contracts as surfex reads them.
+
+  defp contract_units(section) do
+    config = Surfex.Status.Config.read!(".surfex.exs")
+    spec_classes = Surfex.Status.Config.spec_classes!(config, ["spec.md"])
+
+    "spec.md"
+    |> File.read!()
+    |> Surfex.Scan.Markdown.sections("spec.md", spec_classes: spec_classes)
+    |> Enum.filter(&(&1.role == :contract and &1.within == "spec.md#" <> section))
+  end
+
+  # What one list has and the other lacks, both ways: `{pinned without a contract,
+  # contracts of nothing pinned}`.
+  defp contract_drift(pinned, contracts) do
+    {pinned -- contracts, contracts -- pinned}
+  end
+
+  # A contract's signature, as its fence lines hold it, and the code's declaration of the
+  # same function, both read as quoted Elixir with no metadata.
+  defp contract_signature(%{location: %{lines: {first, last}}}) do
+    "spec.md"
+    |> File.read!()
+    |> String.split("\n")
+    |> Enum.slice((first - 1)..(last - 1)//1)
+    |> Enum.join("\n")
+    |> Code.string_to_quoted!()
+    |> contract_strip()
+  end
+
+  defp contract_declarations(file) do
+    {_, found} =
+      file
+      |> File.read!()
+      |> Code.string_to_quoted!()
+      |> Macro.prewalk([], fn
+        {:@, _, [{kind, _, [declaration]}]} = node, acc when kind in [:spec, :callback] ->
+          {node, [{kind, contract_key(declaration), contract_strip(node)} | acc]}
+
+        node, acc ->
+          {node, acc}
+      end)
+
+    for {kind, key, node} <- found, into: %{}, do: {{kind, key}, node}
+  end
+
+  defp contract_key({:"::", _, [{:when, _, [call | _]}, _]}),
+    do: contract_key({:"::", [], [call, nil]})
+
+  defp contract_key({:when, _, [declaration | _]}), do: contract_key(declaration)
+  defp contract_key({:"::", _, [{name, _, args}, _]}), do: "#{name}/#{length(args)}"
+
+  defp contract_strip(ast), do: Macro.prewalk(ast, &Macro.update_meta(&1, fn _ -> [] end))
+
+  defp contract_names(units, module) do
+    for %{contract: contract} <- units,
+        String.starts_with?(contract, module <> "."),
+        do: String.replace_prefix(contract, module <> ".", "")
+  end
+
+  @tag verifies: ["library-function-contracts", "library-api-contracts"]
+  test "§23.2's contracts are exactly the pinned functions of Golden and SourceScan" do
+    units = contract_units("library-api-contracts")
+
+    assert contract_drift(@golden_functions, Enum.sort(contract_names(units, "Surfex.Golden"))) ==
+             {[], []}
+
+    assert contract_drift(@scan_functions, Enum.sort(contract_names(units, "Surfex.SourceScan"))) ==
+             {[], []}
+
+    assert length(units) == length(@golden_functions) + length(@scan_functions)
+  end
+
+  @tag verifies: ["library-function-contracts", "library-api-contracts"]
+  test "the cross-check fails both ways: a pinned function with no contract, a contract pinning nothing" do
+    pinned = ~w(render/1 stat/2)
+
+    assert contract_drift(pinned, ~w(render/1)) == {["stat/2"], []}
+    assert contract_drift(pinned, ~w(render/1 stat/2 natural_key/1)) == {[], ["natural_key/1"]}
+    assert contract_drift(pinned, ~w(render/1 stat/2)) == {[], []}
+  end
+
+  @tag verifies: ["library-function-contracts", "library-api-contracts"]
+  test "each of §23.2's contracts states its function's @spec as the code declares it" do
+    code = %{
+      "Surfex.Golden" => contract_declarations("lib/surfex/golden.ex"),
+      "Surfex.SourceScan" => contract_declarations("lib/surfex/source_scan.ex")
+    }
+
+    for %{contract: contract} = unit <- contract_units("library-api-contracts") do
+      [module, key] = String.split(contract, ~r/\.(?=[^.]+\/\d+$)/)
+      declared = Map.fetch!(code[module], {:spec, key})
+      assert contract_signature(unit) == declared, "#{contract}'s contract isn't its @spec"
+    end
+  end
+
+  @tag verifies: ["scanner-callback-contracts", "scanner-api-contracts"]
+  test "§23.1.1's contracts are exactly Surfex.Scanner's callbacks, each as the behaviour declares it" do
+    units = contract_units("scanner-api-contracts")
+
+    callbacks =
+      for {name, arity} <- Surfex.Scanner.behaviour_info(:callbacks), do: "#{name}/#{arity}"
+
+    assert contract_drift(
+             Enum.sort(callbacks),
+             Enum.sort(contract_names(units, "Surfex.Scanner"))
+           ) ==
+             {[], []}
+
+    assert Enum.sort(for u <- units, do: u.id) == [
+             "spec.md#Surfex.Scanner.callback:calls/3",
+             "spec.md#Surfex.Scanner.callback:items/2"
+           ]
+
+    declared = contract_declarations("lib/surfex/scanner.ex")
+
+    for %{contract: "Surfex.Scanner." <> key} = unit <- units do
+      assert contract_signature(unit) == Map.fetch!(declared, {:callback, key})
+    end
+  end
 end
