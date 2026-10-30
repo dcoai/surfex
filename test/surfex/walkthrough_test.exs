@@ -509,10 +509,10 @@ defmodule Surfex.WalkthroughTest do
     assert json["triangle"] == []
     assert Enum.all?(json["relations"], &(&1["state"] == "current"))
 
-    # The test tests the function it calls and the module it names; the hint's test calls
-    # the function, so the hint's own implements is proposed beside the planned one (§15.1).
+    # The test tests the function it calls and the module it names. The hint sits in a
+    # section that implements the function, so its test proposes nothing (§15.1).
     assert Enum.sort(Enum.map(json["relations"], & &1["type"])) ==
-             ["implements", "implements", "refines", "tests", "tests", "verifies"]
+             ["implements", "refines", "tests", "tests", "verifies"]
   end
 
   defp passing_json(root) do

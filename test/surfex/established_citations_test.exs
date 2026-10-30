@@ -25,6 +25,11 @@ defmodule Surfex.EstablishedCitationsTest do
 
   A cart holds lines.
 
+  # Adding
+  <!-- surfex: adding -->
+
+  Adding is the cart's own business.
+
   ```test:cart-hint
   adding a line puts it in the cart
   ```
@@ -83,9 +88,10 @@ defmodule Surfex.EstablishedCitationsTest do
         "App"
       )
 
-  # A validated implements of another pair: what makes the log established.
+  # A validated implements of another pair: what makes the log established. It is the
+  # feed's, so the hint, in a section nothing implements, still proposes from its tests.
   defp ec_validated(scans, basis \\ :review) do
-    hint = Enum.find(scans, &(&1.id == "spec.md#cart-hint"))
+    hint = Enum.find(scans, &(&1.id == "spec.md#feed"))
 
     Entry.new!(
       at: "2026-10-20T10:00:00Z",
