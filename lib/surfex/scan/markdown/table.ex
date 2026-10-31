@@ -70,7 +70,7 @@ defmodule Surfex.Scan.Markdown.Table do
       id: table.id,
       first: table.first,
       last: last,
-      body: [header, separator],
+      body: table_version(header, separator),
       within: table.within
     }
 
@@ -90,7 +90,7 @@ defmodule Surfex.Scan.Markdown.Table do
             id: id,
             first: no,
             last: no,
-            body: row_version(row, row_cells, ignored),
+            body: row_version(row, ignored),
             within: {:table, table.id},
             warnings: key_warnings(key_cells, no, id)
           }
@@ -157,11 +157,21 @@ defmodule Surfex.Scan.Markdown.Table do
     end
   end
 
-  # A row's version covers its cells, less the columns `ignore:` names.
-  defp row_version(row, _cells, []), do: [row]
+  # The versions of a table's units are kept as 0.10.0 released them (§23.3): a change to
+  # what they cover re-versions every relation to them on an upgrade. Each is read from the
+  # cells as written (`Span.written_cells/1`), untrimmed, so the whitespace around a pipe
+  # stays a word break when `hash/1` collapses it.
+  #
+  # A table's version covers its header's cells, joined with nothing between them (the
+  # pipes are not part of it), and its separator row.
+  defp table_version(header, separator), do: [Enum.join(Span.written_cells(header)), separator]
 
-  defp row_version(_row, cells, ignored) do
-    kept = for {cell, c} <- Enum.with_index(cells), c not in ignored, do: cell
+  # A row's version covers its cells, less the columns `ignore:` names: then its kept cells
+  # joined by `|`.
+  defp row_version(row, []), do: [row]
+
+  defp row_version(row, ignored) do
+    kept = for {cell, c} <- Enum.with_index(Span.written_cells(row)), c not in ignored, do: cell
     [Enum.join(kept, "|")]
   end
 

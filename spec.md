@@ -5216,3 +5216,22 @@ the contract units this section states are exactly the pinned functions of Surfe
 and Surfex.SourceScan, a pinned function with no contract and a contract for an unpinned
 function both fail, and each contract's signature is its function's @spec
 ```
+
+### 23.3 Spec unit versions hold across releases
+<!-- surfex: unit-versions-hold -->
+
+Every relation to a spec unit records the unit's version, so the version rule is a promise
+too. **A spec unit's version under a release is its version under the release before**, for
+the same text: a section's, a marked block's and a hint's (§11), a contract's, a marked
+table's and each of its rows', `ignore:` included. A change to what a version covers
+never comes in a patch release. It comes in a minor release, listed in the CHANGELOG with
+an upgrade step, because every relation to a re-versioned unit dangles on the upgrade.
+
+Before each release, every unit's version in every project that uses surfex is compared
+under the last release and under the release candidate (RELEASING.md). A difference is
+either one the CHANGELOG names, or a bug.
+
+```test:unit-versions-stable
+a plain section, a section holding marked tables, a marked table, its rows and the rows of
+a table with ignore: have the versions the last release gave them, pinned as literals
+```

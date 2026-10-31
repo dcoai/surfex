@@ -325,6 +325,23 @@ release it merely follows.
 
 ### Fixed
 
+- **A marked table and the rows of an `ignore:` table keep 0.10.0's versions** (#338,
+  #339). Two changes unreleased since 0.10.0 re-versioned units whose text hadn't changed,
+  and every relation to them would have dangled on the upgrade. #305 made a marked table's
+  version cover its header line with its pipes, where 0.10.0's covers the header's cells
+  joined without them; #317 trimmed the cells a row of an `ignore:` table is versioned
+  from, so `| a | b |` versioned as `a|b`, not `a | b`. Both now version exactly as 0.10.0
+  did, and the rule is unchanged. Measured before the fix, comparing every unit's version
+  under 0.10.0 and main across the 17 projects with a `.surfex.exs`: 39 table units in three
+  projects re-versioned (1, 1 and 37), dangling 7, 39 and 272 relations, each project green
+  on 0.10.0 and failing on main; none marks an `ignore:` table. After it, no unit of any of
+  them re-versions, and no id appears or disappears. A new §23.3 extends §23's stability
+  promise from code versions to spec unit versions, a test pins every kind of spec unit's
+  version to the literal 0.10.0 gives it, and the release check compares every unit's
+  version across the projects that use surfex before each release (RELEASING.md).
+  **Upgrade step:** none from 0.10.0. A log recorded on an unreleased main since #305
+  re-records its table relations once.
+
 - **A marked table's row is read as GFM reads it, and its KEY as a reader sees it**
   (#286, #317). The row splitter toggled "in code" on every backtick and read `\` as an
   escape everywhere, so a row holding `` `ESC \` `` or a double-backtick span holding a
