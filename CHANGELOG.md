@@ -4,10 +4,24 @@ All notable changes to Surfex are recorded here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.11.0] — 2026-10-31
 
-`mix.exs` reads `0.10.1-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
-release it merely follows.
+Spec marking reads as its writer means it, and the log asks less of its keeper. Contract
+fences, marked tables and headings are read by the rules their readers use, and what fails
+to read is reported once, with its cause. Citations propose fewer, better-grounded
+`implements` once a log is established, and a claim's tests propose for review, not for
+`--accept`. A contract relation dangles when its function's `@doc` changes. `triangle:`
+takes a mode per spec file. surfex now states its own pinned library API as contract
+fences, and promises that a spec unit's version holds across releases (spec §23.3).
+
+**Upgrade from 0.10.0.** Measured before release on the 17 projects with a `.surfex.exs`:
+no code or spec unit changes version, no unit id appears or disappears, and every
+project's status is the same as under 0.10.0 except one, which goes from failing to
+passing. Two entries can still ask something of a project: a `.surfex.exs` that sets
+`claim_implements:`, or a key with a wrong-typed value, is now refused (#321, #288), and
+`mix surfex.suggest --accept` no longer records `implements` from a claim's tests (#329):
+review those with `mix surfex.suggest`. Library-only users (`Surfex.Golden`,
+`Surfex.SourceScan`) need no change.
 
 ### Added
 
