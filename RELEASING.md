@@ -97,11 +97,32 @@ was made from.
 - **Publishing to Hex.** Not yet. When it happens, it is `mix hex.publish` from a checkout
   of the GitHub tag, whose `mix.exs` carries the links Hex requires.
 
+## Before a release: no unit re-versions by accident
+
+Every relation a project records holds its two ends' versions, so a release that versions
+the same spec text or code differently dangles every relation to it on the upgrade (spec
+§23.3). Status counts don't show it, since a project's own upkeep re-records the relations
+and hides it: #305 re-versioned every marked table, unnoticed until the 0.11.0 pre-release
+check (#338). So before every release, compare every unit's version under the last tag and
+under the release candidate, for every project that uses surfex:
+
+```sh
+git worktree add /tmp/surfex-last vX.Y.Z && (cd /tmp/surfex-last && mix deps.get)   # the last release
+elixir ~/Projects/claude-tools/surfex_unit_versions.exs /tmp/surfex-last . --discover ~/Projects
+git worktree remove /tmp/surfex-last
+```
+
+It is read-only on every project, prints `NAME: re-versioned N, gone G, new A` per project,
+and exits 1 on any difference. A difference is either one this release means, named in the
+CHANGELOG with an upgrade step (and the literal in `test/surfex/unit_versions_test.exs`
+recomputed under the release), or a bug to fix before releasing.
+
 ## A release, end to end
 
 A patch on the 0.2 line (the number is derived):
 
 ```sh
+elixir ~/Projects/claude-tools/surfex_unit_versions.exs LAST . --discover ~/Projects  # no unit re-versions (above)
 elixir ~/Projects/claude-tools/release.exs                                # dry run: says vX.Y.Z
 elixir ~/Projects/claude-tools/release.exs --prepare                      # then MR, merge
 elixir ~/Projects/claude-tools/release.exs --tag --version X.Y.Z          # on main, at the merge commit
