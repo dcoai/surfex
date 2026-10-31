@@ -42,10 +42,18 @@ defmodule Surfex.Golden.Span do
   """
   @spec cells(String.t()) :: [String.t()]
   def cells(row) do
+    row |> written_cells() |> Enum.map(&(&1 |> String.replace("\\|", "|") |> String.trim()))
+  end
+
+  @doc """
+  A table row's cells split as `cells/1` splits them, each as written: untrimmed, its
+  `\\|` left escaped. What a marked table's versions are computed from (spec §23.3).
+  """
+  @spec written_cells(String.t()) :: [String.t()]
+  def written_cells(row) do
     parts = Regex.split(~r/(?<!\\)\|/, String.trim(row))
     parts = if hd(parts) == "", do: tl(parts), else: parts
-    parts = if parts != [] and List.last(parts) == "", do: Enum.drop(parts, -1), else: parts
-    Enum.map(parts, &(&1 |> String.replace("\\|", "|") |> String.trim()))
+    if parts != [] and List.last(parts) == "", do: Enum.drop(parts, -1), else: parts
   end
 
   @doc """
