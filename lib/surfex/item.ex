@@ -33,6 +33,7 @@ defmodule Surfex.Item do
     :doc,
     aliases: [],
     shape: false,
+    in_parent: false,
     calls: [],
     hidden: %{},
     runs: %{},
@@ -70,6 +71,11 @@ defmodule Surfex.Item do
           # A shape has no behaviour of its own (a type): no test run exercises it, so an
           # `implements` relation to it is validated by judgement (§18). The scanner says so.
           shape: boolean,
+          # A member whose declaration is in its parent's version (a callback, in its
+          # behaviour module's): until a live relation of its own names it, it is judged with
+          # its parent, never listed as new, judged by `require:` or counted by completeness
+          # (§13.19). The scanner says so.
+          in_parent: boolean,
           # The keys of the code it calls, as far as its source says: a fact, never part of its
           # key or version. Empty when the scanner doesn't know (§4).
           calls: [String.t()],

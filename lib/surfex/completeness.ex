@@ -67,6 +67,8 @@ defmodule Surfex.Completeness do
     # Code is one item per definition (`Scan.definition/1`), as it is to `require:`, the
     # triangle and validate: a function's default-argument arities are judged together,
     # counted once, and listed under the first of their ids.
+    named = for r <- live, end_ <- ends(r), into: MapSet.new(), do: end_
+
     code =
       for group <-
             scans
@@ -74,6 +76,7 @@ defmodule Surfex.Completeness do
             |> Enum.group_by(&Scan.definition/1)
             |> Map.values(),
           group = Enum.sort_by(group, & &1.id),
+          counted_code?(group, named),
           do: {:code, hd(group), missing_code(group, live, status)}
 
     judged = Enum.sort_by(units_and_tests ++ code, fn {kind, scan, _} -> {kind, scan.id} end)
@@ -176,6 +179,13 @@ defmodule Surfex.Completeness do
     ids = for s <- group, do: s.id
     touching = Enum.filter(live, fn r -> Enum.any?(ends(r), &(&1 in keys)) end)
     if touching == [], do: [:no_relation], else: lacks_code(ids, touching, status)
+  end
+
+  # A member judged with its parent (`in_parent`, §13.19) is counted only once a live
+  # relation names it.
+  defp counted_code?(group, named) do
+    not Enum.all?(group, & &1.in_parent) or
+      Enum.any?(group, &MapSet.member?(named, {:code, &1.id}))
   end
 
   defp lacks_code(ids, touching, status) do
