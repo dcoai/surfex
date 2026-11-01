@@ -9,6 +9,16 @@ All notable changes to Surfex are recorded here, following
 `mix.exs` reads `0.11.1-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
 release it merely follows.
 
+### Changed
+
+- surfex's own test suite now fails the run, naming each file, if it changed, added or
+  removed anything under the project's `.surfex/` (spec §1.2, #341). A one-off CI failure
+  of `mix surfex.status --verify` ("entry … does not match its content (edited?)") on a
+  log byte-identical to a passing one was not reproduced: the suite under 23 seeds and
+  loads never wrote the log, and decode is deterministic over every line. No cause was
+  found in shipped code; the guard turns a recurrence from a retry into a diagnosis. No
+  change for projects that use surfex.
+
 ## [0.11.0] — 2026-10-31
 
 Spec marking reads as its writer means it, and the log asks less of its keeper. Contract

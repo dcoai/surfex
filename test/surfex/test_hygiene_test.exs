@@ -24,4 +24,30 @@ defmodule Surfex.TestHygieneTest do
 
     assert offenders == []
   end
+
+  # #341: test_helper.exs digests the project's own .surfex/ before the suite and fails the
+  # run if this names anything after it.
+  @tag :tmp_dir
+  @tag verifies: ["policies", "suite-leaves-own-log"]
+  test "a change to the project's own .surfex/ during the suite is named", %{tmp_dir: root} do
+    alias Surfex.Test.OwnLog
+
+    dir = Path.join(root, ".surfex")
+    File.mkdir_p!(dir)
+    File.write!(Path.join(dir, "surfex.log"), "one\n")
+    File.write!(Path.join(dir, "surfex_1.log"), "closed\n")
+    before = OwnLog.digest(dir)
+
+    assert OwnLog.changes(before, OwnLog.digest(dir)) == []
+
+    File.write!(Path.join(dir, "surfex.log"), "two\n", [:append])
+    File.rm!(Path.join(dir, "surfex_1.log"))
+    File.write!(Path.join(dir, "surfex_2.log"), "new\n")
+
+    assert OwnLog.changes(before, OwnLog.digest(dir)) == [
+             "surfex.log changed",
+             "surfex_1.log went missing",
+             "surfex_2.log appeared"
+           ]
+  end
 end
