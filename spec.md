@@ -60,10 +60,20 @@ How precisely Surfex can relate a spec depends on how the spec is written.
   caught by the tests, not by a reader (#83).
 - **The test suite can't race itself.** The working directory belongs to the whole VM, so
   a test module that changes it doesn't run async.
+- **The test suite leaves the project's own log alone.** Every test that records works
+  on a tmp project. `test/test_helper.exs` digests every file under `.surfex/` before the
+  suite and fails the run, naming each file, if one changed, appeared or went missing
+  after it: CI verifies the committed log right after the suite, and a test that wrote
+  to it would read there as tampering (#341).
 
 ```test:deterministic-output
 the status report, the completeness report, a history and the suggestions are the same
 whether the scans and the log's lines come in one order or another
+```
+
+```test:suite-leaves-own-log
+a file under the project's own `.surfex/` that changed, appeared or went missing during
+the suite is named; an untouched `.surfex/` names nothing
 ```
 
 ## 2. Surface goldens
