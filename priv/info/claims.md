@@ -50,7 +50,9 @@ the marker's `module:`, else the nearest heading naming one (a `subjects:` item,
 module alias alone in backticks, as in ``## 2. `MyApp.Feed` ``), so under such a heading
 the marker needs no `module:`. One id twice in a file is an error. Changing one signature
 dangles only that function's relations. They hold the function's `@doc` too: rewording,
-adding or removing it dangles them as "doc changed", for a review.
+adding or removing it dangles them as "doc changed", for a review. A callback's contract
+relates to the callback's own item, `MyApp.Feed.callback:init/1`, so the same holds for
+each callback apart.
 
 **Citing a unit in the project's own form**: ids are per file, and a project often cites
 them across files as `§03.4` or `spec/05 §4.3`. List the forms in `.surfex.exs`, each a

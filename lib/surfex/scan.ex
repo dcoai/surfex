@@ -90,6 +90,7 @@ defmodule Surfex.Scan do
     runs: %{},
     dispatch: %{},
     shape: false,
+    in_parent: false,
     named: false,
     contract: nil,
     signature: nil,
@@ -135,6 +136,9 @@ defmodule Surfex.Scan do
           dispatch: %{String.t() => %{targets: [String.t()], unscanned: [String.t()]}},
           # A code record of a shape (`Surfex.Item` `:shape`): judged, never exercised.
           shape: boolean,
+          # A code record whose declaration is in its parent's version (`Surfex.Item`
+          # `:in_parent`, a callback): judged with its parent until a relation names it.
+          in_parent: boolean,
           # A spec section whose id the author wrote (an anchor, a heading comment or the
           # project's heading grammar), not its heading path (§11).
           named: boolean,
@@ -348,6 +352,7 @@ defmodule Surfex.Scan do
         role: item.kind,
         within: item.parent,
         shape: item.shape,
+        in_parent: item.in_parent,
         calls: item.calls,
         hidden: item.hidden,
         runs: item.runs,

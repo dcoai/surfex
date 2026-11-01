@@ -52,6 +52,7 @@ defmodule Surfex.LibraryApiTest do
              file: true,
              hash: true,
              hidden: false,
+             in_parent: false,
              kind: true,
              lines: false,
              name: true,
@@ -193,5 +194,17 @@ defmodule Surfex.LibraryApiTest do
     for %{contract: "Surfex.Scanner." <> key} = unit <- units do
       assert contract_signature(unit) == Map.fetch!(declared, {:callback, key})
     end
+
+    # Each contract's own key is a callback item the scanner lists (§5.2.1, #346).
+    listed =
+      for item <- Surfex.Scanner.Elixir.items("."),
+          item.kind == :callback,
+          item.parent == "Surfex.Scanner",
+          do: Surfex.Item.key(item)
+
+    assert Enum.sort(listed) == [
+             "Surfex.Scanner.callback:calls/3",
+             "Surfex.Scanner.callback:items/2"
+           ]
   end
 end

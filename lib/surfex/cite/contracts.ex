@@ -9,6 +9,9 @@ defmodule Surfex.Cite.Contracts do
 
   alias Surfex.{Cite, Item, Profile, Scan}
 
+  # A callback item's name within its module, `callback:name/arity` (§5.2.1).
+  @callback_name ~r/^(?:macro)?callback:/
+
   @doc """
   One citation per contract unit of `scans` that isn't deferred, directly or by a unit it
   sits in (§13.6, §13.13), resolved against `items` under `profile`, sorted by file and
@@ -20,11 +23,12 @@ defmodule Surfex.Cite.Contracts do
   def citations(scans, items, %Profile{} = profile) do
     index = Cite.index(items, profile)
     families = families(items)
+    listing = listing_callbacks(items)
     by_id = for %Scan{kind: :spec} = s <- scans, into: %{}, do: {s.id, s}
 
     for %Scan{kind: :spec, role: :contract} = unit <- scans,
         not deferred?(unit, by_id) do
-      {status, found, why} = resolve(unit, index, families, profile)
+      {status, found, why} = resolve(unit, index, {families, listing}, profile)
 
       %{
         span: unit.contract,
@@ -111,10 +115,22 @@ defmodule Surfex.Cite.Contracts do
     "`#{String.trim(c.span)}` cites an arity no contract states; the contracts state #{at}"
   end
 
-  # `Module.name` => the arities the code defines it at.
+  # The modules the scanners list callbacks of (§5.2.1): a callback contract of one of them
+  # resolves to its callback item or is broken, never to the module.
+  defp listing_callbacks(items) do
+    for %Item{parent: parent, name: name} <- items,
+        is_binary(parent),
+        Regex.match?(@callback_name, name),
+        into: MapSet.new(),
+        do: parent
+  end
+
+  # `Module.name` => the arities the code defines it at; a callback is no arity of a
+  # function.
   defp families(items) do
     for %Item{parent: parent, name: name} <- items,
         is_binary(parent),
+        not Regex.match?(@callback_name, name),
         [_, fun, arity] <- [Regex.run(~r/^(.+)\/(\d+)$/, name)],
         reduce: %{} do
       acc -> Map.update(acc, "#{parent}.#{fun}", [arity], &[arity | &1])
@@ -135,7 +151,12 @@ defmodule Surfex.Cite.Contracts do
     end)
   end
 
-  defp resolve(%Scan{contract: contract, id: id, location: %{file: file}}, index, families, p) do
+  defp resolve(
+         %Scan{contract: contract, id: id, location: %{file: file}},
+         index,
+         {families, listing},
+         p
+       ) do
     [_, module, fun, arity] = Regex.run(~r/^(.+)\.([^.]+)\/(\d+)$/, contract)
     callback = callback_key(id)
 
@@ -150,7 +171,14 @@ defmodule Surfex.Cite.Contracts do
       callback != nil and Map.has_key?(index, callback) ->
         found(Map.fetch!(index, callback))
 
-      # The Elixir scanner lists no callbacks: a callback is checked as far as its
+      # A module whose callbacks the scanners list has no callback of this name.
+      callback != nil and MapSet.member?(listing, module) ->
+        [_, kind] = Regex.run(~r/\.((?:macro)?callback):/, callback)
+
+        {:unresolved, [],
+         "names nothing the code has: no #{kind} `#{fun}/#{arity}` in `#{module}`"}
+
+      # A scanner that lists none of the module's callbacks: checked as far as its
       # behaviour module.
       callback != nil and Map.has_key?(index, module) ->
         found(Map.fetch!(index, module))

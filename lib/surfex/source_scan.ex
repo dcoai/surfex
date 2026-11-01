@@ -239,6 +239,79 @@ defmodule Surfex.SourceScan do
         do: {{name, a}, %{nodes: groups[key].nodes, impl: first.impl}}
   end
 
+  @doc false
+  # The module's public callbacks (§5.2.1): each `@callback` and `@macrocallback` in its own
+  # body, minus one under `@doc false`, by kind, name and arity. Several declarations of
+  # one name and arity are one callback, versioned together. Each has its version (the
+  # hash of its declarations alone), doc version (its `@doc`, as `defs/1` versions a
+  # function's) and lines. A `@doc` goes with the next callback or definition, as Elixir
+  # attaches it.
+  @spec callbacks(Macro.t()) :: [
+          %{
+            kind: :callback | :macrocallback,
+            name: atom,
+            arity: non_neg_integer,
+            hash: String.t(),
+            doc: String.t(),
+            lines: {pos_integer, pos_integer} | nil
+          }
+        ]
+  def callbacks({:defmodule, _, [_aliases, [do: body]]}) do
+    {found, _doc} =
+      Enum.reduce(exprs(body), {[], nil}, fn
+        {:@, _, [{:doc, _, [false]}]}, {acc, _doc} ->
+          {acc, :hidden}
+
+        {:@, _, [{:doc, _, [value]}]}, {acc, doc} ->
+          {acc, doc_text(value) || doc}
+
+        {:@, _, [{kind, _, [spec]}]} = node, {acc, doc}
+        when kind in [:callback, :macrocallback] ->
+          case callback_head(spec) do
+            {name, arity} -> {[{{kind, name, arity}, node, doc} | acc], nil}
+            nil -> {acc, nil}
+          end
+
+        {definer, _, _}, {acc, _doc} when definer in @definers ->
+          {acc, nil}
+
+        _other, state ->
+          state
+      end)
+
+    found
+    |> Enum.reverse()
+    |> Enum.group_by(&elem(&1, 0))
+    |> Enum.flat_map(fn {{kind, name, arity}, [{_, _, doc} | _] = group} ->
+      nodes = Enum.map(group, &elem(&1, 1))
+
+      if doc == :hidden do
+        []
+      else
+        [
+          %{
+            kind: kind,
+            name: name,
+            arity: arity,
+            hash: definition_hash(if(match?([_], nodes), do: hd(nodes), else: nodes)),
+            doc: doc_version(doc),
+            lines: line_range(nodes)
+          }
+        ]
+      end
+    end)
+    |> Enum.sort_by(&{&1.name, &1.arity, &1.kind})
+  end
+
+  defp callback_head({:when, _, [spec | _]}), do: callback_head(spec)
+  defp callback_head({:"::", _, [head, _result]}), do: callback_head(head)
+
+  defp callback_head({name, _, args}) when is_atom(name) and is_list(args),
+    do: {name, length(args)}
+
+  defp callback_head({name, _, ctx}) when is_atom(name) and is_atom(ctx), do: {name, 0}
+  defp callback_head(_), do: nil
+
   # The module's definitions grouped by name and arity (each clause kept), the same as
   # hashing needs them (%{nodes, defaults, private}), and its attributes' values.
   defp definitions(body) do

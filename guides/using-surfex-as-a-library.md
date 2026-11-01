@@ -89,9 +89,11 @@ states.
 ````
 
 Relate each contract to its function (`mix surfex.relate`) and validate it with a test that
-calls it. The relation then dangles when the signature changes, and also when the
-function's `@doc` changes (spec §13.18), so the spec and the docs can't drift apart
-unnoticed. Use the marker before a plain `elixir` fence, as here: an `elixir contract` info
+calls it. A callback's contract relates to its callback, an item of its own keyed
+`MyLib.Store.callback:fetch/1` (spec §5.2.1), validated by judgement since a declaration
+has no behaviour for a run to exercise. The relation then dangles when the signature
+changes, and also when the function's or callback's `@doc` changes (spec §13.18), so the
+spec and the docs can't drift apart unnoticed. Use the marker before a plain `elixir` fence, as here: an `elixir contract` info
 string reads the same, but ex_doc renders it as text.
 
 Surfex does this for its own library API. Spec §23.1.1 and §23.2 state the functions and

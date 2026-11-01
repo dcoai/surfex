@@ -9,6 +9,7 @@ defmodule Surfex.Scanner.Elixir do
   | a public function | `:function` | `MyApp.Cart.add/2` | `MyApp.Cart.add` |
   | a public macro or guard | `:macro` | `MyApp.Cart.is_cart/1` | `MyApp.Cart.is_cart` |
   | a public type (`@type`, `@opaque`) | `:type` | `t:MyApp.Cart.t/0` | `MyApp.Cart.t` |
+  | a public callback (`@callback`, `@macrocallback`) | `:callback`, `:macrocallback` | `MyApp.Store.callback:fetch/1` | — |
 
   What counts as public is `Surfex.SourceScan.defs/1`'s rule: `def`, `defmacro`,
   `defdelegate` and `defguard`, minus `@doc false` and undocumented `@impl` callbacks. A
@@ -39,6 +40,14 @@ defmodule Surfex.Scanner.Elixir do
   `Surfex.SourceScan.defs/1` and `Surfex.SourceScan.types/1`: its `@doc` or `@typedoc`,
   apart from its code version. A module carries none, since its version covers its
   `@moduledoc`.
+
+  **A callback is an item of its behaviour module** (spec §5.2.1): keyed
+  `Module.callback:name/arity` (`macrocallback:` for a `@macrocallback`), its version over
+  its declaration alone and its doc version over its `@doc`, so a callback contract
+  related to it dangles when that callback's signature or docs change and no other's.
+  Its declaration is also in its module's version, so it is a shape marked `in_parent`
+  (`Surfex.Item`): judged with its module until a relation of its own names it. One
+  under `@doc false` is no item.
 
   ## Options
 
@@ -258,6 +267,21 @@ defmodule Surfex.Scanner.Elixir do
           aliases: ["#{module}.#{name}"],
           lines: lines,
           shape: true
+        }
+      end ++
+      for %{kind: kind, name: name, arity: arity, hash: hash, doc: doc, lines: lines} <-
+            SourceScan.callbacks(node) do
+        # Keyed as §11.9 keys a callback's contract, apart from a function of its name.
+        %Item{
+          kind: kind,
+          name: "#{kind}:#{name}/#{arity}",
+          parent: module,
+          file: file,
+          hash: hash,
+          doc: doc,
+          lines: lines,
+          shape: true,
+          in_parent: true
         }
       end
   end

@@ -358,6 +358,7 @@ source of a code record (§11).
 | `lines` | its first and last line in `file`, when the scanner knows them: never part of its key or its hash |
 | `doc` | its doc version (§3.4), kept apart from `hash`. `nil` when the scanner doesn't version documentation apart, as for a module, whose version covers its `@moduledoc` |
 | `shape` | `true` for an item with no behaviour of its own (a type): no test run exercises it, so an `implements` relation to it is validated by judgement (§18). The scanner says so; surfex never infers it from a kind |
+| `in_parent` | `true` for a member whose declaration is already in its parent's version (a callback, §5.2.1): until a relation of its own names it, it is judged with its parent (§13.19). The scanner says so; surfex never infers it from a kind |
 | `calls` | the keys of the code it calls, as far as its source says (§5.2). A fact about the source, never part of its key or its hash. Empty when the scanner doesn't know: the item is then reached only by a test calling it (§13.1) |
 | `hidden` | code the item covers that isn't an item of its own (a module's hidden definitions, §3.3), keyed as a call names it (`Mix.Tasks.Foo.run/1`), each with its calls. Its version is in the item's; a call naming it reaches the item and goes on through its calls (§13.1). Empty for most items |
 | `runs` | the hidden modules' code the item runs (§3.3), keyed as a call names it, each with its calls. It is no item's own: its version is in each item running it, and each carries the same entry. A call naming it reaches no item and goes on through its calls (§13.1). Empty for most items |
@@ -504,6 +505,41 @@ target; every default arity lists the same calls; a module lists none
 ```test:type-citations
 a public type is cited as `Mod.t()` or `t:Mod.t/0` and resolves when declared; one not
 declared, or private, is unresolved; a function of the same name keeps its own key
+```
+
+#### 5.2.1 Callbacks
+<!-- surfex: callback-items -->
+
+A behaviour's callbacks are part of what a project promises, since a plugin implements
+them, so the Elixir scanner lists each public one as an item of its behaviour module:
+
+| Item | Kind | Key | Aliases |
+|---|---|---|---|
+| a public callback (`@callback`) | `:callback` | `MyApp.Store.callback:fetch/1` | none |
+| a public macro callback (`@macrocallback`) | `:macrocallback` | `MyApp.Store.macrocallback:build/1` | none |
+
+- Its key is the one a callback's contract unit has after its file (§11.9), so a callback
+  contract resolves to it (§6.9) and is proposed with it (§15.3). Its parent is the module.
+  It has no aliases, so no citation resolves differently for it, and a function of the
+  same name and arity keeps its own key.
+- **Its version is its declaration's alone**, hashed as a type's is (§3.3), and several
+  declarations of one name and arity are one callback, versioned together. Its **doc
+  version** is its `@doc`'s, normalised as a function's (§3.4). So changing one callback's
+  signature, or rewording its `@doc`, dangles that callback's relations and no other's.
+- A callback under `@doc false` is hidden, as Elixir hides it, and is no item.
+- It is a **shape** (§4): a declaration has no behaviour of its own, its implementations
+  do. A relation to it is validated by judgement (§18), it is not on the triangle's code
+  side (§13.20), and it lists no calls.
+- Its declaration is also in its module's version (§3.3), which is unchanged by it, so it
+  is **`in_parent`** (§4): judged with its module until a relation of its own names it
+  (§13.19). A project whose `require:` asks code for a relation needs nothing new for its
+  callbacks; one that states a callback's contract relates the contract to it.
+
+```test:callback-item-versions
+the Elixir scanner lists each public @callback and @macrocallback as an item keyed
+Module.callback:name/arity under its module, a shape in its parent with no aliases or
+calls; its version changes with its declaration alone and its doc version with its @doc;
+one under @doc false is no item, and the module's version is unchanged
 ```
 
 ### 5.3 Several scanners
@@ -738,9 +774,11 @@ function, resolved against the code items as any citation is (§6.4), and one th
 nothing is a **broken citation** (§13.1), listed at the signature's first line under the
 section `(contract)` with what is missing: `no module M`, `no f in M`, or `M.f exists at
 /3, not /2` when the code has the function at other arities only. A `@callback` or
-`@macrocallback` contract resolves to an item keyed by its callback id
-(`Module.callback:name/arity`) where a scanner lists one, else to its behaviour module,
-since the built-in scanner lists no callbacks; with neither it is broken.
+`@macrocallback` contract resolves to the item keyed by its callback id
+(`Module.callback:name/arity`), as the built-in scanner lists them (§5.2.1). A module
+whose callbacks a scanner lists has no others: a callback contract naming one it lacks is
+broken, `no callback f/1 in M`. Only where no scanner lists any of the module's callbacks
+does it resolve to its behaviour module; with neither it is broken.
 
 A `known_external` entry naming the contract, its function or its module, and a documented
 absence naming the contract or its function in the file, carry it as they carry any
@@ -755,6 +793,12 @@ a contract whose function the code lacks is a broken citation at its line, sayin
 the module, the function or the arity is missing; a documented absence or a known external
 carries it; a contract deferred by its section is not broken; a callback resolves to its
 behaviour module and one whose module is missing is broken
+```
+
+```test:callback-contract-resolution
+a callback contract resolves to its callback item where the scanner lists the module's
+callbacks, is broken naming the callback where it lists others but not this one, and
+resolves to the behaviour module where it lists none
 ```
 
 ### 6.10 A citation's kind
@@ -3555,6 +3599,43 @@ counted as having none recorded yet; a section relation is never counted; the ne
 records it
 ```
 
+### 13.19 A member is judged with its parent until related
+<!-- surfex: in-parent -->
+
+A code item marked `in_parent` (§4) is a member whose declaration is already in its
+parent's version, as a callback's is in its behaviour module's (§5.2.1). Until a relation
+of its own names it, one that isn't retired, it is judged with its parent, whose
+relations cover it:
+- the status doesn't list it as new (§13.1), in its report or its JSON;
+- no `require:` rule judges it (§13.2), so it is never unmet;
+- completeness doesn't count it (§20).
+
+Once a relation names it, such as a callback contract's `implements` (§15.3), it is judged
+as any item: `require:` rules apply to it, and completeness counts it with what it misses.
+Retiring that relation returns it to its parent.
+
+```test:in-parent-judged
+a code item in its parent with no relation of its own is not new, not unmet under
+require: code: and not counted by completeness; once a relation names it, it is judged and
+counted as any item; retired, it is judged with its parent again
+```
+
+### 13.20 A shape is not on the triangle's code side
+<!-- surfex: triangle-shapes -->
+
+A shape (§4) has no behaviour for a test run to exercise, so the triangle (§13.1) leaves
+it out of a unit's implementing code: a shape is never `code_untested`, and a test reaching
+none of it misses nothing for it. A unit implemented by shapes alone, as a callback
+contract related to its callback item (§5.2.1) or a section related only to a type, has no
+code side: its one triangle gap is having no verifying test. Code with behaviour beside a
+shape is judged as before.
+
+```test:triangle-shape-side
+a shape implementing a unit is never code_untested and a test reaching none of it misses no
+code; a unit implemented by shapes alone has no gap once a test verifies it and no_test
+without one; code with behaviour beside a shape still needs reaching
+```
+
 ## 14. Recording
 <!-- surfex: recording -->
 
@@ -5145,8 +5226,10 @@ declares them, so changing a signature dangles its contract's relation:
             [String.t()]
 ```
 
-The built-in scanner lists no callback as an item, so each callback's contract is
-realised by the behaviour module, `Surfex.Scanner` (§6.9).
+The built-in scanner lists each callback as an item of its own (§5.2.1), so each
+callback's contract is realised by its callback item, `Surfex.Scanner.callback:items/2` and
+`Surfex.Scanner.callback:calls/3`: a changed signature or a reworded callback `@doc`
+dangles that contract's relation alone.
 
 ```test:scanner-callback-contracts
 the contract units this section states are exactly Surfex.Scanner's callbacks, items/2 and

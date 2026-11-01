@@ -9,7 +9,44 @@ All notable changes to Surfex are recorded here, following
 `mix.exs` reads `0.11.1-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
 release it merely follows.
 
+### Added
+
+- **A behaviour's callbacks are items of their own** (#337, #345). The Elixir scanner lists
+  each public `@callback` and `@macrocallback` as an item of its module, keyed
+  `Module.callback:name/arity` (`macrocallback:` for a macro callback, spec §5.2.1): its
+  version over its declaration alone, its doc version over its `@doc`, a shape with no
+  aliases or calls. A callback contract (§11.1) now resolves to that item (§6.9) and
+  `mix surfex.suggest` proposes it (§15.3), so changing one callback's signature or
+  rewording its `@doc` dangles exactly that contract's relation, where a relation to the
+  behaviour module missed the doc and dangled on any change to the module. One under
+  `@doc false` is no item. A callback contract naming a callback its module doesn't
+  declare is now a broken citation, `no callback f/1 in M`; it resolves to the module only
+  where no scanner lists any of the module's callbacks.
+  surfex's own two callback contracts (§23.1.1) now relate to their callback items (#346):
+  a reworded `Surfex.Scanner` callback `@doc` dangles that contract's relation alone.
+- **`Surfex.Item` and `Surfex.Scan` field `in_parent`** (default `false`, true on callback
+  items): a member whose declaration is already in its parent's version is judged with its
+  parent until a relation of its own names it, so it isn't listed as new, judged by
+  `require:` or counted by completeness (spec §13.19). `SourceScan.module_hash/1` is
+  unchanged and still covers callback declarations, which is what makes this sound.
+
 ### Changed
+
+- **A shape is not on the triangle's code side** (#345, spec §13.20). No run exercises a
+  type or a callback, so an `implements` to one is never `code_untested`, and a unit
+  implemented by shapes alone has no triangle gap once a test verifies it. Code with
+  behaviour beside a shape is judged as before.
+
+**Upgrade step:** none required. Measured read-only against 0.11.0 on every project with a
+`.surfex.exs` (`surfex_unit_versions.exs`): no existing code or spec unit changes version
+and none disappears; the only new ids are the callback items, in the projects that declare
+callbacks. A new callback item is judged with its module, and comparing each project's
+status under both versions, none changes whether it fails, what it lists as new or unmet,
+or its broken citations. Five projects lose 39 reported triangle gaps between them
+(`implements` to a type or a DSL declaration), each such relation now complete in
+completeness. Only surfex had callback contracts (2); a
+project that relates a callback contract to its module can move it: relate the contract to
+its callback item (`mix surfex.suggest` proposes it) and retire the module relation.
 
 - surfex's own test suite now fails the run, naming each file, if it changed, added or
   removed anything under the project's `.surfex/` (spec §1.2, #341). A one-off CI failure
