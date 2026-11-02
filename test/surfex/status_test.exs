@@ -1396,7 +1396,9 @@ defmodule Surfex.StatusTest do
   # #201: the --evidence check grows with the project in proportion. On a project of
   # exio's size it was cubic in the claims (each implements scanned every verifies against
   # every reached pair) and quadratic in the evidence (each candidate scanned the whole
-  # run). Counted in reductions, not seconds, as suggest-linear is.
+  # run). Counted in reductions, not seconds, as suggest-linear is, and exactly
+  # (Surfex.Test.Work, #268): counted in the test's own process, they included a garbage
+  # collection charge that varies with load, and the ratio crossed 3 under a busy suite.
   @tag verifies: ["evidence-check-linear", "evidence"]
   test "the evidence check's work over a project twice as large is about twice" do
     project = fn n ->
@@ -1470,22 +1472,18 @@ defmodule Surfex.StatusTest do
       {scans, entries, evidence}
     end
 
-    reductions = fn f ->
-      {:reductions, before} = Process.info(self(), :reductions)
-      result = f.()
-      {:reductions, later} = Process.info(self(), :reductions)
-      {result, later - before}
-    end
-
     # The check's own work: deriving with the evidence, less deriving without it.
     work = fn n ->
       {scans, entries, evidence} = project.(n)
-      {_, without} = reductions.(fn -> Status.derive(scans, entries, []) end)
+      without = Surfex.Test.Work.reductions(fn -> Status.derive(scans, entries, []) end)
 
-      {status, with} =
-        reductions.(fn -> Status.derive(scans, entries, [], evidence: evidence) end)
+      with =
+        Surfex.Test.Work.reductions(fn ->
+          Status.derive(scans, entries, [], evidence: evidence)
+        end)
 
       # Every claim is borne out, so the check did the whole of its work.
+      status = Status.derive(scans, entries, [], evidence: evidence)
       assert status.unproven == [] and status.unchecked == []
       assert length(status.relations) == 3 * n
       with - without
@@ -1499,7 +1497,7 @@ defmodule Surfex.StatusTest do
   # #204: plain derive was quadratic in the spec units. Each declaration resolved by
   # filtering every scan, and the triangle walked every verifies unit's `within` chain for
   # each spec unit (and the baseline check every verifies pair for each implements).
-  # Counted in reductions, as suggest-linear and evidence-check-linear are.
+  # Counted in reductions, exactly, as suggest-linear and evidence-check-linear are.
   @tag verifies: ["derive-linear", "status"]
   test "plain derive's work over a project twice as large is about twice" do
     linear_project = fn n ->
@@ -1576,16 +1574,15 @@ defmodule Surfex.StatusTest do
     derive_work = fn n ->
       {scans, entries} = linear_project.(n)
       adoption = %{setting: :reevaluate, trusted: :all}
-      {:reductions, before} = Process.info(self(), :reductions)
-      status = Status.derive(scans, entries, [], adoption: adoption)
-      {:reductions, later} = Process.info(self(), :reductions)
+      derive = fn -> Status.derive(scans, entries, [], adoption: adoption) end
+      status = derive.()
 
       # Every declaration resolved, every unit verified through its hint and block, and
       # every baselined implements held: derive did the whole of its work.
       assert length(status.relations) == 4 * n
       assert status.broken == [] and status.undeclared == [] and status.triangle == []
       assert status.unvalidated == [] and MapSet.size(status.baselined) == div(n + 1, 2)
-      later - before
+      Surfex.Test.Work.reductions(derive)
     end
 
     n = 400

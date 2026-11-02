@@ -142,7 +142,8 @@ defmodule Surfex.SuggestTest do
 
   # #168: suggest's work grows with the log in proportion, not quadratically. Counted in
   # reductions, not seconds: work done is the same on any machine under any load, where a
-  # time bound only catches a regression large enough to beat the noise.
+  # time bound only catches a regression large enough to beat the noise. Counted exactly
+  # (Surfex.Test.Work, #268): in a fresh process, with no garbage collection charged.
   @tag verifies: "suggest-linear"
   test "suggest's work over twice the relations is about twice, not four times" do
     {config, _} = Code.eval_file(Path.join(@fixture, "surfex.exs"))
@@ -176,10 +177,7 @@ defmodule Surfex.SuggestTest do
 
     work = fn n ->
       entries = log.(n)
-      {:reductions, before} = Process.info(self(), :reductions)
-      Suggest.all(profile, items, scans, entries, @root)
-      {:reductions, later} = Process.info(self(), :reductions)
-      later - before
+      Surfex.Test.Work.reductions(fn -> Suggest.all(profile, items, scans, entries, @root) end)
     end
 
     n = 1000
