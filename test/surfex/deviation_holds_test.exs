@@ -135,7 +135,12 @@ defmodule Surfex.DeviationHoldsTest do
     test "holds back the hint's, its section's and the section above's implements, and still records the verifies" do
       scans = world()
 
-      assert {:ok, recorded, held} = Record.evidence_outcome(scans, log(scans), evidence(), [])
+      # Both calls record at one fixed time (#310): an entry carries when it was recorded,
+      # and its id is hashed over that, so two calls a second boundary apart would differ.
+      meta = [at: @at]
+
+      assert {:ok, recorded, held} =
+               Record.evidence_outcome(scans, log(scans), evidence(), meta)
 
       # The section the deviating one sits under (shop, above carts) is held too.
       assert implements(recorded) == []
@@ -152,7 +157,7 @@ defmodule Surfex.DeviationHoldsTest do
              ]
 
       # confirm_by_evidence/4 records the same, and never what is held.
-      assert {:ok, ^recorded} = Record.confirm_by_evidence(scans, log(scans), evidence(), [])
+      assert {:ok, ^recorded} = Record.confirm_by_evidence(scans, log(scans), evidence(), meta)
     end
 
     test "the derive holds a section the deviating one sits under, and marks its relation" do
