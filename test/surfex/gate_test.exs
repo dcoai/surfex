@@ -27,6 +27,41 @@ defmodule Surfex.GateTest do
     refute message =~ "  a\n"
   end
 
+  # #291, #361: a release that changes how a cell renders moves no fact, and Gone and Added
+  # beside each other read as a loss until someone checks the CHANGELOG.
+  @tag verifies: "gate-rerendered"
+  test "a row that only re-rendered is listed once, as re-rendered" do
+    old = "| Item | Note |\n|---|---|\n| `a`b` | `x` |\n| `c` | `y` |\n"
+    new = "| Item | Note |\n|---|---|\n| `` a`b `` | `x` |\n| `c` | `` y `` |\n"
+    message = Gate.drift(old, new)
+
+    assert message =~ "Re-rendered (same row, new rendering):\n  a`b\n  c\n"
+    refute message =~ "Gone:"
+    refute message =~ "Added:"
+    refute message =~ "Changed:"
+    refute message =~ "No row changed"
+  end
+
+  @tag verifies: "gate-rerendered"
+  test "a row that differs in substance stays gone and added, or changed" do
+    old = "| Item | Note |\n|---|---|\n| `a`b` | `x` |\n| `c` | `y` |\n"
+
+    new =
+      "| Item | Note |\n|---|---|\n| `` a`e `` | `x` |\n| `c` | `` w `` |\n"
+
+    message = Gate.drift(old, new)
+
+    assert message =~ "Gone:\n  a`b\n"
+    assert message =~ "Added:\n  a`e\n"
+    assert message =~ "Changed:\n  c — Note y → w\n"
+    refute message =~ "Re-rendered"
+
+    # Two spans in one cell are two spans, not one old span with backticks inside it.
+    spans = "| Item | Note |\n|---|---|\n| `k` | `a` and `b` |\n"
+    inner = "| Item | Note |\n|---|---|\n| `k` | `` a` and `b `` |\n"
+    assert Gate.drift(spans, inner) =~ "Changed:\n  k — Note `a` and `b` → a` and `b\n"
+  end
+
   # #199: Surfex.Golden writes an item holding `|` or a backtick as a longer-fenced span with
   # `\|`; the drift names the item by its text.
   @tag verifies: ["gate-drift", "gate-drift-rows"]
