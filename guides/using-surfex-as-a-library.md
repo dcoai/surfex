@@ -30,6 +30,29 @@ Both are **supported library API** (spec §23).
   reads back as its text under GFM even when the text holds `|` or a backtick; a
   `{:raw, …}` or plain-string cell is written verbatim, so escape a `|` in it as `\|`.
 
+## Loading them without Mix
+
+A gate script can run as bare `elixir`, with no Mix project, and load these modules from
+their source files. Each one needs exactly these files, relative to surfex's root, read in
+this order:
+
+| Module | Source files |
+|---|---|
+| `Surfex.Golden` | `lib/surfex/golden/span.ex`, `lib/surfex/golden.ex` |
+| `Surfex.SourceScan` | `lib/surfex/source_scan/closure.ex`, `lib/surfex/source_scan.ex` |
+
+```sh
+elixir -r lib/surfex/golden/span.ex -r lib/surfex/golden.ex my_gate.exs
+```
+
+Any order runs, but a file read before something it calls prints an "undefined" warning. The
+two `Surfex.SourceScan` files call each other, so they print one in either order: this order
+warns that `Surfex.SourceScan.definition_hash/1` is undefined, which is harmless.
+
+Load the files listed, not the directories: the other files under `source_scan/` serve the
+relation log, and `source_scan/calls.ex` reaches `Surfex.Status.Config`, which is a long way
+into the rest of surfex.
+
 ## A surface golden in a few lines
 
 ```elixir
@@ -67,6 +90,10 @@ and the diff shows the reviewer exactly which definitions changed.
 - **Changes:** a change to either module never comes in a patch release. It comes in a minor
   release, listed in the CHANGELOG under "Changed" and marked for library users. One such
   change already: `lib_sources/1` started skipping `test/`, `tmp/` and hidden directories.
+- **Source files:** a change to the table above is a change under the same rule. A test
+  computes each module's files from what its code references and fails until the table
+  agrees, and it runs every documented function with only those files loaded. One such
+  change already: 0.10.0 added `golden/span.ex` to `Surfex.Golden`.
 
 A project scanner, such as one giving the blocks a DSL declares as items, is written against
 `Surfex.Scanner` and `Surfex.Item`, and the same promise covers them (spec §23.1): the
