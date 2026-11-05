@@ -47,6 +47,11 @@ release it merely follows.
 
 ### Changed
 
+- **The claim-grain guide says what upgrading costs** (#293, #359): the dangle wave as the real
+  work, with a worked example; lowering a completeness floor to the measured score and raising
+  it as sections settle; the wave of reach suggestions; wiring excuses dangling; a deviation
+  failing `require: code:`; poncho siblings pinning surfex; a retired release failing
+  `mix hex.audit`. `guides/writing-specs.md` adds when to name code in a spec.
 - **The docs say what `validate` credits, what a class name is and how to bring evidence from
   CI** (#293, #358). `mix help surfex.validate` said a review credits code the test
   "exercised", which reads like earning's reach; it credits code the test calls directly,
