@@ -18,8 +18,9 @@ baselined under adoption, `mix surfex.info adoption`).
 test; judge whether the test checks them (cases, boundaries, what must not change); fix
 the test where it falls short. It needs the `verifies` relation and green evidence at the
 current test and code versions. The unit may be a section whose hint the test already
-verifies: the review then records the section's `implements` for the code the test
-exercises. The note says which assertion checks which claim.
+verifies: the review then records the section's `implements` for the code the test calls
+directly (for code it only reaches, see below). The note says which assertion checks which
+claim.
 
 **Code behind an entry point**: a test reaches what it calls and, transitively, what that
 code calls, as the source states it. So a unit may cite the function doing the work while
@@ -55,7 +56,28 @@ relation.
 
 **Evidence from CI**: `--merge PATH` (once per file) on `confirm --evidence`, `validate`,
 `relate` and `suggest --accept` reads CI jobs' evidence files beside the local run, so a
-test excluded locally (it needs a service you don't run) counts from CI's run.
+test excluded locally (it needs a service you don't run) counts from CI's run. The job has
+to save its evidence, including when tests fail, since a failing run is evidence too. On
+GitLab CI:
+
+```yaml
+test:
+  script: mix test
+  artifacts:
+    when: always
+    paths:
+      - _build/surfex/evidence.jsonl
+```
+
+Fetch it somewhere other than your own `_build`, which holds the local run, then merge it:
+
+```sh
+glab job artifact main test --path ci-evidence/
+mix surfex.confirm --evidence --merge ci-evidence/_build/surfex/evidence.jsonl
+```
+
+Evidence counts only for the versions it ran against, so fetch from a pipeline on the code
+you have.
 
 **Checks**: some claims are verified by a gate, not a test: a linter rule (no `rescue`),
 a security scanner, a project's own task comparing a layout with a header. Declare it
