@@ -11,6 +11,12 @@ release it merely follows.
 
 ### Added
 
+- **`mix surfex.relate --file PATH`: many relations from one scan and one log load** (#350,
+  #351). Each line is tab-separated `FROM`, `TO`, `TYPE` and an optional `NOTE`, and records
+  what the single form records, so it validates nothing (spec §18). A refused line fails the
+  file, naming the line. Notes may be missing or repeated, since a claim has no judgement to
+  write; `Surfex.Record.relate_batch/5` is claims only, and `batch/3` keeps its distinct-notes
+  rule. `Surfex.Record.parse_batch/3` takes `note: :optional`.
 - **A behaviour's callbacks are items of their own** (#337, #345). The Elixir scanner lists
   each public `@callback` and `@macrocallback` as an item of its module, keyed
   `Module.callback:name/arity` (`macrocallback:` for a macro callback, spec §5.2.1): its
@@ -32,6 +38,7 @@ release it merely follows.
 
 ### Changed
 
+- `mix surfex.confirm --file` names the line of an unknown type (#351).
 - **A shape is not on the triangle's code side** (#345, spec §13.20). No run exercises a
   type or a callback, so an `implements` to one is never `code_untested`, and a unit
   implemented by shapes alone has no triangle gap once a test verifies it. Code with

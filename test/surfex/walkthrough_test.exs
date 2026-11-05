@@ -293,6 +293,151 @@ defmodule Surfex.WalkthroughTest do
     assert error.message =~ "line 2:"
   end
 
+  # How many times each function is called while `fun` runs, counted by a call trace, so
+  # the task needs no seam for it. A process can't trace itself, hence the Task.
+  defp calls_during(functions, fun) do
+    for {module, _, _} <- functions, do: Code.ensure_loaded!(module)
+    run = Task.async(fn -> receive(do: (:go -> fun.())) end)
+    :erlang.trace(run.pid, true, [:call])
+    for function <- functions, do: :erlang.trace_pattern(function, true, [:global])
+    send(run.pid, :go)
+    Task.await(run, 60_000)
+    for function <- functions, do: :erlang.trace_pattern(function, false, [:global])
+    ref = :erlang.trace_delivered(run.pid)
+    receive(do: ({:trace_delivered, _, ^ref} -> :ok))
+    drain_calls(Map.new(functions, &{&1, 0}))
+  end
+
+  defp drain_calls(counts) do
+    receive do
+      {:trace, _, :call, {m, f, args}} ->
+        drain_calls(Map.update!(counts, {m, f, length(args)}, &(&1 + 1)))
+    after
+      0 -> counts
+    end
+  end
+
+  # #350: many relations from one scan and one log load.
+  @tag verifies: "batch-claims"
+  test "relate --file records a file of claims from one scan and one log load", %{root: root} do
+    batch = Path.join(root, "batch.tsv")
+
+    File.write!(batch, """
+    # the cart's relations
+    #{@function}\t#{@other}\tdepends_on
+
+    #{@other}\t#{@function}\tdepends_on\tmoved with the cart
+    #{@section}\t#{@function}\timplements\tmoved with the cart
+    #{@function}\t#{@other}\tdepends_on
+    """)
+
+    scans = {Surfex.Status.Config, :scans, 2}
+    load = {Surfex.Log, :load, 1}
+
+    counts =
+      calls_during([scans, load], fn ->
+        task(root, Mix.Tasks.Surfex.Relate, ["--file", batch])
+      end)
+
+    assert counts == %{scans => 1, load => 1}
+
+    entries = Surfex.Log.load(root)
+    assert length(entries) == 4
+    assert Enum.count(entries, &(&1.note == "moved with the cart")) == 2
+    assert Enum.count(entries, &is_nil(&1.note)) == 2
+    assert [%{basis: :proposed}] = Enum.filter(entries, &(&1.type == :implements))
+    assert Surfex.Log.verify(root) == []
+
+    # The same pair twice supersedes, wherever the two sort in the log.
+    depends = Enum.filter(entries, &(&1.type == :depends_on and hd(&1.ends).id == @function))
+    assert [first, second] = Enum.sort_by(depends, &length(&1.parents))
+    assert second.parents == [first.id]
+  end
+
+  @tag verifies: "batch-claims"
+  test "relate --file says what it recorded, one line per entry", %{root: root} do
+    batch = Path.join(root, "batch.tsv")
+
+    File.write!(
+      batch,
+      "#{@function}\t#{@other}\tdepends_on\n#{@other}\t#{@function}\tdepends_on\n"
+    )
+
+    drain()
+    task(root, Mix.Tasks.Surfex.Relate, ["--file", batch])
+    assert Enum.count(drain(), &(&1 =~ "recorded relate ")) == 2
+  end
+
+  @tag verifies: "batch-claims"
+  test "relate --file refuses named ids, --type and --note, and records nothing", %{root: root} do
+    batch = Path.join(root, "batch.tsv")
+    File.write!(batch, "#{@function}\t#{@other}\tdepends_on\n")
+
+    for extra <- [[@function, @other], ["--type", "depends_on"], ["--note", "one for all"]] do
+      error =
+        assert_raise Mix.Error, fn ->
+          task(root, Mix.Tasks.Surfex.Relate, ["--file", batch | extra])
+        end
+
+      assert error.message =~ "--file reads every relation and its note from the file"
+    end
+
+    assert Surfex.Log.load(root) == []
+  end
+
+  @tag verifies: "batch-claims"
+  test "relate --file names a bad line and records nothing", %{root: root} do
+    batch = Path.join(root, "batch.tsv")
+    good = "#{@function}\t#{@other}\tdepends_on\n"
+
+    for {bad, says} <- [
+          {"MyApp.Gone.f/0\t#{@other}\tdepends_on\n", "MyApp.Gone.f/0"},
+          {"#{@function}\t#{@other}\tnonsense\n", "nonsense"},
+          {"#{@function}\t#{@other}\n", "expected 3 or 4 tab-separated fields"}
+        ] do
+      File.write!(batch, good <> bad)
+
+      error =
+        assert_raise Mix.Error, fn -> task(root, Mix.Tasks.Surfex.Relate, ["--file", batch]) end
+
+      assert error.message =~ "line 2: "
+      assert error.message =~ says
+      assert Surfex.Log.load(root) == []
+    end
+  end
+
+  @tag verifies: "batch-claims"
+  test "relate --file --planned plans every line", %{root: root} do
+    batch = Path.join(root, "batch.tsv")
+    planned = "MyApp.Cart.discount/1"
+    File.write!(batch, "#{@section}\t#{planned}\timplements\n")
+    task(root, Mix.Tasks.Surfex.Relate, ["--file", batch, "--planned"])
+
+    assert [%{ends: ends}] = Surfex.Log.load(root)
+    assert %{kind: :code, id: ^planned, hash: nil} = Enum.find(ends, &(&1.id == planned))
+
+    File.write!(batch, "#{@section}\tNotOurs.f/0\timplements\n")
+
+    error =
+      assert_raise Mix.Error, fn ->
+        task(root, Mix.Tasks.Surfex.Relate, ["--file", batch, "--planned"])
+      end
+
+    assert error.message =~ "line 1: "
+  end
+
+  @tag verifies: "batch-distinct-notes"
+  test "confirm --file names a line whose type it doesn't know", %{root: root} do
+    batch = Path.join(root, "batch.tsv")
+    File.write!(batch, "# one\n#{@function}\t#{@other}\tnonsense\tread both ends\n")
+
+    error =
+      assert_raise Mix.Error, fn -> task(root, Mix.Tasks.Surfex.Confirm, ["--file", batch]) end
+
+    assert error.message =~ "line 2: "
+    assert error.message =~ "nonsense"
+  end
+
   # #36: the spec is written first, the relation planned, and the code follows.
   @tag verifies: ["recording-by-name", "process-proposed", "process-one-at-a-time"]
   test "plan → planned → write the code → proposed until validated", %{root: root} do

@@ -123,11 +123,17 @@ defmodule Surfex.Record do
   fields with the note last (a note may hold anything but a tab). Blank lines and lines
   starting with `#` are skipped; each line keeps its number in the file. A line with
   another number of fields, or a batch with no relations, is refused, naming the line.
+
+  With `note: :optional`, for a batch of claims (`relate_batch/5`), a line may leave its note
+  out or empty, and its `note` is `nil`.
   """
-  @spec parse_batch(String.t(), pos_integer) ::
-          {:ok, [%{line: pos_integer, fields: [String.t()], note: String.t()}]}
+  @spec parse_batch(String.t(), pos_integer, keyword) ::
+          {:ok, [%{line: pos_integer, fields: [String.t()], note: String.t() | nil}]}
           | {:error, String.t()}
-  def parse_batch(text, fields) do
+  def parse_batch(text, fields, opts \\ []) do
+    optional? = Keyword.get(opts, :note) == :optional
+    expected = if optional?, do: "#{fields - 1} or #{fields}", else: "#{fields}"
+
     text
     |> String.split("\n")
     |> Enum.with_index(1)
@@ -138,9 +144,12 @@ defmodule Surfex.Record do
           {head, [note]} = Enum.split(parts, -1)
           {:cont, {:ok, acc ++ [%{line: n, fields: head, note: note}]}}
 
+        parts when optional? and length(parts) == fields - 1 ->
+          {:cont, {:ok, acc ++ [%{line: n, fields: parts, note: nil}]}}
+
         parts ->
           {:halt,
-           {:error, "line #{n}: expected #{fields} tab-separated fields, got #{length(parts)}"}}
+           {:error, "line #{n}: expected #{expected} tab-separated fields, got #{length(parts)}"}}
       end
     end)
     |> case do
@@ -171,14 +180,41 @@ defmodule Surfex.Record do
                                                                                                      String.t()})) ::
           {:ok, [Entry.t()]} | {:error, String.t()}
   def batch(entries, lines, record) do
-    with :ok <- distinct_notes(lines) do
-      Enum.reduce_while(lines, {:ok, []}, fn line, {:ok, acc} ->
-        case record.(entries ++ acc, line) do
-          {:ok, recorded} -> {:cont, {:ok, acc ++ recorded}}
-          {:error, why} -> {:halt, {:error, "line #{line.line}: #{why}"}}
-        end
-      end)
-    end
+    with :ok <- distinct_notes(lines), do: each_line(entries, lines, record)
+  end
+
+  @doc """
+  Records a **batch of claims** (§14, §18): many relations in one project load, each as
+  `relate/7` records it, or as `plan/7` does when `opts[:plausible]` is given. `lines` are
+  `%{line: n, from: id, to: id, type: type, note: text | nil}` in order, each seeing the
+  ones before it; `opts[:evidence]` is the evidence `relate/7` reads.
+
+  All or nothing, as `batch/3` is. Unlike it, a note may be missing or repeated: naming a
+  pair validates nothing, so there is no judgement for a copied note to stand in for. It
+  takes no recording function, so it can't record a judgement without that rule.
+  """
+  @spec relate_batch([Scan.t()], [Entry.t()], [map], meta, keyword) ::
+          {:ok, [Entry.t()]} | {:error, String.t()}
+  def relate_batch(scans, entries, lines, meta, opts \\ []) do
+    evidence = Keyword.get(opts, :evidence, [])
+
+    each_line(entries, lines, fn so_far, l ->
+      meta = if l.note, do: Keyword.put(meta, :note, l.note), else: meta
+
+      case opts[:plausible] do
+        nil -> relate(scans, so_far, l.from, l.to, l.type, meta, evidence: evidence)
+        plausible? -> plan(scans, so_far, l.from, l.to, l.type, plausible?, meta)
+      end
+    end)
+  end
+
+  defp each_line(entries, lines, record) do
+    Enum.reduce_while(lines, {:ok, []}, fn line, {:ok, acc} ->
+      case record.(entries ++ acc, line) do
+        {:ok, recorded} -> {:cont, {:ok, acc ++ recorded}}
+        {:error, why} -> {:halt, {:error, "line #{line.line}: #{why}"}}
+      end
+    end)
   end
 
   defp distinct_notes(lines) do
