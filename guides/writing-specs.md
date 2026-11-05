@@ -132,6 +132,9 @@ names its code relates itself.
 - Name the code where it is **described**, not everywhere it is mentioned. A citation in
   an overview relates the overview.
 - A name inside a fenced code block is an example, not a claim, and is not suggested.
+- Name it only where the name is part of the contract a reader relies on. A helper's name in
+  the spec ties the text to a detail that may move; state the behaviour, and record the
+  helper's relation to the claim by hand, as below.
 
 **Code relates to the claim it realises**, not to every section that mentions it. Naming
 a function in prose is one way to find the relation, not the reason for it: once a

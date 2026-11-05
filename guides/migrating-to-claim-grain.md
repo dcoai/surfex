@@ -34,6 +34,61 @@ a project that never set it, the check changes in five ways (spec §13.2):
 Run `mix surfex.status` and `mix surfex.migrate --report` (below) to see what each of
 these means for your spec.
 
+## What upgrading costs
+
+This section is for a project taking 0.10 or later from an earlier release. The numbers come
+from projects that made the move. Read `mix surfex.migrate --report` before budgeting: it
+predicts the work.
+
+**The dangle wave is the work.** Tagging a test is the cheap part. Naming one rule takes its
+text out of its section's own text, so the section's version changes and every relation on it
+dangles. One project's pass over three sections took roughly 90 deliberate calls for 18
+relations: 9 rules named, 4 tests written, 8 tagged, 14 `verifies` on 14 red runs, 18
+migrations, 10 reviews, 19 retires, 9 structural relations and 2 corrected notes. Nobody should
+budget that as "a tagging pass". The report's dangle-width column says how wide each section
+is, so start there.
+
+**A completeness floor can fail at once, with no quick way back to green.** With
+`completeness: [min: N]`, the score can drop below N on the upgrade, and each contained section
+is settled by a spec edit, which starts its own dangle wave. Don't settle them all in the
+upgrade's merge request. Set the floor to the measured score with a comment saying why, then
+raise it as sections settle.
+
+A floor set before the sections were classed is a commitment to work nobody has sized yet.
+Surfex's own floor shows it: `min: 100` was set on 2026-09-30, its 58 contained sections were
+classed on 2026-10-14, and settling them was a separate pass.
+
+**The first `mix surfex.suggest` offers a wave of relations.** Projects saw about 160, 220 and
+427 reach-derived `tests` relations. They are new facts about what the tests call, not drift.
+
+**How much reach grows depends on the project's shape.** Routes, `dispatch:` functions and a
+process's own callbacks are what it follows, so a project with none of them sees no change.
+One project with no router, dispatcher or DSL stayed at 49 triangle gaps before and after.
+
+**Excuses of process wiring dangle.** Hidden definitions are versioned now, so the code behind
+`start_link`, `children` and a Mix task's `run/1` moves the version of what runs it. Every class
+excuse on such code dangles, so expect them under classes like `mix task` or `process wiring`,
+and re-confirm each against its class. One project expected 18 dangling type excuses and got 20
+class excuses instead.
+
+**A deviation can fail `require: code:`.** A module whose only `implements` is to a section
+holding a deviation is unearned, so a pending deviation becomes a gate failure on the day of
+the upgrade (spec §13.11). Fix the deviation first, or give the module an `implements` to a claim
+outside the deviating section.
+
+**Every suite that pins surfex has to move.** In a poncho, each sibling can pin surfex and run
+`Surfex.ExUnitFormatter` with `surfex_root:` pointing at the root. Bump every `mix.exs` that
+depends on it (`grep -r ':surfex' */mix.exs`), and run every suite that writes the root's
+evidence, not just the root's.
+
+**A retired release fails `mix hex.audit`.** If surfex retires the release a project is locked
+to, the audit fails in CI whatever the reason for the retirement. Upgrade, or acknowledge it in
+the audit step.
+
+**A section kept contained by a caption or a rationale.** A classed section with claims inside
+reads as a container: its claims answer for themselves and its own text is excused (spec
+§13.6). So name every real claim, then class what's left.
+
 ## 1. See what migration buys
 
 ```sh
