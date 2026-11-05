@@ -116,6 +116,22 @@ defmodule Surfex.Scan.Markdown.ClassMarkers do
     end
   end
 
+  # The class a table's marker gives its units (§11.7), as a class marker gives a section
+  # its own: a broken or undeclared name is a scan error, and the table goes unclassed.
+  def table_class(st, no, name) do
+    if Regex.match?(@valid_name, name) do
+      case declared(st, no, name, nil) do
+        {st, {:class, class, note, by}} ->
+          {st, %{name: class.name, reason: class.reason, note: note, by: by, line: no}}
+
+        {st, :malformed} ->
+          {st, nil}
+      end
+    else
+      {fail(st, no, malformed_class(name)), nil}
+    end
+  end
+
   # The first class whose `marker:` reads this own-line comment.
   def alias_class(%{classes: []}, _line), do: nil
 

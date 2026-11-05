@@ -5,6 +5,7 @@ defmodule Surfex.Scan.Markdown.Table do
   import Surfex.Scan.Markdown.Lines, only: [fail: 3]
 
   alias Surfex.Golden.Span
+  alias Surfex.Scan.Markdown.ClassMarkers
 
   @separator ~r/^ {0,3}\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/
 
@@ -71,7 +72,8 @@ defmodule Surfex.Scan.Markdown.Table do
       first: table.first,
       last: last,
       body: table_version(header, separator),
-      within: table.within
+      within: table.within,
+      class: table.class
     }
 
     {st, row_units} =
@@ -92,6 +94,7 @@ defmodule Surfex.Scan.Markdown.Table do
             last: no,
             body: row_version(row, ignored),
             within: {:table, table.id},
+            class: table.class,
             warnings: key_warnings(key_cells, no, id)
           }
 
@@ -175,30 +178,39 @@ defmodule Surfex.Scan.Markdown.Table do
     [Enum.join(kept, "|")]
   end
 
-  # A marker's text after its id: `key:` and `ignore:`, in either order, each a column
-  # header or a bracketed list of them. Anything else is an error, never silently body:
+  # A marker's text after its id: `key:` and `ignore:`, each a column header or a bracketed
+  # list of them, and `class:`, a declared class, in any order. Anything else is an error,
+  # never silently body:
   # `{st, options}`, an option given twice keeping its first value.
   def table_options(st, no, id, text) do
     text
     |> String.trim()
     |> case do
       "" -> []
-      text -> Regex.split(~r/\s+(?=(?:key|ignore):)/, text)
+      text -> Regex.split(~r/\s+(?=(?:key|ignore|class):)/, text)
     end
     |> Enum.reduce({st, %{}}, fn option, {st, acc} ->
-      case Regex.run(~r/^(key|ignore):\s*(\S.*)$/, option, capture: :all_but_first) do
+      case Regex.run(~r/^(key|ignore|class):\s*(\S.*)$/, option, capture: :all_but_first) do
         [name, value] ->
-          name = Map.fetch!(%{"key" => :key, "ignore" => :ignore}, name)
+          name = Map.fetch!(%{"key" => :key, "ignore" => :ignore, "class" => :class}, name)
 
-          if Map.has_key?(acc, name),
-            do: {fail(st, no, "table #{id}'s marker gives #{name}: twice"), acc},
-            else: {st, Map.put(acc, name, column_names(value))}
+          cond do
+            Map.has_key?(acc, name) ->
+              {fail(st, no, "table #{id}'s marker gives #{name}: twice"), acc}
+
+            name == :class ->
+              {st, class} = ClassMarkers.table_class(st, no, value)
+              {st, Map.put(acc, :class, class)}
+
+            true ->
+              {st, Map.put(acc, name, column_names(value))}
+          end
 
         nil ->
           {fail(
              st,
              no,
-             "table #{id}'s marker has text that isn't key: or ignore: (#{inspect(option)})"
+             "table #{id}'s marker has text that isn't key:, ignore: or class: (#{inspect(option)})"
            ), acc}
       end
     end)

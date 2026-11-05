@@ -124,7 +124,9 @@ the version its author judged (spec §13.13). A classed section with no claim in
 A class excuses the section's own text, never a claim named inside it: a classed section
 **with** claims inside reads as a container, so its claims answer for themselves. That is
 the route for a section kept contained by a caption or a rationale: name every real claim,
-then class what's left. A `verifies` or
+then class what's left. A table that isn't a list of claims, such as what's deferred past a
+release, can carry its own class, `<!-- surfex: table NAME class: CLASS -->`: its rows stay
+citable, each excused rather than a claim. A `verifies` or
 `implements` to an excused section is **contradicted** and fails (retire it, or drop the
 class), and a deferral is **stale** once its unit has a test of its own or, under
 `mix surfex.status --issues`, its issue is closed, or the unit it cites isn't the version
