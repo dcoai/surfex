@@ -82,16 +82,31 @@ defmodule Surfex.Record.Mix do
   end
 
   # A batch file's lines (`Surfex.Record.parse_batch/2`), or stops naming the file.
-  def batch_lines!(path, fields) do
-    case Surfex.Record.parse_batch(File.read!(path), fields) do
+  def batch_lines!(path, fields, parse \\ []) do
+    case Surfex.Record.parse_batch(File.read!(path), fields, parse) do
       {:ok, lines} -> lines
       {:error, why} -> Mix.raise("#{path}: #{why}")
     end
   end
 
-  def type_named!(text) do
+  # A batch file of `FROM`, `TO`, `TYPE`, `NOTE` lines: each with its ids as `units/3` gives
+  # them and its type, or stops naming the file and the line.
+  def relation_lines!(path, scans, opts, parse \\ []) do
+    lines = batch_lines!(path, 4, parse)
+    ids = lines |> Enum.flat_map(&Enum.take(&1.fields, 2)) |> units(scans, opts)
+
+    lines
+    |> Enum.zip(Enum.chunk_every(ids, 2))
+    |> Enum.map(fn {%{fields: [_, _, type]} = line, [from, to]} ->
+      Map.merge(line, %{from: from, to: to, type: type_named!(path, line, type)})
+    end)
+  end
+
+  defp type_named!(path, %{line: n}, text) do
     Enum.find(Entry.types(), &(Atom.to_string(&1) == text)) ||
-      Mix.raise("type must be one of #{Enum.join(Entry.types(), ", ")}, got #{text}")
+      Mix.raise(
+        "#{path}: line #{n}: type must be one of #{Enum.join(Entry.types(), ", ")}, got #{text}"
+      )
   end
 
   # The evidence a recording command reads (§17): this run's, and each `--merge PATH`

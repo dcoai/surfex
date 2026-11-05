@@ -24,6 +24,18 @@ defmodule Mix.Tasks.Surfex.Relate do
   The relation is planned until the id is scanned, then dangling until you confirm it. An
   id that couldn't be this project's (a spec file the scanner doesn't read, a code name
   outside the project's namespaces) is refused as a likely typo.
+
+  Many relations cost one scan and one log load with `--file PATH`, one per line:
+
+      mix surfex.relate --file relations.tsv
+      mix surfex.relate --file planned.tsv --planned
+
+  Each line is tab-separated `FROM`, `TO`, `TYPE` and an optional `NOTE`; blank lines and
+  lines starting with `#` are skipped. Ids and types are written as above, and `--planned`
+  plans every line. A line records what the single form records, so a file validates
+  nothing either, and a claim-derived candidate is still reviewed pair by pair (§15.5). A
+  line that is refused fails the whole file, naming the line, and nothing is recorded
+  (`Surfex.Record.relate_batch/5`). With `--file`, name no ids, no `--type` and no `--note`.
   """
 
   use Mix.Task
@@ -32,7 +44,33 @@ defmodule Mix.Tasks.Surfex.Relate do
 
   @impl Mix.Task
   def run(args) do
-    {opts, ids} = R.parse(args, planned: :boolean, merge: :keep)
+    {opts, ids} = R.parse(args, file: :string, planned: :boolean, merge: :keep)
+
+    case opts[:file] do
+      nil -> one(opts, ids)
+      path -> file(path, opts, ids)
+    end
+  end
+
+  defp file(path, opts, ids) do
+    if ids != [] or opts[:type] != nil or opts[:note] != nil,
+      do:
+        Mix.raise(
+          "--file reads every relation and its note from the file: name none, and no --type or --note"
+        )
+
+    {root, scans, entries, meta} = R.context(opts)
+    lines = R.relation_lines!(path, scans, opts, note: :optional)
+
+    batch_opts =
+      if opts[:planned],
+        do: [plausible: R.plausible(opts, scans)],
+        else: [evidence: R.evidence!(root, opts)]
+
+    R.record(root, Surfex.Record.relate_batch(scans, entries, lines, meta, batch_opts))
+  end
+
+  defp one(opts, ids) do
     {from, to} = R.two!(ids)
     type = R.type!(opts)
     {root, scans, entries, meta} = R.context(opts)

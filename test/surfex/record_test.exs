@@ -1404,6 +1404,110 @@ defmodule Surfex.RecordTest do
     end
   end
 
+  # #350: a claim has no judgement to write, so its note is optional and may repeat.
+  describe "a batch of claims" do
+    @describetag verifies: "batch-claims"
+
+    defp claim(line, from, to, type, note \\ nil),
+      do: %{line: line, from: from, to: to, type: type, note: note}
+
+    test "records what the single form records, line by line" do
+      lines = [
+        claim(1, @spec_id, @code_id, :implements),
+        claim(3, @code_id, "M.helper/1", :depends_on, "add/2 calls helper/1")
+      ]
+
+      {:ok, [implements]} = Record.relate(scans(), [], @spec_id, @code_id, :implements, @meta)
+
+      {:ok, [depends]} =
+        Record.relate(
+          scans(),
+          [],
+          @code_id,
+          "M.helper/1",
+          :depends_on,
+          Keyword.put(@meta, :note, "add/2 calls helper/1")
+        )
+
+      assert {:ok, [implements, depends]} == Record.relate_batch(scans(), [], lines, @meta)
+      assert is_nil(implements.note)
+      assert implements.basis == :proposed
+    end
+
+    test "a line sees the log and the lines before it: the same pair twice supersedes" do
+      {:ok, [old]} = Record.relate(scans(), [], @code_id, "M.helper/1", :depends_on, @meta)
+
+      lines = [
+        claim(1, @code_id, "M.helper/1", :depends_on),
+        claim(2, @code_id, "M.helper/1", :depends_on)
+      ]
+
+      assert {:ok, [first, second]} =
+               Record.relate_batch(scans(), [old], lines, later(@meta, 1))
+
+      assert first.parents == [old.id]
+      assert second.parents == [first.id]
+      assert [:current] = state(scans(), [old, first, second])
+    end
+
+    test "notes may be missing or the same" do
+      lines = [
+        claim(1, @code_id, "M.helper/1", :depends_on, "moved with the cart"),
+        claim(2, "M.helper/1", @code_id, :depends_on, "moved with the cart"),
+        claim(3, @spec_id, @code_id, :implements),
+        claim(4, @spec_id, "M.helper/1", :implements)
+      ]
+
+      assert {:ok, entries} = Record.relate_batch(scans(), [], lines, @meta)
+
+      assert Enum.map(entries, & &1.note) ==
+               ["moved with the cart", "moved with the cart", nil, nil]
+    end
+
+    test "a line its own rule refuses fails the batch, naming the line" do
+      lines = [
+        claim(1, @code_id, "M.helper/1", :depends_on),
+        claim(5, "M.gone/0", @code_id, :depends_on)
+      ]
+
+      assert {:error, "line 5: " <> why} = Record.relate_batch(scans(), [], lines, @meta)
+      assert why =~ "M.gone/0"
+    end
+
+    test "a verifies line stands on its test's failing run, as the single form's does" do
+      test_id = "M.Test: adds"
+      scans = [scan(:test, test_id, "t1") | scans()]
+      lines = [claim(1, test_id, @spec_id, :verifies)]
+      red = [%{test: test_id, test_hash: "t1", result: :failed}]
+
+      assert {:ok, [%{basis: :evidence}]} =
+               Record.relate_batch(scans, [], lines, @meta, evidence: red)
+
+      assert {:ok, [%{basis: :proposed}]} = Record.relate_batch(scans, [], lines, @meta)
+    end
+
+    test "plausible: plans every line, as the single form's --planned does" do
+      anything = fn _kind, _id -> true end
+      nothing = fn _kind, _id -> false end
+      lines = [claim(2, @spec_id, "M.later/0", :implements)]
+
+      assert {:ok, [%{ends: ends}]} =
+               Record.relate_batch(scans(), [], lines, @meta, plausible: anything)
+
+      assert %{kind: :code, id: "M.later/0", hash: nil} in ends
+
+      assert {:error, "line 2: " <> _} =
+               Record.relate_batch(scans(), [], lines, @meta, plausible: nothing)
+
+      both = [claim(1, @spec_id, @code_id, :implements)]
+
+      assert {:error, "line 1: " <> why} =
+               Record.relate_batch(scans(), [], both, @meta, plausible: anything)
+
+      assert why =~ "both scanned"
+    end
+  end
+
   describe "validation by process" do
     defp with_basis(entry, basis),
       do:
