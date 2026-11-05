@@ -967,6 +967,10 @@ A `.surfex.exs` that still has a trace-only key (`output`, `purpose`, `task`, `g
   them, on each `|` not escaped as `\|`. A change outside every row is reported as a
   change to prose or a stats line. The committed side is parsed from its bytes, never
   re-derived.
+- <!-- surfex: gate-rerendered --> A row whose cells read the same on both sides, differing only in how they are rendered
+  (a code span's delimiters and padding, written by this or an older release), isn't a loss
+  and a gain, or a change. `Surfex.Gate.drift/2` lists it once, under `Re-rendered (same row,
+  new rendering)`. A row that differs in substance stays under Gone and Added or Changed.
 - `Surfex.Gate.config!/1` evaluates a `.surfex.exs`-style data file, which must return a
   keyword list.
 

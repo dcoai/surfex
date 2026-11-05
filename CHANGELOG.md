@@ -47,6 +47,10 @@ release it merely follows.
 
 ### Changed
 
+- **The gate lists a row that only re-rendered as re-rendered** (#291, #361). A release that
+  changes how a cell renders used to show the row under both Gone and Added, which read as a
+  loss. `mix surfex.goldens` now lists it once, under `Re-rendered (same row, new rendering)`,
+  and a row written by an older release's `` `a`b` `` is named by its text.
 - **Reports say what they mean** (#291, #360). `completeness --summary` names each deferred
   unit and what defers it, where it printed only the cited reference. An on-container line
   says **redundant** when the same test declares every claim inside, and otherwise names the

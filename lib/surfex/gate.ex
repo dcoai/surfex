@@ -68,13 +68,15 @@ defmodule Surfex.Gate do
     new_tables = tables(new)
     ids = Enum.uniq(Enum.map(new_tables, &elem(&1, 0)) ++ Enum.map(old_tables, &elem(&1, 0)))
 
-    {changed, added, gone} =
+    {changed, added, gone, rerendered} =
       ids
       |> Enum.map(&compare(&1, rows_of(old_tables, &1), rows_of(new_tables, &1)))
-      |> Enum.reduce({[], [], []}, fn {c, a, g}, {cs, as, gs} -> {cs ++ c, as ++ a, gs ++ g} end)
+      |> Enum.reduce({[], [], [], []}, fn {c, a, g, r}, {cs, as, gs, rs} ->
+        {cs ++ c, as ++ a, gs ++ g, rs ++ r}
+      end)
 
     other =
-      if changed == [] and added == [] and gone == [],
+      if changed == [] and added == [] and gone == [] and rerendered == [],
         do: ["\nNo row changed: the prose or a stats line did.\n"],
         else: []
 
@@ -83,6 +85,7 @@ defmodule Surfex.Gate do
       section("Changed", changed),
       section("Added", added),
       section("Gone", gone),
+      section("Re-rendered (same row, new rendering)", rerendered),
       other
     ])
   end
@@ -99,15 +102,41 @@ defmodule Surfex.Gate do
     old_map = Map.new(old_keyed)
     new_map = Map.new(new_keyed)
 
+    {reworded, changed} =
+      new_keyed
+      |> Enum.filter(fn {key, cells} ->
+        match?({:ok, was} when was != cells, Map.fetch(old_map, key))
+      end)
+      |> Enum.split_with(fn {key, cells} -> read(old_map[key]) == read(cells) end)
+
     changed =
-      for {key, cells} <- new_keyed,
-          match?({:ok, was} when was != cells, Map.fetch(old_map, key)),
+      for {key, cells} <- changed,
           do: "#{name(heading, key)} — #{cell_changes(header, old_map[key], cells)}"
 
-    added = for {key, _} <- new_keyed, not Map.has_key?(old_map, key), do: name(heading, key)
-    gone = for {key, _} <- old_keyed, not Map.has_key?(new_map, key), do: name(heading, key)
-    {changed, added, gone}
+    added = Enum.reject(new_keyed, fn {key, _} -> Map.has_key?(old_map, key) end)
+    gone = Enum.reject(old_keyed, fn {key, _} -> Map.has_key?(new_map, key) end)
+    {moved, added, gone} = pair_rerendered(added, gone)
+
+    {changed, names(heading, added), names(heading, gone),
+     Enum.sort(names(heading, reworded ++ moved))}
   end
+
+  # A row added and a row gone that read the same are one row, rendered differently (§10.1).
+  defp pair_rerendered(added, gone) do
+    {moved, {added, gone}} =
+      Enum.flat_map_reduce(added, {[], gone}, fn {_, cells} = row, {kept, left} ->
+        case Enum.split_while(left, fn {_, was} -> read(was) != read(cells) end) do
+          {_, []} -> {[], {[row | kept], left}}
+          {before, [_ | rest]} -> {[row], {kept, before ++ rest}}
+        end
+      end)
+
+    {moved, Enum.reverse(added), gone}
+  end
+
+  defp names(heading, rows), do: Enum.map(rows, fn {key, _} -> name(heading, key) end)
+
+  defp read(cells), do: Enum.map(cells, &unquote_code(&1 || ""))
 
   # The columns that identify a row: `Item`, else the shortest leading run, that names every
   # row once on BOTH sides, so a row keeps its key across the edit being reported. `nil` when
@@ -191,10 +220,29 @@ defmodule Surfex.Gate do
 
   # A cell that is one code span, as `Surfex.Golden.code/1` writes it, read back to its
   # text (`Surfex.Golden.Span.inline/1`); any other cell as GFM split it.
+  # A cell's text when it is one code span. Before 0.9.1 a text holding a backtick was written
+  # as `a`b`, which GFM reads as a span and a stray backtick; a stray backtick is what tells
+  # that from two real spans, so the older form reads as the text it was written from.
   defp unquote_code(cell) do
-    case Span.inline(cell) do
+    segments = Span.inline(cell)
+
+    case segments do
       [{:code, text}] -> text
-      _ -> cell
+      _ -> if stray_backtick?(segments), do: unfenced(cell), else: cell
+    end
+  end
+
+  defp stray_backtick?(segments) do
+    Enum.any?(segments, fn
+      {:text, text} -> String.contains?(text, "`")
+      {:code, _} -> false
+    end)
+  end
+
+  defp unfenced(cell) do
+    case Regex.run(~r/^(`+)(.*)\1$/s, cell, capture: :all_but_first) do
+      [_fence, text] -> text
+      nil -> cell
     end
   end
 end
