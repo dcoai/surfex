@@ -2,7 +2,7 @@ defmodule Surfex.SuggestTest do
   use ExUnit.Case, async: true
   @moduletag verifies: "suggest-proposes"
 
-  alias Surfex.{Item, Scan, Status, Suggest}
+  alias Surfex.{Item, Record, Scan, Status, Suggest}
   alias Surfex.Status.Config
   alias Surfex.Scan.Markdown
   alias Surfex.Log.Entry
@@ -266,6 +266,37 @@ defmodule Surfex.SuggestTest do
       {s, _scans} = run.([arity.("send/4", "00000009"), arity.("send/5", "0000000a"), max_len])
       assert s.moves == []
       assert [%{from: ["Wren.send/3"], to: ["Wren.send/4", "Wren.send/5"]}] = s.ambiguous
+    end
+
+    # #354: `new` judges code by definition, but a rename target is judged by id: this arity
+    # has no records even though its sibling has a relation, so the move is still found.
+    @tag verifies: "suggest-code-moves"
+    test "an unrecorded arity is a move target though another arity of its definition is related",
+         %{tmp_dir: root} do
+      entries = adopted(root)
+      max_len = Enum.find(@wren, &(&1.name == "max_len/0"))
+
+      arity = fn name ->
+        %Item{
+          kind: :function,
+          name: name,
+          parent: "Wren",
+          file: "lib/w.ex",
+          lines: {3, 5},
+          hash: "00000009"
+        }
+      end
+
+      items = [arity.("send/4"), arity.("send/5"), max_len]
+      scans = Markdown.records(root, ["spec.md"]) ++ Scan.code(items)
+
+      {:ok, related} =
+        Record.relate(scans, entries, "spec.md#Limits", "Wren.send/5", :implements, @meta)
+
+      profile = Config.profile!([sources: ["spec.md"]], "Wren")
+      s = Suggest.all(profile, items, scans, entries ++ related, root)
+
+      assert Enum.map(s.moves, &{&1.from, &1.to.id}) == [{"Wren.send/3", "Wren.send/4"}]
     end
 
     @tag verifies: "suggest-moves"

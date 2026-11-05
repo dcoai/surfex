@@ -66,6 +66,13 @@ its callback item (`mix surfex.suggest` proposes it) and retire the module relat
   found in shipped code; the guard turns a recurrence from a retry into a diagnosis. No
   change for projects that use surfex.
 
+### Fixed
+
+- **`New` judges code by definition** (#354, #355), as the `require:` policy and the triangle
+  already do (spec §13.1). A default-argument arity (`f/1` from `def f(x, y \\ 1)`) no longer
+  shows as `New (in no relation)` while another arity of its definition is in a relation.
+  `mix surfex.suggest` still finds an unrecorded arity as a rename target.
+
 ## [0.11.0] — 2026-10-31
 
 Spec marking reads as its writer means it, and the log asks less of its keeper. Contract

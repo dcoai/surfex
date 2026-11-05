@@ -377,6 +377,12 @@ defmodule Surfex.Status do
     related =
       for r <- relations, {_type, a, b} = r.relation, end_ <- [a, b], into: MapSet.new(), do: end_
 
+    related_definitions =
+      for %Scan{} = s <- scans,
+          MapSet.member?(related, {s.kind, s.id}),
+          into: MapSet.new(),
+          do: Scan.definition(s)
+
     discriminated =
       MapSet.new(
         for %Entry{op: :observe, type: :red_green, ends: [test]} <- other_entries,
@@ -442,9 +448,12 @@ defmodule Surfex.Status do
       stale_deferrals: stale_deferrals(scans, verdict.own, issues),
       contradicted: contradicted(scans, relations, verdict.verdicts),
       # A member judged with its parent (`in_parent`, §13.19) is not new: its parent is.
+      # Code is one item per definition, as it is to `unmet` and the triangle (§13.1).
       new:
         scans
-        |> Enum.reject(&(&1.in_parent or MapSet.member?(related, {&1.kind, &1.id})))
+        |> Enum.reject(
+          &(&1.in_parent or MapSet.member?(related_definitions, Scan.definition(&1)))
+        )
         |> Enum.sort_by(&{&1.kind, &1.id}),
       unmet: unmet(scans, relations, require, verdict.verdicts, unearned),
       broken: broken(scans, resolver),

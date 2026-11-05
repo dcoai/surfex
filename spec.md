@@ -2508,7 +2508,9 @@ tips that agree
   `depends_on` relation to something that is not current. It doesn't fail the check:
   re-confirming everything downstream of every change would train people to confirm
   without reading.
-- **New:** a scanned id in no relation at all.
+- **New:** a scanned id in no relation at all. Code is one item per definition here, as it
+  is to the policy (**Unmet**, below): a function's default-argument arity isn't new while
+  another arity of its definition is in a relation.
 - **Unimplemented:** a spec id whose every non-retired `implements` relation is planned:
   meant to be built, and not built yet.
 - **Unmet:** a scanned id that the `require:` policy says must take part in a
