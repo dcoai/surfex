@@ -533,7 +533,7 @@ defmodule Surfex.Suggest do
           news != [],
           do: {Enum.sort(olds), Enum.sort_by(news, & &1.id)}
 
-    matches = matches ++ code_matches(status, scanned, recorded)
+    matches = matches ++ code_matches(status, scans, scanned, recorded)
 
     {for({[old], [new]} <- matches, do: %{from: old, to: new}),
      for(
@@ -546,7 +546,7 @@ defmodule Surfex.Suggest do
   # A function whose arity changed (#153): a code id with live or retired relations is no
   # longer scanned, and a new code item of the same module and name, with another arity,
   # has no records. Its version changed with it, so the version rule above can't see it.
-  defp code_matches(status, scanned, recorded) do
+  defp code_matches(status, scans, scanned, recorded) do
     name = fn id ->
       case Regex.run(~r{^(.+)/\d+$}, id) do
         [_, name] -> name
@@ -564,7 +564,7 @@ defmodule Surfex.Suggest do
           do: id
 
     fresh =
-      for %Scan{kind: :code} = s <- status.new,
+      for %Scan{kind: :code, in_parent: false} = s <- scans,
           not MapSet.member?(recorded, {:code, s.id}),
           name.(s.id) != nil,
           do: s

@@ -150,6 +150,38 @@ defmodule Surfex.StatusTest do
     assert [%Scan{id: "M.other/0"}] = status.new
   end
 
+  # #354: as the policy and the triangle judge code. `def f(x, y \\ 1)` is one definition.
+  @tag verifies: "status-states"
+  test "new: code is one item per definition, so a related arity speaks for its siblings" do
+    at = fn id, lines, hash ->
+      %{scan(:code, id, hash) | location: %{file: "lib/m.ex", lines: lines}}
+    end
+
+    related = [at.("M.f/1", {3, 5}, "f"), at.("M.f/2", {3, 5}, "f")]
+    apart = [at.("M.g/1", {7, 8}, "g1"), at.("M.g/2", {9, 10}, "g2")]
+    unrelated = [at.("M.h/1", {11, 12}, "h"), at.("M.h/2", {11, 12}, "h")]
+
+    entries =
+      for {id, hash} <- [{"M.f/2", "f"}, {"M.g/2", "g2"}] do
+        Entry.new!(
+          at: "2026-09-28T10:00:00Z",
+          op: :relate,
+          type: :implements,
+          basis: :proposed,
+          ends: [%{kind: :spec, id: @spec_id, hash: "s1"}, %{kind: :code, id: id, hash: hash}]
+        )
+      end
+
+    status = Status.derive(related ++ apart ++ unrelated ++ scans(), entries)
+    ids = for %Scan{kind: :code, id: id} <- status.new, String.starts_with?(id, "M."), do: id
+
+    assert "M.g/1" in ids
+    assert "M.h/1" in ids
+    assert "M.h/2" in ids
+    refute "M.f/1" in ids
+    refute "M.f/2" in ids
+  end
+
   # A test verifying the spec unit, so an implements to it earns (§13.9).
   defp verifying do
     t = %{scan(:test, "T: adds", "t1") | declares: [{:verifies, @spec_id}]}
