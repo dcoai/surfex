@@ -274,6 +274,7 @@ defmodule Surfex.Scan.Markdown do
           | contract: Map.get(u, :contract),
             signature: Map.get(u, :signature),
             deferred: marked(Map.get(u, :deferred)),
+            class: marked(Map.get(u, :class)),
             not_claims: if(u.role == :block, do: not_claims(u.body, patterns)),
             warnings: Map.get(u, :warnings, [])
         }
@@ -570,6 +571,7 @@ defmodule Surfex.Scan.Markdown do
           id: id,
           key: options[:key],
           ignore: Map.get(options, :ignore, []),
+          class: Map.get(options, :class),
           first: no,
           lines: [],
           within: within(st)

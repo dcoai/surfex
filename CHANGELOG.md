@@ -11,6 +11,11 @@ release it merely follows.
 
 ### Added
 
+- **A marked table can carry a class** (#291, #362):
+  `<!-- surfex: table NAME class: CLASS -->`, CLASS declared in `spec_classes:`. Its rows stay
+  citable, deferrable and pinnable, but each is excused rather than a claim, so a table of
+  what's deferred no longer adds rows that can never be verified. A `verifies` or `implements`
+  to one is contradicted. Classing a table changes no version.
 - **The library guide lists the source files each library module needs** (#293, #357), for
   a project that loads `Surfex.Golden` or `Surfex.SourceScan` from source with no Mix
   project: `golden.ex` and `golden/span.ex`; `source_scan.ex` and `source_scan/closure.ex`.

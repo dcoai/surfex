@@ -1933,9 +1933,9 @@ with marker: ~r/^spec-coverage: informative$/ that comment classes its section b
 leaves the version as it was; without the alias it is section text, as before
 ```
 
-**Classes are for sections.** A rule, a row, a hint, a contract and a marked block are
-claims: the way to excuse one is not to name it. Every problem raises, naming the file and
-line:
+**Classes are for sections,** and for a marked table that carries its own (below). A rule, a
+row of any other table, a hint, a contract and a marked block are claims: the way to excuse
+one is not to name it. Every problem raises, naming the file and line:
 - a class marker naming a class `spec_classes:` doesn't declare;
 - a class marker whose name breaks the class-name rule: the error names the name as
   written and, where joining its words with `-` makes a name, the one to write
@@ -1971,6 +1971,14 @@ stays a heading
 ```
 
 What a class or a deferral changes in the status is §13.6's.
+
+<!-- surfex: table-class --> A marked table may carry a class, `<!-- surfex: table NAME class: CLASS -->`, for a table
+that isn't a list of claims, such as what's deferred past a release. CLASS is declared in
+`spec_classes:`, and an undeclared one is a scan error like any other. The table and each row
+are still units, citable and pinnable, but each is excused rather than a claim: out of the
+score, and a `verifies` or `implements` to one is contradicted (§13.6). The class is the
+table's own, so a section's class still never excuses a claim inside it. Classing a table
+changes no version.
 
 ### 11.8 Where a contract signature ends
 <!-- surfex: contract-signature-extent -->

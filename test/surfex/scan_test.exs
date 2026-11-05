@@ -910,7 +910,7 @@ defmodule Surfex.ScanTest do
        "spec.md:2: table t can't ignore its key column \"B\""},
       {"marker text that isn't an option",
        "# S\n<!-- surfex: table t keys: A -->\n| A | B |\n|---|---|\n| a | b |\n",
-       "spec.md:2: table t's marker has text that isn't key: or ignore:"},
+       "spec.md:2: table t's marker has text that isn't key:, ignore: or class:"},
       {"an option given twice",
        "# S\n<!-- surfex: table t key: A key: B -->\n| A | B |\n|---|---|\n| a | b |\n",
        "spec.md:2: table t's marker gives key: twice"}
