@@ -33,9 +33,15 @@ defmodule Mix.Tasks.Surfex.Relate do
   Each line is tab-separated `FROM`, `TO`, `TYPE` and an optional `NOTE`; blank lines and
   lines starting with `#` are skipped. Ids and types are written as above, and `--planned`
   plans every line. A line records what the single form records, so a file validates
-  nothing either, and a claim-derived candidate is still reviewed pair by pair (§15.5). A
-  line that is refused fails the whole file, naming the line, and nothing is recorded
-  (`Surfex.Record.relate_batch/5`). With `--file`, name no ids, no `--type` and no `--note`.
+  nothing either, and a claim-derived candidate is still reviewed pair by pair (§15.5).
+  With `--file`, name no ids, no `--type` and no `--note`.
+
+  Each line stands alone (`Surfex.Record.relate_batch/5`). One run names every line it
+  refuses, records the others, and then fails, so a script notices. Correct the file and
+  run it again: a line whose relation already stands at those versions is skipped and
+  reported, so only what's new is recorded. That covers a relation with the same note, a
+  line with no note, and a relation validated since, which a rerun never puts back to
+  proposed (`mix surfex.annotate` gives one a new note).
   """
 
   use Mix.Task
@@ -60,14 +66,32 @@ defmodule Mix.Tasks.Surfex.Relate do
         )
 
     {root, scans, entries, meta} = R.context(opts)
-    lines = R.relation_lines!(path, scans, opts, note: :optional)
+    {lines, unread} = R.claim_lines!(path, scans, opts)
 
     batch_opts =
       if opts[:planned],
         do: [plausible: R.plausible(opts, scans)],
         else: [evidence: R.evidence!(root, opts)]
 
-    R.record(root, Surfex.Record.relate_batch(scans, entries, lines, meta, batch_opts))
+    {:ok, recorded, %{skipped: skipped, refused: refused}} =
+      Surfex.Record.relate_batch(scans, entries, lines, meta, batch_opts)
+
+    R.record(root, {:ok, recorded})
+    Enum.each(skipped, &Mix.shell().info("skipped line #{&1.line}: #{&1.why}"))
+
+    case Enum.sort_by(unread ++ refused, & &1.line) do
+      [] ->
+        :ok
+
+      all ->
+        total = length(lines) + length(unread)
+
+        Mix.raise(
+          "#{path}: #{length(all)} of #{total} lines refused; the others are in the log, " <>
+            "so correct these and run the file again:\n" <>
+            Enum.map_join(all, "\n", &"  line #{&1.line}: #{&1.why}")
+        )
+    end
   end
 
   defp one(opts, ids) do

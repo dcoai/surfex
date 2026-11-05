@@ -34,32 +34,10 @@ defmodule Surfex.BatchFileTest do
              Record.parse_batch("a\tb\tverifies\tnote\nonly two\tfields\n", 4)
   end
 
-  describe "a batch of claims (#350): the note is optional" do
-    @describetag verifies: "batch-claims"
-
-    test "a line may leave the note out, or leave it empty, and has none" do
-      text = "a\tb\tdepends_on\nc\td\tdepends_on\t\ne\tf\trefines\tf restates e\n"
-
-      assert {:ok,
-              [
-                %{line: 1, fields: ["a", "b", "depends_on"], note: nil},
-                %{line: 2, fields: ["c", "d", "depends_on"], note: nil},
-                %{line: 3, fields: ["e", "f", "refines"], note: "f restates e"}
-              ]} = Record.parse_batch(text, 4, note: :optional)
-    end
-
-    test "any other number of fields is refused, naming the line and what it takes" do
-      for line <- ["a\tb", "a\tb\tdepends_on\tnote\tmore"] do
-        assert {:error, "line 2: expected 3 or 4 tab-separated fields, got " <> _} =
-                 Record.parse_batch("a\tb\tdepends_on\n" <> line <> "\n", 4, note: :optional)
-      end
-    end
-
-    test "a judgement's note stays required: without the option a missing one is refused" do
-      for line <- ["a\tb\tdepends_on\n", "a\tb\tdepends_on\t\n"] do
-        assert {:error, "line 1: expected 4 tab-separated fields, got 3"} =
-                 Record.parse_batch(line, 4)
-      end
+  test "a judgement's note is required" do
+    for line <- ["a\tb\tdepends_on\n", "a\tb\tdepends_on\t\n"] do
+      assert {:error, "line 1: expected 4 tab-separated fields, got 3"} =
+               Record.parse_batch(line, 4)
     end
   end
 

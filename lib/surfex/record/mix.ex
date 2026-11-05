@@ -82,8 +82,8 @@ defmodule Surfex.Record.Mix do
   end
 
   # A batch file's lines (`Surfex.Record.parse_batch/2`), or stops naming the file.
-  def batch_lines!(path, fields, parse \\ []) do
-    case Surfex.Record.parse_batch(File.read!(path), fields, parse) do
+  def batch_lines!(path, fields) do
+    case Surfex.Record.parse_batch(File.read!(path), fields) do
       {:ok, lines} -> lines
       {:error, why} -> Mix.raise("#{path}: #{why}")
     end
@@ -91,22 +91,54 @@ defmodule Surfex.Record.Mix do
 
   # A batch file of `FROM`, `TO`, `TYPE`, `NOTE` lines: each with its ids as `units/3` gives
   # them and its type, or stops naming the file and the line.
-  def relation_lines!(path, scans, opts, parse \\ []) do
-    lines = batch_lines!(path, 4, parse)
+  def relation_lines!(path, scans, opts) do
+    path
+    |> batch_lines!(4)
+    |> with_units(scans, opts)
+    |> Enum.map(fn %{fields: [_, _, type]} = line ->
+      case type_named(type) do
+        {:ok, type} -> %{line | type: type}
+        {:error, why} -> Mix.raise("#{path}: line #{line.line}: #{why}")
+      end
+    end)
+  end
+
+  # A batch of claims' lines (`Surfex.Record.parse_claims/1`), read as `relation_lines!/3`
+  # reads them but collecting a line it can't read: {lines, refused}. Stops only on a file
+  # with no relations in it.
+  def claim_lines!(path, scans, opts) do
+    case Surfex.Record.parse_claims(File.read!(path)) do
+      {:ok, lines, refused} ->
+        {known, unknown} =
+          lines
+          |> with_units(scans, opts)
+          |> Enum.map(fn %{fields: [_, _, type]} = line -> {line, type_named(type)} end)
+          |> Enum.split_with(&match?({_line, {:ok, _}}, &1))
+
+        {Enum.map(known, fn {line, {:ok, type}} -> %{line | type: type} end),
+         refused ++
+           Enum.map(unknown, fn {line, {:error, why}} -> %{line: line.line, why: why} end)}
+
+      {:error, why} ->
+        Mix.raise("#{path}: #{why}")
+    end
+  end
+
+  defp with_units(lines, scans, opts) do
     ids = lines |> Enum.flat_map(&Enum.take(&1.fields, 2)) |> units(scans, opts)
 
     lines
     |> Enum.zip(Enum.chunk_every(ids, 2))
     |> Enum.map(fn {%{fields: [_, _, type]} = line, [from, to]} ->
-      Map.merge(line, %{from: from, to: to, type: type_named!(path, line, type)})
+      Map.merge(line, %{from: from, to: to, type: type})
     end)
   end
 
-  defp type_named!(path, %{line: n}, text) do
-    Enum.find(Entry.types(), &(Atom.to_string(&1) == text)) ||
-      Mix.raise(
-        "#{path}: line #{n}: type must be one of #{Enum.join(Entry.types(), ", ")}, got #{text}"
-      )
+  defp type_named(text) do
+    case Enum.find(Entry.types(), &(Atom.to_string(&1) == text)) do
+      nil -> {:error, "type must be one of #{Enum.join(Entry.types(), ", ")}, got #{text}"}
+      type -> {:ok, type}
+    end
   end
 
   # The evidence a recording command reads (§17): this run's, and each `--merge PATH`
