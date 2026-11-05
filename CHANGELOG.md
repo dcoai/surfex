@@ -11,6 +11,12 @@ release it merely follows.
 
 ### Added
 
+- **The library guide lists the source files each library module needs** (#293, #357), for
+  a project that loads `Surfex.Golden` or `Surfex.SourceScan` from source with no Mix
+  project: `golden.ex` and `golden/span.ex`; `source_scan.ex` and `source_scan/closure.ex`.
+  A change to a list now comes in a minor release, listed here and marked for library users
+  (spec §23.4), and a test computes the lists from the code. Neither list changes in this
+  release.
 - **`mix surfex.relate --file PATH`: many relations from one scan and one log load** (#350,
   #351). Each line is tab-separated `FROM`, `TO`, `TYPE` and an optional `NOTE`, and records
   what the single form records, so it validates nothing (spec §18). Notes may be missing or
@@ -494,6 +500,11 @@ that sets `claim_grain:` is refused. Projects with unearned `implements` start f
 Read the upgrade step under Changed (#285) before taking it. The entries below were written
 while claim grain sat behind the key: wherever one says "under `claim_grain: true`", it now
 applies to every project.
+
+**Correction, for library users (#357):** `Surfex.Golden` began needing a second source file
+in this release, `lib/surfex/golden/span.ex`, which this entry didn't say. A project loading
+`golden.ex` from source with no Mix project fails with `UndefinedFunctionError` until it
+loads `golden/span.ex` too.
 
 ### Added
 

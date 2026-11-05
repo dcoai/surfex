@@ -5368,3 +5368,17 @@ either one the CHANGELOG names, or a bug.
 a plain section, a section holding marked tables, a marked table, its rows and the rows of
 a table with ignore: have the versions the last release gave them, pinned as literals
 ```
+
+### 23.4 The source files each module needs
+<!-- surfex: library-files -->
+
+A project may load the library modules from source, with no Mix project, so the source
+files each one needs are part of its surface. The guide lists them per module, and a change
+to a list comes under §23's promise: never in a patch release, and in a minor release listed
+under "Changed" in the CHANGELOG and marked for library users.
+
+```test:library-file-sets
+each module's source files, computed from what its code references, are the ones the guide
+lists; with exactly those loaded in a fresh elixir and no Mix project every documented
+function runs, and without them one fails
+```
