@@ -29,7 +29,15 @@ defmodule Surfex.Status.Verdict do
   @type t :: %{
           verdicts: %{String.t() => verdict},
           contained: [%{unit: String.t(), inside: [String.t()], location: map}],
-          on_container: [%{test: String.t(), unit: String.t(), inside: [String.t()]}],
+          on_container: [
+            %{
+              test: String.t(),
+              unit: String.t(),
+              inside: [String.t()],
+              redundant: boolean,
+              undeclared: [String.t()]
+            }
+          ],
           containers: [%{unit: String.t(), claims: non_neg_integer, verified: non_neg_integer}],
           inside: %{String.t() => [String.t()]},
           own: %{String.t() => MapSet.t(String.t())}
@@ -112,6 +120,12 @@ defmodule Surfex.Status.Verdict do
           verdicts[id] == :contained,
           do: %{unit: id, inside: Enum.filter(inside[id], verified?), location: location}
 
+    declared =
+      for %{type: :verifies, state: state, relation: {_, from, {:spec, unit}}} <- relations,
+          state != :retired,
+          into: MapSet.new(),
+          do: {from, unit}
+
     on_container =
       for %{type: :verifies, state: state, relation: {_, {kind, _} = from, {:spec, unit}}} <-
             relations,
@@ -119,7 +133,16 @@ defmodule Surfex.Status.Verdict do
           state != :retired,
           Map.has_key?(by_id, unit),
           verdicts[unit] == :through_claims,
-          do: %{test: label.(from), unit: unit, inside: Map.get(inside, unit, [])}
+          claims = Map.get(inside, unit, []),
+          undeclared = Enum.reject(claims, &MapSet.member?(declared, {from, &1})) do
+        %{
+          test: label.(from),
+          unit: unit,
+          inside: claims,
+          redundant: claims != [] and undeclared == [],
+          undeclared: undeclared
+        }
+      end
 
     containers =
       for %Scan{id: id} <- spec,

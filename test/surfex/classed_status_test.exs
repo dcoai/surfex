@@ -162,7 +162,11 @@ defmodule Surfex.ClassedStatusTest do
     assert "spec.md#arch-rule" in inside
 
     text = Report.text(status)
-    assert text =~ "excused by class: 2 (1 with claims inside) · deferred: 2"
+
+    assert text =~
+             "excused by class: 2 (1 with claims inside, which are containers; " <>
+               "1 spec units out of the score) · deferred: 2"
+
     json = JSON.decode!(Report.json(status))
 
     assert [%{"unit" => "spec.md#arch", "by" => "pattern"}, %{"class" => "informative"}] =
@@ -354,7 +358,10 @@ defmodule Surfex.ClassedStatusTest do
 
     text = Completeness.text(report)
     assert text =~ "  excused by class: 1 spec units, out of the score\n"
-    assert text =~ "  deferred: 2 spec units (#12, #13), out of the score\n"
+
+    assert text =~
+             "  deferred: 2 spec units (spec.md#gate-block by #13, spec.md#views by #12), out of the score\n"
+
     json = JSON.decode!(Completeness.json(report))
     assert json["excused"] == ["spec.md#background"] and length(json["deferred"]) == 2
 
@@ -366,5 +373,32 @@ defmodule Surfex.ClassedStatusTest do
     assert "spec.md#background" in Enum.map(before.incomplete, & &1.id)
     assert before.scores.spec.total > report.scores.spec.total
     refute Completeness.text(before) =~ "excused by class"
+  end
+
+  @tag verifies: "excused-counts"
+  test "the status's excused line agrees with completeness's count on its face" do
+    status = derive(spec(), [], [])
+    outside = length(Completeness.report(status).excused)
+
+    assert Report.text(status) =~ "#{outside} spec units out of the score)"
+
+    assert Completeness.text(Completeness.report(status)) =~
+             "excused by class: #{outside} spec units, out of the score"
+  end
+
+  @tag verifies: "new-marks"
+  test "New marks an excused or deferred unit and counts them in its header" do
+    status = derive(spec(), [], [])
+    text = Report.text(status)
+    new = length(status.new)
+
+    assert text =~ "New (in no relation): #{new}, 2 excused, 2 deferred:\n"
+    assert text =~ ~r/spec spec\.md#background .*\(excused: informative\)\n/
+    assert text =~ ~r/spec spec\.md#views .*\(deferred: #12\)\n/
+    refute text =~ ~r/spec spec\.md#arch-rule .*\((excused|deferred)/
+
+    # With none to mark, the header is as it always was.
+    plain = derive(Enum.map(spec(), &%{&1 | class: nil, deferred: nil}), [], [])
+    assert Report.text(plain) =~ "New (in no relation):\n"
   end
 end

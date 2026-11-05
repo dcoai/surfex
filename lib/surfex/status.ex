@@ -225,7 +225,15 @@ defmodule Surfex.Status do
           unimplemented: [Scan.t()],
           verdicts: %{String.t() => Surfex.Status.Verdict.verdict()},
           contained: [%{unit: String.t(), inside: [String.t()], location: map}],
-          on_container: [%{test: String.t(), unit: String.t(), inside: [String.t()]}],
+          on_container: [
+            %{
+              test: String.t(),
+              unit: String.t(),
+              inside: [String.t()],
+              redundant: boolean,
+              undeclared: [String.t()]
+            }
+          ],
           containers: [%{unit: String.t(), claims: non_neg_integer, verified: non_neg_integer}],
           earning: %{
             inside: %{String.t() => [String.t()]},

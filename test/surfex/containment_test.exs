@@ -205,6 +205,40 @@ defmodule Surfex.ContainmentTest do
     assert Surfex.Golden.render(Report.golden(status)) =~ "## on container"
   end
 
+  @tag verifies: "on-container-redundant"
+  test "an on-container tag beside every claim inside reads as redundant; beside some, names the rest" do
+    scans =
+      spec() ++ [test_scan("T: all", ~w(chapter one two)), test_scan("T: some", ~w(chapter one))]
+
+    status = derive(scans)
+
+    assert [
+             %{test: "T: all", redundant: true, undeclared: []},
+             %{test: "T: some", redundant: false, undeclared: ["spec.md#two"]}
+           ] = status.on_container
+
+    text = Report.text(status)
+
+    assert text =~
+             "test T: all → spec spec.md#chapter: redundant, every claim inside is also declared by this test; drop the container id"
+
+    assert text =~
+             "test T: some → spec spec.md#chapter: its claims are spec.md#one, spec.md#two; this test doesn't declare spec.md#two"
+
+    assert text =~ "verifies nothing), 1 redundant:\n"
+
+    assert [
+             %{"redundant" => true, "undeclared" => []},
+             %{"redundant" => false, "undeclared" => ["spec.md#two"]}
+           ] =
+             JSON.decode!(Report.json(status))["on_container"]
+
+    # A container with no claims inside has nothing to be redundant with.
+    none = derive(spec() ++ [test_scan("T: chapter", ["chapter"])])
+    assert [%{redundant: false}] = none.on_container
+    refute Report.text(none) =~ "redundant"
+  end
+
   @tag verifies: ["container-units", "verified-means"]
   test "naming a section's last prose paragraph turns it from a claim into a container" do
     before = """
