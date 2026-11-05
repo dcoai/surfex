@@ -62,7 +62,10 @@ unscanned module), a change outside the scanned code, or a flaky test.
 **Contained** and **On a container** (not failing): a claim verified only through a claim
 inside it, its own prose unclaimed, and a `verifies` aimed at a unit with no text of its
 own, which verifies nothing. The header line counts claims by verdict
-(`claims: N · verified · contained · unverified · containers`); `mix surfex.info claims`
+(`claims: N · verified · contained · unverified · containers`). An on-container line says
+**redundant** when the same test declares every claim inside, so dropping the container id
+is the whole fix, and otherwise names the claims it doesn't declare. Under **New**, an
+excused or deferred unit says so, and the header counts them. `mix surfex.info claims`
 says what each means and how a contained claim is settled. Under a `require:` spec rule a
 contained claim's unmet line ends `contained: a unit inside it is verified, its own text
 isn't`.

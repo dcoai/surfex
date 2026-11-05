@@ -2897,6 +2897,10 @@ the status reads as text for people, JSON for tools and a golden for review, the
 with no hashes or times
 ```
 
+<!-- surfex: new-marks --> A unit under **New** that is excused or deferred (§13.6) stays listed, since it is in
+no relation, and says so: `(excused: CLASS)` or `(deferred: REF)`. Where any is, the list's
+header counts them: `New (in no relation): 40, 3 excused, 1 deferred`.
+
 ### 13.4 What verified means
 <!-- surfex: verified-means -->
 
@@ -2963,6 +2967,11 @@ container has no text to verify, and its claims aren't verified by it. Each is l
 **on a container** (`on_container`), with the claims inside it, so the tag can move to
 what it checks. The relation stays valid: moving the tag is the project's call, as with
 an inert tag (§11.5).
+
+<!-- surfex: on-container-redundant --> A test that also declares every claim inside the container has nothing to move: the
+container's id only sits beside them. Its entry has `redundant: true`, its line says to
+drop the id, and the list's header counts such entries. A test declaring some of the
+claims has the others in `undeclared`, and its line names them. The JSON gives both.
 
 ```test:verifies-on-container
 a test tagging a heading-only section is listed on a container with the claims inside
@@ -3094,6 +3103,10 @@ not judged by require: spec rules; an implements to one is unearned as unverifie
 `Surfex.Status.Report.text/1` counts the excused units (and how many hold claims) and the
 deferred units in one header line, and lists each contradicted relation.
 `Surfex.Status.Report.json/1` gives `excused`, `deferred` and `contradicted`.
+
+<!-- surfex: excused-counts --> The header line says what its excused numbers are, so it agrees with completeness
+(§20.2), which counts only those out of the score: `excused by class: 21 (2 with claims
+inside, which are containers; 19 spec units out of the score)`.
 
 ### 13.7 Deferrals go stale
 <!-- surfex: stale-deferrals -->
@@ -5059,7 +5072,7 @@ and counted on lines of their own, so a growing excusal moves a number the summa
 ```text
   spec units: 91.2% (52/57)
   excused by class: 14 spec units, out of the score
-  deferred: 2 spec units (#12, #40), out of the score
+  deferred: 2 spec units (spec.md#views by #12, spec/a.md#later by spec/b.md#past-v1), out of the score
 ```
 
 The claims inside a classed section are counted as any claim is.

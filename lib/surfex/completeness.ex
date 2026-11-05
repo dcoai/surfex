@@ -266,8 +266,10 @@ defmodule Surfex.Completeness do
           []
 
         list ->
-          refs = list |> Enum.map(& &1.ref) |> Enum.uniq() |> Enum.sort() |> Enum.join(", ")
-          "  deferred: #{length(list)} spec units (#{refs}), out of the score\n"
+          units =
+            list |> Enum.sort_by(& &1.unit) |> Enum.map_join(", ", &"#{&1.unit} by #{&1.ref}")
+
+          "  deferred: #{length(list)} spec units (#{units}), out of the score\n"
       end
 
     [excused, deferred]

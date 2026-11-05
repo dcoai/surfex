@@ -64,7 +64,7 @@ defmodule Surfex.Status.Report do
         status.unimplemented,
         &unit_text/1
       ),
-      items("New (in no relation)", status.new, &unit_text/1),
+      items(new_title(status), status.new, &new_line(&1, status)),
       # Listed where a project declares any, so other reports read as before (§11.4).
       items("Checks (gates that verify claims)", checks(status), &check_line/1),
       items("Unmet (required relation missing)", status.unmet, &unmet_line/1),
@@ -149,7 +149,7 @@ defmodule Surfex.Status.Report do
         &contained_line(&1, status)
       ),
       items(
-        "On a container (a verifies aimed at a unit with no text of its own verifies nothing)",
+        on_container_title(status.on_container),
         status.on_container,
         &on_container_line/1
       ),
@@ -359,7 +359,13 @@ defmodule Surfex.Status.Report do
       "on_container" =>
         Enum.map(
           status.on_container,
-          &%{"test" => &1.test, "unit" => &1.unit, "inside" => &1.inside}
+          &%{
+            "test" => &1.test,
+            "unit" => &1.unit,
+            "inside" => &1.inside,
+            "redundant" => &1.redundant,
+            "undeclared" => &1.undeclared
+          }
         ),
       "excused" =>
         Enum.map(status.excused, fn e ->
@@ -1181,7 +1187,10 @@ defmodule Surfex.Status.Report do
   defp classed_text(status) do
     with_claims = Enum.count(status.excused, &(&1.claims != []))
 
-    "  excused by class: #{length(status.excused)} (#{with_claims} with claims inside) · " <>
+    outside = length(status.excused) - with_claims
+
+    "  excused by class: #{length(status.excused)} (#{with_claims} with claims inside, which are " <>
+      "containers; #{outside} spec units out of the score) · " <>
       "deferred: #{length(status.deferred)}\n"
   end
 
@@ -1231,8 +1240,59 @@ defmodule Surfex.Status.Report do
       "spec #{c.unit}#{at(Map.fetch!(status.scans, {:spec, c.unit}))}: verified inside: " <>
         Enum.join(c.inside, ", ")
 
-  defp on_container_line(o),
+  defp on_container_title(on_container) do
+    title = "On a container (a verifies aimed at a unit with no text of its own verifies nothing)"
+
+    case Enum.count(on_container, & &1.redundant) do
+      0 -> title
+      n -> "#{title}, #{n} redundant"
+    end
+  end
+
+  # A tag beside every claim inside has nothing to move (§13.4).
+  defp on_container_line(%{redundant: true} = o),
+    do:
+      "#{verifier(o.test)} → spec #{o.unit}: redundant, every claim inside is also declared by " <>
+        "this test; drop the container id"
+
+  defp on_container_line(%{inside: same, undeclared: same} = o),
     do: "#{verifier(o.test)} → spec #{o.unit}: its claims are #{claims_list(o.inside)}"
+
+  defp on_container_line(o),
+    do:
+      "#{verifier(o.test)} → spec #{o.unit}: its claims are #{claims_list(o.inside)}; " <>
+        "this test doesn't declare #{claims_list(o.undeclared)}"
+
+  # New is every unit in no relation; an excused or deferred one says so (§13.3).
+  defp new_title(status) do
+    marks = Enum.map(status.new, &new_mark(&1, status))
+    counts = for {kind, n} <- Enum.frequencies_by(marks, &elem(&1, 0)), kind != nil, do: {kind, n}
+
+    case Enum.map(Enum.sort(counts, :desc), fn {kind, n} -> "#{n} #{kind}" end) do
+      [] -> "New (in no relation)"
+      parts -> "New (in no relation): #{length(status.new)}, #{Enum.join(parts, ", ")}"
+    end
+  end
+
+  defp new_line(scan, status) do
+    case new_mark(scan, status) do
+      {nil, _} -> unit_text(scan)
+      {kind, what} -> "#{unit_text(scan)} (#{kind}: #{what})"
+    end
+  end
+
+  defp new_mark(%{kind: :spec, id: id}, status) do
+    excused = Enum.find(status.excused, &(&1.unit == id))
+    deferred = Enum.find(status.deferred, &(&1.unit == id))
+
+    cond do
+      excused -> {"excused", excused.name}
+      deferred -> {"deferred", deferred.ref}
+      true -> {nil, nil}
+    end
+  end
+
+  defp new_mark(_scan, _status), do: {nil, nil}
 
   defp claims_list([]), do: "none"
   defp claims_list(inside), do: Enum.join(inside, ", ")

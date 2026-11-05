@@ -47,6 +47,12 @@ release it merely follows.
 
 ### Changed
 
+- **Reports say what they mean** (#291, #360). `completeness --summary` names each deferred
+  unit and what defers it, where it printed only the cited reference. An on-container line
+  says **redundant** when the same test declares every claim inside, and otherwise names the
+  claims it doesn't declare; the JSON gains `redundant` and `undeclared`. An excused or
+  deferred unit under **New** says so, and the header counts them. The status's excused line
+  says what its numbers are, so it agrees with completeness's on its face. No verdict changes.
 - **The claim-grain guide says what upgrading costs** (#293, #359): the dangle wave as the real
   work, with a worked example; lowering a completeness floor to the measured score and raising
   it as sections settle; the wave of reach suggestions; wiring excuses dangling; a deviation
