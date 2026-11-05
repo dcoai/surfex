@@ -115,12 +115,16 @@ a pattern says otherwise. The status lists each pattern with the lines it matche
 **Spec text that asserts nothing is classed** (spec §11.7, §13.6). `spec_classes:` in
 `.surfex.exs` declares classes with reasons; a section is classed by
 `<!-- surfex: class NAME[: REASON] -->` on its own line, by a `files:` or `headings:`
-pattern, or by the project's own comment through `marker:`. A unit not built yet is
+pattern, or by the project's own comment through `marker:`. A class name is letters, digits,
+`-` and `_`, with no spaces (`defect-log`, not `defect log`). A unit not built yet is
 deferred by its issue, `<!-- surfex: deferred #123[: REASON] -->`, or by the spec unit
 that records the decision, `<!-- surfex: deferred UNIT@VERSION[: REASON] -->`, pinned to
 the version its author judged (spec §13.13). A classed section with no claim inside is
 **excused** and a deferred one **deferred**: neither is judged by `require:` spec rules nor counted in completeness.
-A class excuses the section's own text, never a claim named inside it. A `verifies` or
+A class excuses the section's own text, never a claim named inside it: a classed section
+**with** claims inside reads as a container, so its claims answer for themselves. That is
+the route for a section kept contained by a caption or a rationale: name every real claim,
+then class what's left. A `verifies` or
 `implements` to an excused section is **contradicted** and fails (retire it, or drop the
 class), and a deferral is **stale** once its unit has a test of its own or, under
 `mix surfex.status --issues`, its issue is closed, or the unit it cites isn't the version

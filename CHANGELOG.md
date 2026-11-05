@@ -47,6 +47,14 @@ release it merely follows.
 
 ### Changed
 
+- **The docs say what `validate` credits, what a class name is and how to bring evidence from
+  CI** (#293, #358). `mix help surfex.validate` said a review credits code the test
+  "exercised", which reads like earning's reach; it credits code the test calls directly,
+  and reached code when named with `--code`. `mix surfex.info validation` gains a recipe for
+  saving CI's evidence as an artifact and merging it. `mix surfex.info claims` states the
+  class-name characters and §13.6's rule that a classed section with claims inside reads as
+  a container. No behaviour changes.
+
 - `mix surfex.confirm --file` names the line of an unknown type (#351).
 - **A shape is not on the triangle's code side** (#345, spec §13.20). No run exercises a
   type or a callback, so an `implements` to one is never `code_untested`, and a unit
