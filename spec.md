@@ -3654,7 +3654,7 @@ time (context only), and when.
 |---|---|
 | `Surfex.Record.relate/6`, `Surfex.Record.relate/7` | a relation of a type between two ids at their current hashes, from → to for a directed type, superseding the relation's tips. `implements` is recorded as proposed; `verifies` too, unless the test's current version has failed in the evidence given (`evidence:`), when it is recorded on that evidence (§18) |
 | `Surfex.Record.plan/7` | a **planned** relation: one end is scanned and recorded at its hash, the other doesn't exist yet and is recorded without one. Its kind is its `spec:`/`code:` prefix, else `spec` when it has a `#`, else `code`. A plausibility check refuses an id the project couldn't have, so a typo doesn't become a permanent plan. `mix surfex.relate --planned` asks whether a spec id is in a file the scanner reads, and whether a code id has the scanner's shape (for Elixir, a name under one of the project's namespaces). Both ends scanned, or neither, is an error. |
-| `Surfex.Record.relate_batch/4`, `Surfex.Record.relate_batch/5` | many relations from one scan and one log load (§18), each line as `relate/7` records it (`evidence:`), or as `plan/7` does when `plausible:` is given, seeing the lines before it. A note is optional and notes may repeat. A line its rule refuses fails the batch, naming the line. It records claims only, so it never takes the distinct-notes rule away from a batch of judgements (`Surfex.Record.batch/3`) |
+| `Surfex.Record.relate_batch/4`, `Surfex.Record.relate_batch/5` | many relations from one scan and one log load (§18), each line as `relate/7` records it (`evidence:`), or as `plan/7` does when `plausible:` is given, seeing the lines recorded before it. A note is optional and notes may repeat. It returns `{:ok, entries, %{skipped: [...], refused: [...]}}`, each of those `%{line: n, why: text}`: a line its rule refuses holds back no other, and a line whose relation already stands is skipped. It records claims only, so it never takes the distinct-notes rule away from a batch of judgements (`Surfex.Record.batch/3`) |
 | `Surfex.Record.confirm/6`, `Surfex.Record.confirm/7` | one **dangling** or **proposed** relation, named by its ends and type, again at the current hashes, with a note (required) saying what was judged: basis `judgement`. `implements` is refused, since code is validated by evidence or a review (§18), never asserted, unless its code end is a shape, which no run exercises. Orphaned and conflicted relations aren't confirmed: they need re-pointing or resolving. Under `require_red:` (`opts`, §17) a `tests` relation isn't confirmed until its test's current version has discriminated |
 | `Surfex.Record.validate/6` | a review (§18): the `verifies` relation from a test to a spec unit, and each `implements` relation of that unit whose code the test calls (§11), or reaches (§13.1) and the review names (`meta[:code]`), and whose version the test's green run recorded, by definition, so one arity covers a function's others (§11), each only if it isn't validated already, validated at the current versions, basis `review`; with nothing left to record it is refused. The unit may be a section whose block or hint the test verifies: that relation must already be current, and the review records the section's `implements` relations alone |
 | `Surfex.Record.confirm_by_evidence/4` | every confirmation the test evidence justifies (§17, §18), basis `evidence`, with the evidence in the note: each dangling or proposed `verifies` relation whose test's current version has failed (unless only the spec changed, which is a judgement), then each dangling `tests` relation and each dangling or proposed `implements` relation whose test went red and then green. Nothing justified is `{:ok, []}`, not an error |
@@ -4659,16 +4659,35 @@ it; the file is tab-separated with numbered lines, and an empty one is refused
   an optional `NOTE`), and records them from one scan and one log load. Each line records
   what the single form records: naming a pair validates nothing (§18), so a line is
   proposed, or a `verifies` on its test's failing run. A claim has no judgement to write,
-  so its note is optional and notes may repeat. A line its own rule refuses fails the whole
-  batch, naming the line; nothing is recorded. `--planned` plans every line of the file.
+  so its note is optional and notes may repeat. `--planned` plans every line of the file.
   A file doesn't change what a claim-derived candidate needs: it is still reviewed pair by
   pair (§15.5).
 
+  **Each line stands alone**, since no line's claim depends on another's. One run names
+  every line it refuses, whatever refused it (the wrong number of fields, an unknown id or
+  type, an id `--planned` finds implausible), records the rest, and then fails. A later
+  line sees the lines recorded before it and nothing of a refused one.
+
+  **A rerun records only what's new.** A line is skipped, and reported, when the relation
+  has one tip, not a retirement, at the versions the line would record, and that tip either
+  stands on evidence, a review, a judgement or a baseline, or has the basis the line would
+  record and the line's note. A line with no note says nothing about the note. So a
+  corrected file can be run again as it is, an identical line in the same file is skipped
+  too, and a rerun never puts a validated relation back to proposed (`annotate` gives one a
+  new note). Everything else records as the single form does: a changed version, another
+  note on a proposed relation, a relation whose test has since failed, a retired relation,
+  a conflict.
+
 ```test:batch-claims
 a batch of claims records what the single form records, from one scan and one log load,
-each line seeing the ones before it; a note may be missing or repeated; a line its rule
-refuses (an unknown id or type, the wrong number of fields) fails the batch, naming it;
---planned plans every line; --file with named ids, --type or --note is refused
+each line seeing the ones before it; a note may be missing or repeated; one run names every
+line refused (the wrong number of fields, an unknown id or type, an implausible planned
+id), records the others and fails, and a later line sees nothing of a refused one; a line
+is skipped when the relation's one live tip at those versions is validated, or has its
+basis and note, so a rerun adds nothing and never undoes a validation, while a changed
+version, another note on a proposed relation, a test since failed, a retirement or a
+conflict records; --planned plans every line; --file with named ids, --type or --note is
+refused
 ```
 
 ```test:process-proposed

@@ -123,39 +123,71 @@ defmodule Surfex.Record do
   fields with the note last (a note may hold anything but a tab). Blank lines and lines
   starting with `#` are skipped; each line keeps its number in the file. A line with
   another number of fields, or a batch with no relations, is refused, naming the line.
-
-  With `note: :optional`, for a batch of claims (`relate_batch/5`), a line may leave its note
-  out or empty, and its `note` is `nil`.
   """
-  @spec parse_batch(String.t(), pos_integer, keyword) ::
-          {:ok, [%{line: pos_integer, fields: [String.t()], note: String.t() | nil}]}
+  @spec parse_batch(String.t(), pos_integer) ::
+          {:ok, [%{line: pos_integer, fields: [String.t()], note: String.t()}]}
           | {:error, String.t()}
-  def parse_batch(text, fields, opts \\ []) do
-    optional? = Keyword.get(opts, :note) == :optional
-    expected = if optional?, do: "#{fields - 1} or #{fields}", else: "#{fields}"
-
+  def parse_batch(text, fields) do
     text
-    |> String.split("\n")
-    |> Enum.with_index(1)
-    |> Enum.reject(fn {line, _} -> String.trim(line) == "" or String.starts_with?(line, "#") end)
-    |> Enum.reduce_while({:ok, []}, fn {line, n}, {:ok, acc} ->
-      case String.split(String.trim_trailing(line), "\t") do
+    |> batch_rows()
+    |> Enum.reduce_while({:ok, []}, fn {parts, n}, {:ok, acc} ->
+      case parts do
         parts when length(parts) == fields ->
           {head, [note]} = Enum.split(parts, -1)
           {:cont, {:ok, acc ++ [%{line: n, fields: head, note: note}]}}
 
-        parts when optional? and length(parts) == fields - 1 ->
-          {:cont, {:ok, acc ++ [%{line: n, fields: parts, note: nil}]}}
-
         parts ->
           {:halt,
-           {:error, "line #{n}: expected #{expected} tab-separated fields, got #{length(parts)}"}}
+           {:error, "line #{n}: expected #{fields} tab-separated fields, got #{length(parts)}"}}
       end
     end)
     |> case do
       {:ok, []} -> {:error, "no relations in the batch"}
       result -> result
     end
+  end
+
+  @doc """
+  The lines of a batch of claims' `text` (§18, `relate_batch/5`): `FROM`, `TO` and `TYPE`,
+  tab-separated, and an optional note, read as `parse_batch/2` reads a line. A line with
+  another number of fields is refused without holding back any other, so this returns the
+  good lines and every refused one, each `%{line: n, why: text}`. Only a file with no
+  relations in it at all is an error.
+  """
+  @spec parse_claims(String.t()) ::
+          {:ok, [%{line: pos_integer, fields: [String.t()], note: String.t() | nil}],
+           [%{line: pos_integer, why: String.t()}]}
+          | {:error, String.t()}
+  def parse_claims(text) do
+    case batch_rows(text) do
+      [] ->
+        {:error, "no relations in the batch"}
+
+      rows ->
+        {lines, refused} =
+          Enum.reduce(rows, {[], []}, fn
+            {[_, _, _] = fields, n}, {lines, refused} ->
+              {[%{line: n, fields: fields, note: nil} | lines], refused}
+
+            {[from, to, type, note], n}, {lines, refused} ->
+              {[%{line: n, fields: [from, to, type], note: note} | lines], refused}
+
+            {parts, n}, {lines, refused} ->
+              why = "expected 3 or 4 tab-separated fields, got #{length(parts)}"
+              {lines, [%{line: n, why: why} | refused]}
+          end)
+
+        {:ok, Enum.reverse(lines), Enum.reverse(refused)}
+    end
+  end
+
+  # Each line of a batch file that holds a relation, as its fields and its number in the file.
+  defp batch_rows(text) do
+    text
+    |> String.split("\n")
+    |> Enum.with_index(1)
+    |> Enum.reject(fn {line, _} -> String.trim(line) == "" or String.starts_with?(line, "#") end)
+    |> Enum.map(fn {line, n} -> {String.split(String.trim_trailing(line), "\t"), n} end)
   end
 
   @doc """
@@ -187,26 +219,75 @@ defmodule Surfex.Record do
   Records a **batch of claims** (§14, §18): many relations in one project load, each as
   `relate/7` records it, or as `plan/7` does when `opts[:plausible]` is given. `lines` are
   `%{line: n, from: id, to: id, type: type, note: text | nil}` in order, each seeing the
-  ones before it; `opts[:evidence]` is the evidence `relate/7` reads.
+  ones recorded before it; `opts[:evidence]` is the evidence `relate/7` reads.
 
-  All or nothing, as `batch/3` is. Unlike it, a note may be missing or repeated: naming a
-  pair validates nothing, so there is no judgement for a copied note to stand in for. It
-  takes no recording function, so it can't record a judgement without that rule.
+  Unlike `batch/3`, a note may be missing or repeated, and each line stands alone: naming a
+  pair validates nothing, so there is no judgement for a copied note to stand in for, and
+  no line's claim depends on another's. It takes no recording function, so it can't record
+  a judgement without that rule.
+
+  Returns `{:ok, entries, %{skipped: [...], refused: [...]}}`, each of those
+  `%{line: n, why: text}`. A line its rule refuses holds back no other. A line is skipped
+  when the relation's one tip, not a retirement, is at the versions the line would record,
+  and either stands on evidence, a review, a judgement or a baseline, or has the basis the
+  line would record and the line's note. So a rerun records only what's new, and never puts
+  a validated relation back to proposed.
   """
   @spec relate_batch([Scan.t()], [Entry.t()], [map], meta, keyword) ::
-          {:ok, [Entry.t()]} | {:error, String.t()}
+          {:ok, [Entry.t()],
+           %{
+             skipped: [%{line: pos_integer, why: String.t()}],
+             refused: [%{line: pos_integer, why: String.t()}]
+           }}
   def relate_batch(scans, entries, lines, meta, opts \\ []) do
     evidence = Keyword.get(opts, :evidence, [])
 
-    each_line(entries, lines, fn so_far, l ->
-      meta = if l.note, do: Keyword.put(meta, :note, l.note), else: meta
+    {recorded, skipped, refused} =
+      Enum.reduce(lines, {[], [], []}, fn l, {recorded, skipped, refused} ->
+        so_far = entries ++ recorded
+        meta = if l.note, do: Keyword.put(meta, :note, l.note), else: meta
 
-      case opts[:plausible] do
-        nil -> relate(scans, so_far, l.from, l.to, l.type, meta, evidence: evidence)
-        plausible? -> plan(scans, so_far, l.from, l.to, l.type, plausible?, meta)
-      end
-    end)
+        result =
+          case opts[:plausible] do
+            nil -> relate(scans, so_far, l.from, l.to, l.type, meta, evidence: evidence)
+            plausible? -> plan(scans, so_far, l.from, l.to, l.type, plausible?, meta)
+          end
+
+        with {:ok, [entry]} <- result,
+             nil <- already_stands(so_far, entry) do
+          {recorded ++ [entry], skipped, refused}
+        else
+          {:error, why} -> {recorded, skipped, [%{line: l.line, why: why} | refused]}
+          why when is_binary(why) -> {recorded, [%{line: l.line, why: why} | skipped], refused}
+        end
+      end)
+
+    {:ok, recorded, %{skipped: Enum.reverse(skipped), refused: Enum.reverse(refused)}}
   end
+
+  # Why `entry`, a line's claim, would add nothing to the relation it names, or nil when it
+  # would. Its parents are the relation's tips, so a conflict or a first claim has nothing
+  # to compare with.
+  defp already_stands(so_far, %Entry{parents: [parent]} = entry) do
+    tip = Enum.find(so_far, &(&1.id == parent))
+
+    cond do
+      tip.op == :retire or tip.ends != entry.ends ->
+        nil
+
+      tip.basis == entry.basis and (is_nil(entry.note) or tip.note == entry.note) ->
+        "already recorded at these versions"
+
+      tip.basis in [:evidence, :review, :judgement, :baseline] ->
+        "already on #{tip.basis} at these versions, so a claim adds nothing; " <>
+          "mix surfex.annotate gives it a new note"
+
+      true ->
+        nil
+    end
+  end
+
+  defp already_stands(_so_far, _entry), do: nil
 
   defp each_line(entries, lines, record) do
     Enum.reduce_while(lines, {:ok, []}, fn line, {:ok, acc} ->

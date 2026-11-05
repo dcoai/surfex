@@ -13,10 +13,13 @@ release it merely follows.
 
 - **`mix surfex.relate --file PATH`: many relations from one scan and one log load** (#350,
   #351). Each line is tab-separated `FROM`, `TO`, `TYPE` and an optional `NOTE`, and records
-  what the single form records, so it validates nothing (spec §18). A refused line fails the
-  file, naming the line. Notes may be missing or repeated, since a claim has no judgement to
-  write; `Surfex.Record.relate_batch/5` is claims only, and `batch/3` keeps its distinct-notes
-  rule. `Surfex.Record.parse_batch/3` takes `note: :optional`.
+  what the single form records, so it validates nothing (spec §18). Notes may be missing or
+  repeated, since a claim has no judgement to write; `Surfex.Record.relate_batch/5` is claims
+  only, and `batch/3` keeps its distinct-notes rule. Each line stands alone (#352, #353): one
+  run names every line it refuses, records the others, and then fails. A rerun records only
+  what's new: a line whose relation already stands at those versions is skipped and reported,
+  and a rerun never puts a validated relation back to proposed. `Surfex.Record.parse_claims/1`
+  reads such a file; `confirm --file` and `validate --file` stay all or nothing.
 - **A behaviour's callbacks are items of their own** (#337, #345). The Elixir scanner lists
   each public `@callback` and `@macrocallback` as an item of its module, keyed
   `Module.callback:name/arity` (`macrocallback:` for a macro callback, spec §5.2.1): its

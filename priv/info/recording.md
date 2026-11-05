@@ -10,7 +10,9 @@ Create the log once with `mix surfex.log --init` (it also sets git's union merge
   nothing: an `implements` from a citation is `proposed` until evidence or a review.
 - `mix surfex.relate FROM TO --type T --note N`: one relation by hand, `proposed`. With
   `--file PATH`, many from one scan and one log load: tab-separated `FROM TO TYPE`, and an
-  optional `NOTE`. A file validates nothing either; a refused line fails it, naming the line.
+  optional `NOTE`. A file validates nothing either. One run names every line it refuses,
+  records the others and fails; run the corrected file again, and a line whose relation
+  already stands is skipped, so a rerun adds no duplicates and never undoes a validation.
   `--planned` records an end that doesn't exist yet (the code you're about to write).
 - `mix surfex.retire FROM TO --type T --note N`: the relation no longer holds. On a pair
   never related it declines a suggestion (the note is required), and suggest skips it.

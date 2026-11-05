@@ -328,7 +328,7 @@ defmodule Surfex.WalkthroughTest do
 
     #{@other}\t#{@function}\tdepends_on\tmoved with the cart
     #{@section}\t#{@function}\timplements\tmoved with the cart
-    #{@function}\t#{@other}\tdepends_on
+    #{@function}\t#{@other}\tdepends_on\tcalled from the total
     """)
 
     scans = {Surfex.Status.Config, :scans, 2}
@@ -344,11 +344,11 @@ defmodule Surfex.WalkthroughTest do
     entries = Surfex.Log.load(root)
     assert length(entries) == 4
     assert Enum.count(entries, &(&1.note == "moved with the cart")) == 2
-    assert Enum.count(entries, &is_nil(&1.note)) == 2
+    assert Enum.count(entries, &is_nil(&1.note)) == 1
     assert [%{basis: :proposed}] = Enum.filter(entries, &(&1.type == :implements))
     assert Surfex.Log.verify(root) == []
 
-    # The same pair twice supersedes, wherever the two sort in the log.
+    # The same pair with a new note supersedes, wherever the two sort in the log.
     depends = Enum.filter(entries, &(&1.type == :depends_on and hd(&1.ends).id == @function))
     assert [first, second] = Enum.sort_by(depends, &length(&1.parents))
     assert second.parents == [first.id]
@@ -386,24 +386,67 @@ defmodule Surfex.WalkthroughTest do
   end
 
   @tag verifies: "batch-claims"
-  test "relate --file names a bad line and records nothing", %{root: root} do
+  test "relate --file names every bad line in one run, and records the good ones", %{root: root} do
     batch = Path.join(root, "batch.tsv")
-    good = "#{@function}\t#{@other}\tdepends_on\n"
 
-    for {bad, says} <- [
-          {"MyApp.Gone.f/0\t#{@other}\tdepends_on\n", "MyApp.Gone.f/0"},
-          {"#{@function}\t#{@other}\tnonsense\n", "nonsense"},
-          {"#{@function}\t#{@other}\n", "expected 3 or 4 tab-separated fields"}
-        ] do
-      File.write!(batch, good <> bad)
+    File.write!(batch, """
+    #{@function}\t#{@other}\tdepends_on
+    MyApp.Gone.f/0\t#{@other}\tdepends_on
+    #{@function}\t#{@other}\tnonsense
+    #{@other}\t#{@function}\tdepends_on
+    #{@function}\t#{@other}
+    """)
 
-      error =
-        assert_raise Mix.Error, fn -> task(root, Mix.Tasks.Surfex.Relate, ["--file", batch]) end
+    error =
+      assert_raise Mix.Error, fn -> task(root, Mix.Tasks.Surfex.Relate, ["--file", batch]) end
 
-      assert error.message =~ "line 2: "
-      assert error.message =~ says
-      assert Surfex.Log.load(root) == []
-    end
+    assert error.message =~ "3 of 5 lines refused"
+    assert error.message =~ "line 2: MyApp.Gone.f/0"
+    assert error.message =~ "line 3: type must be one of"
+    assert error.message =~ "nonsense"
+    assert error.message =~ "line 5: expected 3 or 4 tab-separated fields"
+
+    assert Enum.map(Surfex.Log.load(root), &hd(&1.ends).id) |> Enum.sort() ==
+             Enum.sort([@function, @other])
+
+    assert Surfex.Log.verify(root) == []
+  end
+
+  @tag verifies: "batch-claims"
+  test "relate --file reruns: only the corrected lines record, and a full rerun is clean", %{
+    root: root
+  } do
+    batch = Path.join(root, "batch.tsv")
+    good = "#{@function}\t#{@other}\tdepends_on\tcalls it\n"
+
+    File.write!(batch, good <> "MyApp.Gone.f/0\t#{@other}\tdepends_on\n")
+    assert_raise Mix.Error, fn -> task(root, Mix.Tasks.Surfex.Relate, ["--file", batch]) end
+    assert [_landed] = Surfex.Log.load(root)
+
+    File.write!(batch, good <> "#{@other}\t#{@function}\tdepends_on\n")
+    drain()
+    task(root, Mix.Tasks.Surfex.Relate, ["--file", batch])
+    said = drain()
+    assert [_, _] = Surfex.Log.load(root)
+    assert Enum.count(said, &(&1 =~ "recorded relate ")) == 1
+    assert Enum.count(said, &(&1 =~ "skipped line 1: ")) == 1
+
+    task(root, Mix.Tasks.Surfex.Relate, ["--file", batch])
+    said = drain()
+    assert [_, _] = Surfex.Log.load(root)
+    assert Enum.count(said, &(&1 =~ "skipped line ")) == 2
+    refute Enum.any?(said, &(&1 =~ "recorded relate "))
+  end
+
+  @tag verifies: "batch-claims"
+  test "relate --file refuses a file with no relations in it", %{root: root} do
+    batch = Path.join(root, "batch.tsv")
+    File.write!(batch, "# nothing yet\n")
+
+    error =
+      assert_raise Mix.Error, fn -> task(root, Mix.Tasks.Surfex.Relate, ["--file", batch]) end
+
+    assert error.message =~ "no relations in the batch"
   end
 
   @tag verifies: "batch-claims"
@@ -416,7 +459,10 @@ defmodule Surfex.WalkthroughTest do
     assert [%{ends: ends}] = Surfex.Log.load(root)
     assert %{kind: :code, id: ^planned, hash: nil} = Enum.find(ends, &(&1.id == planned))
 
-    File.write!(batch, "#{@section}\tNotOurs.f/0\timplements\n")
+    File.write!(
+      batch,
+      "#{@section}\tNotOurs.f/0\timplements\n#{@section}\t#{planned}\timplements\n"
+    )
 
     error =
       assert_raise Mix.Error, fn ->
@@ -424,6 +470,36 @@ defmodule Surfex.WalkthroughTest do
       end
 
     assert error.message =~ "line 1: "
+    assert error.message =~ "NotOurs.f/0"
+    assert [_still_one] = Surfex.Log.load(root)
+  end
+
+  @tag verifies: "batch-distinct-notes"
+  test "confirm --file stays all or nothing: one refused line records none", %{root: root} do
+    batch = Path.join(root, "batch.tsv")
+
+    task(root, Mix.Tasks.Surfex.Relate, [
+      "--note",
+      "calls it",
+      "--type",
+      "depends_on",
+      @function,
+      @other
+    ])
+
+    edit_total(root, "2")
+    before = Surfex.Log.load(root)
+
+    File.write!(batch, """
+    #{@function}\t#{@other}\tdepends_on\tread both ends again
+    MyApp.Gone.f/0\t#{@other}\tdepends_on\tnot there
+    """)
+
+    error =
+      assert_raise Mix.Error, fn -> task(root, Mix.Tasks.Surfex.Confirm, ["--file", batch]) end
+
+    assert error.message =~ "line 2: "
+    assert Surfex.Log.load(root) == before
   end
 
   @tag verifies: "batch-distinct-notes"
