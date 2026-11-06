@@ -65,6 +65,10 @@ release it merely follows.
 
 ### Changed
 
+- **`mix surfex.validate` points at a deeper test** (#290, #378). The test that only calls code directly
+  was the cheapest to review, which pulls toward shallow tests. Where another test verifying the unit
+  reaches more of its code, it now says so, naming that test and the call it goes through. The review
+  is recorded either way.
 - **Reach follows test-support helpers** (#290, #376). A test reading through a fixture helper in
   `test/support` verified a claim and "called none of its code", so projects rewrote good tests to
   suit the tool. Reach now passes through support code as it does hidden code, with no key to set.

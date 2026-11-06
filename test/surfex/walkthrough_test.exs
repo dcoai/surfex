@@ -623,6 +623,71 @@ defmodule Surfex.WalkthroughTest do
     assert Enum.map(relations, & &1["state"]) |> Enum.uniq() == ["current"]
   end
 
+  # #290, #378: the hint as a review prints it, through the task.
+  @tag verifies: "review-deeper-test"
+  test "validate says when another test verifying the unit reaches more of its code", %{
+    root: root
+  } do
+    File.write!(
+      Path.join(root, ".surfex.exs"),
+      ~s([sources: ["spec.md"], tests: ["test/*_test.exs"]])
+    )
+
+    File.mkdir_p!(Path.join(root, "test"))
+
+    File.write!(Path.join(root, "test/cart_test.exs"), """
+    defmodule MyApp.CartTest do
+      use ExUnit.Case
+
+      @tag verifies: "spec.md#Totals"
+      test "shallow", do: assert(MyApp.Cart.total() == 0 or true)
+
+      @tag verifies: "spec.md#Totals"
+      test "deep" do
+        assert MyApp.Cart.add([], :a)
+        assert MyApp.Cart.total() == 0 or true
+      end
+    end
+    """)
+
+    for code <- [@function, @other] do
+      task(root, Mix.Tasks.Surfex.Relate, [@section, code, "--type", "implements"])
+    end
+
+    task(root, Mix.Tasks.Surfex.Suggest, ["--accept"])
+    commit(root, "two tests of one section")
+    run_test(root, nil, 5)
+    run_test(root, nil, 8)
+    drain()
+
+    task(root, Mix.Tasks.Surfex.Validate, [
+      "test:MyApp.CartTest: shallow",
+      @section,
+      "--note",
+      "checks the total"
+    ])
+
+    lines = drain()
+    assert Enum.any?(lines, &(&1 =~ "recorded relate"))
+
+    assert Enum.any?(
+             lines,
+             &(&1 =~
+                 "MyApp.CartTest: deep also verifies #{@section} and reaches 1 more of its code")
+           ),
+           inspect(lines)
+
+    # The deep one has nothing deeper to point at.
+    task(root, Mix.Tasks.Surfex.Validate, [
+      "test:MyApp.CartTest: deep",
+      @section,
+      "--note",
+      "checks adding and the total"
+    ])
+
+    refute Enum.any?(drain(), &(&1 =~ "also verifies"))
+  end
+
   @tag verifies: "recording"
   test "a planned id that couldn't be the project's is refused", %{root: root} do
     for id <- ["MyAp.Cart.discount/1", "other.md#Totals"] do

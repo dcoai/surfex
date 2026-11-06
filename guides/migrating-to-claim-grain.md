@@ -61,8 +61,9 @@ classed on 2026-10-14, and settling them was a separate pass.
 **The first `mix surfex.suggest` offers a wave of relations.** Projects saw about 160, 220 and
 427 reach-derived `tests` relations. They are new facts about what the tests call, not drift.
 
-**How much reach grows depends on the project's shape.** Routes, `dispatch:` functions and a
-process's own callbacks are what it follows, so a project with none of them sees no change.
+**How much reach grows depends on the project's shape.** It follows routes, a process's own
+callbacks, helpers under `test/support`, and what `dispatch:` declares: a table, a registry, or
+a module passed as a value. A project with none of these sees no change.
 One project with no router, dispatcher or DSL stayed at 49 triangle gaps before and after.
 
 **Excuses of process wiring dangle.** Hidden definitions are versioned now, so the code behind
