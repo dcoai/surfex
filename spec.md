@@ -2699,6 +2699,10 @@ every unit would otherwise report a missing test for a project that doesn't scan
 counts the spec units scanned, by role: sections, blocks, test hints, tables and rows. The
 reports show tables and rows only when a spec marks a table.
 
+<!-- surfex: triangle-inside --> A verifying test meets a unit when it reaches code implementing the unit or a claim
+inside it, so a section's tests don't start to miss its code as that code moves to its
+claims (§14.1). Code left on the unit that no verifying test reaches is still reported.
+
 ```test:dangling-side
 a relation whose end changed since it was confirmed is dangling,
 and names which end changed

@@ -102,6 +102,12 @@ its callback item (`mix surfex.suggest` proposes it) and retire the module relat
 
 ### Fixed
 
+- **A section stays green while it migrates** (#365, #367). As a section's code moved to its
+  claims, a test tagged to the section could stop reaching the code still on it and fail the
+  triangle, in one section 82 tests at once, breaking §14.1's promise that a migration can span
+  commits. A test now meets a unit when it reaches code implementing the unit or a claim inside
+  it. Code left on the unit that no verifying test reaches is still reported. On upgrade a
+  project can only see fewer `test_misses_code` gaps.
 - **`New` judges code by definition** (#354, #355), as the `require:` policy and the triangle
   already do (spec §13.1). A default-argument arity (`f/1` from `def f(x, y \\ 1)`) no longer
   shows as `New (in no relation)` while another arity of its definition is in a relation.
