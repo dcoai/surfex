@@ -23,6 +23,10 @@ defmodule Mix.Tasks.Surfex.Validate do
   tab-separated `TEST`, `UNIT`, `NOTE`, each reviewed as the single form reviews it, with
   distinct notes (`Surfex.Record.batch/3`).
 
+  Where another test verifying the unit reaches more of its code, it says so, naming that test:
+  the deeper test may be the better one to review. It is information, and the review is recorded
+  either way.
+
   `--merge PATH` (once per file) also reads other runs' evidence, such as CI artifacts,
   with the local run as one history (`Surfex.Evidence.combined/1`), so a test excluded
   locally counts from the run that had its environment. A missing file fails.
@@ -88,7 +92,9 @@ defmodule Mix.Tasks.Surfex.Validate do
       nil ->
         {test, unit} = R.two!(ids)
         [test, unit] = R.units([test, unit], scans, opts)
-        recorded(root, scans, Surfex.Record.validate(scans, entries, test, unit, evidence, meta))
+        result = Surfex.Record.validate(scans, entries, test, unit, evidence, meta)
+        recorded(root, scans, result)
+        deeper(scans, entries, result, test, unit)
 
       path ->
         if ids != [] or opts[:note] != nil or meta[:code] != [] or opts[:through] != nil,
@@ -115,6 +121,20 @@ defmodule Mix.Tasks.Surfex.Validate do
             )
           end)
         )
+    end
+  end
+
+  # Says when another test verifying the unit reaches more of its code (§18). Information: the
+  # review is recorded either way.
+  defp deeper(scans, entries, {:ok, recorded}, test, unit) do
+    status = Surfex.Status.derive(scans, entries ++ recorded, [], [])
+
+    id = String.replace_prefix(test, "test:", "")
+    target = String.replace_prefix(unit, "spec:", "")
+
+    case Surfex.Status.deeper_test(status, id, target) do
+      nil -> :ok
+      found -> Mix.shell().info(Surfex.Status.deeper_test_text(found, target))
     end
   end
 

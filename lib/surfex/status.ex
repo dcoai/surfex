@@ -1182,6 +1182,68 @@ defmodule Surfex.Status do
   end
 
   # Each declared dispatch function with its reading, from its module's record (§11.10).
+  @doc """
+  The test verifying `unit` that reaches the most of its code beyond what `test` reaches, if
+  any reaches more (§18): that test, how many more items, and the first call it reaches them
+  through. By definition, as the triangle compares code. `nil` otherwise.
+  """
+  @spec deeper_test(t, String.t(), String.t()) ::
+          %{test: String.t(), more: pos_integer, through: String.t()} | nil
+  def deeper_test(status, test, unit) do
+    scans = Map.values(status.scans)
+    definition = definitions(scans)
+    live = Enum.reject(status.relations, &(&1.state == :retired))
+
+    code =
+      for %{type: :implements, relation: {_, {:code, c}, {:spec, ^unit}}} <- live,
+          into: MapSet.new(),
+          do: definition.(c)
+
+    others =
+      for %{type: :verifies, relation: {_, {:test, t}, {:spec, ^unit}}} <- live, do: t
+
+    reach = Scan.reach(scans)
+    on_unit = &(Map.get(reach, &1, []) |> MapSet.new(definition) |> MapSet.intersection(code))
+    own = on_unit.(test)
+
+    deepest =
+      others
+      |> Enum.reject(&(&1 == test))
+      |> Enum.map(&{&1, on_unit.(&1)})
+      |> Enum.filter(fn {_, reached} -> MapSet.size(reached) > MapSet.size(own) end)
+      |> Enum.min_by(
+        fn {t, reached} -> {-MapSet.size(MapSet.difference(reached, own)), t} end,
+        fn -> nil end
+      )
+
+    case deepest do
+      nil ->
+        nil
+
+      {t, reached} ->
+        extra = MapSet.difference(reached, own)
+        %{test: t, more: MapSet.size(extra), through: through(scans, t, extra, definition)}
+    end
+  end
+
+  @doc "What `deeper_test/3` found, in words."
+  @spec deeper_test_text(%{test: String.t(), more: pos_integer, through: String.t()}, String.t()) ::
+          String.t()
+  def deeper_test_text(%{test: test, more: more, through: through}, unit),
+    do: "#{test} also verifies #{unit} and reaches #{more} more of its code (through #{through})"
+
+  # The first call a test makes that reaches any of `extra`.
+  defp through(scans, test, extra, definition) do
+    from = Scan.reacher(scans)
+    %Scan{calls: calls} = Enum.find(scans, &(&1.kind == :test and &1.id == test))
+
+    calls
+    |> Enum.sort()
+    |> Enum.find(fn call ->
+      Enum.any?(from.([call]), &MapSet.member?(extra, definition.(&1)))
+    end)
+  end
+
   defp dispatch(scans) do
     for %Scan{kind: :code, dispatch: dispatch} <- scans,
         {id, %{targets: listed, unscanned: unscanned} = reading} <- dispatch do

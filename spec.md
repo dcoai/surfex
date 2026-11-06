@@ -4901,6 +4901,12 @@ evidence; a changed test version, or narrowed trust, leaves its relations unvali
 baseline relations are counted, and fail under baseline: :fail
 ```
 
+<!-- surfex: review-deeper-test --> A test that only calls code directly can be cheaper to review than one that checks what it
+does, so a review says when there's a deeper one. Where another test verifying the unit reaches
+more of the unit's code, `mix surfex.validate` prints `T: b also verifies UNIT and reaches 4 more
+of its code (through M.run/1)`, naming the one reaching the most (`Surfex.Status.deeper_test/3`).
+It is information: the review is recorded either way.
+
 ### 18.2 Reviews through a path no call shows
 <!-- surfex: review-through-path -->
 
