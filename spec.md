@@ -3826,6 +3826,13 @@ Each proposal is one of:
 - **single**: one candidate claim;
 - **several**: the candidates are listed, never decided: which claim code realises is a
   judgement;
+- <!-- surfex: migrate-claim-is-verdicts --> A claim inside a section is what the verdicts read as one (§13.4): a unit with text of
+  its own and no class or deferral, an id'd subsection included, inside the section by
+  `within` or `under`. `migrate`, `suggest` and the verdicts read it from one predicate, so a
+  project whose claims are subsections moves its code to them. A
+  target that isn't one is refused, naming why: classed, deferred, a container, or not inside.
+  `suggest` proposes code to a section only when no claim sits inside it: one that holds claims
+  is what a migration moves code off, not where it should go.
 - **none**: no claim inside the section owns C. It is realised by a claim not written yet,
   or it doesn't belong to the section. These are the spec work the migration surfaces, so
   they are listed **first**.

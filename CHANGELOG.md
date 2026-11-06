@@ -118,6 +118,13 @@ its callback item (`mix surfex.suggest` proposes it) and retire the module relat
 
 ### Fixed
 
+- **`mix surfex.migrate` reads a claim as the verdicts do** (#289, #372). It only knew blocks, hints,
+  rows, rules and contracts, so a project whose claims are id'd subsections got `none` for everything,
+  was told its sections were prose, and had `--code --to` refused. A claim is now one thing
+  everywhere: text of its own, no class or deferral. A refused
+  target says why. `mix surfex.suggest` proposes code to a section only when no claim sits inside
+  it, so a section with hints isn't offered back the code a migration moved off it. On upgrade a
+  project with leaf sections sees more claim-derived candidates, none recorded by `--accept`.
 - **A section stays green while it migrates** (#365, #367). As a section's code moved to its
   claims, a test tagged to the section could stop reaching the code still on it and fail the
   triangle, in one section 82 tests at once, breaking §14.1's promise that a migration can span
