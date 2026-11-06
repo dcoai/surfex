@@ -126,6 +126,98 @@ defmodule Surfex.MigrateTaskTest do
              )
     end
 
+    # #365, #368: --accept can't otherwise pass over a single that's wrong.
+    @tag verifies: "migrate-skip"
+    test "--accept --skip records the others and leaves the skipped one on its section", %{
+      tmp_dir: root
+    } do
+      File.write!(Path.join(root, "spec.md"), """
+      # Carts
+      <!-- surfex: carts -->
+
+      A cart adds items and totals them.
+
+      <!-- surfex: table surface -->
+
+      | Function | Claim |
+      |---|---|
+      | `MyApp.Cart.add` | adds an item |
+      | `MyApp.Cart.total` | totals them |
+      """)
+
+      out = run(root, ["spec.md#carts", "--accept", "--skip", "MyApp.Cart.add/2", "--note", "n"])
+
+      assert ["recorded relate implements  code MyApp.Cart.total/0@" <> total] = out
+      assert total =~ "spec.md#surface/MyApp.Cart.total"
+
+      # Skipped by any arity of its definition, and still a single proposal afterwards.
+      assert Enum.any?(
+               run(root, ["spec.md#carts"]),
+               &(&1 =~ "single    MyApp.Cart.add/2, MyApp.Cart.add/3")
+             )
+    end
+
+    @tag verifies: "migrate-skip"
+    test "--skip refuses what isn't a single proposal, and needs --accept", %{tmp_dir: root} do
+      assert_raise Mix.Error,
+                   ~r/MyApp.Cart.nope\/1 isn't a single proposal in spec.md#carts/,
+                   fn ->
+                     run(root, ["spec.md#carts", "--accept", "--skip", "MyApp.Cart.nope/1"])
+                   end
+
+      # total/0 is a proposal with no claim, so there's nothing to skip.
+      assert_raise Mix.Error, ~r/MyApp.Cart.total\/0 isn't a single proposal/, fn ->
+        run(root, ["spec.md#carts", "--accept", "--skip", "MyApp.Cart.total/0"])
+      end
+
+      assert_raise Mix.Error, ~r/--skip goes with --accept/, fn ->
+        run(root, ["spec.md#carts", "--skip", "MyApp.Cart.add/2"])
+      end
+
+      refute File.read!(Path.join(root, ".surfex/surfex.log")) =~ "surface/MyApp.Cart.add"
+    end
+
+    @tag verifies: "migrate-skip"
+    test "--code on a relation already retired says to record the claim's with relate", %{
+      tmp_dir: root
+    } do
+      File.cd!(root, fn ->
+        Mix.Tasks.Surfex.Retire.run([
+          "spec.md#carts",
+          "MyApp.Cart.add/2",
+          "--type",
+          "implements",
+          "--note",
+          "gone"
+        ])
+
+        Mix.Tasks.Surfex.Retire.run([
+          "spec.md#carts",
+          "MyApp.Cart.add/3",
+          "--type",
+          "implements",
+          "--note",
+          "gone"
+        ])
+      end)
+
+      drain()
+
+      error =
+        assert_raise Mix.Error, fn ->
+          run(root, [
+            "spec.md#carts",
+            "--code",
+            "MyApp.Cart.add/2",
+            "--to",
+            "spec.md#surface/MyApp.Cart.add"
+          ])
+        end
+
+      assert error.message =~ "no live implements to spec.md#carts"
+      assert error.message =~ "mix surfex.relate MyApp.Cart.add/2 CLAIM --type implements"
+    end
+
     @tag verifies: "migrate-accept"
     test "--accept records the single proposals as migrating; --code --to a chosen claim", %{
       tmp_dir: root

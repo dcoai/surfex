@@ -147,22 +147,42 @@ defmodule Surfex.Migrate do
   unit inside it) and exercises the code, the claim relation is recorded with basis
   `baseline`: the trust already given covers the same test and code. It holds at once, so
   the section relation retires in the same call. `opts` are `Surfex.Status.derive/4`'s,
-  of which `adoption:` says what is trusted.
+  of which `adoption:` says what is trusted, and `skip:`, the code ids of single proposals
+  to leave on their sections; an id that isn't one is an error.
   """
   @spec accept([Scan.t()], [Entry.t()], [String.t()], keyword, keyword) ::
           {:ok, [Entry.t()]} | {:error, String.t()}
   def accept(scans, entries, sections, meta, opts \\ []) do
+    {skip, opts} = Keyword.pop(opts, :skip, [])
     ix = index(scans, Status.derive(scans, entries, [], opts))
 
+    singles =
+      for %{outcome: :single} = p <- proposals_from(ix, sections), do: p
+
     steps =
-      for %{outcome: :single, unit: unit, codes: codes, claims: [%{claim: claim}]} <-
-            proposals_from(ix, sections),
+      for %{unit: unit, codes: codes, claims: [%{claim: claim}]} <- singles,
+          not Enum.any?(codes, &(&1 in skip)),
           code <- codes,
           do: migration(ix, scans, code, [claim], unit, meta)
 
-    with {:ok, recorded} <- run(steps, entries),
+    with :ok <- skippable(skip, singles, sections),
+         {:ok, recorded} <- run(steps, entries),
          {:ok, settled} <- settle(scans, entries ++ recorded, sections, meta, opts),
          do: {:ok, recorded ++ settled}
+  end
+
+  # Each id to skip is a single proposal here: anything else is a mistake to say out loud.
+  defp skippable(skip, singles, sections) do
+    known = Enum.flat_map(singles, & &1.codes)
+
+    case skip -- known do
+      [] ->
+        :ok
+
+      unknown ->
+        {:error,
+         "#{Enum.join(unknown, ", ")} isn't a single proposal in #{Enum.join(sections, ", ")}"}
+    end
   end
 
   @doc """
@@ -185,7 +205,9 @@ defmodule Surfex.Migrate do
     case found do
       [] ->
         {:error,
-         "#{code} has no live implements to #{section} or a table in it: nothing to migrate"}
+         "#{code} has no live implements to #{section} or a table in it: nothing to migrate. " <>
+           "If that relation is already retired, record the claim's with " <>
+           "mix surfex.relate #{code} CLAIM --type implements"}
 
       [{unit, group} | _] ->
         inside = Map.get(ix.claims_in, unit, [])
