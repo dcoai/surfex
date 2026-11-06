@@ -60,6 +60,10 @@ release it merely follows.
 
 ### Changed
 
+- **`mix surfex.migrate`'s `none` says what to do** (#289, #374). It read as a dead end, though usually
+  a test already calls the code and only the claim it checks has no name yet. The listing and the
+  report name the tests that call or reach the code and whether each verifies a claim in the section,
+  or say `no test calls it`. `--format json` gives `callers`.
 - **`mix surfex.suggest --accept` no longer retires a validated relation when a test stops
   declaring it** (#369, #370). A misplaced tag could quietly discard a reviewed judgement, and a
   retired relation doesn't come back on its own. Such a relation is now listed and left in place,

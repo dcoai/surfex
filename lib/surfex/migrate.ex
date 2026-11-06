@@ -21,7 +21,7 @@ defmodule Surfex.Migrate do
 
   alias Surfex.Log.Entry
   alias Surfex.{Record, Scan, Status}
-  alias Surfex.Status.Verdict
+  alias Surfex.Status.{Callers, Verdict}
 
   @live [:current, :dangling, :proposed]
 
@@ -44,7 +44,8 @@ defmodule Surfex.Migrate do
           codes: [String.t()],
           outcome: :single | :several | :none | :migrating,
           settled: boolean,
-          claims: [%{claim: String.t(), why: [reason]}]
+          claims: [%{claim: String.t(), why: [reason]}],
+          callers: [Callers.t()]
         }
 
   @doc """
@@ -100,7 +101,8 @@ defmodule Surfex.Migrate do
             codes: codes,
             outcome: :migrating,
             settled: settled,
-            claims: for(k <- claims, do: %{claim: k, why: []})
+            claims: for(k <- claims, do: %{claim: k, why: []}),
+            callers: []
           }
 
         nil ->
@@ -119,11 +121,55 @@ defmodule Surfex.Migrate do
             codes: codes,
             outcome: outcome,
             settled: false,
-            claims: claims
+            claims: claims,
+            callers: if(outcome == :none, do: callers(ix, codes, unit), else: [])
           }
       end
     end
     |> Enum.sort_by(&{outcome_order(&1.outcome), &1.section, &1.codes})
+  end
+
+  # Who calls or reaches code no claim here owns (§14.2): the remedy a none points at.
+  defp callers(ix, [code | _], unit) do
+    here =
+      for claim <- Map.get(ix.claims_in, unit, []),
+          test <- Map.get(ix.verifying, claim, MapSet.new()),
+          into: MapSet.new(),
+          do: test
+
+    Callers.of(ix.callers, ix.code[code], here)
+  end
+
+  @doc """
+  A none's callers in words (§14.2): who calls or reaches the code, whether they verify a
+  claim here, and what to do.
+  """
+  @spec callers_text([Callers.t()]) :: String.t()
+  def callers_text([]), do: "no test calls it"
+
+  def callers_text(callers) do
+    direct = Enum.filter(callers, &(&1.how == :calls))
+    {verb, named} = if direct != [], do: {"called", direct}, else: {"reached", callers}
+    count = length(named)
+    here = Enum.count(named, & &1.verifies_here)
+
+    tests = "#{count} #{if count == 1, do: "test", else: "tests"} (#{listed(named)})"
+
+    if here == 0 do
+      pronoun = if count == 1, do: "it checks", else: "they check"
+      "#{verb} by #{tests}, none verifying a claim here: name the claim #{pronoun}"
+    else
+      "#{verb} by #{tests}, #{here} verifying a claim here"
+    end
+  end
+
+  defp listed(callers) do
+    {shown, rest} = Enum.split(Enum.map(callers, & &1.test), 3)
+
+    case rest do
+      [] -> Enum.join(shown, ", ")
+      _ -> "#{Enum.join(shown, ", ")} and #{length(rest)} more"
+    end
   end
 
   defp outcome_order(:none), do: 0
@@ -513,7 +559,15 @@ defmodule Surfex.Migrate do
                   "codes" => w.codes,
                   "outcome" => Atom.to_string(w.outcome),
                   "now" => w.now,
-                  "after" => w.after
+                  "after" => w.after,
+                  "callers" =>
+                    for c <- w.callers do
+                      %{
+                        "test" => c.test,
+                        "how" => Atom.to_string(c.how),
+                        "verifies_here" => c.verifies_here
+                      }
+                    end
                 }
               end
           }
@@ -547,7 +601,13 @@ defmodule Surfex.Migrate do
               Enum.max(for c <- claims, do: width(ix, c.claim) + length(p.codes))
           end
 
-        %{codes: p.codes, outcome: p.outcome, now: width(ix, p.unit), after: after_width}
+        %{
+          codes: p.codes,
+          outcome: p.outcome,
+          now: width(ix, p.unit),
+          after: after_width,
+          callers: Map.get(p, :callers, [])
+        }
       end
       |> Enum.sort_by(&{-&1.after, &1.codes})
 
@@ -689,6 +749,7 @@ defmodule Surfex.Migrate do
       sections: Enum.sort(for {id, %Scan{role: :section}} <- spec, do: id),
       implemented: implemented,
       claims_in: Map.new(claims_in, fn {u, l} -> {u, Enum.sort(l)} end),
+      callers: Callers.index(scans),
       tables: Map.new(tables, fn {s, l} -> {s, Enum.sort(l)} end),
       verifying: verifying,
       tests: tests,

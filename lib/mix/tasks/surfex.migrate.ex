@@ -188,7 +188,8 @@ defmodule Mix.Tasks.Surfex.Migrate do
   defp line(%{outcome: :none} = p),
     do:
       "none      #{codes(p)}: no claim inside #{p.unit} names it or has a test calling or " <>
-        "reaching it: write the claim it realises (spec §11.1), or it doesn't belong here"
+        "reaching it; #{Migrate.callers_text(p.callers)}: write the claim it realises (spec §11.1), " <>
+        "or it doesn't belong here"
 
   defp line(%{outcome: :several} = p),
     do:
@@ -199,6 +200,11 @@ defmodule Mix.Tasks.Surfex.Migrate do
 
   defp line(%{outcome: :single, claims: [c]} = p),
     do: "single    #{codes(p)} → #{c.claim} (#{why(c.why)})"
+
+  defp outcome_text(%{outcome: :none, callers: callers}),
+    do: "none: #{Migrate.callers_text(callers)}"
+
+  defp outcome_text(%{outcome: outcome}), do: to_string(outcome)
 
   defp claims(p), do: Enum.map_join(p.claims, ", ", & &1.claim)
 
@@ -276,7 +282,7 @@ defmodule Mix.Tasks.Surfex.Migrate do
 
       for w <- s.widths do
         Mix.shell().info(
-          "  #{Enum.join(w.codes, ", ")}: #{w.now} now → #{w.after} after (#{w.outcome})"
+          "  #{Enum.join(w.codes, ", ")}: #{w.now} now → #{w.after} after (#{outcome_text(w)})"
         )
       end
     end
