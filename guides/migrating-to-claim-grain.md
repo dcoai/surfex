@@ -196,6 +196,13 @@ Once every claim relation of a code item is validated, the pair is **settled**, 
 section's relation is retired with a note naming the claims, by the next `--accept` or by
 `mix surfex.suggest --accept`. A section never loses a relation before its claim holds one.
 
+**Moving a test's tag.** When a test stops declaring a unit, `mix surfex.suggest --accept` retires
+the relation only if it is still proposed. A validated one stays and the status fails as
+**Undeclared**, because a tag can go by mistake and a retired relation doesn't come back on its
+own. Restore the tag, or read the list and run `mix surfex.suggest --accept --retire-undeclared`.
+Two `@tag verifies:` lines above one test keep only the last: the status lists the first as
+**Inert**, so use one list.
+
 ## A library's API as contracts
 
 A contract signature is the finest claim a spec makes: one function. A library whose
