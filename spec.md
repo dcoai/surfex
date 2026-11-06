@@ -2081,6 +2081,22 @@ from source, never compiled and never traced at run time:
   gives `dispatch`, and the status golden holds a `dispatch` table and counts the
   dispatchers in its header, each only where `dispatch:` declares one.
 
+<!-- surfex: dispatch-registry --> **A registry.** `{Module, :fun, arity, registry: {Catalogue, :fun, arity}}` declares a
+dispatcher that calls a behaviour's callback on each module a catalogue function returns. The
+catalogue's body, or a module attribute it returns, must be a literal list of module aliases.
+Its targets are, in each listed module, the functions implementing the callbacks of a behaviour
+the module declares with `@behaviour`. `callback: :name` narrows to the functions of that name,
+whatever the behaviour. A catalogue that isn't literal makes the dispatcher **unresolved**, and
+a listed module implementing no callback is listed as **unscanned**. A catalogue the scanned
+source doesn't define is refused.
+
+<!-- surfex: dispatch-module-arg --> **A module passed as a value.** `{Module, :fun, arity, module_arg: n}` declares a dispatcher
+that calls back the module passed as its 1-based argument `n`. A remote call passing a literal
+alias there also calls that module's callbacks, read as for a registry, and names the module.
+Anything else in that position reaches nothing: nothing is inferred from how a parameter is
+used, and nothing is traced. `n` outside the arity, both forms together, or an option other than
+these and `callback:` is refused.
+
 ```test:dispatch-reach
 a test driving an endpoint whose code calls a declared dispatcher reaches each handler its
 module's map lists, and the handler's module; a {Module, :fun} entry names every defined

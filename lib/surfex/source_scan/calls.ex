@@ -36,14 +36,15 @@ defmodule Surfex.SourceScan.Calls do
 
   `dispatch` maps a declared dispatch function (§11.10) to the targets its table lists: a
   call naming it, local or remote or a capture, also calls each target and names its
-  module, unless `remote` answered for that call, whose answer says what it reaches.
+  module, unless `remote` answered for that call, whose answer says what it reaches. One
+  declared with `module_arg:` takes the module a remote call passes there, by its literal alias.
   """
   @spec of(
           [{Macro.t(), aliases}],
           ({atom, non_neg_integer} -> [String.t()]),
           remote,
           (Macro.t(), aliases -> [String.t()]),
-          %{String.t() => [String.t()]}
+          %{String.t() => [String.t()] | map}
         ) :: [String.t()]
   def of(
         bodies,
@@ -65,13 +66,13 @@ defmodule Surfex.SourceScan.Calls do
             id = call(expand(parts, aliases), fun, arity)
 
             case named(remote, node, aliases) do
-              [] -> [id | dispatched(dispatch, id)]
+              [] -> [id | dispatched(dispatch, id, node, aliases)]
               answered -> [id | answered]
             end
 
           {:local, fun, arity} ->
             ids = local.({fun, arity})
-            ids ++ Enum.flat_map(ids, &dispatched(dispatch, &1))
+            ids ++ Enum.flat_map(ids, &dispatched(dispatch, &1, nil, %{}))
         end)
       end)
 
@@ -92,12 +93,31 @@ defmodule Surfex.SourceScan.Calls do
 
   # What a call to a declared dispatcher reaches besides it (§11.10): each target, and the
   # module it is in, as a call names its module.
-  defp dispatched(dispatch, id) do
+  defp dispatched(dispatch, id, node, aliases) do
     case Map.fetch(dispatch, id) do
-      {:ok, targets} -> targets ++ Enum.map(targets, &module_of/1)
-      :error -> []
+      {:ok, %{module_arg: n, by_module: by_module}} ->
+        case passed(node, n, aliases) do
+          nil -> []
+          module -> Map.get(by_module, module, []) ++ [module]
+        end
+
+      {:ok, targets} ->
+        targets ++ Enum.map(targets, &module_of/1)
+
+      :error ->
+        []
     end
   end
+
+  # The literal alias at a call's 1-based argument `n`, if that's what it is there.
+  defp passed({_call, _meta, args}, n, aliases) when is_list(args) do
+    case Enum.at(args, n - 1) do
+      {:__aliases__, _, parts} -> if Enum.all?(parts, &is_atom/1), do: expand(parts, aliases)
+      _ -> nil
+    end
+  end
+
+  defp passed(_node, _n, _aliases), do: nil
 
   @doc "A `t:remote/0` that names nothing: the calls of a project with no scanner answering."
   @spec none() :: remote

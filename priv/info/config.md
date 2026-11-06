@@ -35,6 +35,9 @@ once, each naming the key, the value as written and the accepted form (spec §13
   runs (a LiveView's `mount/3` and `handle_params/3`, or a controller action), its
   `render_click(view, …)` and friends call the view's `handle_event/3`, and
   `GenServer.call(Module, msg)` calls that module's `handle_call/3` (spec §11.3).
+- `dispatch: [{MyApp.Billing, :run, 1, registry: {MyApp.Billing, :reports, 0}}]`: calls a
+  behaviour's callback on each module a function's literal list holds; `{MyApp.Http, :read, 2,
+  module_arg: 2}`: calls back the module passed as that argument. `callback: :name` narrows either.
 - `dispatch: [{MyApp.Ops, :run, 3}]`: the project's dispatch functions, each running a
   handler it looks up in a table (`apply(module, fun, args)`). A call to one reaches every
   handler its module lists as a literal `{Module, :fun}`, `{Module, :fun, arity}` or

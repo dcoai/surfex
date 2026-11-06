@@ -342,17 +342,35 @@ defmodule Surfex.Status.Config do
 
   @doc """
   The declared dispatch functions (§11.10), `dispatch: [{Module, :fun, arity}]`, as call
-  ids (`Module.fun/arity`), sorted. None without the key. Anything but a list of such
-  triples raises.
+  ids (`Module.fun/arity`), sorted by id. One declared with `registry:` or `module_arg:` is a
+  map holding its id and its form. None without the key. Anything else raises.
   """
-  @spec dispatch!(keyword) :: [String.t()]
+  @spec dispatch!(keyword) :: [Surfex.SourceScan.Dispatch.declared()]
   def dispatch!(config) do
     Keys.check!(config, :dispatch)
 
     Keyword.get(config, :dispatch, [])
-    |> Enum.map(fn {m, f, a} -> Surfex.SourceScan.Calls.call(inspect(m), f, a) end)
+    |> Enum.map(&dispatcher/1)
     |> Enum.uniq()
-    |> Enum.sort()
+    |> Enum.sort_by(fn
+      %{id: id} -> id
+      id -> id
+    end)
+  end
+
+  defp dispatcher({m, f, a}), do: Surfex.SourceScan.Calls.call(inspect(m), f, a)
+
+  defp dispatcher({m, f, a, opts}) do
+    form =
+      case opts[:registry] do
+        {cm, cf, ca} -> %{registry: Surfex.SourceScan.Calls.call(inspect(cm), cf, ca)}
+        nil -> %{module_arg: opts[:module_arg]}
+      end
+
+    Map.merge(form, %{
+      id: Surfex.SourceScan.Calls.call(inspect(m), f, a),
+      callback: opts[:callback]
+    })
   end
 
   @doc """
