@@ -2755,7 +2755,7 @@ and the reports show tables and rows once a spec marks a table
 
 ```test:undeclared-verifies
 a verifies relation whose test no longer declares its spec unit is undeclared and fails;
-suggest --accept retires it
+suggest --accept retires it while it is only proposed
 ```
 
 ### 13.2 Configuration
@@ -3997,8 +3997,14 @@ repeats another:
   whose block or hint is still `within` the unit. These relations record what the source
   says, not a judgement, so reading the source again re-establishes them. Judgement
   relations are never refreshed.
-- **undeclared**: each undeclared `verifies` relation (§13.1), which accepting retires:
-  the test's own source says the claim is gone.
+- **undeclared**: each undeclared `verifies` relation (§13.1), which accepting retires
+  while it is only proposed: the test's own source says the claim is gone.
+- <!-- surfex: undeclared-held --> A tag can go by mistake, and a retired relation doesn't come back on its own, so a
+  bulk command doesn't discard a judgement. An undeclared relation resting on evidence, a
+  review, a judgement or a baseline is listed, marked `validated`, and left in place: the
+  status keeps failing until the tag is restored or the relation retired, which `mix
+  surfex.suggest --accept --retire-undeclared` does for all of them, after reading the list.
+  A declaration whose relation is retired names the command that revives it.
 - **moved**: each moved `refines` relation (§13.1), which accepting retires: the unit no
   longer sits in what it refines. The relation to where it sits now is suggested under
   refines, so one `--accept` records the new relation and retires the old. A dangling
@@ -4037,7 +4043,7 @@ The others are computed as if the moves were already recorded, so a moved
 section's relations are not suggested again under its new id.
 `Surfex.Suggest.accept_all/5` records them (its options carry the test evidence): each
 move (`Surfex.Record.move/5`), then each other suggestion as a `relate` at the current
-hashes, except an undeclared or moved relation, which is retired. **Accepting validates nothing:**
+hashes, except a moved relation or a proposed undeclared one, which is retired. **Accepting validates nothing:**
 an `implements`, `verifies` or `excuses` relation is recorded as proposed, since a
 citation, a tag or a matching rule is a claim, not a judgement (§18). A `verifies`
 relation whose test has already failed at its current version is recorded on that

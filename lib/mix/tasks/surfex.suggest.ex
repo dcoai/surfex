@@ -45,6 +45,11 @@ defmodule Mix.Tasks.Surfex.Suggest do
   moves. It never confirms a dangling relation: that stays `mix surfex.confirm`, one named
   id at a time.
 
+  An undeclared `verifies` resting on evidence, a review, a judgement or a baseline isn't
+  retired, since a tag can go by mistake and a retired relation doesn't come back on its own:
+  it is listed, and the status fails until the tag is restored. `--accept --retire-undeclared`
+  retires those too, for tags removed on purpose.
+
   Adopting the relation log is `mix surfex.log --init`, then this with `--accept`.
   """
 
@@ -60,12 +65,16 @@ defmodule Mix.Tasks.Surfex.Suggest do
       OptionParser.parse!(args,
         strict: [
           accept: :boolean,
+          retire_undeclared: :boolean,
           note: :string,
           config: :string,
           merge: :keep,
           format: :string
         ]
       )
+
+    if opts[:retire_undeclared] && !opts[:accept],
+      do: Mix.raise("--retire-undeclared goes with --accept: read the list first")
 
     format = opts[:format] || "text"
 
@@ -115,8 +124,16 @@ defmodule Mix.Tasks.Surfex.Suggest do
             "refresh     #{f.type} #{f.from.id} → #{f.to.id} (the source still states it)"
           )
 
-    for u <- suggestions.undeclared,
-        do: Mix.shell().info("retire      verifies #{u.test} → #{u.spec} (no longer declared)")
+    for u <- suggestions.undeclared do
+      if u.validated do
+        Mix.shell().info(
+          "undeclared  verifies #{u.test} → #{u.spec} (validated, so not retired: restore the " <>
+            "tag, or --accept --retire-undeclared)"
+        )
+      else
+        Mix.shell().info("retire      verifies #{u.test} → #{u.spec} (no longer declared)")
+      end
+    end
 
     for m <- suggestions.moved,
         do: Mix.shell().info("retire      refines #{m.from} → #{m.to} (now in #{m.now})")
@@ -210,7 +227,8 @@ defmodule Mix.Tasks.Surfex.Suggest do
 
       opts[:accept] ->
         {^root, scans, entries, meta} = R.context(Keyword.take(opts, [:note, :config]))
-        R.record(root, Suggest.accept_all(suggestions, scans, entries, meta, evidence: evidence))
+        options = [evidence: evidence, retire_undeclared: opts[:retire_undeclared] == true]
+        R.record(root, Suggest.accept_all(suggestions, scans, entries, meta, options))
 
       true ->
         Mix.shell().info("#{count} suggested; `mix surfex.suggest --accept` records them")
