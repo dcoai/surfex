@@ -55,7 +55,8 @@ defmodule Surfex.Status.Config.Keys do
     triangle: Surfex.Status.Triangle.form(),
     require_red: "true or false",
     router: "a module, a non-empty list of modules, or false",
-    dispatch: "a list of {Module, :fun, arity}",
+    dispatch:
+      "a list of {Module, :fun, arity}, or that with registry: {Module, :fun, arity} or module_arg: n (from 1 to arity), and optionally callback: :name",
     spec_classes:
       "a list of {name, reason} or {name, reason, files: [glob], headings: regex, marker: regex}",
     issues:
@@ -242,8 +243,14 @@ defmodule Surfex.Status.Config.Keys do
     valid? =
       is_list(value) and
         Enum.all?(value, fn
-          {m, f, a} -> module?(m) and is_atom(f) and is_integer(a) and a >= 0
-          _ -> false
+          {m, f, a} ->
+            module?(m) and is_atom(f) and is_integer(a) and a >= 0
+
+          {m, f, a, opts} ->
+            module?(m) and is_atom(f) and is_integer(a) and dispatch_form?(a, opts)
+
+          _ ->
+            false
         end)
 
     if valid?, do: [], else: whole(:dispatch, value)
@@ -609,5 +616,16 @@ defmodule Surfex.Status.Config.Keys do
     else
       [{"each check must be a keyword list", check}]
     end
+  end
+
+  defp dispatch_form?(arity, opts) do
+    Keyword.keyword?(opts) and
+      opts -- Keyword.take(opts, [:registry, :module_arg, :callback]) == [] and
+      is_atom(Keyword.get(opts, :callback)) and
+      case {Keyword.fetch(opts, :registry), Keyword.fetch(opts, :module_arg)} do
+        {{:ok, {m, f, a}}, :error} -> module?(m) and is_atom(f) and is_integer(a) and a >= 0
+        {:error, {:ok, n}} -> is_integer(n) and n >= 1 and n <= arity
+        _ -> false
+      end
   end
 end

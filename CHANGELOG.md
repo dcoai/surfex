@@ -11,6 +11,11 @@ release it merely follows.
 
 ### Added
 
+- **`dispatch:` declares a registry and a module passed as a value** (#290, #377).
+  `{Billing, :run, 1, registry: {Billing, :reports, 0}}` reaches the callbacks of each module the
+  catalogue's literal list holds, and `{Http, :read, 2, module_arg: 2}` those of the module a call
+  passes there by its literal alias. `callback: :name` narrows either. Read from source, never traced.
+  `Surfex.Status.Config.dispatch!/1` returns a map for these forms.
 - **A `@tag verifies:` a later `@tag` on the same test replaces is reported as inert** (#369,
   #371). ExUnit keeps the last, so the first verified nothing, silently. It is information and
   fails nothing. An override of a `@describetag` or `@moduletag`, and a list in one tag, aren't

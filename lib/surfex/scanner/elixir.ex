@@ -84,7 +84,7 @@ defmodule Surfex.Scanner.Elixir do
     parsed = root |> files(Keyword.get(opts, :paths, ["lib/**/*.ex"])) |> parse(root)
 
     readings = SourceScan.Dispatch.read(parsed, Keyword.get(opts, :dispatch, []))
-    dispatch = Map.new(readings, fn {id, r} -> {id, r.targets} end)
+    dispatch = Map.new(readings, fn {id, r} -> {id, SourceScan.Dispatch.callee(r)} end)
 
     for {id, %{module: module}} <- readings,
         %{name: ^module, node: node} <- parsed,

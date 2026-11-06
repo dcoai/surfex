@@ -1184,7 +1184,13 @@ defmodule Surfex.Status do
   # Each declared dispatch function with its reading, from its module's record (§11.10).
   defp dispatch(scans) do
     for %Scan{kind: :code, dispatch: dispatch} <- scans,
-        {id, %{targets: targets, unscanned: unscanned}} <- dispatch do
+        {id, %{targets: listed, unscanned: unscanned} = reading} <- dispatch do
+      # A module passed as a value reaches what the call passes: these are what it could be.
+      targets =
+        (listed ++ (reading |> Map.get(:by_module, %{}) |> Map.values() |> List.flatten()))
+        |> Enum.uniq()
+        |> Enum.sort()
+
       %{
         dispatcher: id,
         targets: targets,

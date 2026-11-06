@@ -29,7 +29,23 @@ defmodule Surfex.SourceScan.Dispatch do
   ids), the literal entries naming no function the scanned source defines (`unscanned`,
   `Module.fun` or `Module.fun/arity`), and the module the dispatcher is in.
   """
-  @type reading :: %{module: String.t(), targets: [String.t()], unscanned: [String.t()]}
+  @type reading :: %{
+          required(:module) => String.t(),
+          required(:targets) => [String.t()],
+          required(:unscanned) => [String.t()],
+          optional(:module_arg) => pos_integer,
+          optional(:by_module) => %{String.t() => [String.t()]}
+        }
+
+  @typedoc "A dispatcher as declared: its id alone for a table, or with its form (§11.10)."
+  @type declared ::
+          String.t()
+          | %{
+              required(:id) => String.t(),
+              optional(:registry) => String.t(),
+              optional(:module_arg) => pos_integer,
+              optional(:callback) => atom
+            }
 
   @doc """
   The reading of each dispatcher (`Module.fun/arity`) among `modules`, each
@@ -37,7 +53,7 @@ defmodule Surfex.SourceScan.Dispatch do
   every arity of the function its module defines with `def` or `defdelegate`; one with an
   arity names that arity, if defined. A dispatcher the modules don't define raises.
   """
-  @spec read([%{name: String.t(), node: Macro.t()}], [String.t()]) :: %{
+  @spec read([%{name: String.t(), node: Macro.t()}], [declared]) :: %{
           String.t() => reading
         }
   def read(_modules, []), do: %{}
@@ -46,33 +62,163 @@ defmodule Surfex.SourceScan.Dispatch do
     by_name = Map.new(modules, &{&1.name, &1.node})
     defined = Map.new(by_name, fn {name, node} -> {name, defined(node)} end)
 
-    Map.new(dispatchers, fn id ->
+    Map.new(dispatchers, fn declared ->
+      id = id(declared)
       module = Calls.module_of(id)
-      [_, fun, arity] = Regex.run(~r/\.([^.\/]+)\/(\d+)$/, id)
-      key = {String.to_atom(fun), String.to_integer(arity)}
+      defined!(id, defined)
 
-      unless key in Map.get(defined, module, []),
-        do:
-          raise(
-            ArgumentError,
-            "dispatch: #{id} isn't a function the scanned source defines with def"
-          )
-
-      {found, missing} =
-        by_name[module]
-        |> entries(module)
-        |> Enum.map(&resolve(&1, defined))
-        |> Enum.split_with(&match?({:ok, _}, &1))
-
-      targets = for {:ok, ids} <- found, id <- ids, do: id
-
-      {id,
-       %{
-         module: module,
-         targets: targets |> Enum.uniq() |> Enum.sort(),
-         unscanned: missing |> Enum.map(&elem(&1, 1)) |> Enum.uniq() |> Enum.sort()
-       }}
+      case declared do
+        %{registry: _} -> {id, registry(declared, module, by_name, defined)}
+        %{module_arg: _} -> {id, module_arg(declared, module, by_name, defined)}
+        _ -> {id, table(module, by_name, defined)}
+      end
     end)
+  end
+
+  @doc "What a call to the dispatcher reaches, as `Surfex.SourceScan.Calls.of/5` takes it."
+  @spec callee(map) :: [String.t()] | %{module_arg: pos_integer, by_module: map}
+  def callee(%{module_arg: n, by_module: by_module}), do: %{module_arg: n, by_module: by_module}
+  def callee(%{targets: targets}), do: targets
+
+  defp id(%{id: id}), do: id
+  defp id(id), do: id
+
+  defp key(id) do
+    [_, fun, arity] = Regex.run(~r/\.([^.\/]+)\/(\d+)$/, id)
+    {String.to_atom(fun), String.to_integer(arity)}
+  end
+
+  defp defined!(id, defined) do
+    unless key(id) in Map.get(defined, Calls.module_of(id), []),
+      do:
+        raise(
+          ArgumentError,
+          "dispatch: #{id} isn't a function the scanned source defines with def"
+        )
+  end
+
+  # A registry (§11.10): each module the catalogue's literal list holds, by its callbacks.
+  defp registry(declared, module, by_name, defined) do
+    defined!(declared.registry, defined)
+    listed = catalogue(declared.registry, by_name)
+
+    found =
+      for name <- listed || [], do: {name, implementing(name, declared, by_name, defined)}
+
+    %{
+      module: module,
+      targets: found |> Enum.flat_map(&elem(&1, 1)) |> Enum.uniq() |> Enum.sort(),
+      unscanned: for({name, []} <- found, uniq: true, do: name) |> Enum.sort()
+    }
+  end
+
+  # A module passed as a value (§11.10): what each scanned module would answer, kept for the
+  # call sites to read by the alias each one passes.
+  defp module_arg(declared, module, by_name, defined) do
+    by_module =
+      for name <- Map.keys(by_name),
+          ids = implementing(name, declared, by_name, defined),
+          ids != [],
+          into: %{},
+          do: {name, ids}
+
+    %{
+      module: module,
+      targets: [],
+      unscanned: [],
+      module_arg: declared.module_arg,
+      by_module: by_module
+    }
+  end
+
+  # The functions of `name` that implement a callback of a behaviour it declares with
+  # `@behaviour`, or are named `callback:`, whatever the behaviour.
+  defp implementing(name, declared, by_name, defined) do
+    own = Map.get(defined, name, [])
+
+    wanted =
+      case declared do
+        %{callback: callback} when callback != nil ->
+          for {^callback, arity} <- own, do: {callback, arity}
+
+        _ ->
+          for behaviour <- behaviours(by_name[name], name),
+              node = by_name[behaviour],
+              node != nil,
+              c <- Surfex.SourceScan.callbacks(node),
+              {c.name, c.arity} in own,
+              do: {c.name, c.arity}
+      end
+
+    wanted
+    |> Enum.uniq()
+    |> Enum.map(fn {fun, arity} -> Calls.call(name, fun, arity) end)
+    |> Enum.sort()
+  end
+
+  defp behaviours(nil, _name), do: []
+
+  defp behaviours({:defmodule, _, [_aliases, [do: body]]}, name) do
+    aliases = Map.put(Calls.aliases(exprs(body)), :__MODULE__, name)
+
+    for {:@, _, [{:behaviour, _, [value]}]} <- exprs(body),
+        found = module(value, aliases),
+        do: found
+  end
+
+  # The modules a catalogue function returns, when its body, or a module attribute it
+  # returns, is a literal list of aliases; nil otherwise.
+  defp catalogue(id, by_name) do
+    module = Calls.module_of(id)
+    {:defmodule, _, [_aliases, [do: body]]} = by_name[module]
+    aliases = Map.put(Calls.aliases(exprs(body)), :__MODULE__, module)
+
+    exprs(body)
+    |> Enum.find_value(fn
+      {:def, _, [head, [do: value]]} ->
+        {name, arity, _} = signature(head)
+        if {name, arity} == key(id), do: {:found, value}
+
+      _ ->
+        nil
+    end)
+    |> case do
+      {:found, value} -> literal_modules(resolve_attribute(value, body), aliases)
+      nil -> nil
+    end
+  end
+
+  defp resolve_attribute({:@, _, [{attribute, _, ctx}]}, body) when is_atom(ctx) do
+    Enum.find_value(exprs(body), fn
+      {:@, _, [{^attribute, _, [value]}]} -> value
+      _ -> nil
+    end)
+  end
+
+  defp resolve_attribute(value, _body), do: value
+
+  defp literal_modules(list, aliases) when is_list(list) do
+    names = Enum.map(list, &module(&1, aliases))
+    if list != [] and Enum.all?(names, &is_binary/1), do: names
+  end
+
+  defp literal_modules(_other, _aliases), do: nil
+
+  # A table (§11.10): the literal entries its module writes.
+  defp table(module, by_name, defined) do
+    {found, missing} =
+      by_name[module]
+      |> entries(module)
+      |> Enum.map(&resolve(&1, defined))
+      |> Enum.split_with(&match?({:ok, _}, &1))
+
+    targets = for {:ok, ids} <- found, id <- ids, do: id
+
+    %{
+      module: module,
+      targets: targets |> Enum.uniq() |> Enum.sort(),
+      unscanned: missing |> Enum.map(&elem(&1, 1)) |> Enum.uniq() |> Enum.sort()
+    }
   end
 
   # The functions a module can be applied to: its `def`s and `defdelegate`s, at each arity

@@ -438,9 +438,9 @@ defmodule Surfex.Scan.ExUnit do
       dispatch:
         for(
           %Scan{kind: :code, dispatch: dispatch} <- code,
-          {id, %{targets: targets}} <- dispatch,
+          {id, reading} <- dispatch,
           into: %{},
-          do: {id, targets}
+          do: {id, SourceScan.Dispatch.callee(reading)}
         ),
       modules:
         MapSet.new(
