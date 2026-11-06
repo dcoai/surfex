@@ -118,6 +118,10 @@ its callback item (`mix surfex.suggest` proposes it) and retire the module relat
 
 ### Fixed
 
+- **`mix surfex.migrate --code --to` retires only what it names** (#289, #373). It retired every
+  settled pair in the section under its one `--note`, and a retired relation can't be annotated,
+  so the wrong note stayed for good. `--accept` and `mix surfex.suggest --accept` now retire with
+  surfex's own note and leave out `--note`.
 - **`mix surfex.migrate` reads a claim as the verdicts do** (#289, #372). It only knew blocks, hints,
   rows, rules and contracts, so a project whose claims are id'd subsections got `none` for everything,
   was told its sections were prose, and had `--code --to` refused. A claim is now one thing
