@@ -31,7 +31,7 @@ refused with it (spec §13.16).
 | Broken / broken citation | fix the tag, or the name the spec cites |
 | Failed | its test failed in the run, whatever validated the relation: fix the code or the test |
 | Unproven | run the tests; a confirmation the evidence doesn't bear out |
-| Undeclared | the test dropped its tag: restore it, or retire the relation |
+| Undeclared | the test dropped its tag: restore it, or retire the relation (`mix surfex.suggest --accept` retires only a proposed one; `--retire-undeclared` retires validated ones too) |
 | Unrecorded | a tag with no `verifies` relation: record it (`suggest`, then validate), or remove the tag; one whose relation was retired: remove the tag, or reinstate the relation |
 | Moved | a block or hint now sits in another unit: `mix surfex.suggest --accept` relates the new one and retires the old |
 | Stale deviations | a test tagged `deviation:` passed: the code meets the unit now, so drop the tag and validate |

@@ -183,7 +183,7 @@ defmodule Surfex.Suggest do
           reached: [%{spec: String.t(), through: String.t(), count: pos_integer}],
           also_called: [%{spec: String.t(), count: pos_integer}],
           withheld: [%{spec: String.t(), span: String.t(), cited_at: {String.t(), pos_integer}}],
-          undeclared: [%{test: String.t(), spec: String.t()}],
+          undeclared: [%{test: String.t(), spec: String.t(), validated: boolean}],
           moved: [%{from: String.t(), to: String.t(), now: String.t()}],
           migrated: [%{code: String.t(), section: String.t(), claims: [String.t()]}],
           refresh: [%{type: atom, from: Scan.t(), to: Scan.t()}]
@@ -210,7 +210,8 @@ defmodule Surfex.Suggest do
       the block or hint. Judgement relations (`implements`, `verifies`, `excuses`) are never
       refreshed.
     * **undeclared** — each `verifies` relation whose test no longer declares it
-      (`Surfex.Status`), to retire: the test's source no longer makes the claim.
+      (`Surfex.Status`), to retire: the test's source no longer makes the claim. One resting
+      on a judgement is marked `validated`, and retired only when asked (`accept_all/5`).
     * **moved** — each `refines` relation whose unit no longer sits in what it refines
       (`Surfex.Status`), to retire: the source no longer states it. The unit's new place
       is suggested under refines, so accepting settles both.
@@ -286,7 +287,7 @@ defmodule Surfex.Suggest do
       also_called: ordered(also_called),
       withheld: withheld(held, implements),
       verifies: ordered(Enum.reject(verifications(scans, moved), &(&1.to.class != nil))),
-      undeclared: ordered(status.undeclared),
+      undeclared: ordered(undeclared(status)),
       moved: ordered(status.moved),
       migrated:
         ordered(
@@ -336,6 +337,26 @@ defmodule Surfex.Suggest do
   end
 
   # A verifier as status lists it (`check ID` for a check, §11.4), as an id to record by.
+  defp retiring(undeclared, opts) do
+    if opts[:retire_undeclared], do: undeclared, else: Enum.reject(undeclared, & &1.validated)
+  end
+
+  # Each undeclared relation, and whether its tip rests on a judgement a retire would lose.
+  defp undeclared(status) do
+    validated =
+      for %{type: :verifies, tip: %{basis: basis}, relation: {_, from, {:spec, unit}}} <-
+            status.relations,
+          basis in @validating,
+          into: MapSet.new(),
+          do: {verifier_label(from), unit}
+
+    for u <- status.undeclared,
+        do: Map.put(u, :validated, MapSet.member?(validated, {u.test, u.spec}))
+  end
+
+  defp verifier_label({:check, check}), do: "check " <> check
+  defp verifier_label({:test, test}), do: test
+
   defp verifier_ref("check " <> check), do: "check:" <> check
   defp verifier_ref(test), do: "test:" <> test
 
@@ -356,8 +377,9 @@ defmodule Surfex.Suggest do
 
   @doc """
   Records suggestions: each move (`Surfex.Record.move/5`), then each other suggestion as
-  a `relate` at the current hashes, and each undeclared `verifies` relation and each
-  moved `refines` relation as a `retire`. `implements`, `verifies` and `excuses` relations are recorded as proposed,
+  a `relate` at the current hashes, and each proposed undeclared `verifies` relation and
+  each moved `refines` relation as a `retire`. An undeclared relation resting on a
+  judgement is retired only with `retire_undeclared: true`: a tag can go by mistake (§15). `implements`, `verifies` and `excuses` relations are recorded as proposed,
   a `verifies` relation on its failing run when `opts[:evidence]` shows one (§18).
   Moves carry each relation's basis across. It re-records a dangling relation only
   when it is structural and the source still states it (refresh); it never confirms a
@@ -397,7 +419,7 @@ defmodule Surfex.Suggest do
             Keyword.put_new(meta, :note, "the source still states it")
           )
         end) ++
-        Enum.map(suggestions.undeclared, fn u ->
+        Enum.map(retiring(suggestions.undeclared, opts), fn u ->
           &Record.retire(
             scans,
             &1,

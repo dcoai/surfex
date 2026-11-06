@@ -56,6 +56,14 @@ release it merely follows.
 
 ### Changed
 
+- **`mix surfex.suggest --accept` no longer retires a validated relation when a test stops
+  declaring it** (#369, #370). A misplaced tag could quietly discard a reviewed judgement, and a
+  retired relation doesn't come back on its own. Such a relation is now listed and left in place,
+  and the status keeps failing until the tag is restored or the relation retired. A proposed one
+  still retires. A retired relation a test still declares names the command that revives it.
+  **Upgrade step:** if you remove tags on purpose, run `mix surfex.suggest --accept
+  --retire-undeclared` after reading the list. `Surfex.Suggest`'s `undeclared` entries gain
+  `validated`.
 - **The gate lists a row that only re-rendered as re-rendered** (#291, #361). A release that
   changes how a cell renders used to show the row under both Gone and Added, which read as a
   loss. `mix surfex.goldens` now lists it once, under `Re-rendered (same row, new rendering)`,

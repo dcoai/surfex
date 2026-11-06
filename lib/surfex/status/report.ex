@@ -895,9 +895,13 @@ defmodule Surfex.Status.Report do
   defp unrecorded_text(%{retired: nil}),
     do: "no verifies relation is recorded: record it (mix surfex.suggest), or remove the tag"
 
-  defp unrecorded_text(%{retired: %{note: note}}),
+  defp unrecorded_text(%{retired: %{note: note}, test: test, spec: spec}),
     do:
-      "declared, but the relation was retired (#{note || "no note"}): remove the tag, or reinstate it"
+      "declared, but the relation was retired (#{note || "no note"}): remove the tag, or " <>
+        "reinstate it (mix surfex.relate #{reinstating(test)} #{spec} --type verifies)"
+
+  defp reinstating("check " <> check), do: inspect("check:" <> check)
+  defp reinstating(test), do: inspect(test)
 
   # A test whose red→green can't be credited, and the code it reached in both runs (§17).
   defp uncredited_line(%{test: test, code: code}, status) do
