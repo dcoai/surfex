@@ -88,6 +88,48 @@ defmodule Surfex.InertTagsTest do
       refute Enum.any?(inert, &Enum.any?(&1.ids, fn id -> id in taken end))
     end
 
+    # #369, #371: tests inserted above an existing test's tag took its declaration in #368.
+    @tag verifies: "inert-replaced"
+    test "a tag a later tag on the same test replaces is inert; an override or a list isn't",
+         %{tmp_dir: root} do
+      File.mkdir_p!(Path.join(root, "test"))
+
+      File.write!(Path.join(root, "test/t_test.exs"), ~S'''
+      defmodule TTest do
+        use ExUnit.Case
+        @moduletag verifies: "from-module"
+
+        @tag verifies: "lost"
+        @tag verifies: "kept"
+        test "stacked", do: assert(true)
+
+        @tag verifies: ["one", "two"]
+        test "a list", do: assert(true)
+
+        @tag verifies: "overrides-module"
+        @tag :slow
+        test "another key doesn't replace it", do: assert(true)
+
+        describe "d" do
+          @describetag verifies: "from-describe"
+
+          @tag verifies: "overrides-describe"
+          test "over a describetag", do: assert(true)
+        end
+      end
+      ''')
+
+      assert [%{file: "test/t_test.exs", line: 5, ids: ["lost"], reason: :replaced}] =
+               Scan.ExUnit.inert(root, ["test/*_test.exs"])
+
+      status = Status.derive([], [], [], inert: Scan.ExUnit.inert(root, ["test/*_test.exs"]))
+
+      assert Report.text(status) =~
+               "test/t_test.exs:5 verifies lost: a later @tag on the same test replaces it"
+
+      refute Status.failing?(status)
+    end
+
     test "support code scanned as tests is judged as tests", %{tmp_dir: root} do
       inert = root |> project() |> Scan.ExUnit.inert(["test/*_test.exs", "test/support/*.ex"])
 
