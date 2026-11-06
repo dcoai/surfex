@@ -354,7 +354,7 @@ defmodule Surfex.MigrateTest do
       {:ok, both} = Migrate.choose(scans(), entries(), @s, "M.put/4", [@row], @meta)
       assert Enum.map(both, &code_of/1) == ["M.put/3", "M.put/4"]
 
-      assert {:error, "spec.md#p: not a claim inside spec.md#s"} =
+      assert {:error, "spec.md#p: not inside spec.md#s" <> _} =
                Migrate.choose(scans(), entries(), @s, "M.get/1", [@p], @meta)
 
       assert {:error, "M.other/1 has no live implements to spec.md#s" <> _} =

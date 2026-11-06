@@ -37,9 +37,6 @@ defmodule Surfex.Suggest do
           optional(:shared) => non_neg_integer
         }
 
-  # The spec units that are claims (§11.1, §15.1): what a claim's tests call relates to it.
-  @claim_roles [:block, :test_hint, :row, :rule, :contract]
-
   # The bases that record a validation (§18): a proposal records none.
   @validating [:evidence, :review, :judgement, :baseline]
 
@@ -607,6 +604,24 @@ defmodule Surfex.Suggest do
   # code: the module is the item. A module named by itself is not proposed: a test names
   # every module it calls into.
   #
+  # The claims code can be proposed to (§14.1, §15.1): a section holding claims is what a
+  # migration moves code off, so it is a claim for the verdicts and no target here.
+  defp proposable_claims(scans) do
+    claims = for %Scan{kind: :spec} = s <- scans, Surfex.Status.Verdict.claim?(s), do: s
+    up = for %Scan{kind: :spec} = s <- scans, into: %{}, do: {s.id, s.within || s.under}
+
+    holding =
+      for %Scan{id: id} <- claims,
+          outer <- tl(enclosing(id, up)),
+          into: MapSet.new(),
+          do: outer
+
+    for %Scan{} = s <- claims,
+        s.role != :section or not MapSet.member?(holding, s.id),
+        into: %{},
+        do: {s.id, s}
+  end
+
   # Only a claim nothing implements is proposed for (#329): neither it nor a unit it sits
   # in (`within`, else `under`) has a live `implements` or one proposed in this run by a
   # citation or a contract's key. Of its candidates, only those other claims' tests call
@@ -622,8 +637,7 @@ defmodule Surfex.Suggest do
 
     tests = for %Scan{kind: :test} = t <- scans, into: %{}, do: {t.id, t}
 
-    claims =
-      for %Scan{kind: :spec, role: r} = s <- scans, r in @claim_roles, into: %{}, do: {s.id, s}
+    claims = proposable_claims(scans)
 
     within = for %Scan{kind: :spec, within: w} = s <- scans, w != nil, into: %{}, do: {s.id, w}
     related = MapSet.new(entries, &Entry.relation/1)

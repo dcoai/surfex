@@ -53,6 +53,15 @@ defmodule Surfex.Status.Verdict do
 
   def container?(%Scan{kind: :spec}), do: false
 
+  @doc """
+  Whether a spec unit is a claim (§13.4, §14.1): it has text of its own, and that text is
+  neither classed nor deferred. The one notion of a claim: the verdicts, `Surfex.Migrate` and
+  `Surfex.Suggest` all read it from here.
+  """
+  @spec claim?(Scan.t()) :: boolean
+  def claim?(%Scan{kind: :spec, class: nil, deferred: nil} = scan), do: not container?(scan)
+  def claim?(%Scan{kind: :spec}), do: false
+
   # The verdicts of every spec unit in `scans`, from `relations` (relation statuses), and
   # what reads them: the contained claims, the `verifies` aimed at a container, each
   # container's claims verified out of all, the claims inside each unit and each claim's
@@ -74,7 +83,7 @@ defmodule Surfex.Status.Verdict do
           into: %{},
           do: {s.id, outer}
 
-    claim? = Map.new(spec, &{&1.id, not container?(&1) and not Map.has_key?(classed, &1.id)})
+    claim? = Map.new(spec, &{&1.id, claim?(&1)})
 
     # Each unit => the claims inside it, at any depth, sorted: no output depends on the
     # order of the scans.

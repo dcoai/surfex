@@ -21,10 +21,8 @@ defmodule Surfex.Migrate do
 
   alias Surfex.Log.Entry
   alias Surfex.{Record, Scan, Status}
+  alias Surfex.Status.Verdict
 
-  # The spec units that are claims (§11.1, §15.1). A section and a table are not: a
-  # relation to one is section grain.
-  @claim_roles [:block, :test_hint, :row, :rule, :contract]
   @live [:current, :dangling, :proposed]
 
   @typedoc "Why a claim could own a code item: a verifying test's call, a reach, or its key."
@@ -222,10 +220,33 @@ defmodule Surfex.Migrate do
                  do: {:ok, recorded ++ settled}
 
           outside ->
-            {:error, "#{Enum.join(outside, ", ")}: not a claim inside #{unit}"}
+            {:error, Enum.map_join(outside, "; ", &refusal(ix, &1, unit)) <> hand_route()}
         end
     end
   end
+
+  # Why a target isn't a claim inside `unit` (§14.1).
+  defp refusal(ix, id, unit) do
+    case ix.spec[id] do
+      nil ->
+        "#{id}: no spec unit has that id"
+
+      %Scan{class: %{name: name}} ->
+        "#{id}: classed #{name}, so no claim inside #{unit}"
+
+      %Scan{deferred: %{}} ->
+        "#{id}: deferred, so no claim inside #{unit}"
+
+      %Scan{} = s ->
+        if(Verdict.claim?(s),
+          do: "#{id}: not inside #{unit}",
+          else: "#{id}: a container, so no claim inside #{unit}"
+        )
+    end
+  end
+
+  defp hand_route,
+    do: " (to move it anyway: mix surfex.relate the claim, then mix surfex.retire the section's)"
 
   @doc """
   The retirement of each settled pair in `sections` (§14.1): a code item every claim
@@ -572,14 +593,22 @@ defmodule Surfex.Migrate do
         acc -> Map.update(acc, u, [c], &[c | &1])
       end
 
+    # What a unit sits in: a section sits under its parent, as the verdicts read it (§13.4).
+    up =
+      for {id, %Scan{within: w, under: u}} <- spec,
+          parent = w || u,
+          parent != nil,
+          into: %{},
+          do: {id, parent}
+
     # The claims inside each unit, and the tables of each section.
     {claims_in, tables} =
       Enum.reduce(spec, {%{}, %{}}, fn {id, s}, {claims_in, tables} ->
         claims_in =
-          if s.role in @claim_roles,
+          if Verdict.claim?(s),
             do:
               id
-              |> enclosing(within)
+              |> enclosing(up)
               |> tl()
               |> Enum.reduce(claims_in, &Map.update(&2, &1, [id], fn l -> [id | l] end)),
             else: claims_in
@@ -607,8 +636,8 @@ defmodule Surfex.Migrate do
     # Each claim's verifying tests: those verifying it or a unit inside it.
     verifying =
       for {t, u} <- Enum.uniq(verifies),
-          claim <- enclosing(u, within),
-          spec[claim] != nil and spec[claim].role in @claim_roles,
+          claim <- enclosing(u, up),
+          spec[claim] != nil and Verdict.claim?(spec[claim]),
           reduce: %{} do
         acc -> Map.update(acc, claim, MapSet.new([t]), &MapSet.put(&1, t))
       end
