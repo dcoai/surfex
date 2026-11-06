@@ -3946,6 +3946,10 @@ own text has no evidence while a claim inside them is verified, the `:contained`
 of §13.4, read as the status reads them (the project's classes, §13.6, decide what is
 contained). `Surfex.Migrate.report/4` takes `Surfex.Status.derive/4`'s
 options, and the task passes the project's.
+- <!-- surfex: migrate-none-callers --> A **none** says what to do about it. The listing and the report name the tests that call
+  the code, or reach it, and whether each verifies a claim in the section: `called by 3
+  tests (A, B and 1 more), none verifying a claim here: name the claim they check`, or `no
+  test calls it`. The JSON gives `callers`, each with `test`, `how` and `verifies_here`.
 - Each contained section's report names the **verified claims inside it**, from the
   status' `contained` list, sorted: a `contained:` line in the text, `contained` in each
   section of the JSON. A section that isn't contained names none.

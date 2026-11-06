@@ -82,7 +82,7 @@ defmodule Surfex.MigrateTaskTest do
                "spec.md#carts (claims are units): 3 relations now → 1 after; implements 3: " <>
                  "2 single · 0 several · 1 none",
                "  MyApp.Cart.add/2, MyApp.Cart.add/3: 3 now → 2 after (single)",
-               "  MyApp.Cart.total/0: 3 now → 1 after (none)"
+               "  MyApp.Cart.total/0: 3 now → 1 after (none: no test calls it)"
              ] = run(root, ["--report"])
     end
 
