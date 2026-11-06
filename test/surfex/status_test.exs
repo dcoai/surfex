@@ -556,6 +556,40 @@ defmodule Surfex.StatusTest do
                gaps([rel(:implements, @s, @c), rel(:verifies, @t, @s), rel(:tests, @t, @other)])
     end
 
+    # #365, #367: a section migrates across commits with the check green (§14.1). A test of
+    # a claim inside it counts as the section's, and its code has moved to that claim.
+    @tag verifies: "triangle-inside"
+    test "a test reaching code of a claim inside a unit meets that unit" do
+      inner = {:spec, "spec.md#h", "h1"}
+      hint = %{scan(:spec, "spec.md#h", "h1") | role: :test_hint, within: @spec_id}
+      other_test = scan(:test, "T: b", "t2")
+      scans = [hint, other_test | tri_scans()]
+      t2 = {:test, "T: b", "t2"}
+
+      moved = [
+        rel(:implements, @s, @c),
+        rel(:implements, inner, @other),
+        rel(:verifies, @t, inner),
+        rel(:tests, @t, @other),
+        rel(:verifies, t2, @s),
+        rel(:tests, t2, @c)
+      ]
+
+      assert Status.derive(scans, moved, [], []).triangle == []
+
+      # Code left on the section that nothing reaches is still open.
+      untested = moved -- [rel(:verifies, t2, @s), rel(:tests, t2, @c)]
+
+      assert [%{gap: :code_untested, spec: @spec_id, code: @code_id}] =
+               Status.derive(scans, untested, [], []).triangle
+
+      # A test reaching neither the section's code nor a claim's still misses it.
+      elsewhere = moved -- [rel(:tests, t2, @c)]
+
+      assert [%{gap: :test_misses_code, spec: @spec_id, test: "T: b"}, %{gap: :code_untested}] =
+               Status.derive(scans, elsewhere, [], []).triangle
+    end
+
     # #62: a function with a default argument is one code, whatever arity a test calls.
     test "a test calling one arity of a function exercises the arity a section names" do
       two = %{scan(:code, "M.add/2", "c1") | location: %{file: "lib/m.ex", lines: {3, 5}}}

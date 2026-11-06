@@ -1076,6 +1076,27 @@ defmodule Surfex.Status do
 
       verifying = verifying(verifies, within)
 
+      # A shape has no behaviour for a run to exercise (§4): it is not on the code side
+      # (§13.20).
+      shapes = for %Scan{kind: :code, shape: true, id: id} <- scans, into: MapSet.new(), do: id
+
+      # What a unit's verifying test may reach to meet it: the code of the unit and of each
+      # claim inside it, so a section's tests still meet it as its code moves to them.
+      meeting =
+        for {unit, codes} <- implements,
+            code <- codes,
+            not MapSet.member?(shapes, code),
+            outer <- enclosing(unit, within),
+            reduce: %{} do
+          acc ->
+            Map.update(
+              acc,
+              outer,
+              MapSet.new([definition.(code)]),
+              &MapSet.put(&1, definition.(code))
+            )
+        end
+
       # A review that named how its test exercises code no call reaches (`--through`, §18)
       # stands for the path the source doesn't show: that code counts as exercised by the
       # unit's verifying tests while the review is current.
@@ -1096,10 +1117,6 @@ defmodule Surfex.Status do
       # scanned has no file and takes the default.
       files = for %Scan{kind: :spec, location: %{file: f}} = s <- scans, into: %{}, do: {s.id, f}
 
-      # A shape has no behaviour for a run to exercise (§4): it is not on the code side
-      # (§13.20).
-      shapes = for %Scan{kind: :code, shape: true, id: id} <- scans, into: MapSet.new(), do: id
-
       # An excused or deferred unit isn't judged: a relation to one is contradicted, or
       # waits on its issue (§13.6).
       for {spec, codes} <- Enum.sort(implements),
@@ -1111,7 +1128,7 @@ defmodule Surfex.Status do
           file = Map.get(files, spec),
           mode = Surfex.Status.Triangle.mode(setting, file),
           behaving = Enum.reject(codes, &MapSet.member?(shapes, &1)),
-          gap <- gaps(spec, behaving, tests, exercised, definition),
+          gap <- gaps(spec, behaving, tests, exercised, definition, Map.get(meeting, spec)),
           do: Map.merge(gap, %{file: file, mode: mode})
     else
       []
@@ -1246,22 +1263,21 @@ defmodule Surfex.Status do
     fn id -> Map.get(by_id, id, {:code, id}) end
   end
 
-  defp gaps(spec, codes, tests, exercises, definition) do
+  defp gaps(spec, codes, tests, exercises, definition, meeting) do
     cond do
       MapSet.size(tests) == 0 -> [%{spec: spec, gap: :no_test, test: nil, code: nil}]
       # Implemented by shapes alone: no code for a test to reach or miss.
       codes == [] -> []
-      true -> sides(spec, codes, tests, exercises, definition)
+      true -> sides(spec, codes, tests, exercises, definition, meeting)
     end
   end
 
-  defp sides(spec, codes, tests, exercises, definition) do
+  defp sides(spec, codes, tests, exercises, definition, meeting) do
     reached = fn test -> Map.get(exercises, test, MapSet.new()) end
-    implemented = MapSet.new(codes, definition)
 
     misses =
       for test <- Enum.sort(tests),
-          MapSet.disjoint?(reached.(test), implemented),
+          MapSet.disjoint?(reached.(test), meeting),
           do: %{spec: spec, gap: :test_misses_code, test: test, code: nil}
 
     untested =
