@@ -1243,7 +1243,7 @@ defmodule Surfex.Status.Report do
   defp contained_line(c, status),
     do:
       "spec #{c.unit}#{at(Map.fetch!(status.scans, {:spec, c.unit}))}: verified inside: " <>
-        Enum.join(c.inside, ", ")
+        Surfex.Migrate.contained_text(c.direct, c.deeper)
 
   defp on_container_title(on_container) do
     title = "On a container (a verifies aimed at a unit with no text of its own verifies nothing)"

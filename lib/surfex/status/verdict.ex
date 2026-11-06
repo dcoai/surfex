@@ -28,7 +28,15 @@ defmodule Surfex.Status.Verdict do
 
   @type t :: %{
           verdicts: %{String.t() => verdict},
-          contained: [%{unit: String.t(), inside: [String.t()], location: map}],
+          contained: [
+            %{
+              unit: String.t(),
+              inside: [String.t()],
+              direct: [String.t()],
+              deeper: non_neg_integer,
+              location: map
+            }
+          ],
           on_container: [
             %{
               test: String.t(),
@@ -127,7 +135,16 @@ defmodule Surfex.Status.Verdict do
     contained =
       for %Scan{id: id, location: location} <- spec,
           verdicts[id] == :contained,
-          do: %{unit: id, inside: Enum.filter(inside[id], verified?), location: location}
+          verified = Enum.filter(inside[id], verified?),
+          direct = Enum.filter(verified, &(nearest(&1, id, within, by_id) == id)) do
+        %{
+          unit: id,
+          inside: verified,
+          direct: direct,
+          deeper: length(verified) - length(direct),
+          location: location
+        }
+      end
 
     declared =
       for %{type: :verifies, state: state, relation: {_, from, {:spec, unit}}} <- relations,
@@ -171,6 +188,13 @@ defmodule Surfex.Status.Verdict do
 
   # Every unit `unit` sits inside, innermost first, not `unit` itself. A cycle can't come
   # from a scanner, but must end the walk rather than loop.
+  # What a claim sits directly in, of `unit` and the sections on its way up (§14.2).
+  defp nearest(claim, unit, within, by_id) do
+    claim
+    |> ancestors(within)
+    |> Enum.find(&(&1 == unit or match?(%Scan{role: :section}, by_id[&1])))
+  end
+
   defp ancestors(unit, within), do: ancestors(unit, within, [unit])
 
   defp ancestors(unit, within, seen) do
