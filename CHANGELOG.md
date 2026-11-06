@@ -11,6 +11,10 @@ release it merely follows.
 
 ### Added
 
+- **`mix surfex.migrate --accept --skip ID`** (#365, #368), once per item, records the other
+  single proposals and leaves that one on its section. Without it a wrong single could only be
+  avoided by retiring its relation first. `--code` on a relation already retired now says to
+  record the claim's with `mix surfex.relate`.
 - **A marked table can carry a class** (#291, #362):
   `<!-- surfex: table NAME class: CLASS -->`, CLASS declared in `spec_classes:`. Its rows stay
   citable, deferrable and pinnable, but each is excused rather than a claim, so a table of

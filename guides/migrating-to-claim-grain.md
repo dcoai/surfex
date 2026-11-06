@@ -168,6 +168,11 @@ Each single proposal is recorded as an `implements` to its claim, **proposed**, 
 one that migrates doesn't, while the section still holds its own. So a section can move
 over as many commits as it takes, with the check green throughout.
 
+Read the list first: a single proposal only means one claim's test reaches the code, and that
+can be wrong. `--skip ID`, once per item, records the others and leaves that one on its
+section, which stays green until you decide. A test tagged to the section still meets it
+through code that has moved to a claim inside it (spec §13.1).
+
 For several, or for none once its claim exists, record your choice:
 
 ```sh

@@ -33,6 +33,9 @@ defmodule Mix.Tasks.Surfex.Migrate do
   CLAIM` (`--to` once per claim) records your choice for a proposal with several
   candidates, or one with none once its claim is written (`Surfex.Migrate.choose/7`).
 
+  `--skip ID` (once per item, with `--accept`) leaves a single proposal on its section, for one
+  that's wrong or not decided yet. Read the list before `--accept`.
+
   A section relation resting on the baseline (`adoption: :trust`, `mix surfex.baseline`)
   carries it to the claim when the same baselined test, at the version trusted, verifies
   the claim and exercises the code: the claim relation is recorded with basis `baseline`,
@@ -67,6 +70,7 @@ defmodule Mix.Tasks.Surfex.Migrate do
         accept: :boolean,
         code: :string,
         to: :keep,
+        skip: :keep,
         format: :string
       )
 
@@ -95,6 +99,10 @@ defmodule Mix.Tasks.Surfex.Migrate do
 
     if format == "json" and opts[:report] != true,
       do: Mix.raise("--format json is the report's: add --report")
+
+    skip = Keyword.get_values(opts, :skip)
+
+    if skip != [] and opts[:accept] != true, do: Mix.raise("--skip goes with --accept")
 
     cond do
       opts[:report] ->
@@ -133,7 +141,7 @@ defmodule Mix.Tasks.Surfex.Migrate do
         end
 
       opts[:accept] ->
-        R.record(root, Migrate.accept(scans, entries, sections, meta, derive))
+        R.record(root, Migrate.accept(scans, entries, sections, meta, [skip: skip] ++ derive))
 
       true ->
         list(scans, entries, sections)

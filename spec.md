@@ -3879,6 +3879,12 @@ exercises the code; a changed test version, or another test, makes the claim rel
 proposed
 ```
 
+<!-- surfex: migrate-skip --> A single proposal can be wrong, and which claim code realises is still a judgement.
+`--accept --skip ID`, once per item, records the others and leaves that item's relation on
+its section. An id that isn't a single proposal in the sections named is refused, and so is
+`--skip` without `--accept`. `--code` on code with no live relation to the section, its
+relation already retired, says to record the claim's with `mix surfex.relate`.
+
 ```test:migrate-accept
 --accept records each single proposal proposed with migrates, which doesn't fail while the
 section holds its relation and is listed as migrating in the reports; once the claim's
