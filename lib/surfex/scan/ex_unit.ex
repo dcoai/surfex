@@ -249,14 +249,15 @@ defmodule Surfex.Scan.ExUnit do
           file: String.t(),
           line: non_neg_integer,
           ids: [String.t()],
-          reason: :no_test | :support
+          reason: :no_test | :support | :replaced
         }
 
   @doc """
   The `verifies` tags that verify nothing (§11.5): a declaration counts only from a test or
   property block it applies to. In the files `globs` match under `root`, that is a `@tag`
   no test follows in its block, and a `@describetag` or `@moduletag` over a describe or
-  module with no test (`:no_test`). Every `verifies` tag in a file under `test/support`,
+  module with no test (`:no_test`), and a `@tag` a later `@tag` before the same test sets
+  again (`:replaced`). Every `verifies` tag in a file under `test/support`,
   which is compiled as support code and never run as a test, is one too (`:support`),
   unless `globs` scan that file as tests. A tag or attribute in one of the project's
   declared `forms` (§11.6) counts as a `verifies` tag does. In file and line order.
@@ -280,7 +281,7 @@ defmodule Surfex.Scan.ExUnit do
           support_inert(quoted(path, src.file), src)
         end)
 
-    Enum.sort_by(found, &{&1.file, &1.line})
+    found |> Enum.map(&Map.delete(&1, :keys)) |> Enum.sort_by(&{&1.file, &1.line})
   end
 
   defp files(root, globs),
@@ -309,10 +310,20 @@ defmodule Surfex.Scan.ExUnit do
     Enum.reduce(exprs, {[], pending, false}, fn expr, {inert, pending, tested?} ->
       case expr do
         {:@, _, [{:tag, _, [value]}]} ->
-          {inert, pending ++ verifies_tag(value, expr, src, :no_test), tested?}
+          keys = read_tags(value, expr, src) |> Map.keys()
+
+          {inert, pending} =
+            waiting(inert, pending, verifies_tag(value, expr, src, :no_test), keys)
+
+          {inert, pending, tested?}
 
         {:@, _, [{name, _, [value]}]} when is_atom(name) ->
-          {inert, pending ++ form_attribute(name, value, expr, src, :no_test), tested?}
+          keys = read_attribute(name, value, expr, src) |> Map.keys()
+
+          {inert, pending} =
+            waiting(inert, pending, form_attribute(name, value, expr, src, :no_test), keys)
+
+          {inert, pending, tested?}
 
         {:describe, _, [_name, [do: block]]} ->
           inner = exprs(block)
@@ -333,6 +344,19 @@ defmodule Surfex.Scan.ExUnit do
       end
     end)
   end
+
+  # A declaring tag joins those waiting for the next test, under the keys it sets. One already
+  # waiting with only those keys is replaced, as `walk/3` reads them: it verifies nothing.
+  defp waiting(inert, pending, [], _keys), do: {inert, pending}
+
+  defp waiting(inert, pending, entries, keys) do
+    {replaced, kept} = Enum.split_with(pending, &(&1.keys -- keys == []))
+
+    {inert ++ Enum.map(replaced, &%{&1 | reason: :replaced}),
+     kept ++ Enum.map(entries, &Map.put(&1, :keys, declaring(keys)))}
+  end
+
+  defp declaring(keys), do: Enum.filter(keys, &(&1 == :verifies or match?({:form, _, _}, &1)))
 
   defp level_tags(exprs, attribute, src) do
     for {:@, _, [{^attribute, _, [value]}]} = expr <- exprs,

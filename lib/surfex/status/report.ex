@@ -1098,6 +1098,7 @@ defmodule Surfex.Status.Report do
 
   defp inert_text(:no_test), do: "no test or property block takes it"
   defp inert_text(:support), do: "in test/support, which runs no test"
+  defp inert_text(:replaced), do: "a later @tag on the same test replaces it"
 
   defp stale_text(:implemented), do: "something implements it now"
   defp stale_text(:unmatched), do: "no rule of its class matches it"

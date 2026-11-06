@@ -11,6 +11,10 @@ release it merely follows.
 
 ### Added
 
+- **A `@tag verifies:` a later `@tag` on the same test replaces is reported as inert** (#369,
+  #371). ExUnit keeps the last, so the first verified nothing, silently. It is information and
+  fails nothing. An override of a `@describetag` or `@moduletag`, and a list in one tag, aren't
+  listed.
 - **`mix surfex.migrate --accept --skip ID`** (#365, #368), once per item, records the other
   single proposals and leaves that one on its section. Without it a wrong single could only be
   avoided by retiring its relation first. `--code` on a relation already retired now says to

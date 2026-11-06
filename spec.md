@@ -1786,7 +1786,11 @@ silently ignored. `Surfex.Scan.ExUnit.inert/2` finds them:
   block (the module's, a describe's or a comprehension's), and a `@describetag` or
   `@moduletag` setting it over a describe or module that defines no test;
 - every `verifies` tag, at any level, in a file under `test/support/`, which is compiled
-  as support code and never run as a test, unless `tests:` scans that file.
+  as support code and never run as a test, unless `tests:` scans that file;
+- <!-- surfex: inert-replaced --> a `@tag` setting `verifies` that a later `@tag` before the same test sets again: ExUnit
+  keeps the last, so the first verifies nothing (reason `:replaced`). A `@tag` over a
+  `@describetag` or `@moduletag` is an override and isn't listed, and neither is a list in
+  one tag.
 
 Each is its file and line, the ids it names, and why. `Surfex.Status.Config.load/3` passes
 them to `Surfex.Status.derive/4` as `inert:`, and status lists them as **inert** in its
