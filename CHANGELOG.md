@@ -60,6 +60,10 @@ release it merely follows.
 
 ### Changed
 
+- **`mix surfex.migrate --report` reads at its actionable size** (#289, #375). With no section named it
+  opens with one line per section, worst first. Items reading the same collapse to one line, and
+  `--items` shows them all. A contained list, here and in `mix surfex.status`, names the claims directly
+  inside and counts the rest. A move that widens the dangle is flagged. The JSON keeps every item.
 - **`mix surfex.migrate`'s `none` says what to do** (#289, #374). It read as a dead end, though usually
   a test already calls the code and only the claim it checks has no name yet. The listing and the
   report name the tests that call or reach the code and whether each verifies a claim in the section,

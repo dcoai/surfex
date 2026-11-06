@@ -452,6 +452,9 @@ defmodule Surfex.Migrate do
           none: non_neg_integer,
           migrating: non_neg_integer,
           contained: [String.t()],
+          contained_direct: [String.t()],
+          contained_deeper: non_neg_integer,
+          widening: non_neg_integer,
           widths: [
             %{
               codes: [String.t()],
@@ -553,6 +556,9 @@ defmodule Surfex.Migrate do
             "none" => s.none,
             "migrating" => s.migrating,
             "contained" => s.contained,
+            "contained_direct" => s.contained_direct,
+            "contained_deeper" => s.contained_deeper,
+            "widening" => s.widening,
             "widths" =>
               for w <- s.widths do
                 %{
@@ -560,6 +566,7 @@ defmodule Surfex.Migrate do
                   "outcome" => Atom.to_string(w.outcome),
                   "now" => w.now,
                   "after" => w.after,
+                  "widens" => w.after > w.now,
                   "callers" =>
                     for c <- w.callers do
                       %{
@@ -576,6 +583,105 @@ defmodule Surfex.Migrate do
     |> :json.encode()
     |> IO.iodata_to_binary()
   end
+
+  @doc """
+  The report as lines of text (§14.2). With no section named, the population and one line
+  per section come first, then each section's detail; `named: true` gives a section's line
+  and its detail. `items: true` lists every item, where items reading the same collapse.
+  """
+  @spec text(%{sections: [section_report], population: map}, keyword) :: [String.t()]
+  def text(%{sections: sections} = report, opts \\ []) do
+    items? = opts[:items] == true
+
+    if opts[:named] do
+      Enum.flat_map(sections, &[section_line(&1) | detail(&1, items?)])
+    else
+      population_lines(report.population) ++
+        [""] ++
+        Enum.map(sections, &section_line/1) ++
+        Enum.flat_map(sections, fn s ->
+          case detail(s, items?) do
+            [] -> []
+            lines -> ["", "#{s.section}:" | lines]
+          end
+        end)
+    end
+  end
+
+  defp population_lines(pop) do
+    total = pop.units.implements + pop.prose.implements
+
+    [
+      "section-grain implements: #{total} in #{pop.units.sections + pop.prose.sections} sections",
+      "  claims already units: #{pop.units.sections} sections, #{pop.units.implements} implements " <>
+        "(they migrate today)",
+      "  prose: #{pop.prose.sections} sections, #{pop.prose.implements} implements " <>
+        "(their claims need ids first, spec §11.1)"
+    ] ++
+      if pop.contained.sections > 0 do
+        [
+          "  contained: #{pop.contained.sections} sections (a claim inside is verified, " <>
+            "their own text isn't, spec §14.2)"
+        ]
+      else
+        []
+      end
+  end
+
+  defp section_line(s) do
+    "#{s.section} (#{if s.kind == :prose, do: "prose", else: "claims are units"}): " <>
+      "#{s.relations} relations now → #{s.after} after; implements #{s.implements}: " <>
+      "#{s.single} single · #{s.several} several · #{s.none} none" <>
+      if(s.migrating > 0, do: " · #{s.migrating} migrating", else: "") <>
+      if(s.widening > 0, do: " · #{s.widening} widen", else: "") <>
+      if(s.marking > 0, do: "; marking dangles #{s.marking} once", else: "")
+  end
+
+  defp detail(s, items?) do
+    contained =
+      if s.contained == [] do
+        []
+      else
+        [
+          "  contained: #{contained_text(s.contained_direct, s.contained_deeper)} verified " <>
+            "inside, its own text isn't"
+        ]
+      end
+
+    contained ++ width_lines(s.widths, items?)
+  end
+
+  defp width_lines([_, _ | _] = widths, false) do
+    case Enum.uniq_by(widths, &{&1.now, &1.after, &1.outcome}) do
+      [w] ->
+        ["  #{length(widths)} items: #{w.now} now → #{w.after} after (#{w.outcome}#{widens(w)})"]
+
+      _ ->
+        Enum.map(widths, &width_line/1)
+    end
+  end
+
+  defp width_lines(widths, _items?), do: Enum.map(widths, &width_line/1)
+
+  defp width_line(w) do
+    "  #{Enum.join(w.codes, ", ")}: #{w.now} now → #{w.after} after (#{outcome_text(w)}#{widens(w)})"
+  end
+
+  defp outcome_text(%{outcome: :none, callers: callers}), do: "none: #{callers_text(callers)}"
+  defp outcome_text(%{outcome: outcome}), do: to_string(outcome)
+
+  defp widens(%{now: now, after: after_}) when after_ > now,
+    do: ", widens: the claims it could go to hold more"
+
+  defp widens(_width), do: ""
+
+  @doc "The claims directly inside a unit, and how many sit deeper (§14.2)."
+  @spec contained_text([String.t()], non_neg_integer) :: String.t()
+  def contained_text(direct, 0), do: Enum.join(direct, ", ")
+  def contained_text([], deeper), do: "#{deeper} in subsections"
+
+  def contained_text(direct, deeper),
+    do: "#{Enum.join(direct, ", ")} + #{deeper} in subsections"
 
   defp section_report(ix, section) do
     proposals = proposals_from(ix, [section])
@@ -623,6 +729,9 @@ defmodule Surfex.Migrate do
       none: count.([:none]),
       migrating: count.([:migrating]),
       contained: Map.get(ix.contained, section, []),
+      contained_direct: Map.get(ix.contained_direct, section, []),
+      contained_deeper: Map.get(ix.contained_deeper, section, 0),
+      widening: Enum.count(widths, &(&1.after > &1.now)),
       widths: widths
     }
   end
@@ -742,6 +851,8 @@ defmodule Surfex.Migrate do
       within: within,
       migrating: Map.new(status.migrating, &{{&1.code, &1.section}, &1}),
       contained: Map.new(status.contained, &{&1.unit, Enum.sort(&1.inside)}),
+      contained_direct: Map.new(status.contained, &{&1.unit, Enum.sort(&1.direct)}),
+      contained_deeper: Map.new(status.contained, &{&1.unit, &1.deeper}),
       validated: validated,
       declined: declined,
       spec: spec,

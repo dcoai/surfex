@@ -224,7 +224,15 @@ defmodule Surfex.Status do
           },
           unimplemented: [Scan.t()],
           verdicts: %{String.t() => Surfex.Status.Verdict.verdict()},
-          contained: [%{unit: String.t(), inside: [String.t()], location: map}],
+          contained: [
+            %{
+              unit: String.t(),
+              inside: [String.t()],
+              direct: [String.t()],
+              deeper: non_neg_integer,
+              location: map
+            }
+          ],
           on_container: [
             %{
               test: String.t(),

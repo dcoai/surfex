@@ -57,7 +57,9 @@ defmodule Mix.Tasks.Surfex.Migrate do
   `verifies` of its own while a claim inside it is verified, gets a `contained:` line
   naming those claims, and with no section named every contained section is reported,
   those holding no `implements` too, with their count in the population. `--format json`
-  gives the same report as JSON (`Surfex.Migrate.json/1`).
+  gives the same report as JSON (`Surfex.Migrate.json/1`). In the text, items that read the
+  same collapse to one line unless `--items`, and a contained list names the claims directly
+  inside and counts the rest.
   """
 
   use Mix.Task
@@ -75,6 +77,7 @@ defmodule Mix.Tasks.Surfex.Migrate do
         code: :string,
         to: :keep,
         skip: :keep,
+        items: :boolean,
         format: :string
       )
 
@@ -120,7 +123,11 @@ defmodule Mix.Tasks.Surfex.Migrate do
 
         if format == "json",
           do: Mix.shell().info(Migrate.json(report)),
-          else: report(report, refs)
+          else:
+            Enum.each(
+              Migrate.text(report, named: refs != [], items: opts[:items] == true),
+              fn line -> Mix.shell().info(line) end
+            )
 
       sections == [] ->
         Mix.raise("name a section: mix surfex.migrate SECTION [--within], or --report")
@@ -201,11 +208,6 @@ defmodule Mix.Tasks.Surfex.Migrate do
   defp line(%{outcome: :single, claims: [c]} = p),
     do: "single    #{codes(p)} → #{c.claim} (#{why(c.why)})"
 
-  defp outcome_text(%{outcome: :none, callers: callers}),
-    do: "none: #{Migrate.callers_text(callers)}"
-
-  defp outcome_text(%{outcome: outcome}), do: to_string(outcome)
-
   defp claims(p), do: Enum.map_join(p.claims, ", ", & &1.claim)
 
   defp codes(%{codes: [one], unit: unit, section: section}),
@@ -235,56 +237,5 @@ defmodule Mix.Tasks.Surfex.Migrate do
         "reached through #{through} by its test #{t}" <>
           if(more == [], do: "", else: " and #{length(more)} more")
     end)
-  end
-
-  defp report(%{sections: sections, population: pop}, refs) do
-    if refs == [] do
-      total = pop.units.implements + pop.prose.implements
-
-      Mix.shell().info(
-        "section-grain implements: #{total} in #{pop.units.sections + pop.prose.sections} sections"
-      )
-
-      Mix.shell().info(
-        "  claims already units: #{pop.units.sections} sections, #{pop.units.implements} implements " <>
-          "(they migrate today)"
-      )
-
-      Mix.shell().info(
-        "  prose: #{pop.prose.sections} sections, #{pop.prose.implements} implements " <>
-          "(their claims need ids first, spec §11.1)"
-      )
-
-      if pop.contained.sections > 0,
-        do:
-          Mix.shell().info(
-            "  contained: #{pop.contained.sections} sections (a claim inside is verified, " <>
-              "their own text isn't, spec §14.2)"
-          )
-    end
-
-    for s <- sections do
-      Mix.shell().info("")
-
-      Mix.shell().info(
-        "#{s.section} (#{if s.kind == :prose, do: "prose", else: "claims are units"}): " <>
-          "#{s.relations} relations now → #{s.after} after; implements #{s.implements}: " <>
-          "#{s.single} single · #{s.several} several · #{s.none} none" <>
-          if(s.migrating > 0, do: " · #{s.migrating} migrating", else: "") <>
-          if(s.marking > 0, do: "; marking dangles #{s.marking} once", else: "")
-      )
-
-      if s.contained != [],
-        do:
-          Mix.shell().info(
-            "  contained: #{Enum.join(s.contained, ", ")} verified inside, its own text isn't"
-          )
-
-      for w <- s.widths do
-        Mix.shell().info(
-          "  #{Enum.join(w.codes, ", ")}: #{w.now} now → #{w.after} after (#{outcome_text(w)})"
-        )
-      end
-    end
   end
 end

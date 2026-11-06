@@ -3946,6 +3946,14 @@ own text has no evidence while a claim inside them is verified, the `:contained`
 of §13.4, read as the status reads them (the project's classes, §13.6, decide what is
 contained). `Surfex.Migrate.report/4` takes `Surfex.Status.derive/4`'s
 options, and the task passes the project's.
+- <!-- surfex: migrate-report-reads --> The text report reads at its actionable size. With no section named it opens with one
+  line per section, worst first, and the detail follows. A section whose items all read the
+  same `now → after (outcome)` shows them as one line, `12 items: 153 now → 153 after (none)`,
+  unless `--items`. A contained list, here and in `mix surfex.status`'s text, names the claims
+  directly inside a unit, whose nearest enclosing section is it, and counts the rest: `+ 26 in
+  subsections`. A move whose `after` exceeds its `now` is flagged where it's listed, `widens`,
+  and counted on its section's line, since everywhere else `after` is smaller. The JSON keeps
+  every item and adds `contained_direct`, `contained_deeper`, `widens` and `widening`.
 - <!-- surfex: migrate-none-callers --> A **none** says what to do about it. The listing and the report name the tests that call
   the code, or reach it, and whether each verifies a claim in the section: `called by 3
   tests (A, B and 1 more), none verifying a claim here: name the claim they check`, or `no
