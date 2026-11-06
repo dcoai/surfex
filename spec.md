@@ -3870,6 +3870,11 @@ wait for, and the section's relation is retired at once.
   (`Surfex.Migrate.settled_note/2`). **A section never loses a relation before its claim
   holds one.** Retired another way first, the section no longer holds it, and the claim's
   proposed relation fails as any proposed relation does.
+- <!-- surfex: migrate-note-names --> A note speaks for what its command names. `--code --to` retires only the pairs of the
+  code it names, carrying its `--note`. `--accept` and `mix surfex.suggest --accept` retire
+  every settled pair with surfex's own note, the claims it moved to, and no `--note`: a
+  retired relation can't be annotated, so a note written for one relation must never land on
+  another.
 - A pair once declined, a retired relation between the code and a claim, is no candidate:
   undoing a retirement takes someone choosing to, with `--code --to`.
 - **A baseline is carried.** A section relation resting on the baseline (§18.1, basis

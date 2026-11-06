@@ -165,7 +165,8 @@ defmodule Surfex.Migrate do
 
     with :ok <- skippable(skip, singles, sections),
          {:ok, recorded} <- run(steps, entries),
-         {:ok, settled} <- settle(scans, entries ++ recorded, sections, meta, opts),
+         {:ok, settled} <-
+           settle(scans, entries ++ recorded, sections, Keyword.delete(meta, :note), opts),
          do: {:ok, recorded ++ settled}
   end
 
@@ -216,7 +217,8 @@ defmodule Surfex.Migrate do
                    group
                    |> Enum.map(&migration(ix, scans, &1, claims, unit, meta))
                    |> run(entries),
-                 {:ok, settled} <- settle(scans, entries ++ recorded, [section], meta, opts),
+                 {:ok, settled} <-
+                   settle(scans, entries ++ recorded, [section], meta, [only: group] ++ opts),
                  do: {:ok, recorded ++ settled}
 
           outside ->
@@ -251,16 +253,19 @@ defmodule Surfex.Migrate do
   @doc """
   The retirement of each settled pair in `sections` (§14.1): a code item every claim
   relation of which a migration recorded is validated now, so its section relation
-  retires, the note naming the claims it moved to. `mix surfex.suggest` proposes the same
+  retires, the note naming the claims it moved to. `only:` narrows it to those code ids, so a
+  caller's note reaches only what the caller named. `mix surfex.suggest` proposes the same
   for every section.
   """
   @spec settle([Scan.t()], [Entry.t()], [String.t()] | :all, keyword, keyword) ::
           {:ok, [Entry.t()]} | {:error, String.t()}
   def settle(scans, entries, sections, meta, opts \\ []) do
+    {only, opts} = Keyword.pop(opts, :only)
     status = Status.derive(scans, entries, [], opts)
     within = for %Scan{kind: :spec, within: w} = s <- scans, w != nil, into: %{}, do: {s.id, w}
 
     for %{settled: true, code: code, section: unit, claims: claims} <- status.migrating,
+        only == nil or code in only,
         sections == :all or Enum.any?(enclosing(unit, within), &(&1 in sections)) do
       &Record.retire(
         scans,

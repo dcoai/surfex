@@ -443,7 +443,7 @@ defmodule Surfex.Suggest do
             "code:" <> m.code,
             "spec:" <> m.section,
             :implements,
-            Surfex.Migrate.settled_note(m.claims, meta)
+            Surfex.Migrate.settled_note(m.claims, Keyword.delete(meta, :note))
           )
         end) ++
         Enum.map(suggestions.excuses, fn x ->

@@ -297,6 +297,54 @@ defmodule Surfex.MigrateTest do
       assert {:ok, []} = Migrate.accept(scans(), entries() ++ recorded, [@s], @meta)
     end
 
+    # #289, #373: --code --to once retired every settled pair under its one note, and a
+    # retired relation can't be annotated, so the wrong note stayed.
+    @tag verifies: "migrate-note-names"
+    test "a note goes only to the relations its command names" do
+      {:ok, recorded} = Migrate.accept(scans(), entries(), [@s], @meta)
+      log = entries() ++ recorded
+      log = log ++ [reviewed(log, "M.list/1", @h2), reviewed(log, "M.helper/1", @h2)]
+
+      # Two pairs are settled. A choice for other code records it and retires neither.
+      mine = Keyword.put(@meta, :note, "written for get")
+      {:ok, [chosen]} = Migrate.choose(scans(), log, @s, "M.get/1", [@h1], mine)
+      assert {chosen.op, code_of(chosen)} == {:relate, "M.get/1"}
+      log = log ++ [chosen]
+
+      # --accept retires what is settled, with surfex's note and not its own.
+      bulk = Keyword.put(@meta, :note, "written for the batch")
+      {:ok, retired} = Migrate.accept(scans(), log, [@s], bulk)
+
+      assert Enum.map(retired, &{&1.op, code_of(&1), &1.note}) == [
+               {:retire, "M.helper/1", "moved to its claim #{@h2}"},
+               {:retire, "M.list/1", "moved to its claim #{@h2}"}
+             ]
+
+      # Named, and settled: its own --code --to retires it, with its note.
+      log = log ++ retired ++ [reviewed(log, "M.get/1", @h1)]
+      {:ok, [retire]} = Migrate.choose(scans(), log, @s, "M.get/1", [@h1], mine)
+
+      assert {retire.op, code_of(retire), retire.note} ==
+               {:retire, "M.get/1", "moved to its claim #{@h1}: written for get"}
+    end
+
+    @tag verifies: "migrate-note-names"
+    test "suggest --accept retires a settled pair with surfex's note, not its --note" do
+      {:ok, recorded} = Migrate.accept(scans(), entries(), [@s], @meta)
+      log = entries() ++ recorded
+      log = log ++ [reviewed(log, "M.list/1", @h2)]
+
+      profile = Surfex.Status.Config.profile!([sources: ["spec.md"]], "M")
+      suggestions = Surfex.Suggest.all(profile, [], scans(), log, "test/fixtures/none")
+      only = Map.new(suggestions, fn {k, v} -> {k, if(k == :migrated, do: v, else: [])} end)
+      bulk = Keyword.put(@meta, :note, "adopting")
+
+      assert {:ok, [%{op: :retire, note: "moved to its claim " <> _ = note}]} =
+               Surfex.Suggest.accept_all(only, scans(), log, bulk)
+
+      refute note =~ "adopting"
+    end
+
     @tag verifies: ["migrate-accept", "migration"]
     test "the section's relation is retired only once its claim's is validated" do
       {:ok, recorded} = Migrate.accept(scans(), entries(), [@s], @meta)

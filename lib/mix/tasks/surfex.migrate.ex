@@ -33,6 +33,10 @@ defmodule Mix.Tasks.Surfex.Migrate do
   CLAIM` (`--to` once per claim) records your choice for a proposal with several
   candidates, or one with none once its claim is written (`Surfex.Migrate.choose/7`).
 
+  What each form retires: `--code` only that code's settled pairs, carrying your `--note`;
+  `--accept` every settled pair, with surfex's note alone. A retired relation can't be
+  annotated, so a note written for one relation never lands on another.
+
   `--skip ID` (once per item, with `--accept`) leaves a single proposal on its section, for one
   that's wrong or not decided yet. Read the list before `--accept`.
 
