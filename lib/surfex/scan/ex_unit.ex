@@ -114,7 +114,27 @@ defmodule Surfex.Scan.ExUnit do
             support_unreadable(quoted(path, Path.relative_to(path, root)), forms, path, root),
           do: error
 
-    {List.flatten(found), Surfex.Scan.Errors.sorted(List.flatten(errors) ++ support)}
+    # A test's call into support code reaches what it calls (§13.1): the tests carry it, as
+    # code carries what its hidden modules run, so reach passes through and never lands on it.
+    %{calls: runs} = support_code(root, tests)
+
+    records = for t <- List.flatten(found), do: %{t | runs: runs}
+
+    {records, Surfex.Scan.Errors.sorted(List.flatten(errors) ++ support)}
+  end
+
+  @doc """
+  The names a citation can use for the project's test support (§6.7): what's under
+  `test/support`, less any file `globs` scan as tests.
+  """
+  @spec support_names(String.t(), [String.t()]) :: MapSet.t()
+  def support_names(root, globs) do
+    root = Path.expand(root)
+    support_code(root, files(root, globs)).names
+  end
+
+  defp support_code(root, tests) do
+    Surfex.Scanner.Elixir.support(root, files(root, @support) -- tests)
   end
 
   @doc """

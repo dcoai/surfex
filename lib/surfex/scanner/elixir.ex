@@ -81,20 +81,7 @@ defmodule Surfex.Scanner.Elixir do
 
     # Every file is read before any version is made: a version covers the hidden code it
     # runs in any module, in any file. And a dispatcher's targets are in any module.
-    parsed =
-      root
-      |> files(Keyword.get(opts, :paths, ["lib/**/*.ex"]))
-      |> Enum.flat_map(fn file ->
-        rel = Path.relative_to(file, root)
-
-        file
-        |> File.read!()
-        |> Code.string_to_quoted!(file: file, token_metadata: true)
-        |> modules([])
-        |> Enum.map(fn {parts, node} ->
-          %{name: Enum.map_join(parts, ".", &Atom.to_string/1), node: node, file: rel}
-        end)
-      end)
+    parsed = root |> files(Keyword.get(opts, :paths, ["lib/**/*.ex"])) |> parse(root)
 
     readings = SourceScan.Dispatch.read(parsed, Keyword.get(opts, :dispatch, []))
     dispatch = Map.new(readings, fn {id, r} -> {id, r.targets} end)
@@ -115,6 +102,59 @@ defmodule Surfex.Scanner.Elixir do
     |> Enum.reject(& &1.hidden_module)
     |> Enum.flat_map(&items_in(&1, index, readings))
     |> Enum.sort_by(&{Item.key(&1), &1.kind})
+  end
+
+  @doc """
+  What test-support `files` under `root` hold (§11.5, §13.1), read from source as code is: each
+  definition's calls by the key a call names it with, public or hidden or in a `@moduledoc
+  false` module, for reach to pass through; and the names a citation of them can use. None of
+  it is an item.
+  """
+  @spec support(String.t(), [String.t()]) :: %{
+          calls: %{String.t() => [String.t()]},
+          names: MapSet.t()
+        }
+  def support(root, files) do
+    parsed = files |> Enum.map(&Path.expand(&1, root)) |> parse(root)
+    modules = Enum.map(parsed, &read_module(&1, Calls.none(), %{}))
+
+    calls =
+      for %{name: name, calls: calls} <- modules,
+          {key, called} <- calls,
+          into: %{},
+          do: {id(name, key), called}
+
+    names =
+      for %{name: name, node: node} <- parsed,
+          found <- [name | support_members(name, node)],
+          into: MapSet.new(),
+          do: found
+
+    %{calls: calls, names: names}
+  end
+
+  defp support_members(name, node) do
+    functions = for d <- SourceScan.defs(node), do: {d.name, d.arity}
+    hidden = Map.keys(SourceScan.hidden_definitions(node))
+    types = for t <- SourceScan.types(node), do: {t.name, t.arity}
+
+    Enum.flat_map(functions ++ hidden ++ types, fn {member, arity} ->
+      ["#{name}.#{member}/#{arity}", "#{name}.#{member}"]
+    end)
+  end
+
+  defp parse(files, root) do
+    Enum.flat_map(files, fn file ->
+      rel = Path.relative_to(file, root)
+
+      file
+      |> File.read!()
+      |> Code.string_to_quoted!(file: file, token_metadata: true)
+      |> modules([])
+      |> Enum.map(fn {parts, node} ->
+        %{name: Enum.map_join(parts, ".", &Atom.to_string/1), node: node, file: rel}
+      end)
+    end)
   end
 
   @doc """

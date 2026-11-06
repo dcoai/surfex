@@ -24,6 +24,8 @@ defmodule Surfex.Cite do
   - `:documented_absence` — a section names it *because* the code does not have it
   - `:registered_name` — it names exactly a process name the source registers
     (`name: MyApp.Sessions`) and no module (`citations/4`'s `:registered`)
+  - `:test_support` — it names a module, function or type in the project's test support
+    (`citations/4`'s `:support`)
 
   ## What is read
 
@@ -54,6 +56,7 @@ defmodule Surfex.Cite do
           | :external
           | :documented_absence
           | :registered_name
+          | :test_support
 
   @typedoc """
   How a citation was made (§6.10): `:span`, a code span in prose or a token in a fenced
@@ -97,7 +100,8 @@ defmodule Surfex.Cite do
       index: index(items, profile),
       aliases: aliases(items),
       profile: profile,
-      registered: opts |> Keyword.get(:registered, []) |> MapSet.new()
+      registered: opts |> Keyword.get(:registered, []) |> MapSet.new(),
+      support: opts |> Keyword.get(:support, []) |> MapSet.new()
     }
 
     profile
@@ -337,6 +341,9 @@ defmodule Surfex.Cite do
       # never hides a misspelt module (§6.7).
       MapSet.member?(ctx.registered, name) ->
         [{span, :registered_name, []}]
+
+      MapSet.member?(ctx.support, name) ->
+        [{span, :test_support, []}]
 
       shaped?(name, profile) ->
         [{span, :unresolved, []}]

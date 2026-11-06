@@ -652,6 +652,7 @@ Every citation has exactly one status:
 | `:external` | it names something real outside the scanned tree (`known_external`) |
 | `:documented_absence` | a section names it *because* the code lacks it (`documented_absences`) |
 | `:registered_name` | it names a process name the source registers, and no module (§6.7) |
+| `:test_support` | it names a module, function or type in the project's test support (§6.7) |
 
 A contract's function is a citation too (§6.9), with the same statuses; a deferred
 contract is not cited, since it names what isn't built yet by declaration.
@@ -746,6 +747,11 @@ a span naming exactly a literal `name:` alias the source registers, with no modu
 that name, is a registered name and not broken; a function on it, a `{:global, …}` or
 `{:via, …}` name and a misspelt module stay broken
 ```
+
+<!-- surfex: citation-test-support --> **Test support.** A span naming a module, function or type defined in the project's test
+support (§11.5), when no scanned code of that name and none of §6.4's rules 1 to 6 resolves
+it, has the status `:test_support` (`Surfex.Cite.citations/4`'s `:support`), and isn't a
+broken citation. A misspelt one stays broken.
 
 ### 6.8 A fence is read by CommonMark's rule
 <!-- surfex: citation-fences -->
@@ -2702,6 +2708,12 @@ every unit would otherwise report a missing test for a project that doesn't scan
 `Surfex.Status.summary/1` counts relations per type and state. `Surfex.Status.units/1`
 counts the spec units scanned, by role: sections, blocks, test hints, tables and rows. The
 reports show tables and rows only when a spec marks a table.
+
+<!-- surfex: reach-test-support --> A test's call into test support (§11.5) reaches what that support code calls, transitively,
+as a call into `lib/` does: a fixture helper is where a test puts exactly this kind of call.
+Support code is passed through and never reached. It is never an item, so it is never in
+New, an `implements` target or completeness. Surfex derives it from where §11.5 says support
+code is, with no key to set, and reads it from source.
 
 <!-- surfex: triangle-inside --> A verifying test meets a unit when it reaches code implementing the unit or a claim
 inside it, so a section's tests don't start to miss its code as that code moves to its
