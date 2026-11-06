@@ -276,7 +276,8 @@ defmodule Surfex.Scan do
     # A hidden module's code is on every record running it, each time the same, and is
     # owned by none of them.
     ran =
-      for %__MODULE__{kind: :code, runs: runs} <- scans,
+      for %__MODULE__{kind: kind, runs: runs} <- scans,
+          kind in [:code, :test],
           {key, calls} <- runs,
           into: %{},
           do: {key, {nil, calls}}

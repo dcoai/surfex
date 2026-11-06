@@ -60,6 +60,12 @@ release it merely follows.
 
 ### Changed
 
+- **Reach follows test-support helpers** (#290, #376). A test reading through a fixture helper in
+  `test/support` verified a claim and "called none of its code", so projects rewrote good tests to
+  suit the tool. Reach now passes through support code as it does hidden code, with no key to set.
+  Support code is never an item. A citation of a support module, function or type has the new status
+  `test_support` and isn't broken. On upgrade the first `mix surfex.suggest` may offer more `tests`
+  relations, and fewer triangle gaps are reported.
 - **`mix surfex.migrate --report` reads at its actionable size** (#289, #375). With no section named it
   opens with one line per section, worst first. Items reading the same collapse to one line, and
   `--items` shows them all. A contained list, here and in `mix surfex.status`, names the claims directly

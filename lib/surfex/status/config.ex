@@ -680,7 +680,12 @@ defmodule Surfex.Status.Config do
   # The broken citations, and every citation of the spec's text (not the contracts' own).
   defp read_citations(config, items, root, namespace, scans) do
     profile = profile!(config, namespace, items)
-    all = Surfex.Cite.citations(items, profile, root, registered: registered_names(config, root))
+
+    all =
+      Surfex.Cite.citations(items, profile, root,
+        registered: registered_names(config, root),
+        support: Scan.ExUnit.support_names(root, Keyword.get(config, :tests, []))
+      )
 
     broken =
       all
