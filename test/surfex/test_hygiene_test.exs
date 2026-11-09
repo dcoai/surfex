@@ -43,6 +43,8 @@ defmodule Surfex.TestHygieneTest do
     File.write!(Path.join(dir, "surfex.log"), "two\n", [:append])
     File.rm!(Path.join(dir, "surfex_1.log"))
     File.write!(Path.join(dir, "surfex_2.log"), "new\n")
+    File.mkdir_p!(Path.join(dir, "cache"))
+    File.write!(Path.join([dir, "cache", "log.checkpoint"]), "derived\n")
 
     assert OwnLog.changes(before, OwnLog.digest(dir)) == [
              "surfex.log changed",
