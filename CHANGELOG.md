@@ -65,6 +65,10 @@ release it merely follows.
 
 ### Changed
 
+- **`--verify` decodes each log line once** (#386, #388). `Surfex.Log.check/1` builds each segment's
+  chain hash from its own parallel decode, where it decoded every line again, one at a time, to read its
+  id: checking surfex's own log takes about 1.4s where it took 2.3s. The hash, the headers and every
+  problem reported are unchanged, and a line that doesn't decode still chains by the id it carries.
 - **Scans remember definition versions** (#383, #385). Inside a scan, `Surfex.SourceScan.definition_hash/1`
   looks each definition up by a digest of its AST in a memo kept in `.surfex/cache/`, and pretty-prints
   only what changed: reading surfex's own source takes about 1.65s where it took 2.3s. Every version is
