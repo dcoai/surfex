@@ -192,13 +192,24 @@ defmodule Surfex.Log do
   def check(root) do
     segments = segments(root)
 
-    {entries, broken} =
+    # Each segment's ids come from this one decode, for its chain hash (#386): reading them
+    # again from the file decoded every line twice. A line that doesn't decode still chains
+    # by the id it carries, as `chain_hash/1` reads it.
+    {entries, broken, ids_by_path} =
       segments
       |> Enum.flat_map(fn {_n, path} -> Enum.map(numbered_lines(path), &{path, &1}) end)
-      |> Surfex.Parallel.chunked(500, fn {path, {line, n}} -> {path, n, Entry.decode(line)} end)
-      |> Enum.reduce({[], []}, fn
-        {_path, _n, {:ok, entry}}, {ok, bad} -> {[entry | ok], bad}
-        {path, n, {:error, why}}, {ok, bad} -> {ok, ["#{Path.basename(path)}:#{n}: #{why}" | bad]}
+      |> Surfex.Parallel.chunked(500, fn {path, {line, n}} ->
+        case Entry.decode(line) do
+          {:ok, entry} -> {path, n, {:ok, entry}}
+          {:error, why} -> {path, n, {:error, why, line}}
+        end
+      end)
+      |> Enum.reduce({[], [], %{}}, fn
+        {path, _n, {:ok, entry}}, {ok, bad, ids} ->
+          {[entry | ok], bad, add_id(ids, path, entry.id)}
+
+        {path, n, {:error, why, line}}, {ok, bad, ids} ->
+          {ok, ["#{Path.basename(path)}:#{n}: #{why}" | bad], add_id(ids, path, stored_id(line))}
       end)
 
     ids = MapSet.new(entries, & &1.id)
@@ -212,8 +223,10 @@ defmodule Surfex.Log do
             "entry #{short(e.id)} names parent #{short(p)}, which no segment has (a removed line?)"
 
     loaded = entries |> Enum.uniq_by(& &1.id) |> Enum.sort_by(&{&1.at, &1.id})
-    {loaded, Enum.reverse(broken) ++ orphans ++ chain_problems(segments)}
+    {loaded, Enum.reverse(broken) ++ orphans ++ chain_problems(segments, ids_by_path)}
   end
+
+  defp add_id(ids, path, id), do: Map.update(ids, path, [id], &[id | &1])
 
   @doc "Closes the open segment as the next `surfex_N.log` and starts a new open segment."
   @spec break(String.t()) :: :ok
@@ -301,17 +314,20 @@ defmodule Surfex.Log do
     end
   end
 
-  defp chain_hash(path) do
-    path
-    |> entry_lines()
-    |> Enum.map(fn line -> line |> Entry.json() |> Map.fetch!("id") end)
+  defp chain_hash(path), do: path |> entry_lines() |> Enum.map(&stored_id/1) |> chain_hash_of()
+
+  # A segment's chain hash: its entries' ids, sorted, so line order within it doesn't matter.
+  defp chain_hash_of(ids) do
+    ids
     |> Enum.sort()
     |> Enum.join("\n")
     |> then(&:crypto.hash(:sha256, &1))
     |> Base.encode16(case: :lower)
   end
 
-  defp chain_problems(segments) do
+  defp stored_id(line), do: line |> Entry.json() |> Map.fetch!("id")
+
+  defp chain_problems(segments, ids_by_path) do
     segments
     |> Enum.with_index(1)
     |> Enum.reduce({[], nil}, fn {{_n, path}, number}, {problems, previous} ->
@@ -331,7 +347,7 @@ defmodule Surfex.Log do
             ]
         end
 
-      {problems ++ problem, chain_hash(path)}
+      {problems ++ problem, chain_hash_of(Map.get(ids_by_path, path, []))}
     end)
     |> elem(0)
   end

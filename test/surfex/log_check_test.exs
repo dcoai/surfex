@@ -45,4 +45,23 @@ defmodule Surfex.LogCheckTest do
     assert Enum.any?(problems, &(&1 =~ "which no segment has"))
     assert length(entries) == 1
   end
+
+  # #386: the chain hash comes from check/1's own decode, so a line that fails it must still
+  # chain by the id it carries, or every edit would also be reported as a broken chain.
+  test "an edited line in a closed segment is reported once, and its segment still chains",
+       %{tmp_dir: root} do
+    Log.init(root)
+    Log.append(root, [entry(1), entry(2)])
+    Log.break(root)
+    Log.append(root, [entry(3)])
+
+    path = Path.join(Log.dir(root), "surfex_1.log")
+    File.write!(path, String.replace(File.read!(path), ~s("M.f/1"), ~s("M.f/9")))
+
+    {entries, problems} = Log.check(root)
+    assert problems == Log.verify(root)
+    assert [problem] = problems
+    assert problem =~ ~r/^surfex_1\.log:\d+: entry .* does not match its content/
+    assert length(entries) == 2
+  end
 end
