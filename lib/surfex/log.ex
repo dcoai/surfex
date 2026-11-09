@@ -76,7 +76,14 @@ defmodule Surfex.Log do
   def load(root) do
     root
     |> segments()
-    |> Enum.flat_map(fn {_n, path} -> path |> entry_lines() |> Enum.map(&Entry.decode!/1) end)
+    # Decoded in parallel without raising; the first bad line raises here, as decode! would.
+    |> Enum.flat_map(fn {_n, path} ->
+      path |> entry_lines() |> Surfex.Parallel.chunked(500, &Entry.decode/1)
+    end)
+    |> Enum.map(fn
+      {:ok, entry} -> entry
+      {:error, why} -> raise ArgumentError, why
+    end)
     |> Enum.uniq_by(& &1.id)
     |> Enum.sort_by(&{&1.at, &1.id})
   end
@@ -104,11 +111,10 @@ defmodule Surfex.Log do
     {entries, broken} =
       segments
       |> Enum.flat_map(fn {_n, path} -> Enum.map(numbered_lines(path), &{path, &1}) end)
-      |> Enum.reduce({[], []}, fn {path, {line, n}}, {ok, bad} ->
-        case Entry.decode(line) do
-          {:ok, entry} -> {[entry | ok], bad}
-          {:error, why} -> {ok, ["#{Path.basename(path)}:#{n}: #{why}" | bad]}
-        end
+      |> Surfex.Parallel.chunked(500, fn {path, {line, n}} -> {path, n, Entry.decode(line)} end)
+      |> Enum.reduce({[], []}, fn
+        {_path, _n, {:ok, entry}}, {ok, bad} -> {[entry | ok], bad}
+        {path, n, {:error, why}}, {ok, bad} -> {ok, ["#{Path.basename(path)}:#{n}: #{why}" | bad]}
       end)
 
     ids = MapSet.new(entries, & &1.id)

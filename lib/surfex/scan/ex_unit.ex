@@ -99,12 +99,21 @@ defmodule Surfex.Scan.ExUnit do
     known = known(code, scanners, routes, forms)
     tests = files(root, globs)
 
+    # Scanned in parallel; a file that doesn't parse is parsed again here, in order, so it
+    # raises as it would scanning one file at a time, and no task crashes on a user's error.
     {found, errors} =
       tests
-      |> Enum.map(fn path ->
+      |> Surfex.Parallel.map(fn path ->
         file = Path.relative_to(path, root)
-        ast = quoted(path, file)
-        {scan_ast(ast, file, known), unreadable(ast, %{file: file, forms: forms})}
+
+        case parsed(path, file) do
+          {:ok, ast} -> {scan_ast(ast, file, known), unreadable(ast, %{file: file, forms: forms})}
+          :error -> {:unparsed, path, file}
+        end
+      end)
+      |> Enum.map(fn
+        {:unparsed, path, file} -> quoted(path, file)
+        scanned -> scanned
       end)
       |> Enum.unzip()
 
@@ -313,6 +322,13 @@ defmodule Surfex.Scan.ExUnit do
 
   defp quoted(path, file),
     do: path |> File.read!() |> Code.string_to_quoted!(file: file, token_metadata: true)
+
+  defp parsed(path, file) do
+    case path |> File.read!() |> Code.string_to_quoted(file: file, token_metadata: true) do
+      {:ok, ast} -> {:ok, ast}
+      {:error, _} -> :error
+    end
+  end
 
   # A module's inert tags: its own tags over no test, and those in its blocks.
   defp module_inert({:defmodule, _, [_aliases, [do: body]]}, src) do

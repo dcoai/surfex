@@ -95,12 +95,13 @@ defmodule Surfex.Scanner.Elixir do
             "dispatch: #{id} is in a @moduledoc false module, which has no item to list its targets"
           )
 
-    modules = Enum.map(parsed, &read_module(&1, remote, dispatch))
+    modules = Surfex.Parallel.map(parsed, &read_module(&1, remote, dispatch))
     index = hidden_code(modules)
 
     modules
     |> Enum.reject(& &1.hidden_module)
-    |> Enum.flat_map(&items_in(&1, index, readings))
+    |> Surfex.Parallel.map(&items_in(&1, index, readings))
+    |> Enum.concat()
     |> Enum.sort_by(&{Item.key(&1), &1.kind})
   end
 
@@ -144,16 +145,29 @@ defmodule Surfex.Scanner.Elixir do
   end
 
   defp parse(files, root) do
-    Enum.flat_map(files, fn file ->
-      rel = Path.relative_to(file, root)
+    # Parsed in parallel; a file that doesn't parse is parsed again here, in order, so it
+    # raises as it would one file at a time, and no task crashes on a user's error.
+    files
+    |> Surfex.Parallel.map(fn file ->
+      case file |> File.read!() |> Code.string_to_quoted(file: file, token_metadata: true) do
+        {:ok, ast} -> {:ok, file, ast}
+        {:error, _} -> {:unparsed, file}
+      end
+    end)
+    |> Enum.flat_map(fn
+      {:ok, file, ast} ->
+        module_records(ast, Path.relative_to(file, root))
 
-      file
-      |> File.read!()
-      |> Code.string_to_quoted!(file: file, token_metadata: true)
-      |> modules([])
-      |> Enum.map(fn {parts, node} ->
-        %{name: Enum.map_join(parts, ".", &Atom.to_string/1), node: node, file: rel}
-      end)
+      {:unparsed, file} ->
+        file |> File.read!() |> Code.string_to_quoted!(file: file) |> module_records(file)
+    end)
+  end
+
+  defp module_records(ast, rel) do
+    ast
+    |> modules([])
+    |> Enum.map(fn {parts, node} ->
+      %{name: Enum.map_join(parts, ".", &Atom.to_string/1), node: node, file: rel}
     end)
   end
 

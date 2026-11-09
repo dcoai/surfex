@@ -97,7 +97,9 @@ defmodule Surfex.Scan.Markdown do
     {scans, errors} =
       root
       |> files(globs, exclude)
-      |> Enum.map(fn file -> root |> Path.join(file) |> File.read!() |> read(file, opts) end)
+      |> Surfex.Parallel.map(fn file ->
+        root |> Path.join(file) |> File.read!() |> read(file, opts)
+      end)
       |> Enum.unzip()
 
     {scans, cite_errors} = scans |> List.flatten() |> cited(Keyword.get(opts, :unit_refs, []))

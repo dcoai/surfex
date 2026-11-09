@@ -65,6 +65,9 @@ release it merely follows.
 
 ### Changed
 
+- **The log and the source are read on every core** (#379, #381). Decoding the log's lines and scanning
+  spec, code and test files run in parallel. What they give is unchanged, in content and order, and a
+  syntax error or an edited log line is reported as before, with no extra crash report.
 - **Commands repeat less work** (#379, #380). `mix surfex.status --verify` reads the log once, where
   it decoded every line twice. `mix surfex.suggest` scans the code once, and `--accept` records from
   what it already read. `suggest` builds its set of related pairs once, and `mix surfex.completeness`
