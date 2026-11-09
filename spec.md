@@ -73,7 +73,8 @@ whether the scans and the log's lines come in one order or another
 
 ```test:suite-leaves-own-log
 a file under the project's own `.surfex/` that changed, appeared or went missing during
-the suite is named; an untouched `.surfex/` names nothing
+the suite is named, apart from its cache (§12.2), which a load may write; an untouched
+`.surfex/` names nothing
 ```
 
 ## 2. Surface goldens
@@ -2480,6 +2481,16 @@ answered from the log alone.
 - <!-- surfex: parallel-reads --> Decoding the log's lines, and scanning spec, code and test files, run on every scheduler.
   What they give is the same, in content and order, as reading one at a time, and an error is
   raised as it would be then: the same exception, naming the same file or line.
+- <!-- surfex: log-checkpoint --> `Surfex.Log.load/1` keeps a **checkpoint** of the entries it loaded in `.surfex/cache/`,
+  which ignores itself in git: it is never committed, merged or judged, and deleting it only costs
+  time. It is keyed on each segment's exact bytes and on the code that decoded them, so it applies only
+  while every segment it was made from still starts with those bytes; a load then decodes just the
+  lines after them, and any other change to a segment is decoded in full. What a load gives is the
+  same, in content and order, and a bad line raises as it would without it. The checkpoint is
+  rewritten once the lines it doesn't cover pass an eighth of those it does, so a run after a small
+  append doesn't pay for rewriting it. A damaged checkpoint, or one from other code, is not used, and
+  one that can't be written is skipped. `Surfex.Log.verify/1` and `Surfex.Log.check/1` never use it:
+  the tamper check always reads every line.
 - <!-- surfex: log-check-once --> `Surfex.Log.check/1` gives both from one reading: the entries `load/1` gives, and the
   problems `verify/1` reports. `mix surfex.status --verify` reads the log once with it,
   where decoding every line twice was most of its extra time.

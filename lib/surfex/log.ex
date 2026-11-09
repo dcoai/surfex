@@ -21,12 +21,20 @@ defmodule Surfex.Log do
   `init/1` adds `.surfex/*.log merge=union` to `.gitattributes`, so git merges concurrent
   appends by keeping both sides' lines. That is always right here: loading drops
   duplicates and orders entries by time, whatever order the lines arrive in.
+
+  ## Checkpoints
+
+  `load/1` keeps a checkpoint of each segment's decoded entries in `.surfex/cache/`, which
+  git ignores, keyed on the segment's exact bytes. A segment that still starts with those
+  bytes has only its later lines decoded. Any other change to it is decoded in full.
+  `verify/1` and `check/1` never use a checkpoint: they always read every line.
   """
 
   alias Surfex.Log.Entry
 
   @dir ".surfex"
   @open "surfex.log"
+  @checkpoint "log.checkpoint"
   @attributes "#{@dir}/*.log merge=union"
 
   @doc "The log directory under a project root."
@@ -74,19 +82,95 @@ defmodule Surfex.Log do
   """
   @spec load(String.t()) :: [Entry.t()]
   def load(root) do
-    root
-    |> segments()
-    # Decoded in parallel without raising; the first bad line raises here, as decode! would.
-    |> Enum.flat_map(fn {_n, path} ->
-      path |> entry_lines() |> Surfex.Parallel.chunked(500, &Entry.decode/1)
-    end)
-    |> Enum.map(fn
-      {:ok, entry} -> entry
-      {:error, why} -> raise ArgumentError, why
-    end)
-    |> Enum.uniq_by(& &1.id)
-    |> Enum.sort_by(&{&1.at, &1.id})
+    files = root |> segments() |> Enum.map(fn {_n, path} -> {path, File.read!(path)} end)
+
+    # What the checkpoint (spec §12.2) covers was decoded by an earlier load from these
+    # same bytes; only the lines after it are decoded.
+    {covered, known} = checkpointed(root, files)
+
+    decoded =
+      files
+      |> Enum.zip(covered)
+      |> Enum.flat_map(fn {{_path, content}, from} ->
+        content
+        |> binary_part(from, byte_size(content) - from)
+        |> String.split("\n", trim: true)
+        |> Enum.reject(&header?/1)
+      end)
+      # Decoded in parallel without raising; the first bad line raises here, as decode! would.
+      |> Surfex.Parallel.chunked(500, &Entry.decode/1)
+      |> Enum.map(fn
+        {:ok, entry} -> entry
+        {:error, why} -> raise ArgumentError, why
+      end)
+
+    tail = decoded |> Enum.uniq_by(& &1.id) |> Enum.sort_by(&{&1.at, &1.id})
+    entries = merge(known || [], tail)
+
+    # Rewriting the checkpoint costs about what decoding the whole log does, so a run after
+    # a small append decodes the few lines after it rather than rewriting it. It's rewritten
+    # once the lines it doesn't cover pass an eighth of those it does.
+    total = files |> Enum.map(fn {_, content} -> byte_size(content) end) |> Enum.sum()
+    uncovered = total - Enum.sum(covered)
+
+    if (known == nil or uncovered * 8 > total - uncovered) and
+         Enum.all?(files, fn {_, content} -> String.ends_with?(content, "\n") end),
+       do: checkpoint(root, files, entries)
+
+    entries
   end
+
+  # Two lists in load order merged into one, an entry in both kept once: entries with the
+  # same id have the same `at`, so they meet side by side.
+  defp merge(known, []), do: known
+  defp merge([], tail), do: tail
+
+  defp merge([a | as] = known, [b | bs] = tail) do
+    case {{a.at, a.id}, {b.at, b.id}} do
+      {same, same} -> [a | merge(as, bs)]
+      {ka, kb} when ka < kb -> [a | merge(as, tail)]
+      _ -> [b | merge(known, bs)]
+    end
+  end
+
+  # {bytes covered in each file, the loaded entries of those bytes}. The checkpoint
+  # applies when every segment it was made from still starts with exactly the bytes it
+  # covered, in the same order, with new segments only after them; otherwise it covers
+  # nothing ({zeros, nil}) and every line is decoded.
+  defp checkpointed(root, files) do
+    none = {Enum.map(files, fn _ -> 0 end), nil}
+
+    with {:ok, {made, entries}} <- Surfex.Cache.read(root, @checkpoint, checkpoint_fingerprint()),
+         true <- length(made) <= length(files),
+         covered = covered(made, files),
+         true <- Enum.all?(covered) do
+      {covered ++ List.duplicate(0, length(files) - length(made)), entries}
+    else
+      _ -> none
+    end
+  end
+
+  # For each segment the checkpoint was made from, the bytes it covers in the file now, or
+  # false when the file no longer starts with them.
+  defp covered(made, files) do
+    made
+    |> Enum.zip(files)
+    |> Enum.map(fn {{name, size, sum}, {path, content}} ->
+      name == Path.basename(path) and size <= byte_size(content) and
+        :crypto.hash(:sha256, binary_part(content, 0, size)) == sum and size
+    end)
+  end
+
+  defp checkpoint(root, files, entries) do
+    made =
+      Enum.map(files, fn {path, content} ->
+        {Path.basename(path), byte_size(content), :crypto.hash(:sha256, content)}
+      end)
+
+    Surfex.Cache.write(root, @checkpoint, checkpoint_fingerprint(), {made, entries})
+  end
+
+  defp checkpoint_fingerprint, do: Surfex.Cache.fingerprint([Entry, __MODULE__])
 
   @doc """
   Everything wrong with the log, one message each, or `[]`:

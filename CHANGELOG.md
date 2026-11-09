@@ -65,6 +65,10 @@ release it merely follows.
 
 ### Changed
 
+- **The log is checkpointed locally** (#382, #384). `Surfex.Log.load/1` keeps the entries it decoded in
+  `.surfex/cache/`, which ignores itself in git, keyed on the segments' exact bytes, so a run decodes only
+  the lines appended since. Loading surfex's own log takes about 0.5s where it took 1.3s. Any other change
+  to a segment is decoded in full, and `verify/1`, `check/1` and `mix surfex.log --verify` never use it.
 - **The log and the source are read on every core** (#379, #381). Decoding the log's lines and scanning
   spec, code and test files run in parallel. What they give is unchanged, in content and order, and a
   syntax error or an edited log line is reported as before, with no extra crash report.

@@ -6,16 +6,19 @@ defmodule Surfex.Test.OwnLog do
   would read as tampering ("does not match its content (edited?)").
 
   `guard/1` digests every file under `.surfex/` before the suite and, after it, fails the
-  run naming each file that changed, appeared or went missing.
+  run naming each file that changed, appeared or went missing. The cache (`.surfex/cache/`,
+  spec §12.2) is left out: a load may write it, and it is never part of the log.
   """
 
-  @doc "Every regular file under `dir`, relative to it, with the SHA-256 of its bytes."
+  @doc "Every regular file under `dir`, relative to it, with the SHA-256 of its bytes, but the cache."
   @spec digest(String.t()) :: %{String.t() => String.t()}
   def digest(dir) do
     for path <- Path.wildcard(Path.join(dir, "**/*"), match_dot: true),
         File.regular?(path),
+        file = Path.relative_to(path, dir),
+        not String.starts_with?(file, "cache/"),
         into: %{},
-        do: {Path.relative_to(path, dir), :crypto.hash(:sha256, File.read!(path))}
+        do: {file, :crypto.hash(:sha256, File.read!(path))}
   end
 
   @doc "What differs between two digests, one line per file, sorted; `[]` when nothing does."
