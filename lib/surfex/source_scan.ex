@@ -513,12 +513,45 @@ defmodule Surfex.SourceScan do
   Accepts a quoted AST node, or a binary source snippet parsed with `Code.string_to_quoted!/1`.
   """
   @spec definition_hash(Macro.t() | String.t()) :: String.t()
+  # The process key of the memo a scan opens (`Surfex.VersionMemo` uses the same one).
+  @memo :surfex_version_memo
   def definition_hash(source) when is_binary(source),
     do: source |> Code.string_to_quoted!() |> definition_hash()
 
   def definition_hash(ast) do
-    ast
-    |> strip_meta()
+    stripped = strip_meta(ast)
+
+    case Process.get(@memo) do
+      nil -> version(stripped)
+      table -> remembered(table, stripped)
+    end
+  end
+
+  # Inside a scan, a version is remembered by content (`Surfex.VersionMemo`, spec §12.2):
+  # keyed on the SHA-256 of the stripped AST's external term format, so a hit is the
+  # version computed for the identical term, and a term encoded differently is a miss. Each
+  # row is {digest, version, saves it went unused}; a use resets the count. This reads the
+  # memo with the standard library alone, so the module's source files stay its own (§23.4).
+  defp remembered(table, stripped) do
+    digest = :crypto.hash(:sha256, :erlang.term_to_binary(stripped, [:deterministic]))
+
+    case :ets.lookup(table, digest) do
+      [{_, version, 0}] ->
+        version
+
+      [{_, version, _unused}] ->
+        :ets.update_element(table, digest, {3, 0})
+        version
+
+      [] ->
+        version = version(stripped)
+        :ets.insert(table, [{digest, version, 0}, {:learned, true}])
+        version
+    end
+  end
+
+  defp version(stripped) do
+    stripped
     |> Macro.to_string()
     |> then(&:crypto.hash(:sha256, &1))
     |> Base.encode16(case: :lower)
