@@ -2477,6 +2477,9 @@ answered from the log alone.
   in, which is what makes the union merge correct.
 - `Surfex.Log.verify/1` reports every edited line, every parent no entry has (a removed
   line), and every segment header that doesn't match the segments before it (truncation).
+- <!-- surfex: log-check-once --> `Surfex.Log.check/1` gives both from one reading: the entries `load/1` gives, and the
+  problems `verify/1` reports. `mix surfex.status --verify` reads the log once with it,
+  where decoding every line twice was most of its extra time.
 
 `Mix.Tasks.Surfex.Log` is `mix surfex.log`, with exactly one of `--init`, `--break`,
 `--verify` (fails on any problem) or `--rechain`. It never edits or removes an entry.

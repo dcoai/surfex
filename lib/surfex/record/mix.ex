@@ -19,14 +19,17 @@ defmodule Surfex.Record.Mix do
     root = File.cwd!()
     config = Config.read!(Path.join(root, opts[:config] || ".surfex.exs"))
     if Config.project_scanner?(config), do: Mix.Task.run("compile")
+    meta = meta(root, opts)
+    {root, Config.scans(config, root), Log.load(root), meta}
+  end
 
+  @doc "Who and what an entry recorded here names: the author, HEAD, and `--note`."
+  @spec meta(String.t(), keyword) :: keyword
+  def meta(root, opts) do
     unless File.dir?(Log.dir(root)),
       do: Mix.raise("no relation log in #{Log.dir(root)}: run `mix surfex.log --init`")
 
-    meta =
-      [by: author(root), commit: head(root)] ++ if(opts[:note], do: [note: opts[:note]], else: [])
-
-    {root, Config.scans(config, root), Log.load(root), meta}
+    [by: author(root), commit: head(root)] ++ if(opts[:note], do: [note: opts[:note]], else: [])
   end
 
   # Whether an unscanned id could be one of this project's (`Surfex.Record.plan/7`). A spec

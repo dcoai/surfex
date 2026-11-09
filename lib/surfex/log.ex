@@ -90,7 +90,15 @@ defmodule Surfex.Log do
       branches that both started a segment: `rechain/1` fixes the latter)
   """
   @spec verify(String.t()) :: [String.t()]
-  def verify(root) do
+  def verify(root), do: root |> check() |> elem(1)
+
+  @doc """
+  `verify/1`'s problems and `load/1`'s entries from one reading of the log, for a caller
+  that needs both: decoding every line twice was most of `mix surfex.status --verify`'s
+  extra time. The entries are those that decode, as `load/1` orders them.
+  """
+  @spec check(String.t()) :: {[Entry.t()], [String.t()]}
+  def check(root) do
     segments = segments(root)
 
     {entries, broken} =
@@ -113,7 +121,8 @@ defmodule Surfex.Log do
           do:
             "entry #{short(e.id)} names parent #{short(p)}, which no segment has (a removed line?)"
 
-    Enum.reverse(broken) ++ orphans ++ chain_problems(segments)
+    loaded = entries |> Enum.uniq_by(& &1.id) |> Enum.sort_by(&{&1.at, &1.id})
+    {loaded, Enum.reverse(broken) ++ orphans ++ chain_problems(segments)}
   end
 
   @doc "Closes the open segment as the next `surfex_N.log` and starts a new open segment."

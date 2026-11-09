@@ -1391,6 +1391,18 @@ defmodule Surfex.StatusTest do
                Config.read!(path)
     end
 
+    # #379, #380: a task needing both items and scans reads the code once.
+    @tag verifies: ["status-config-read", "status-config"]
+    test "scans_of/3 over items already read gives scans/2's scans", %{tmp_dir: root} do
+      File.cp_r!(Path.expand("../fixtures/elixir_project", __DIR__), root)
+      File.write!(Path.join(root, "spec.md"), "# Carts\n\n`MyApp.Cart.add/2` adds.\n")
+      config = [sources: ["spec.md"]]
+      items = Config.items(config, root)
+
+      assert Config.scans_of(items, config, root) == Config.scans(config, root)
+      assert Enum.any?(Config.scans_of(items, config, root), &(&1.id == "MyApp.Cart.add/2"))
+    end
+
     @tag verifies: ["status-config-read", "status-config"]
     test "status/4 derives the status as mix surfex.status does, with the caller's options",
          %{tmp_dir: root} do

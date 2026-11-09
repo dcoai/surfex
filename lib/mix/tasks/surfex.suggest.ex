@@ -93,17 +93,17 @@ defmodule Mix.Tasks.Surfex.Suggest do
 
     items = Config.items(config, root)
     profile = Config.profile!(config, namespace, items)
-    scans = Config.scans(config, root)
+    scans = Config.scans_of(items, config, root)
     entries = if File.dir?(Log.dir(root)), do: Log.load(root), else: []
 
     suggestions = Suggest.all(profile, items, scans, entries, root)
 
     if format == "json",
       do: Mix.shell().info(Suggest.json(suggestions)),
-      else: report(suggestions, root, opts, evidence)
+      else: report(suggestions, {root, scans, entries}, opts, evidence)
   end
 
-  defp report(suggestions, root, opts, evidence) do
+  defp report(suggestions, {root, scans, entries}, opts, evidence) do
     for m <- suggestions.moves, do: Mix.shell().info("move        #{m.from} → #{m.to.id}")
 
     for a <- suggestions.ambiguous,
@@ -226,7 +226,8 @@ defmodule Mix.Tasks.Surfex.Suggest do
         :ok
 
       opts[:accept] ->
-        {^root, scans, entries, meta} = R.context(Keyword.take(opts, [:note, :config]))
+        # The scans and log read above: reading them again cost the time of the whole run.
+        meta = R.meta(root, Keyword.take(opts, [:note]))
         options = [evidence: evidence, retire_undeclared: opts[:retire_undeclared] == true]
         R.record(root, Suggest.accept_all(suggestions, scans, entries, meta, options))
 

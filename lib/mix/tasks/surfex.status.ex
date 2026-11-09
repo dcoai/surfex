@@ -134,7 +134,7 @@ defmodule Mix.Tasks.Surfex.Status do
     if Config.project_scanner?(config), do: Mix.Task.run("compile")
 
     # Verified before loading: a tampered log gets its report, not the first decode error.
-    problems = if opts[:verify], do: Log.verify(root), else: []
+    {entries, problems} = if opts[:verify], do: Log.check(root), else: {nil, []}
 
     if problems != [],
       do: Mix.raise("the relation log does not verify:\n" <> Enum.join(problems, "\n"))
@@ -159,7 +159,8 @@ defmodule Mix.Tasks.Surfex.Status do
           deviations: deviations,
           validated: opts[:validated] == true
         ] ++
-          evidence(opts, root) ++ issues(opts, config, root)
+          evidence(opts, root) ++
+          issues(opts, config, root) ++ if(entries, do: [log_entries: entries], else: [])
       )
 
     status = status!(read, format)
