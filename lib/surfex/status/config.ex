@@ -503,7 +503,16 @@ defmodule Surfex.Status.Config do
   end
 
   defp derive(config, root, scans, options, extra) do
-    entries = if File.dir?(Surfex.Log.dir(root)), do: Surfex.Log.load(root), else: []
+    # A caller that has read the log already (`--verify`) hands its entries on.
+    {given, extra} = Keyword.pop(extra, :log_entries)
+
+    entries =
+      cond do
+        given != nil -> given
+        File.dir?(Surfex.Log.dir(root)) -> Surfex.Log.load(root)
+        true -> []
+      end
+
     adoption = [adoption: adoption!(config, root)]
 
     extra =
@@ -847,6 +856,18 @@ defmodule Surfex.Status.Config do
         verifies: check |> Keyword.fetch!(:verifies) |> List.wrap(),
         inputs: Keyword.get(check, :inputs, [])
       }
+    end
+  end
+
+  @doc """
+  The scans of `scans/2`, over `items` the caller has already read (`items/2`), so a task
+  needing both scans the code once. Scan errors raise, as in `scans/2`.
+  """
+  @spec scans_of([Surfex.Item.t()], keyword, String.t()) :: [Scan.t()]
+  def scans_of(items, config, root) do
+    case scans(config, root, items) do
+      {scans, []} -> scans
+      {_scans, errors} -> raise Scan.Errors, errors: errors
     end
   end
 

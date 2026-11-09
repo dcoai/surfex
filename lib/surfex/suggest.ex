@@ -50,7 +50,10 @@ defmodule Surfex.Suggest do
           candidate
         ]
   def candidates(profile, items, scans, entries, root),
-    do: profile |> cited(items, scans, entries, root) |> elem(0)
+    do:
+      profile
+      |> cited(items, scans, entries, MapSet.new(entries, &Entry.relation/1), root)
+      |> elem(0)
 
   @doc """
   Whether the log is **established** (§15.4): it holds a live `implements` whose judgement
@@ -68,11 +71,10 @@ defmodule Surfex.Suggest do
 
   # Candidates, and the pairs a prose citation would have proposed but for the
   # established log (§15.4), each with the citation's span.
-  defp cited(profile, items, scans, entries, root) do
+  defp cited(profile, items, scans, entries, related, root) do
     citations = Cite.citations(items, profile, root)
     sections = Enum.filter(scans, &(&1.kind == :spec))
     code = for s <- scans, s.kind == :code, into: %{}, do: {s.id, s}
-    related = MapSet.new(entries, &Entry.relation/1)
     established = established?(entries)
 
     pairs =
@@ -260,16 +262,19 @@ defmodule Surfex.Suggest do
 
     # A contract's key names its function (§15.3): those pairs come first, whatever else
     # proposes them.
-    own = own_functions(scans, moved)
+    # Which pairs the log already relates, in any state: read once, asked by every source.
+    related = MapSet.new(moved, &Entry.relation/1)
+
+    own = own_functions(scans, related)
     owned = MapSet.new(own, &{&1.spec.id, &1.code.id})
 
     # The class says a classed unit's own text asserts nothing (§15.2).
-    {cited, held} = cited(profile, items, scans, moved, root)
+    {cited, held} = cited(profile, items, scans, moved, related, root)
     cited = Enum.reject(cited, &(&1.spec.class != nil or MapSet.member?(owned, pair(&1))))
 
     # A claim's tests are always a source (§15.1): once the log is established they are
     # the route left for code a prose citation names (§15.4).
-    {claimed, reached, also_called} = claims(scans, moved, own ++ cited)
+    {claimed, reached, also_called} = claims(scans, moved, related, own ++ cited)
 
     implements = own ++ cited ++ claimed
     status = Surfex.Status.derive(scans, moved)
@@ -277,13 +282,13 @@ defmodule Surfex.Suggest do
     %{
       moves: moves,
       ambiguous: ambiguous,
-      refines: ordered(refinements(scans, moved)),
+      refines: ordered(refinements(scans, related)),
       implements: ordered(own) ++ ordered(cited ++ claimed),
-      excuses: ordered(excusals(profile, items, scans, moved, implements)),
+      excuses: ordered(excusals(profile, items, scans, moved, related, implements)),
       reached: ordered(reached),
       also_called: ordered(also_called),
       withheld: withheld(held, implements),
-      verifies: ordered(Enum.reject(verifications(scans, moved), &(&1.to.class != nil))),
+      verifies: ordered(Enum.reject(verifications(scans, related), &(&1.to.class != nil))),
       undeclared: ordered(undeclared(status)),
       moved: ordered(status.moved),
       migrated:
@@ -294,7 +299,7 @@ defmodule Surfex.Suggest do
           )
         ),
       refresh: ordered(refreshed(scans, status)),
-      tests: ordered(exercised(scans, moved))
+      tests: ordered(exercised(scans, related))
     }
   end
 
@@ -316,9 +321,8 @@ defmodule Surfex.Suggest do
   # §15.3: each contract unit and the code item of its own key, a `@spec`'s
   # `Module.name/arity` and a callback's `Module.callback:name/arity`, unless a relation
   # relates them in any state. Cited at the contract's line: the key is the claim.
-  defp own_functions(scans, entries) do
+  defp own_functions(scans, related) do
     code = for %Scan{kind: :code} = s <- scans, into: %{}, do: {s.id, s}
-    related = MapSet.new(entries, &Entry.relation/1)
 
     for %Scan{kind: :spec, role: :contract} = unit <- scans,
         item = Map.get(code, own_key(unit)),
@@ -626,7 +630,7 @@ defmodule Surfex.Suggest do
   # in (`within`, else `under`) has a live `implements` or one proposed in this run by a
   # citation or a contract's key. Of its candidates, only those other claims' tests call
   # least (`shared`) are proposed; the rest are counted per claim (`also_called`).
-  defp claims(scans, entries, proposed) do
+  defp claims(scans, entries, related, proposed) do
     code = for %Scan{kind: :code} = s <- scans, s.role != :module, into: %{}, do: {s.id, s}
 
     owner =
@@ -640,7 +644,6 @@ defmodule Surfex.Suggest do
     claims = proposable_claims(scans)
 
     within = for %Scan{kind: :spec, within: w} = s <- scans, w != nil, into: %{}, do: {s.id, w}
-    related = MapSet.new(entries, &Entry.relation/1)
     cited = MapSet.new(proposed, &{&1.spec.id, &1.code.id})
     resolver = Scan.resolver(scans)
 
@@ -771,10 +774,9 @@ defmodule Surfex.Suggest do
     end
   end
 
-  defp excusals(profile, items, scans, entries, implements) do
+  defp excusals(profile, items, scans, entries, related, implements) do
     classes = for %Scan{kind: :class} = s <- scans, into: %{}, do: {s.id, s}
     code = for %Scan{kind: :code} = s <- scans, into: %{}, do: {s.id, s}
-    related = MapSet.new(entries, &Entry.relation/1)
 
     implemented =
       MapSet.new(
@@ -829,8 +831,7 @@ defmodule Surfex.Suggest do
   defp still?(:tests, %Scan{calls: calls}, %Scan{id: id}), do: id in calls
   defp still?(:refines, %Scan{within: within}, %Scan{id: id}), do: within == id
 
-  defp verifications(scans, entries) do
-    related = MapSet.new(entries, &Entry.relation/1)
+  defp verifications(scans, related) do
     resolver = Scan.resolver(scans)
 
     # A check declares what it verifies as a test does (§11.4).
@@ -843,9 +844,8 @@ defmodule Surfex.Suggest do
         do: %{from: test, to: spec}
   end
 
-  defp exercised(scans, entries) do
+  defp exercised(scans, related) do
     code = for %Scan{kind: :code} = s <- scans, into: %{}, do: {s.id, s}
-    related = MapSet.new(entries, &Entry.relation/1)
 
     for %Scan{kind: :test, calls: calls} = test <- scans,
         id <- calls,
@@ -855,9 +855,8 @@ defmodule Surfex.Suggest do
         do: %{from: test, to: item}
   end
 
-  defp refinements(scans, entries) do
+  defp refinements(scans, related) do
     by_id = for %Scan{kind: :spec} = s <- scans, into: %{}, do: {s.id, s}
-    related = MapSet.new(entries, &Entry.relation/1)
 
     for %Scan{kind: :spec, within: within} = unit <- scans,
         within != nil,

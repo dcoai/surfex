@@ -46,6 +46,18 @@ defmodule Surfex.Completeness do
   @spec report(Surfex.Status.t()) :: t
   def report(status) do
     live = for r <- status.relations, r.state != :retired, do: r
+
+    # Each item's relations, and the units something implements, read once: asking the whole
+    # log for each item made the report quadratic.
+    index = %{
+      touching:
+        live
+        |> Enum.flat_map(fn r -> for e <- Enum.uniq(ends(r)), do: {e, r} end)
+        |> Enum.group_by(&elem(&1, 0), &elem(&1, 1)),
+      implemented:
+        for(%{relation: {:implements, _, {:spec, unit}}} <- live, into: MapSet.new(), do: unit)
+    }
+
     within = for {{:spec, id}, %Scan{within: w}} <- status.scans, w != nil, into: %{}, do: {id, w}
     scans = status.scans |> Map.values() |> Enum.sort_by(&{&1.kind, &1.id})
 
@@ -61,7 +73,7 @@ defmodule Surfex.Completeness do
           kind != :spec or counted?(scan, status),
           do:
             {kind, scan,
-             missing(kind, scan, live, within, status) ++
+             missing(kind, scan, index, within, status) ++
                if(kind == :spec, do: Map.get(deviates, scan.id, []), else: [])}
 
     # Code is one item per definition (`Scan.definition/1`), as it is to `require:`, the
@@ -77,7 +89,7 @@ defmodule Surfex.Completeness do
             |> Map.values(),
           group = Enum.sort_by(group, & &1.id),
           counted_code?(group, named),
-          do: {:code, hd(group), missing_code(group, live, status)}
+          do: {:code, hd(group), missing_code(group, index, status)}
 
     judged = Enum.sort_by(units_and_tests ++ code, fn {kind, scan, _} -> {kind, scan.id} end)
 
@@ -119,18 +131,20 @@ defmodule Surfex.Completeness do
 
   # ── What each kind misses ────────────────────────────────────────────────
 
-  defp missing(kind, scan, live, within, status) do
-    key = {kind, scan.id}
-    touching = Enum.filter(live, &(key in ends(&1)))
-    if touching == [], do: [:no_relation], else: lacks(kind, scan, touching, live, within, status)
+  defp missing(kind, scan, index, within, status) do
+    touching = Map.get(index.touching, {kind, scan.id}, [])
+
+    if touching == [],
+      do: [:no_relation],
+      else: lacks(kind, scan, touching, index, within, status)
   end
 
-  defp lacks(:spec, scan, touching, live, _within, status) do
+  defp lacks(:spec, scan, touching, _index, _within, status) do
     # Only the claim's own evidence completes it (§20.1): no unit inside it does.
     id = scan.id
 
     verified =
-      Enum.any?(live, fn
+      Enum.any?(touching, fn
         %{relation: {:verifies, {kind, _}, {:spec, ^id}}} = r when kind in [:test, :check] ->
           validated?(status, r)
 
@@ -144,7 +158,7 @@ defmodule Surfex.Completeness do
       if Enum.all?(implements, &validated?(status, &1)), do: [], else: [:unvalidated]
   end
 
-  defp lacks(:test, _scan, touching, live, within, status) do
+  defp lacks(:test, _scan, touching, index, within, status) do
     verifies =
       for %{relation: {:verifies, {:test, _}, _}} = r <- touching, validated?(status, r), do: r
 
@@ -153,7 +167,7 @@ defmodule Surfex.Completeness do
     code_less =
       verifies != [] and
         Enum.all?(verifies, fn %{relation: {_, _, {:spec, unit}}} ->
-          not implemented?(unit, live, within)
+          not implemented?(unit, index.implemented, within)
         end)
 
     if(verifies == [], do: [:verifies_nothing], else: []) ++
@@ -174,10 +188,9 @@ defmodule Surfex.Completeness do
   defp counted?(scan, status),
     do: Surfex.Status.verdict(status, scan.id) in [:verified, :contained, :unverified]
 
-  defp missing_code(group, live, status) do
-    keys = for s <- group, do: {:code, s.id}
+  defp missing_code(group, index, status) do
     ids = for s <- group, do: s.id
-    touching = Enum.filter(live, fn r -> Enum.any?(ends(r), &(&1 in keys)) end)
+    touching = Enum.uniq(for s <- group, r <- Map.get(index.touching, {:code, s.id}, []), do: r)
     if touching == [], do: [:no_relation], else: lacks_code(ids, touching, status)
   end
 
@@ -221,10 +234,10 @@ defmodule Surfex.Completeness do
 
   # A unit's code is its own implements, or its enclosing unit's: a hint's code is its
   # section's.
-  defp implemented?(unit, live, within) do
-    Enum.any?(live, &match?(%{relation: {:implements, _, {:spec, ^unit}}}, &1)) or
+  defp implemented?(unit, implemented, within) do
+    MapSet.member?(implemented, unit) or
       case Map.fetch(within, unit) do
-        {:ok, parent} -> implemented?(parent, live, within)
+        {:ok, parent} -> implemented?(parent, implemented, within)
         :error -> false
       end
   end

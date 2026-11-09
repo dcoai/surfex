@@ -65,6 +65,11 @@ release it merely follows.
 
 ### Changed
 
+- **Commands repeat less work** (#379, #380). `mix surfex.status --verify` reads the log once, where
+  it decoded every line twice. `mix surfex.suggest` scans the code once, and `--accept` records from
+  what it already read. `suggest` builds its set of related pairs once, and `mix surfex.completeness`
+  no longer filters every relation for each item. Output is unchanged. `Surfex.Log.check/1` and
+  `Surfex.Status.Config.scans_of/3` are new.
 - **`mix surfex.validate` points at a deeper test** (#290, #378). The test that only calls code directly
   was the cheapest to review, which pulls toward shallow tests. Where another test verifying the unit
   reaches more of its code, it now says so, naming that test and the call it goes through. The review
