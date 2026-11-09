@@ -64,6 +64,7 @@ defmodule Surfex.Status.Config do
   """
 
   alias Surfex.Scan
+  alias Surfex.VersionMemo, as: Memo
   alias Surfex.Status.Config.Keys
 
   @typedoc "A declared check (`checks!/1`, §11.4)."
@@ -239,7 +240,11 @@ defmodule Surfex.Status.Config do
   an item's identity, and two scanners can't both own it.
   """
   @spec items(keyword, String.t()) :: [Surfex.Item.t()]
-  def items(config, root) do
+  def items(config, root), do: Memo.run(root, fn -> scan_items(config, root) end)
+
+  # Each scan runs with the definition-version memo (Surfex.VersionMemo), opened once
+  # however the entry points nest.
+  defp scan_items(config, root) do
     scanners = config |> validate!() |> scanners!()
     asked = project_scanners(scanners)
 
@@ -618,7 +623,9 @@ defmodule Surfex.Status.Config do
   (§11.11).
   """
   @spec scans(keyword, String.t()) :: [Scan.t()]
-  def scans(config, root) do
+  def scans(config, root), do: Memo.run(root, fn -> scan_all(config, root) end)
+
+  defp scan_all(config, root) do
     case scans(config, root, items(config, root)) do
       {scans, []} -> scans
       {_scans, errors} -> raise Scan.Errors, errors: errors
@@ -645,7 +652,10 @@ defmodule Surfex.Status.Config do
   """
   @spec read(keyword, String.t(), String.t() | nil) ::
           {:ok, {[Scan.t()], keyword}} | {:error, [Scan.Errors.error()]}
-  def read(config, root, namespace) do
+  def read(config, root, namespace),
+    do: Memo.run(root, fn -> scan_read(config, root, namespace) end)
+
+  defp scan_read(config, root, namespace) do
     items = items(config, root)
 
     case scans(config, root, items) do
@@ -864,7 +874,10 @@ defmodule Surfex.Status.Config do
   needing both scans the code once. Scan errors raise, as in `scans/2`.
   """
   @spec scans_of([Surfex.Item.t()], keyword, String.t()) :: [Scan.t()]
-  def scans_of(items, config, root) do
+  def scans_of(items, config, root),
+    do: Memo.run(root, fn -> scan_of(items, config, root) end)
+
+  defp scan_of(items, config, root) do
     case scans(config, root, items) do
       {scans, []} -> scans
       {_scans, errors} -> raise Scan.Errors, errors: errors

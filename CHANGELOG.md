@@ -65,6 +65,10 @@ release it merely follows.
 
 ### Changed
 
+- **Scans remember definition versions** (#383, #385). Inside a scan, `Surfex.SourceScan.definition_hash/1`
+  looks each definition up by a digest of its AST in a memo kept in `.surfex/cache/`, and pretty-prints
+  only what changed: reading surfex's own source takes about 1.65s where it took 2.3s. Every version is
+  the same as without it, and outside a scan the function is unchanged and reads no file.
 - **The log is checkpointed locally** (#382, #384). `Surfex.Log.load/1` keeps the entries it decoded in
   `.surfex/cache/`, which ignores itself in git, keyed on the segments' exact bytes, so a run decodes only
   the lines appended since. Loading surfex's own log takes about 0.5s where it took 1.3s. Any other change

@@ -13,6 +13,13 @@ defmodule Surfex.Parallel do
 
   def map(list, fun) do
     {:ok, supervisor} = Task.Supervisor.start_link()
+    # The tasks share the caller's definition-version memo, if it has one.
+    memo = Surfex.VersionMemo.current()
+
+    fun = fn item ->
+      :ok = Surfex.VersionMemo.adopt(memo)
+      fun.(item)
+    end
 
     results =
       supervisor

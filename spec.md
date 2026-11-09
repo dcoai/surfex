@@ -2491,6 +2491,15 @@ answered from the log alone.
   append doesn't pay for rewriting it. A damaged checkpoint, or one from other code, is not used, and
   one that can't be written is skipped. `Surfex.Log.verify/1` and `Surfex.Log.check/1` never use it:
   the tamper check always reads every line.
+- <!-- surfex: version-memo --> A scan **remembers definition versions by content**: inside a scan, `Surfex.SourceScan.definition_hash/1`
+  looks a definition up by the SHA-256 of its metadata-stripped AST, and hashes it only when it isn't
+  there. The version is the one the hash gives that exact AST, so it is the same with or without the
+  memo; a changed definition is a different AST, and so a miss. The scan's parallel work shares the
+  memo. Between runs it is kept in the cache (`.surfex/cache/`), keyed on the code that hashed and the
+  Elixir and OTP running it, and saved only by a run that hashed something new; a version unused through
+  eight such saves in a row is dropped. A damaged memo, or one from other code, is not used. Outside a
+  scan `definition_hash/1` hashes as before and reads no file, so the library API (§23) and the source
+  files `Surfex.SourceScan` needs (§23.4) are unchanged.
 - <!-- surfex: log-check-once --> `Surfex.Log.check/1` gives both from one reading: the entries `load/1` gives, and the
   problems `verify/1` reports. `mix surfex.status --verify` reads the log once with it,
   where decoding every line twice was most of its extra time.
