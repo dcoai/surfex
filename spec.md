@@ -2478,6 +2478,10 @@ answered from the log alone.
   in, which is what makes the union merge correct.
 - `Surfex.Log.verify/1` reports every edited line, every parent no entry has (a removed
   line), and every segment header that doesn't match the segments before it (truncation).
+- <!-- surfex: log-non-entry --> A line that is JSON but no entry (no string `"id"`, or not an object) is reported by
+  `verify/1` as `not a log entry`, with its file and line, and never raises. It has no entry id,
+  so it adds nothing to its segment's hash, and `break/1` and `rechain/1` hash past it. Text
+  that isn't JSON at all still raises: the file is corrupt.
 - <!-- surfex: parallel-reads --> Decoding the log's lines, and scanning spec, code and test files, run on every scheduler.
   What they give is the same, in content and order, as reading one at a time, and an error is
   raised as it would be then: the same exception, naming the same file or line.

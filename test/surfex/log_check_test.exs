@@ -64,4 +64,54 @@ defmodule Surfex.LogCheckTest do
     assert problem =~ ~r/^surfex_1\.log:\d+: entry .* does not match its content/
     assert length(entries) == 2
   end
+
+  # #387: the chain hashed every line's "id" as read from JSON, so a line that is JSON but no
+  # entry raised a KeyError (or BadMapError) out of verify/1 instead of being reported.
+  describe "a JSON line that is no entry" do
+    @describetag verifies: "log-non-entry"
+
+    # Two segments, the closed one returned, so its successor's header checks its hash.
+    defp two_segments(root) do
+      Log.init(root)
+      Log.append(root, [entry(1), entry(2)])
+      Log.break(root)
+      Log.append(root, [entry(3)])
+      Path.join(Log.dir(root), "surfex_1.log")
+    end
+
+    test "no id, a non-string id, a list or a number is reported with its line, and its segment still chains",
+         %{tmp_dir: tmp} do
+      for {kind, line} <- [
+            no_id: ~s({"foo":1}),
+            integer_id: ~s({"id":7,"op":"relate"}),
+            list: ~s([1,2]),
+            number: ~s(5)
+          ] do
+        root = Path.join(tmp, Atom.to_string(kind))
+        closed = two_segments(root)
+        File.write!(closed, File.read!(closed) <> line <> "\n")
+
+        {entries, problems} = Log.check(root)
+        assert problems == Log.verify(root), "#{kind}"
+        assert [problem] = problems, "#{kind}: #{inspect(problems)}"
+        assert problem =~ ~r/^surfex_1\.log:\d+: not a log entry: /, "#{kind}"
+        assert length(entries) == 3, "#{kind}"
+      end
+    end
+
+    test "break and rechain hash past it, and verify lists only the line", %{tmp_dir: root} do
+      closed = two_segments(root)
+      File.write!(closed, File.read!(closed) <> ~s({"foo":1}) <> "\n")
+      open = Path.join(Log.dir(root), "surfex.log")
+      File.write!(open, File.read!(open) <> ~s([1]) <> "\n")
+
+      Log.rechain(root)
+      Log.break(root)
+      Log.append(root, [entry(4)])
+
+      assert [a, b] = Log.verify(root)
+      assert a =~ ~r/^surfex_1\.log:\d+: not a log entry: \{"foo":1\}/
+      assert b =~ ~r/^surfex_2\.log:\d+: not a log entry: \[1\]/
+    end
+  end
 end

@@ -161,6 +161,11 @@ its callback item (`mix surfex.suggest` proposes it) and retire the module relat
 
 ### Fixed
 
+- **A JSON log line that is no entry is reported, not raised** (#387, #389). A line with no string
+  `"id"`, or that isn't an object, made `Surfex.Log.verify/1`, `break/1` and `rechain/1` raise a
+  `KeyError` or `BadMapError` while hashing its segment. `verify/1` now lists it as `not a log
+  entry` with its line, and it adds nothing to its segment's hash (spec `log-non-entry`). Text that
+  isn't JSON still raises.
 - **`mix surfex.migrate --code --to` retires only what it names** (#289, #373). It retired every
   settled pair in the section under its one `--note`, and a retired relation can't be annotated,
   so the wrong note stayed for good. `--accept` and `mix surfex.suggest --accept` now retire with
