@@ -4444,6 +4444,21 @@ field, JSON that isn't an object) raises an `ArgumentError` naming the first suc
 the file. On apu's 1.15 GB file that took the read from 33 s and 14 GB to 5 s and 2.5 GB
 (#398, #399).
 
+<!-- surfex: evidence-checkpoint -->
+`Surfex.Evidence.project/1` reads a project's own evidence file (`path/1`) as `load/1`
+does, through a **checkpoint** in `.surfex/cache/`, as the log's is (§12.2): the records
+decoded from the bytes it covered, keyed on those bytes and on the code that decoded them.
+The file only grows between runs, so a read hashes the covered bytes as it goes and decodes
+just the lines after them; a file that no longer starts with those bytes (rewritten,
+truncated) is decoded in full. The checkpoint holds each repeated value once, so neither
+writing nor reading it copies the values per record. It is rewritten once the lines it
+doesn't cover pass an eighth of those it does, a damaged one or one from other code isn't
+used, and none is written outside a project that keeps a log. What a read gives is the same
+records, in the same order, as `load/1`. The commands read the project's evidence through
+it (`mix surfex.status --evidence`, the recording commands' evidence, `mix surfex.baseline`);
+a CI job's file given with `--merge` is read with `load/1`. On apu's file a warm read went
+from 8 s and 2.9 GB to under 3 s and 1.3 GB (#398, #400).
+
 - **A test version discriminates** once it has failed against one version of its code
   and later passed against a different one, the test itself unchanged:
   `Surfex.Evidence.discriminating?/3`, with `Surfex.Evidence.red_then_green/3` giving the

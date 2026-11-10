@@ -32,7 +32,7 @@ defmodule Mix.Tasks.Surfex.Baseline do
       |> Keyword.put(:adoption, Config.adoption!(config, root))
       |> Keyword.put(:no_tags, opts[:no_tags] == true)
 
-    evidence = Evidence.load(Evidence.path(root))
+    evidence = Evidence.project(root)
     result = Surfex.Record.baseline(scans, entries, evidence, meta)
     R.record(root, result)
 

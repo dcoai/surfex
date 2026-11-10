@@ -153,7 +153,7 @@ defmodule Surfex.Record.Mix do
         Surfex.Evidence.load(path)
       end
 
-    Surfex.Evidence.combined([Surfex.Evidence.load(Surfex.Evidence.path(root)) | merged])
+    Surfex.Evidence.combined([Surfex.Evidence.project(root) | merged])
   end
 
   def type!(opts) do
