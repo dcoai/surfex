@@ -257,7 +257,9 @@ defmodule Surfex.Status.Report do
     }
   end
 
-  defp encode(map), do: map |> :json.encode(&encode/2) |> IO.iodata_to_binary()
+  # Absent values (a gone end's hash and location, a conflicted relation's recorded hashes)
+  # reach tools as null, and keys in a fixed order (`Surfex.JSON`).
+  defp encode(map), do: Surfex.JSON.encode(map)
 
   @doc """
   The spec-only reading as text (§13.16), `mix surfex.status --spec`: its header, the
@@ -1318,12 +1320,6 @@ defmodule Surfex.Status.Report do
   defp at(%{location: location}), do: " (#{Surfex.Scan.place(location)})"
 
   # ── JSON ────────────────────────────────────────────────────────────────
-
-  # OTP's encoder writes only the atom `:null` as null, and any other atom, `nil` too, as a
-  # string. Absent values (a gone end's hash and location, a conflicted relation's recorded
-  # hashes) must reach tools as null, not as a hash named "nil".
-  defp encode(nil, _encoder), do: "null"
-  defp encode(value, encoder), do: :json.encode_value(value, encoder)
 
   defp relation_json(r, status) do
     {type, a, b} = r.relation

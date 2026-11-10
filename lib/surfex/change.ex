@@ -255,8 +255,7 @@ defmodule Surfex.Change do
         "steps" => d.steps
       }
     end)
-    |> :json.encode(&encode/2)
-    |> IO.iodata_to_binary()
+    |> Surfex.JSON.encode()
   end
 
   defp touched_json(t),
@@ -266,10 +265,6 @@ defmodule Surfex.Change do
       "state" => t.state && Atom.to_string(t.state),
       "text" => t.text
     }
-
-  # OTP's encoder writes any atom but :null as a string: nil must reach tools as null.
-  defp encode(nil, _encoder), do: "null"
-  defp encode(value, encoder), do: :json.encode_value(value, encoder)
 
   @doc """
   Hands drafts to the project's change process (`process:`, §19): `:print` gives each

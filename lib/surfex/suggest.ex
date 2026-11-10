@@ -490,7 +490,7 @@ defmodule Surfex.Suggest do
       {:implements, list} -> {:implements, Enum.map(list, &candidate_json/1)}
       {key, list} -> {key, Enum.map(list, &plain/1)}
     end)
-    |> JSON.encode!()
+    |> Surfex.JSON.encode()
   end
 
   defp candidate_json(c),

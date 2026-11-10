@@ -162,8 +162,7 @@ defmodule Surfex.Evidence do
       "seq" => r.seq,
       "code" => r.code
     }
-    |> :json.encode()
-    |> IO.iodata_to_binary()
+    |> Surfex.JSON.encode()
   end
 
   defp decode(line) do

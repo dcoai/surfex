@@ -167,6 +167,13 @@ its callback item (`mix surfex.suggest` proposes it) and retire the module relat
 
 ### Fixed
 
+- **JSON output has its keys in a fixed order** (#394, #395). A map's atom keys were written in the
+  order the VM created the atoms, so `mix surfex.suggest --format json` and `mix surfex.status
+  --format json` could change their bytes after a compile, with the same content. Every writer
+  (status, completeness, migrate, suggest, draft hand-off, evidence) now goes through one encoder
+  that sorts each object's keys at every depth and writes an absent value as `null` (spec
+  `json-key-order`). Evidence, migrate and completeness wrote `nil` as the string `"nil"`; none of
+  today's output had one. The relation log's lines are unchanged.
 - **A JSON log line that is no entry is reported, not raised** (#387, #389). A line with no string
   `"id"`, or that isn't an object, made `Surfex.Log.verify/1`, `break/1` and `rechain/1` raise a
   `KeyError` or `BadMapError` while hashing its segment. `verify/1` now lists it as `not a log
