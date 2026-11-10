@@ -4,6 +4,11 @@ All notable changes to Surfex are recorded here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+`mix.exs` reads `0.12.1-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
+release it merely follows.
+
 ## [0.12.0] — 2026-11-10
 
 Commands are three to four times faster, and the claim-grain migration does what it says.
