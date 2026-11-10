@@ -4433,6 +4433,17 @@ never committed; what it justifies is written into the relation log (§14), and 
 runs aren't needed afterwards.
 - `Surfex.Evidence.append/2` appends records, and `Surfex.Evidence.load/1` reads them back,
   oldest first.
+
+<!-- surfex: evidence-load-shared -->
+The file grows with every run and repeats itself: apu's held 911k records but only 18k
+distinct sets of code versions and 6k test versions. So `Surfex.Evidence.load/1` decodes
+its lines on every core, and records that hold equal values (a test and its version, a
+run, a set of code versions) hold one copy of each. The records and their order are what a
+line-by-line decode gives, and a line that isn't a record (an unknown result, a missing
+field, JSON that isn't an object) raises an `ArgumentError` naming the first such line in
+the file. On apu's 1.15 GB file that took the read from 33 s and 14 GB to 5 s and 2.5 GB
+(#398, #399).
+
 - **A test version discriminates** once it has failed against one version of its code
   and later passed against a different one, the test itself unchanged:
   `Surfex.Evidence.discriminating?/3`, with `Surfex.Evidence.red_then_green/3` giving the

@@ -34,6 +34,65 @@ defmodule Surfex.EvidenceTest do
              Evidence.load(path)
   end
 
+  describe "load/1 on a long-lived file" do
+    @describetag verifies: "evidence-load-shared"
+
+    # #399: a file's runs repeat the same tests, versions and code maps; across pieces of
+    # the file, records holding equal values hold one copy, and nothing else changes.
+    test "reads every record as written, oldest first, equal values shared across the file",
+         %{tmp_dir: root} do
+      path = Evidence.path(root)
+
+      # Each run lists the tests in turn, so equal values sit a run apart, across pieces.
+      written =
+        for run <- 1..5, n <- 1..700 do
+          %{
+            test: "T: #{n}",
+            test_hash: "t#{n}",
+            result: if(rem(n + run, 7) == 0, do: :failed, else: :passed),
+            at: "2026-09-28T10:0#{run}:00Z",
+            run: "r#{run}",
+            seq: n,
+            code: %{"M.f/1" => "c#{rem(n, 3)}", "M.g/0" => "g#{rem(run, 2)}"}
+          }
+        end
+
+      Evidence.append(path, Enum.reverse(written))
+      loaded = Evidence.load(path)
+
+      assert loaded == Enum.sort_by(written, &{&1.at, &1.run, &1.seq})
+
+      first = Enum.find(loaded, &(&1.run == "r1" and &1.seq == 1))
+      last = Enum.find(loaded, &(&1.run == "r5" and &1.seq == 1))
+      assert first.code == last.code
+      assert :erts_debug.same(first.code, last.code)
+      assert :erts_debug.same(first.test, last.test)
+    end
+
+    # The first line in the file that isn't a record is the one reported, wherever the
+    # pieces of the file were decoded.
+    test "a line that isn't a record raises, naming the first one in the file", %{tmp_dir: root} do
+      path = Evidence.path(root)
+
+      bad_result =
+        ~s({"at":"x","code":{},"result":"lost","run":"r","seq":0,"test":"T","test_hash":"h"})
+
+      no_code = ~s({"at":"x","result":"passed","run":"r","seq":0,"test":"T","test_hash":"h"})
+      File.mkdir_p!(Path.dirname(path))
+      write = fn lines -> File.write!(path, Enum.map(lines, &[&1, "\n"])) end
+      good = fn n -> for i <- 1..n, do: Surfex.JSON.encode(record(:passed, "c#{i}", i)) end
+
+      write.(good.(1500) ++ [bad_result] ++ good.(1500) ++ [no_code])
+      assert_raise ArgumentError, ~r/got "lost"/, fn -> Evidence.load(path) end
+
+      write.(good.(10) ++ [no_code] ++ good.(2500) ++ [bad_result])
+      assert_raise ArgumentError, ~r/evidence record has no code/, fn -> Evidence.load(path) end
+
+      write.(good.(3) ++ ["[1]"])
+      assert_raise ArgumentError, ~r/not an evidence record: \[1\]/, fn -> Evidence.load(path) end
+    end
+  end
+
   describe "discriminating?/3" do
     @describetag verifies: "evidence-discriminates"
 
