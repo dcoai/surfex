@@ -9,6 +9,16 @@ All notable changes to Surfex are recorded here, following
 `mix.exs` reads `0.12.1-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
 release it merely follows.
 
+### Changed
+
+- `Surfex.Evidence.load/1` decodes the evidence file on every core, and records holding
+  equal values (a test and its version, a run, a set of code versions) share one copy. On
+  apu's 1.15 GB file (911k records, 18k distinct code maps) the read went from 33 s and a
+  14 GB peak to 5 s and 2.5 GB, keeping about 0.4 GB. The records and their order are
+  unchanged. It reads the file without OTP's file server, which kept the whole file alive
+  after the read. A line that isn't a record is now reported as an `ArgumentError` naming
+  the first such line in the file: a missing field no longer raises `KeyError` (#398, #399).
+
 ## [0.12.0] — 2026-11-10
 
 Commands are three to four times faster, and the claim-grain migration does what it says.

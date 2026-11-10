@@ -66,19 +66,129 @@ defmodule Surfex.Evidence do
     File.write!(path, Enum.map(records, &[encode(&1), "\n"]), [:append])
   end
 
-  @doc "Every record in the evidence file at `path`, oldest first; `[]` when there is none."
+  @doc """
+  Every record in the evidence file at `path`, oldest first; `[]` when there is none.
+
+  The lines are decoded on every core, and records that hold equal values (a test's id
+  and version, a run, a set of code versions) hold one copy of each (§17, #399).
+  """
   @spec load(String.t()) :: [t]
   def load(path) do
     if File.exists?(path) do
       path
-      |> File.read!()
+      |> read()
       |> String.split("\n", trim: true)
-      |> Enum.map(&decode/1)
+      |> decode_shared()
       |> Enum.sort_by(&{&1.at, &1.run, &1.seq})
     else
       []
     end
   end
+
+  # The file's bytes, read without the file server: `File.read!/1` passes them through it,
+  # and an idle file server holds the last binary it read, the whole file, until it next
+  # collects garbage, which may be never.
+  defp read(path) do
+    {:ok, fd} = :file.open(path, [:read, :raw, :binary])
+    bytes = read_all(fd, [])
+    :ok = :file.close(fd)
+    bytes
+  end
+
+  defp read_all(fd, acc) do
+    case :file.read(fd, 64 * 1024 * 1024) do
+      {:ok, bytes} -> read_all(fd, [acc | bytes])
+      :eof -> IO.iodata_to_binary(acc)
+    end
+  end
+
+  # Lines per piece of work.
+  @chunk 1000
+
+  # The records of `lines`, in order. A long-lived file repeats a few values across its runs:
+  # apu's 911k records hold 18k distinct code maps and 6k test versions. Sharing doesn't
+  # survive a message, and the repeats are across runs, not within a piece of the file, so
+  # the pieces number each distinct value in one table they share and return only the
+  # numbers; each value is then copied out of the table once, and every record holds that
+  # one copy.
+  defp decode_shared(lines) do
+    table =
+      :ets.new(:surfex_evidence_values, [
+        :set,
+        :public,
+        read_concurrency: true,
+        write_concurrency: true
+      ])
+
+    pieces =
+      lines
+      |> Enum.chunk_every(@chunk)
+      |> Surfex.Parallel.map(&decode_piece(&1, table))
+
+    values = :ets.foldl(fn {value, n}, acc -> Map.put(acc, n, value) end, %{}, table)
+    :ets.delete(table)
+
+    # A piece reports its first line that isn't a record rather than raising in its task,
+    # so the error reads as it did when the file was decoded line by line.
+    case Enum.find(pieces, &match?({:error, _}, &1)) do
+      {:error, why} -> raise ArgumentError, why
+      nil -> :ok
+    end
+
+    for {:ok, piece} <- pieces, {test, test_hash, result, at, run, seq, code} <- piece do
+      %{
+        test: Map.fetch!(values, test),
+        test_hash: Map.fetch!(values, test_hash),
+        result: result,
+        at: at,
+        run: Map.fetch!(values, run),
+        seq: seq,
+        code: Map.fetch!(values, code)
+      }
+    end
+  end
+
+  # One piece's records, each repeated value as its number in `table`, or the first line's
+  # error. `at` is copied off the file's bytes, so no record keeps the whole file alive.
+  defp decode_piece(lines, table) do
+    number = &number(table, &1)
+
+    Enum.reduce_while(lines, {:ok, []}, fn line, {:ok, acc} ->
+      case decode(line) do
+        {:ok, r} ->
+          record =
+            {number.(r.test), number.(r.test_hash), r.result, :binary.copy(r.at), number.(r.run),
+             r.seq, number.(r.code)}
+
+          {:cont, {:ok, [record | acc]}}
+
+        {:error, _} = error ->
+          {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, records} -> {:ok, Enum.reverse(records)}
+      error -> error
+    end
+  end
+
+  # The value's number in `table`, numbering it if it has none; when two pieces number the
+  # same value at once, the first insert stands and both read it. A value is copied off the
+  # file's bytes as it goes in, which an ETS table would otherwise keep alive.
+  defp number(table, value) do
+    case :ets.lookup_element(table, value, 2, nil) do
+      nil ->
+        :ets.insert_new(table, {copy(value), :erlang.unique_integer()})
+        :ets.lookup_element(table, value, 2)
+
+      n ->
+        n
+    end
+  end
+
+  defp copy(value) when is_binary(value), do: :binary.copy(value)
+  defp copy(value) when is_map(value), do: Map.new(value, fn {k, v} -> {copy(k), copy(v)} end)
+  defp copy(value), do: value
 
   @doc """
   Whether `test_hash`, a version of test `test`, has discriminated: a failure against one
@@ -165,36 +275,43 @@ defmodule Surfex.Evidence do
     |> Surfex.JSON.encode()
   end
 
+  @fields ["test", "test_hash", "at", "run", "seq", "code"]
+  @results %{
+    "passed" => :passed,
+    "failed" => :failed,
+    "excluded" => :excluded,
+    "skipped" => :skipped
+  }
+
+  # A line's record, or why it isn't one. A line that isn't JSON raises, as a log line does.
   defp decode(line) do
-    map = Surfex.Log.Entry.json(line)
+    case Surfex.Log.Entry.json(line) do
+      %{} = map -> record(map, line)
+      _ -> {:error, "not an evidence record: #{String.slice(line, 0, 80)}"}
+    end
+  end
 
-    result =
-      case map["result"] do
-        "passed" ->
-          :passed
+  defp record(map, line) do
+    case {Enum.reject(@fields, &Map.has_key?(map, &1)), Map.fetch(@results, map["result"])} do
+      {[], {:ok, result}} ->
+        {:ok,
+         %{
+           test: map["test"],
+           test_hash: map["test_hash"],
+           result: result,
+           at: map["at"],
+           run: map["run"],
+           seq: map["seq"],
+           code: map["code"]
+         }}
 
-        "failed" ->
-          :failed
+      {[], :error} ->
+        {:error,
+         "evidence result must be passed, failed, excluded or skipped, got #{inspect(map["result"])}"}
 
-        "excluded" ->
-          :excluded
-
-        "skipped" ->
-          :skipped
-
-        other ->
-          raise ArgumentError,
-                "evidence result must be passed, failed, excluded or skipped, got #{inspect(other)}"
-      end
-
-    %{
-      test: Map.fetch!(map, "test"),
-      test_hash: Map.fetch!(map, "test_hash"),
-      result: result,
-      at: Map.fetch!(map, "at"),
-      run: Map.fetch!(map, "run"),
-      seq: Map.fetch!(map, "seq"),
-      code: Map.fetch!(map, "code")
-    }
+      {missing, _} ->
+        {:error,
+         "evidence record has no #{Enum.join(missing, ", ")}: #{String.slice(line, 0, 80)}"}
+    end
   end
 end
