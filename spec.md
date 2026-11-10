@@ -71,6 +71,13 @@ the status report, the completeness report, a history and the suggestions are th
 whether the scans and the log's lines come in one order or another
 ```
 
+<!-- surfex: json-key-order -->
+The JSON surfex writes for tools (each `--format json`, a draft's hand-off, the evidence
+file) has every object's keys in sorted order, at every depth, and an absent value as
+`null`. Its bytes then depend only on what it says, not on the order the VM happened to
+create atoms in, which changed `mix surfex.suggest --format json` after a compile (#394).
+The relation log keeps its own canonical field order (§12).
+
 ```test:suite-leaves-own-log
 a file under the project's own `.surfex/` that changed, appeared or went missing during
 the suite is named, apart from its cache (§12.2), which a load may write; an untouched

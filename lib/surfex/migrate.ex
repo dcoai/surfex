@@ -580,8 +580,7 @@ defmodule Surfex.Migrate do
           }
         end
     }
-    |> :json.encode()
-    |> IO.iodata_to_binary()
+    |> Surfex.JSON.encode()
   end
 
   @doc """

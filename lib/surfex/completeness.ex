@@ -328,8 +328,7 @@ defmodule Surfex.Completeness do
       "deferred" =>
         Enum.map(Map.get(report, :deferred, []), &%{"unit" => &1.unit, "ref" => &1.ref})
     }
-    |> :json.encode()
-    |> IO.iodata_to_binary()
+    |> Surfex.JSON.encode()
   end
 
   # A folded unit's several ranges as well (§11.13); `lines` is the first.
