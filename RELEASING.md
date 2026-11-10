@@ -55,47 +55,69 @@ a non-empty changelog entry, and `@version` in `mix.exs`.
 
 ## Publishing to GitHub
 
-Releases are public at <https://github.com/dcoai/surfex>. They get there as **snapshots**,
-not as history. GitLab (`origin`) stays the source of truth: CI, issues, merge requests
-and every commit. GitHub (`github`) gets one commit per release.
+Releases are public at <https://github.com/dcoai/surfex>, with their **history**: every
+commit from v0.2.8 on, replayed from a cut. GitLab (`origin`) stays the source of truth:
+CI, issues, merge requests and work between releases. GitHub (`github`) moves only at a
+release.
 
-Why not push the branch: pushing publishes everything reachable, and this repository's
-history holds material that was never surfex's to publish (a fixture captured from a
-private project, since removed). A snapshot commit's tree is exactly the release tag's
-tree, and its parent is the previous release on GitHub, so nothing else from GitLab's
-history is reachable there.
+Why a cut: the history before v0.2.8 holds material that was never surfex's to publish (a
+fixture captured from a private project, since removed). GitHub's first commit is a snapshot
+of v0.2.8, and every later commit is replayed onto it with its own tree, message, author and
+dates. The replay is deterministic, so each release replays the same prefix and is a plain
+fast-forward; GitHub's commit ids differ from GitLab's, nothing else does.
 
-The tool is `~/Projects/claude-tools/publish_snapshot.exs` (project-agnostic;
-`--help` has the model). After a release is tagged:
+The tool is `~/Projects/claude-tools/publish_history.exs` (project-agnostic; `--help` has
+the model). After the release is tagged and the tag's pipeline is green:
 
 ```sh
 git remote add github git@github.com:dcoai/surfex.git     # once per clone
 
-elixir ~/Projects/claude-tools/publish_snapshot.exs vX.Y.Z --remote github --forbid 'h[o]ma' --dry-run
-elixir ~/Projects/claude-tools/publish_snapshot.exs vX.Y.Z --remote github --forbid 'h[o]ma'
+elixir ~/Projects/claude-tools/publish_history.exs vX.Y.Z --remote github \
+  --cut v0.2.8=b9900a5 --forbid 'test/fixtures/h[o]ma_reference' --dry-run
+elixir ~/Projects/claude-tools/publish_history.exs vX.Y.Z --remote github \
+  --cut v0.2.8=b9900a5 --forbid 'test/fixtures/h[o]ma_reference' --yes
 ```
 
 It refuses, before pushing anything, when:
-- the tag's pipeline isn't green
+- the tag's newest pipeline isn't green
 - GitHub already has the tag
-- GitHub's `main` wasn't made by the tool
-- a `--forbid` pattern matches any path or file in the release
+- GitHub's `main` isn't an ancestor of the replayed tag (not a fast-forward)
+- a `--forbid` pattern matches a path, an added or removed line, or a message of any commit
+  about to be published
 
-`--forbid 'h[o]ma'` is the same guard as `test/surfex/published_content_test.exs`,
-applied to the tree about to be published. It is written so as not to contain the word it
-forbids, since this file is published too.
+`--forbid` is a regex, checked against history, not a tree: a file added and later deleted
+is published too. The pattern names the private fixture's path, written so as not to contain
+the word `test/surfex/published_content_test.exs` forbids, since this file is published too.
 
-A GitHub tag has the same name and message as its GitLab tag, but points at the snapshot
-commit. Its message ends with `Snapshot-Of: vX.Y.Z <sha>`, naming the GitLab commit it
-was made from.
+`publish_snapshot.exs` published releases up to 0.6.2 as one snapshot commit each. Its chain
+was replaced on 2026-10-11; it would refuse or diverge now, so don't use it.
+
+## Publishing to Hex
+
+surfex is on Hex as `surfex`. A version is published from a **clone of the GitHub tag**, never
+from the working checkout: after `--post-bump` that one's `mix.exs` reads `-dev`, and the tag
+is what users can see the package was built from.
+
+```sh
+git clone --branch vX.Y.Z git@github.com:dcoai/surfex.git ~/Projects/surfex-vX.Y.Z
+cd ~/Projects/surfex-vX.Y.Z
+mix deps.get
+mix hex.build            # optional: check the version and the file list
+mix hex.publish          # the maintainer, with their Hex key
+```
+
+The package's `files:` in `mix.exs` decide what ships. This file, the tests and the relation
+log don't.
 
 ## What stays a human decision
 
 - **When to release**, and whether it is a minor.
-- **The changelog's content.** The tool closes a section; it never writes one.
-- **Publishing to GitHub**, which is a separate step, run after the tag (above).
-- **Publishing to Hex.** Not yet. When it happens, it is `mix hex.publish` from a checkout
-  of the GitHub tag, whose `mix.exs` carries the links Hex requires.
+- **The changelog's content.** The tool closes a section; it never writes one. The
+  release's intro paragraph (what the release is about, and what upgrading asks of a
+  project) is written by hand. It replaces the `-dev` paragraph under `[Unreleased]`
+  before `--prepare`, and with the entries it becomes the tag's message.
+- **Publishing**, to GitHub and to Hex: each is a separate step, after the tag (above).
+- **The notices** to surfex's users (below).
 
 ## Before a release: no unit re-versions by accident
 
@@ -119,23 +141,72 @@ recomputed under the release), or a bug to fix before releasing.
 
 ## A release, end to end
 
-A patch on the 0.2 line (the number is derived):
+In order. `LAST` is the previous release's tag, `X.Y.Z` the one being made.
 
-```sh
-elixir ~/Projects/claude-tools/surfex_unit_versions.exs LAST . --discover ~/Projects  # no unit re-versions (above)
-elixir ~/Projects/claude-tools/release.exs                                # dry run: says vX.Y.Z
-elixir ~/Projects/claude-tools/release.exs --prepare                      # then MR, merge
-elixir ~/Projects/claude-tools/release.exs --tag --version X.Y.Z          # on main, at the merge commit
-elixir ~/Projects/claude-tools/publish_snapshot.exs vX.Y.Z --remote github --forbid 'h[o]ma'
-elixir ~/Projects/claude-tools/release.exs --post-bump --version X.Y.Z    # then MR
-```
+1. **No unit re-versions by accident** (above):
+   `surfex_unit_versions.exs` against `LAST`, read every difference.
+2. **The changelog's intro**, on a release branch (`release-X.Y.Z`): replace the `-dev`
+   paragraph under `[Unreleased]` with the release's intro and its upgrade notes. Commit.
+3. **Push the branch and wait for its pipeline.** `--prepare` checks the pipeline of HEAD
+   by sha, and a commit nobody pushed has none.
+4. **The dry run, then prepare** (add `--minor` to both for a minor):
+   ```sh
+   elixir ~/Projects/claude-tools/release.exs              # says vX.Y.Z; every gate listed
+   elixir ~/Projects/claude-tools/release.exs --prepare    # mix.exs + [X.Y.Z] - date, committed
+   ```
+   Push, open the MR, let it go green, merge.
+5. **Tag main's merge commit**, once main's pipeline for it is green:
+   ```sh
+   git checkout main && git pull
+   elixir ~/Projects/claude-tools/release.exs --tag --version X.Y.Z     # a patch
+   elixir ~/Projects/claude-tools/release.exs --tag --minor             # a minor (X.Y.0)
+   ```
+   `--tag` asks for confirmation on stdin (a tag is permanent); `--yes` skips it.
+6. **Wait for the tag's pipeline**, then publish to GitHub: `publish_history.exs`, the dry
+   run first, then `--yes` (above).
+7. **Reopen development** on a branch, then MR and merge:
+   ```sh
+   elixir ~/Projects/claude-tools/release.exs --post-bump --version X.Y.Z   # → X.Y.(Z+1)-dev
+   ```
+8. **Publish to Hex** from the tag's clone (above).
+9. **Send the notices** (below).
 
-**Pin the version after `--prepare`.** The patch number is a commit count, and the
-prepare commit plus its merge commit add two. Run bare, `--tag` computes a number two
-higher than the one prepared, and refuses because the changelog has no section for it.
-`--version X.Y.Z` tags what was prepared, and `--post-bump` needs it to name the next
-`-dev`.
+**Pin a patch's version after `--prepare`.** The patch number is a commit count, and the
+prepare commit plus its merge commit add two. Run bare, `--tag` computes a number two higher
+than the one prepared, and refuses because the changelog has no section for it.
+`--version X.Y.Z` tags what was prepared, and `--post-bump` needs it to name the next `-dev`.
+A minor needs no pin: `--minor` always means the next `.0`.
 
-**Wait for the tag's pipeline before publishing.** Pushing the tag starts a pipeline
-on the same commit. `publish_snapshot.exs` asks for the newest run on that commit, and
-refuses while it is still running.
+## After a release: notices
+
+Each project that uses surfex hears of a release in its own issue tracker, not on surfex's:
+a note only on a surfex issue reaches nobody. List the users fresh each time, never from the
+last notice:
+- every local checkout whose `mix.exs` names `:surfex`, or that has `.surfex.exs` or
+  `.surfex/`, leaving out surfex's own clones and worktrees;
+- every project in the GitLab group, subgroups included (`include_subgroups=true`), whose
+  `main` names `:surfex` in `mix.exs` or has a `.surfex.exs`: this finds projects with no
+  local checkout. A project keeping `mix.exs` below its root is missed by both; keep those
+  from the previous list.
+
+Skip a project that has already taken the release. Each notice says what the release changes
+for that project, measured where it can be (its `mix surfex.status` under the new version),
+and links the CHANGELOG section.
+
+## When a release pipeline fails
+
+Don't publish past a failure. Retry the job once: a flake passes on the retry, and a real
+failure fails again the same way. A failure that reproduces is fixed before the release,
+through the usual change process.
+
+The flakes seen on release pipelines so far, and what settled them:
+- the evidence-check linearity guards (#268): reductions counted garbage collection under
+  load. Settled by `Surfex.Test.Work.reductions/1`, which measures in a fresh process sized
+  so no collection runs;
+- `DeviationHoldsTest` (#310): two recordings a second apart got different ids. Settled by
+  passing the same `at:` to both;
+- the suite's own-log guard (#341): a CI run once saw the committed log change during the
+  suite. Not reproduced; the guard now fails the run and names the file, so a repeat says
+  where to look.
+
+A new one goes the same way: reproduce it, find the cause, file it.
