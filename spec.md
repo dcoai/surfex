@@ -4122,7 +4122,9 @@ suggest's work over twice the relations is about twice the work, counted in redu
 
 <!-- surfex: suggest-derives-once -->
 `Surfex.Suggest.all/5` derives the status once, and again only when it records moves, which
-change what the status sees: a second derive of the same log was a tenth of its time.
+change what the status sees: a second derive of the same log was a tenth of its time. Each
+relation's judgement in force comes from that status; regrouping the log for it, once per
+source that asked, was a fifth.
 
 ```test:decline-shown
 a judgement suggestion's decline command retires the pair with ids kind-prefixed and
