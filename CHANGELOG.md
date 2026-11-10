@@ -4,10 +4,27 @@ All notable changes to Surfex are recorded here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.12.0] — 2026-11-10
 
-`mix.exs` reads `0.11.1-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
-release it merely follows.
+Commands are three to four times faster, and the claim-grain migration does what it says.
+`mix surfex.status` takes about 3s on surfex's own tree where it took about 10s: the log and
+the source are read on every core, a command reads each thing once, and two local caches in
+`.surfex/cache/` (which ignores itself in git) keep the decoded log and definition versions
+between runs. `--verify` decodes each log line once, and `suggest` derives its status once. A
+behaviour's callbacks become items of their own, `dispatch:` follows a registry or a module
+passed as a value, a marked table can carry a class, and `mix surfex.relate --file` records
+many relations from one scan. `mix surfex.migrate` reads a claim as the verdicts do, retires
+only what it names, and keeps a section green while it migrates. JSON output now has its keys
+in a fixed order.
+
+**Upgrade from 0.11.0.** Measured before release on the 18 projects with a `.surfex.exs`: no
+code or spec unit changes version and none disappears, and every project's status, with its
+counts, is the same as under 0.11.0. The only new ids are behaviour callbacks
+(`Module.callback:name/arity`, #337): each is judged with its module until a relation names it,
+so none fails on upgrade, and `mix surfex.suggest` proposes the callback contracts a spec
+states. A tool reading `--format json` byte for byte sees the keys reordered once, sorted from
+now on, and an absent value as `null` (#394). Library-only users (`Surfex.Golden`,
+`Surfex.SourceScan`) need no change; the files each needs are now listed in the guide (#357).
 
 ### Added
 
