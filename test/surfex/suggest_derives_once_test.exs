@@ -15,14 +15,24 @@ defmodule Surfex.SuggestDerivesOnceTest do
   ]
   @test_body "test \"t1\", do: assert(Wren.send(:a, :b, 1))"
 
-  # How many times `fun` derives a status: every arity of Status.derive ends in derive/4.
-  defp derives(fun) do
-    mfa = {Surfex.Status, :derive, 4}
-    :erlang.trace_pattern(mfa, true, [:local, :call_count])
+  # How many times `fun` derives a status (every arity of Status.derive ends in derive/4),
+  # and how many times it regroups the log for a relation's tips (Status.tips/2).
+  @derive_mfa {Surfex.Status, :derive, 4}
+  @tips_mfa {Surfex.Status, :tips, 2}
+
+  defp counted(fun) do
+    for mfa <- [@derive_mfa, @tips_mfa],
+        do: :erlang.trace_pattern(mfa, true, [:local, :call_count])
+
     result = fun.()
-    {:call_count, n} = :erlang.trace_info(mfa, :call_count)
-    :erlang.trace_pattern(mfa, false, [:local, :call_count])
-    {n, result}
+
+    [derives, tips] =
+      for mfa <- [@derive_mfa, @tips_mfa], do: elem(:erlang.trace_info(mfa, :call_count), 1)
+
+    for mfa <- [@derive_mfa, @tips_mfa],
+        do: :erlang.trace_pattern(mfa, false, [:local, :call_count])
+
+    {%{derives: derives, tips: tips}, result}
   end
 
   defp scans(root, test_module) do
@@ -45,15 +55,31 @@ defmodule Surfex.SuggestDerivesOnceTest do
     {:ok, entries} =
       Suggest.accept_all(Suggest.all(profile, @wren, old, [], root), old, [], @meta)
 
-    {n, s} = derives(fn -> Suggest.all(profile, @wren, old, entries, root) end)
+    {n, s} = counted(fn -> Suggest.all(profile, @wren, old, entries, root) end)
     assert s.moves == []
-    assert n == 1
+    assert n.derives == 1
 
     # The test's module renamed: one move, and the rest is suggested as the move leaves it.
     new = scans(root, "WrenOneTest")
-    {n, s} = derives(fn -> Suggest.all(profile, @wren, new, entries, root) end)
+    {n, s} = counted(fn -> Suggest.all(profile, @wren, new, entries, root) end)
     assert Enum.map(s.moves, &{&1.from, &1.to.id}) == [{"WrenTest: t1", "WrenOneTest: t1"}]
     assert s.tests == []
-    assert n == 2
+    assert n.derives == 2
+  end
+
+  # #391, #393: the judgements in force come from the status, never from regrouping the log.
+  # (Recording a move reads tips itself, so this holds where nothing moves.)
+  test "suggest reads each relation's judgement in force from its status", %{tmp_dir: root} do
+    profile = Config.profile!([sources: ["spec.md"]], "Wren")
+    scans = scans(root, "WrenTest")
+
+    {:ok, entries} =
+      Suggest.accept_all(Suggest.all(profile, @wren, scans, [], root), scans, [], @meta)
+
+    {n, s} = counted(fn -> Suggest.all(profile, @wren, scans, entries, root) end)
+    assert s.moves == []
+    assert n.tips == 0
+    # The accepted relations are judged, so nothing they hold is suggested again.
+    assert s.implements == [] and s.verifies == [] and s.tests == []
   end
 end

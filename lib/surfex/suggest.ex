@@ -52,7 +52,7 @@ defmodule Surfex.Suggest do
   def candidates(profile, items, scans, entries, root),
     do:
       profile
-      |> cited(items, scans, entries, MapSet.new(entries, &Entry.relation/1), root)
+      |> cited(items, scans, established?(entries), MapSet.new(entries, &Entry.relation/1), root)
       |> elem(0)
 
   @doc """
@@ -62,20 +62,20 @@ defmodule Surfex.Suggest do
   the last one brings it back.
   """
   @spec established?([Entry.t()]) :: boolean
-  def established?(entries) do
-    entries
-    |> Enum.filter(&(&1.type == :implements))
-    |> live_tips()
-    |> Enum.any?(&(&1.op == :relate and &1.basis in @validating))
-  end
+  def established?(entries),
+    do: entries |> Enum.filter(&(&1.type == :implements)) |> live_tips() |> established_by?()
+
+  # `established?/1` over the log's judgements in force, which `all/5` has from its status.
+  defp established_by?(tips),
+    do:
+      Enum.any?(tips, &(&1.type == :implements and &1.op == :relate and &1.basis in @validating))
 
   # Candidates, and the pairs a prose citation would have proposed but for the
   # established log (§15.4), each with the citation's span.
-  defp cited(profile, items, scans, entries, related, root) do
+  defp cited(profile, items, scans, established, related, root) do
     citations = Cite.citations(items, profile, root)
     sections = Enum.filter(scans, &(&1.kind == :spec))
     code = for s <- scans, s.kind == :code, into: %{}, do: {s.id, s}
-    established = established?(entries)
 
     pairs =
       for %{status: :resolved} = c <- citations,
@@ -265,6 +265,10 @@ defmodule Surfex.Suggest do
     # none (spec suggest-derives-once).
     status = if moves == [], do: logged, else: Surfex.Status.derive(scans, moved)
 
+    # Each relation's judgement in force, as the status judged it: regrouping the log for
+    # it, once per source that asks, was a fifth of suggest's time (#391).
+    tips = for %{tip: %Entry{} = tip} <- status.relations, do: tip
+
     # A contract's key names its function (§15.3): those pairs come first, whatever else
     # proposes them.
     # Which pairs the log already relates, in any state: read once, asked by every source.
@@ -274,12 +278,12 @@ defmodule Surfex.Suggest do
     owned = MapSet.new(own, &{&1.spec.id, &1.code.id})
 
     # The class says a classed unit's own text asserts nothing (§15.2).
-    {cited, held} = cited(profile, items, scans, moved, related, root)
+    {cited, held} = cited(profile, items, scans, established_by?(tips), related, root)
     cited = Enum.reject(cited, &(&1.spec.class != nil or MapSet.member?(owned, pair(&1))))
 
     # A claim's tests are always a source (§15.1): once the log is established they are
     # the route left for code a prose citation names (§15.4).
-    {claimed, reached, also_called} = claims(scans, moved, related, own ++ cited)
+    {claimed, reached, also_called} = claims(scans, tips, related, own ++ cited)
 
     implements = own ++ cited ++ claimed
 
@@ -288,7 +292,7 @@ defmodule Surfex.Suggest do
       ambiguous: ambiguous,
       refines: ordered(refinements(scans, related)),
       implements: ordered(own) ++ ordered(cited ++ claimed),
-      excuses: ordered(excusals(profile, items, scans, moved, related, implements)),
+      excuses: ordered(excusals(profile, items, scans, tips, related, implements)),
       reached: ordered(reached),
       also_called: ordered(also_called),
       withheld: withheld(held, implements),
@@ -634,7 +638,8 @@ defmodule Surfex.Suggest do
   # in (`within`, else `under`) has a live `implements` or one proposed in this run by a
   # citation or a contract's key. Of its candidates, only those other claims' tests call
   # least (`shared`) are proposed; the rest are counted per claim (`also_called`).
-  defp claims(scans, entries, related, proposed) do
+  # `tips`: each relation's judgement in force, from the status.
+  defp claims(scans, tips, related, proposed) do
     code = for %Scan{kind: :code} = s <- scans, s.role != :module, into: %{}, do: {s.id, s}
 
     owner =
@@ -661,7 +666,7 @@ defmodule Surfex.Suggest do
     implemented =
       MapSet.new(
         for(
-          %Entry{op: :relate, type: :implements, ends: ends} <- live_tips(entries),
+          %Entry{op: :relate, type: :implements, ends: ends} <- tips,
           %{kind: :spec, id: id} <- ends,
           do: id
         ) ++ Enum.map(proposed, & &1.spec.id)
@@ -671,7 +676,7 @@ defmodule Surfex.Suggest do
 
     verifies =
       for(
-        %Entry{op: :relate, type: :verifies, ends: [%{id: t}, %{id: u}]} <- live_tips(entries),
+        %Entry{op: :relate, type: :verifies, ends: [%{id: t}, %{id: u}]} <- tips,
         do: {t, u}
       ) ++
         for %Scan{kind: :test, declares: declares} = t <- Map.values(tests),
@@ -778,14 +783,14 @@ defmodule Surfex.Suggest do
     end
   end
 
-  defp excusals(profile, items, scans, entries, related, implements) do
+  defp excusals(profile, items, scans, tips, related, implements) do
     classes = for %Scan{kind: :class} = s <- scans, into: %{}, do: {s.id, s}
     code = for %Scan{kind: :code} = s <- scans, into: %{}, do: {s.id, s}
 
     implemented =
       MapSet.new(
         for(
-          %Entry{type: :implements, op: :relate, ends: ends} <- live_tips(entries),
+          %Entry{type: :implements, op: :relate, ends: ends} <- tips,
           %{kind: :code, id: id} <- ends,
           do: id
         ) ++ Enum.map(implements, & &1.code.id)
