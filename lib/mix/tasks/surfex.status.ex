@@ -224,7 +224,7 @@ defmodule Mix.Tasks.Surfex.Status do
     case Keyword.get_values(opts, :merge) do
       [] ->
         if opts[:evidence] == true,
-          do: [evidence: Surfex.Evidence.load(Surfex.Evidence.path(root))],
+          do: [evidence: Surfex.Evidence.project(root)],
           else: []
 
       paths ->

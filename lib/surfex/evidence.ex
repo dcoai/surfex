@@ -27,6 +27,12 @@ defmodule Surfex.Evidence do
 
   @note "confirmed by evidence"
 
+  # The project's evidence checkpoint in `.surfex/cache/` (`project/1`).
+  @checkpoint "evidence.checkpoint"
+
+  # Bytes per read of the evidence file.
+  @piece 64 * 1024 * 1024
+
   @doc """
   Whether a log entry is a claim a test run bears out, the claim CI checks against its own
   run (§17). That is decided by its basis: `:evidence` (red then green) or `:baseline` (a
@@ -75,14 +81,106 @@ defmodule Surfex.Evidence do
   @spec load(String.t()) :: [t]
   def load(path) do
     if File.exists?(path) do
-      path
-      |> read()
-      |> String.split("\n", trim: true)
-      |> decode_shared()
-      |> Enum.sort_by(&{&1.at, &1.run, &1.seq})
+      {values, numbered} = path |> read() |> String.split("\n", trim: true) |> numbered(%{})
+      records(values, sorted(numbered, values))
     else
       []
     end
+  end
+
+  @doc """
+  The project's own evidence (`path/1` under `root`): what `load/1` gives, read through a
+  checkpoint in `.surfex/cache/` (§17, #400).
+
+  The file only grows between runs, so the checkpoint keeps the records decoded from the
+  bytes it covered, and a read decodes just the lines after them. A file that no longer
+  starts with those bytes is decoded in full. The checkpoint is rewritten once the lines it
+  doesn't cover pass an eighth of those it does, as the log's is (§12.2).
+  """
+  @spec project(String.t()) :: [t]
+  def project(root) do
+    path = path(root)
+
+    if File.exists?(path) do
+      {:ok, fd} = :file.open(path, [:read, :raw, :binary])
+      # The covered bytes are hashed as they're read and never held: only what follows is.
+      {covered, values, known, digest} = checkpointed(root, fd)
+      rest = read_all(fd, [])
+      :ok = :file.close(fd)
+
+      {values, appended} = rest |> String.split("\n", trim: true) |> numbered(values)
+      numbered = merge(known, sorted(appended, values), values)
+
+      if byte_size(rest) * 8 > covered and String.ends_with?(rest, "\n") do
+        # A digest state goes on being updated after it's read (`:crypto.hash_final/1`
+        # leaves it as it was), so the new checkpoint's covers the whole file.
+        sum = digest |> :crypto.hash_update(rest) |> :crypto.hash_final()
+        made = {covered + byte_size(rest), sum, values, numbered}
+        Surfex.Cache.write(root, @checkpoint, checkpoint_fingerprint(), made)
+      end
+
+      records(values, numbered)
+    else
+      []
+    end
+  end
+
+  # {bytes covered, their values, their numbered records in order, the digest of those
+  # bytes so far}, with `fd` just after them; or, with `fd` at the start, nothing covered,
+  # when there is no checkpoint, it's from other code, or the file no longer starts with the
+  # bytes it covered.
+  defp checkpointed(root, fd) do
+    with {:ok, {size, sum, values, numbered}} <-
+           Surfex.Cache.read(root, @checkpoint, checkpoint_fingerprint()),
+         {:ok, digest} <- digest(fd, size, :crypto.hash_init(:sha256)),
+         true <- :crypto.hash_final(digest) == sum do
+      {size, values, numbered, digest}
+    else
+      _ ->
+        {:ok, 0} = :file.position(fd, 0)
+        {0, %{}, [], :crypto.hash_init(:sha256)}
+    end
+  end
+
+  # The digest of the next `size` bytes of `fd`, read a piece at a time; :short when the
+  # file ends first.
+  defp digest(_fd, 0, digest), do: {:ok, digest}
+
+  defp digest(fd, size, digest) do
+    case :file.read(fd, min(size, @piece)) do
+      {:ok, bytes} -> digest(fd, size - byte_size(bytes), :crypto.hash_update(digest, bytes))
+      :eof -> :short
+    end
+  end
+
+  defp checkpoint_fingerprint, do: Surfex.Cache.fingerprint([__MODULE__])
+
+  # Numbered records in the order `load/1` gives: by time, then run, then place in the run,
+  # and in file order where those are equal (a stable sort).
+  defp sorted(numbered, values), do: Enum.sort_by(numbered, &order(&1, values))
+
+  defp order({_test, _test_hash, _result, at, run, seq, _code}, values),
+    do: {at, Map.fetch!(values, run), seq}
+
+  # Two sorted lists as one, as sorting their concatenation would order it: the checkpoint's
+  # records came earlier in the file, so they go first among equals.
+  defp merge([], appended, _values), do: appended
+  defp merge(known, [], _values), do: known
+
+  defp merge(known, [first | _] = appended, values) do
+    # Usually a run is recorded after every run before it, and so follows them all.
+    if order(first, values) >= order(List.last(known), values),
+      do: known ++ appended,
+      else: merge(known, appended, values, [])
+  end
+
+  defp merge(known, [], _values, acc), do: Enum.reverse(acc, known)
+  defp merge([], appended, _values, acc), do: Enum.reverse(acc, appended)
+
+  defp merge([a | as] = known, [b | bs] = appended, values, acc) do
+    if order(b, values) < order(a, values),
+      do: merge(known, bs, values, [b | acc]),
+      else: merge(as, appended, values, [a | acc])
   end
 
   # The file's bytes, read without the file server: `File.read!/1` passes them through it,
@@ -96,7 +194,7 @@ defmodule Surfex.Evidence do
   end
 
   defp read_all(fd, acc) do
-    case :file.read(fd, 64 * 1024 * 1024) do
+    case :file.read(fd, @piece) do
       {:ok, bytes} -> read_all(fd, [acc | bytes])
       :eof -> IO.iodata_to_binary(acc)
     end
@@ -105,13 +203,18 @@ defmodule Surfex.Evidence do
   # Lines per piece of work.
   @chunk 1000
 
-  # The records of `lines`, in order. A long-lived file repeats a few values across its runs:
-  # apu's 911k records hold 18k distinct code maps and 6k test versions. Sharing doesn't
-  # survive a message, and the repeats are across runs, not within a piece of the file, so
-  # the pieces number each distinct value in one table they share and return only the
-  # numbers; each value is then copied out of the table once, and every record holds that
-  # one copy.
-  defp decode_shared(lines) do
+  # The records of `lines` in file order, numbered: `{values, records}`, each record a tuple
+  # whose repeated values (test, version, run, code map) are numbers into `values`, which
+  # holds those already numbered plus the new ones.
+  #
+  # A long-lived file repeats a few values across its runs: apu's 911k records hold 18k
+  # distinct code maps and 6k test versions. Sharing doesn't survive a message, and the
+  # repeats are across runs, not within a piece of the file, so the pieces number each
+  # distinct value in one table they share and return only the numbers. `records/2` then
+  # gives every record the one copy of each value.
+  defp numbered([], values), do: {values, []}
+
+  defp numbered(lines, values) do
     table =
       :ets.new(:surfex_evidence_values, [
         :set,
@@ -120,22 +223,33 @@ defmodule Surfex.Evidence do
         write_concurrency: true
       ])
 
+    :ets.insert(table, Enum.map(values, fn {n, value} -> {value, n} end))
+    # After the largest number in use: a lost race leaves a number unused, so they have gaps.
+    largest = values |> Map.keys() |> Enum.max(fn -> 0 end)
+    next = :atomics.new(1, [])
+    :atomics.put(next, 1, largest)
+
     pieces =
       lines
       |> Enum.chunk_every(@chunk)
-      |> Surfex.Parallel.map(&decode_piece(&1, table))
+      |> Surfex.Parallel.map(&decode_piece(&1, table, next))
 
-    values = :ets.foldl(fn {value, n}, acc -> Map.put(acc, n, value) end, %{}, table)
+    # Only the values numbered here are copied out; those given are kept as they are.
+    new = :ets.select(table, [{{:"$1", :"$2"}, [{:>, :"$2", largest}], [{{:"$2", :"$1"}}]}])
+    values = Map.merge(values, Map.new(new))
     :ets.delete(table)
 
     # A piece reports its first line that isn't a record rather than raising in its task,
     # so the error reads as it did when the file was decoded line by line.
     case Enum.find(pieces, &match?({:error, _}, &1)) do
       {:error, why} -> raise ArgumentError, why
-      nil -> :ok
+      nil -> {values, Enum.flat_map(pieces, fn {:ok, piece} -> piece end)}
     end
+  end
 
-    for {:ok, piece} <- pieces, {test, test_hash, result, at, run, seq, code} <- piece do
+  # Each numbered record with its values: equal values are one term in every record.
+  defp records(values, numbered) do
+    for {test, test_hash, result, at, run, seq, code} <- numbered do
       %{
         test: Map.fetch!(values, test),
         test_hash: Map.fetch!(values, test_hash),
@@ -150,8 +264,8 @@ defmodule Surfex.Evidence do
 
   # One piece's records, each repeated value as its number in `table`, or the first line's
   # error. `at` is copied off the file's bytes, so no record keeps the whole file alive.
-  defp decode_piece(lines, table) do
-    number = &number(table, &1)
+  defp decode_piece(lines, table, next) do
+    number = &number(table, next, &1)
 
     Enum.reduce_while(lines, {:ok, []}, fn line, {:ok, acc} ->
       case decode(line) do
@@ -172,13 +286,14 @@ defmodule Surfex.Evidence do
     end
   end
 
-  # The value's number in `table`, numbering it if it has none; when two pieces number the
-  # same value at once, the first insert stands and both read it. A value is copied off the
-  # file's bytes as it goes in, which an ETS table would otherwise keep alive.
-  defp number(table, value) do
+  # The value's number in `table`, numbering it from `next` if it has none; when two pieces
+  # number the same value at once, the first insert stands and both read it (the other
+  # number goes unused). A value is copied off the file's bytes as it goes in, which an ETS
+  # table would otherwise keep alive.
+  defp number(table, next, value) do
     case :ets.lookup_element(table, value, 2, nil) do
       nil ->
-        :ets.insert_new(table, {copy(value), :erlang.unique_integer()})
+        :ets.insert_new(table, {copy(value), :atomics.add_get(next, 1, 1)})
         :ets.lookup_element(table, value, 2)
 
       n ->

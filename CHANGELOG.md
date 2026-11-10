@@ -19,6 +19,15 @@ release it merely follows.
   after the read. A line that isn't a record is now reported as an `ArgumentError` naming
   the first such line in the file: a missing field no longer raises `KeyError` (#398, #399).
 
+### Added
+
+- `Surfex.Evidence.project/1` reads a project's own evidence file through a checkpoint in
+  `.surfex/cache/`, as the log is read, and decodes only the lines appended since. It gives
+  exactly `load/1`'s records. `mix surfex.status --evidence`, the recording commands and
+  `mix surfex.baseline` read through it, and `--merge` files are still read with `load/1`.
+  On apu's file a warm read takes under 3 s and 1.3 GB, against 8 s and 2.9 GB cold
+  (#398, #400).
+
 ## [0.12.0] — 2026-11-10
 
 Commands are three to four times faster, and the claim-grain migration does what it says.
