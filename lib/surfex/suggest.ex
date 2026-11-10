@@ -249,7 +249,8 @@ defmodule Surfex.Suggest do
   @spec all(Profile.t(), [Surfex.Item.t()], [Scan.t()], [Entry.t()], String.t()) ::
           suggestions
   def all(profile, items, scans, entries, root) do
-    {moves, ambiguous} = moves(scans, entries)
+    logged = Surfex.Status.derive(scans, entries)
+    {moves, ambiguous} = moves(scans, entries, logged)
     {moves, ambiguous} = {ordered(moves), ordered(ambiguous)}
 
     {:ok, moved} =
@@ -259,6 +260,10 @@ defmodule Surfex.Suggest do
 
         {:ok, acc ++ recorded}
       end)
+
+    # The status of the log as the moves leave it: the one already derived when there are
+    # none (spec suggest-derives-once).
+    status = if moves == [], do: logged, else: Surfex.Status.derive(scans, moved)
 
     # A contract's key names its function (§15.3): those pairs come first, whatever else
     # proposes them.
@@ -277,7 +282,6 @@ defmodule Surfex.Suggest do
     {claimed, reached, also_called} = claims(scans, moved, related, own ++ cited)
 
     implements = own ++ cited ++ claimed
-    status = Surfex.Status.derive(scans, moved)
 
     %{
       moves: moves,
@@ -505,8 +509,8 @@ defmodule Surfex.Suggest do
   defp prefixed(%Scan{kind: kind, id: id}), do: prefixed(kind, id)
 
   # Moves of spec units and tests, and the matches too ambiguous to suggest.
-  defp moves(scans, entries) do
-    status = Surfex.Status.derive(scans, entries)
+  # `status` is `entries`' own, derived by the caller.
+  defp moves(scans, entries, status) do
     scanned = MapSet.new(scans, &{&1.kind, &1.id})
 
     # Ends of orphaned relations, and a test's observations: a test may have records and

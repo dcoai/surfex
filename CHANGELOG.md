@@ -65,6 +65,10 @@ release it merely follows.
 
 ### Changed
 
+- **`suggest` derives the status once** (#390, #392). `Surfex.Suggest.all/5` derived it for the
+  moves and again for the rest, the same status when nothing moved: it now derives again only
+  after recording a move (spec `suggest-derives-once`). `Suggest.all` on surfex's tree takes about
+  1.3s where it took 1.8s. The suggestions are unchanged.
 - **`--verify` decodes each log line once** (#386, #388). `Surfex.Log.check/1` builds each segment's
   chain hash from its own parallel decode, where it decoded every line again, one at a time, to read its
   id: checking surfex's own log takes about 1.4s where it took 2.3s. The hash, the headers and every

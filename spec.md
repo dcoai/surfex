@@ -4120,6 +4120,10 @@ judgement in force is read from that relation's own entries.
 suggest's work over twice the relations is about twice the work, counted in reductions
 ```
 
+<!-- surfex: suggest-derives-once -->
+`Surfex.Suggest.all/5` derives the status once, and again only when it records moves, which
+change what the status sees: a second derive of the same log was a tenth of its time.
+
 ```test:decline-shown
 a judgement suggestion's decline command retires the pair with ids kind-prefixed and
 quoted, and a quote in an id escaped; a structural suggestion has none
