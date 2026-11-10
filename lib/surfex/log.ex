@@ -206,10 +206,10 @@ defmodule Surfex.Log do
       end)
       |> Enum.reduce({[], [], %{}}, fn
         {path, _n, {:ok, entry}}, {ok, bad, ids} ->
-          {[entry | ok], bad, add_id(ids, path, entry.id)}
+          {[entry | ok], bad, add_ids(ids, path, [entry.id])}
 
         {path, n, {:error, why, line}}, {ok, bad, ids} ->
-          {ok, ["#{Path.basename(path)}:#{n}: #{why}" | bad], add_id(ids, path, stored_id(line))}
+          {ok, ["#{Path.basename(path)}:#{n}: #{why}" | bad], add_ids(ids, path, stored_id(line))}
       end)
 
     ids = MapSet.new(entries, & &1.id)
@@ -226,7 +226,7 @@ defmodule Surfex.Log do
     {loaded, Enum.reverse(broken) ++ orphans ++ chain_problems(segments, ids_by_path)}
   end
 
-  defp add_id(ids, path, id), do: Map.update(ids, path, [id], &[id | &1])
+  defp add_ids(ids, path, new), do: Map.update(ids, path, new, &(new ++ &1))
 
   @doc "Closes the open segment as the next `surfex_N.log` and starts a new open segment."
   @spec break(String.t()) :: :ok
@@ -314,7 +314,8 @@ defmodule Surfex.Log do
     end
   end
 
-  defp chain_hash(path), do: path |> entry_lines() |> Enum.map(&stored_id/1) |> chain_hash_of()
+  defp chain_hash(path),
+    do: path |> entry_lines() |> Enum.flat_map(&stored_id/1) |> chain_hash_of()
 
   # A segment's chain hash: its entries' ids, sorted, so line order within it doesn't matter.
   defp chain_hash_of(ids) do
@@ -325,7 +326,15 @@ defmodule Surfex.Log do
     |> Base.encode16(case: :lower)
   end
 
-  defp stored_id(line), do: line |> Entry.json() |> Map.fetch!("id")
+  # The id a line carries, as a list: an entry's, edited or not. A line that is JSON but no
+  # entry has none, so it adds nothing to its segment's hash (#387); `check/1` reports it.
+  # Text that isn't JSON raises, as `Entry.json/1` does.
+  defp stored_id(line) do
+    case Entry.json(line) do
+      %{"id" => id} when is_binary(id) -> [id]
+      _ -> []
+    end
+  end
 
   defp chain_problems(segments, ids_by_path) do
     segments
