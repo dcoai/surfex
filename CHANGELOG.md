@@ -4,7 +4,7 @@ All notable changes to Surfex are recorded here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.12.0] — 2026-11-10
 
 Commands are three to four times faster, and the claim-grain migration does what it says.
 `mix surfex.status` takes about 3s on surfex's own tree where it took about 10s: the log and
