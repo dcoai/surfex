@@ -2514,6 +2514,12 @@ answered from the log alone.
 - <!-- surfex: log-check-once --> `Surfex.Log.check/1` gives both from one reading: the entries `load/1` gives, and the
   problems `verify/1` reports. `mix surfex.status --verify` reads the log once with it,
   where decoding every line twice was most of its extra time.
+- <!-- surfex: raw-reads --> The log's segments, the cache's files (`.surfex/cache/`) and the evidence file are read
+  in the reading process, not through OTP's file server. The file server replies with a file's
+  bytes, and an idle one doesn't collect its garbage, so it kept the last of them alive for as
+  long as a command ran: on apu, the 71 MB log after a check and the whole 1.15 GB evidence file
+  after a read. What is read is the same; a missing or unreadable file raises the same
+  `File.Error` (#401).
 
 `Mix.Tasks.Surfex.Log` is `mix surfex.log`, with exactly one of `--init`, `--break`,
 `--verify` (fails on any problem) or `--rechain`. It never edits or removes an entry.

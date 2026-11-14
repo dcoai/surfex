@@ -18,6 +18,10 @@ release it merely follows.
   unchanged. It reads the file without OTP's file server, which kept the whole file alive
   after the read. A line that isn't a record is now reported as an `ArgumentError` naming
   the first such line in the file: a missing field no longer raises `KeyError` (#398, #399).
+- The relation log's segments and the cache's files are read without OTP's file server, as
+  the evidence is, so it no longer keeps the last of them alive after the read: on surfex,
+  the 51 MB log checkpoint after a load and 92 MB of segments after a check; on apu, the 71 MB
+  log. What is read is unchanged (#401, #403).
 
 ### Added
 
