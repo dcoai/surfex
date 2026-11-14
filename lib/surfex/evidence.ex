@@ -81,7 +81,9 @@ defmodule Surfex.Evidence do
   @spec load(String.t()) :: [t]
   def load(path) do
     if File.exists?(path) do
-      {values, numbered} = path |> read() |> String.split("\n", trim: true) |> numbered(%{})
+      {values, numbered} =
+        path |> Surfex.Files.read!() |> String.split("\n", trim: true) |> numbered(%{})
+
       records(values, sorted(numbered, values))
     else
       []
@@ -181,16 +183,6 @@ defmodule Surfex.Evidence do
     if order(b, values) < order(a, values),
       do: merge(known, bs, values, [b | acc]),
       else: merge(as, appended, values, [a | acc])
-  end
-
-  # The file's bytes, read without the file server: `File.read!/1` passes them through it,
-  # and an idle file server holds the last binary it read, the whole file, until it next
-  # collects garbage, which may be never.
-  defp read(path) do
-    {:ok, fd} = :file.open(path, [:read, :raw, :binary])
-    bytes = read_all(fd, [])
-    :ok = :file.close(fd)
-    bytes
   end
 
   defp read_all(fd, acc) do

@@ -31,7 +31,7 @@ defmodule Surfex.Cache do
   @spec read(String.t(), String.t(), term()) :: {:ok, term()} | :none
   def read(root, name, fingerprint) do
     with {:ok, <<@magic, sum::binary-size(32), payload::binary>>} <-
-           File.read(Path.join(dir(root), name)),
+           Surfex.Files.read(Path.join(dir(root), name)),
          true <- :crypto.hash(:sha256, payload) == sum,
          {^fingerprint, term} <- :erlang.binary_to_term(payload) do
       {:ok, term}

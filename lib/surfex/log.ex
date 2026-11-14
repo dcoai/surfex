@@ -53,7 +53,7 @@ defmodule Surfex.Log do
     unless File.exists?(open), do: File.write!(open, header(1, nil) <> "\n")
 
     attributes = Path.join(root, ".gitattributes")
-    existing = if File.exists?(attributes), do: File.read!(attributes), else: ""
+    existing = if File.exists?(attributes), do: Surfex.Files.read!(attributes), else: ""
 
     unless String.contains?(existing, @attributes) do
       separator = if existing == "" or String.ends_with?(existing, "\n"), do: "", else: "\n"
@@ -82,7 +82,7 @@ defmodule Surfex.Log do
   """
   @spec load(String.t()) :: [Entry.t()]
   def load(root) do
-    files = root |> segments() |> Enum.map(fn {_n, path} -> {path, File.read!(path)} end)
+    files = root |> segments() |> Enum.map(fn {_n, path} -> {path, Surfex.Files.read!(path)} end)
 
     # What the checkpoint (spec §12.2) covers was decoded by an earlier load from these
     # same bytes; only the lines after it are decoded.
@@ -282,7 +282,7 @@ defmodule Surfex.Log do
   # Each entry line with its line number in the file, for reporting where a problem is.
   defp numbered_lines(path) do
     path
-    |> File.read!()
+    |> Surfex.Files.read!()
     |> String.split("\n")
     |> Enum.with_index(1)
     |> Enum.reject(fn {line, _n} -> line == "" or header?(line) end)
@@ -290,7 +290,7 @@ defmodule Surfex.Log do
 
   defp entry_lines(path) do
     path
-    |> File.read!()
+    |> Surfex.Files.read!()
     |> String.split("\n", trim: true)
     |> Enum.reject(&header?/1)
   end
@@ -308,7 +308,7 @@ defmodule Surfex.Log do
   defp header?(line), do: String.starts_with?(line, ~s({"segment":))
 
   defp header_of(path) do
-    case path |> File.read!() |> String.split("\n", parts: 2) do
+    case path |> Surfex.Files.read!() |> String.split("\n", parts: 2) do
       [first | _] -> if header?(first), do: Entry.json(first), else: nil
       _ -> nil
     end
