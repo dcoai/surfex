@@ -4478,6 +4478,25 @@ a new digest every run. Both fields are optional, so a line written before them 
 it did, and a record reads back as it was written; a malformed one is refused as any bad
 line is (#405, #406).
 
+<!-- surfex: failure-transitions -->
+Evidence is scratch, so a test's failure history would go with it. What the history
+needs is small: the runs where a test's result **flipped**. In a project that keeps a log
+(`.surfex/`), the end of a run appends one line per flip to `.surfex/transitions.log`,
+which is committed and union-merged by the log's `.surfex/*.log` rule. A test's state is its
+last transition's `to`, its lines read in time order (then run, then test), so two
+branches' merged lines read the same in every checkout and a repeated end is harmless; a
+test with no line has never failed. A passed or failed result that differs from the state is
+a transition; an excluded or skipped test, or one the run didn't include, never is. So a
+stable suite writes nothing, and a test that stays red writes one line. Each line holds the
+test's id and version, `from` and `to`, the run's time and id, the commit (`HEAD`, or
+none outside git), a digest of the code versions it reached, and what **changed** since the
+last run with the opposite result in the evidence: whether the test's version differs, and
+which reached code's versions differ (none known when that run is no longer in the
+evidence). A pass→fail carries the failure (`evidence-failure-detail`); a fail→pass the
+number of failed runs since its pass→fail, when the evidence still holds that run. The
+evidence is read only for a run with a flip. A line that isn't a transition raises, naming
+it (#405, #407).
+
 - **A test version discriminates** once it has failed against one version of its code
   and later passed against a different one, the test itself unchanged:
   `Surfex.Evidence.discriminating?/3`, with `Surfex.Evidence.red_then_green/3` giving the
