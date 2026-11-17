@@ -21,7 +21,9 @@ defmodule Surfex.ExUnitFormatter do
 
   In a project that keeps a log (`.surfex/`), the run's pass/fail **transitions** are also
   appended to `.surfex/transitions.log`, which is committed: one line per test whose result
-  flipped (§17).
+  flipped (§17). In CI, set `SURFEX_TRANSITIONS_OUT=PATH` and they go to `PATH` instead, a
+  job artifact, judged against the committed file: the job never writes the checkout, and
+  `mix surfex.failures --ingest PATH` brings them in.
 
   It never touches the relation log. Evidence justifies confirmations only when someone
   asks for them (`mix surfex.confirm --evidence`).
@@ -44,6 +46,13 @@ defmodule Surfex.ExUnitFormatter do
        code: %{},
        reach: %{},
        seed: nil,
+       # A CI job's artifact for the run's transitions, instead of `.surfex/` (§17). The
+       # variable is the working directory's checkout's: a formatter given another root
+       # (a test driving one over a tmp project) never writes to it.
+       transitions:
+         Keyword.get_lazy(opts, :surfex_transitions, fn ->
+           if Path.expand(root) == File.cwd!(), do: transitions_out()
+         end),
        finished: []
      }}
   end
@@ -92,13 +101,21 @@ defmodule Surfex.ExUnitFormatter do
   def handle_cast({:suite_finished, _times}, %{index: index} = state) when index != nil do
     records = records(state)
     Evidence.append(state.path, records)
-    Surfex.Transitions.record(state.root, records, fn -> evidence(state) end)
+    Surfex.Transitions.record(state.root, records, fn -> evidence(state) end, state.transitions)
     {:noreply, %{state | finished: []}}
   end
 
   def handle_cast(_event, state), do: {:noreply, state}
 
   # ── Pieces ──────────────────────────────────────────────────────────────
+
+  defp transitions_out do
+    case System.get_env("SURFEX_TRANSITIONS_OUT") do
+      nil -> nil
+      "" -> nil
+      path -> Path.expand(path)
+    end
+  end
 
   # The evidence the run was appended to: the project's own through its checkpoint, or a
   # file named in the options as it is.

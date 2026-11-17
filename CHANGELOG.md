@@ -33,6 +33,11 @@ release it merely follows.
   `new`/`unknown`. A renamed test keeps its history. `--judge TEST --note N [--at TIME]`
   records a judgement as its own committed line. It is advisory, and reads no issue tracker
   (`mix surfex.info failures`; #405, #408).
+- A CI job writes its run's transitions to an artifact with `SURFEX_TRANSITIONS_OUT=PATH`,
+  never to the checkout. `mix surfex.failures --merge PATH` reads it into the report, and
+  `--ingest PATH` appends its new lines once. Without the opposite run's evidence (a fresh
+  CI build, a clean build), a flip compares with the test's last transition, so identical
+  versions are still shown (#405, #409).
 - Each test's pass/fail **transitions** are kept in `.surfex/transitions.log`, committed and
   union-merged with the log's existing `.surfex/*.log` rule: the end of a run appends a line
   only for a test whose result flipped. A line gives the test's id and version, both ends,

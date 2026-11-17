@@ -37,16 +37,52 @@ defmodule Surfex.Transitions do
   """
   @spec load(String.t()) :: [t]
   def load(root) do
-    case Surfex.Files.read(path(root)) do
-      {:ok, bytes} ->
-        bytes
-        |> String.split("\n", trim: true)
-        |> Enum.map(&decode/1)
-        |> Enum.sort_by(&{&1.at, &1.run, &1.test})
-
-      {:error, :enoent} ->
-        []
+    case load_file(path(root)) do
+      {:ok, transitions} -> transitions
+      {:error, :enoent} -> []
     end
+  end
+
+  @doc """
+  The transitions in the file at `path`, in load/1's order: a project's own, or a CI job's
+  (`record/4` with an output path).
+  """
+  @spec load_file(String.t()) :: {:ok, [t]} | {:error, File.posix()}
+  def load_file(path) do
+    with {:ok, bytes} <- Surfex.Files.read(path) do
+      {:ok, bytes |> String.split("\n", trim: true) |> Enum.map(&decode/1) |> combined()}
+    end
+  end
+
+  @doc """
+  Several files' transitions as one history: each line once (a line is its test, run and
+  ends), ordered by time, then run, then test.
+  """
+  @spec combined([t]) :: [t]
+  def combined(transitions) do
+    transitions
+    |> Enum.uniq_by(&key/1)
+    |> Enum.sort_by(&{&1.at, &1.run, &1.test})
+  end
+
+  defp key(t), do: {t.test, t.run, t.from, t.to}
+
+  @doc """
+  Appends to the project's transitions each line of `files`' transitions it doesn't have
+  yet, once, and returns `{added, already there}`. The project must keep a log.
+  """
+  @spec ingest(String.t(), [[t]]) :: {[t], [t]}
+  def ingest(root, files) do
+    have = MapSet.new(load(root), &key/1)
+
+    {added, present} =
+      files
+      |> Enum.concat()
+      |> combined()
+      |> Enum.split_with(&(not MapSet.member?(have, key(&1))))
+
+    if added != [], do: File.write!(path(root), Enum.map(added, &[encode(&1), "\n"]), [:append])
+    {added, present}
   end
 
   @doc "Each test's last transition: its state is that transition's `to`."
@@ -59,11 +95,21 @@ defmodule Surfex.Transitions do
   state is a transition; an excluded or skipped one never is. `evidence` gives the
   evidence, read only when there is a transition, to find the opposite result's versions
   and count the failed runs a fail→pass ends.
+
+  With an output path `out` (a CI job's artifact), the lines go there instead, whether or
+  not the project keeps a log, and the state they're judged against is the project's
+  transitions with the lines already in `out`: the run never writes the checkout.
   """
-  @spec record(String.t(), [Evidence.t()], (-> [Evidence.t()])) :: [t]
-  def record(root, records, evidence) do
-    if File.dir?(Surfex.Log.dir(root)) do
-      last = root |> load() |> last()
+  @spec record(String.t(), [Evidence.t()], (-> [Evidence.t()]), String.t() | nil) :: [t]
+  def record(root, records, evidence, out \\ nil) do
+    if out != nil or File.dir?(Surfex.Log.dir(root)) do
+      written =
+        case out && load_file(out) do
+          {:ok, transitions} -> transitions
+          _none -> []
+        end
+
+      last = (load(root) ++ written) |> combined() |> last()
 
       flips =
         for %{result: to} = r <- records,
@@ -74,7 +120,7 @@ defmodule Surfex.Transitions do
 
       case flips do
         [] -> []
-        flips -> append(root, flips, evidence.())
+        flips -> append(root, out || path(root), flips, evidence.())
       end
     else
       []
@@ -88,7 +134,7 @@ defmodule Surfex.Transitions do
     end
   end
 
-  defp append(root, flips, evidence) do
+  defp append(root, target, flips, evidence) do
     commit = commit(root)
     by_test = Enum.group_by(evidence, & &1.test)
 
@@ -105,21 +151,35 @@ defmodule Surfex.Transitions do
           run: r.run,
           commit: commit,
           code: code_digest(r.code),
-          changed: changed(r, before, from)
+          changed: changed(r, before, from, previous)
         }
         |> detail(r, previous, before)
       end
 
-    File.write!(path(root), Enum.map(lines, &[encode(&1), "\n"]), [:append])
+    File.mkdir_p!(Path.dirname(target))
+    File.write!(target, Enum.map(lines, &[encode(&1), "\n"]), [:append])
     lines
   end
 
   # What differs from the last run with the opposite result: the test's version, and the
   # code it reached whose versions differ. nil when no such run is in the evidence.
-  defp changed(r, before, from) do
+  #
+  # Without that run (a CI job's fresh build, a clean build), the test's last transition
+  # was the opposite result too, and holds its version and code digest: with the same
+  # digest, no reached code changed, and the versions say whether the test did. A different
+  # digest says code changed but not which, so it stays nil.
+  defp changed(r, before, from, previous) do
     case before |> Enum.filter(&(&1.result == from)) |> List.last() do
       nil ->
-        nil
+        case previous do
+          %{to: ^from, code: digest, version: version} ->
+            if digest == code_digest(r.code),
+              do: %{test: version != r.test_hash, code: []},
+              else: nil
+
+          _ ->
+            nil
+        end
 
       opposite ->
         ids = Map.keys(opposite.code) ++ Map.keys(r.code)

@@ -32,6 +32,14 @@ defmodule Mix.Tasks.Surfex.Failures do
 
   A judgement is its own committed line (`.surfex/failure_judgements.log`) and never edits
   a transition. The task is advisory: it never fails on what it finds.
+
+  A CI job writes its run's transitions to an artifact (`SURFEX_TRANSITIONS_OUT=PATH`)
+  rather than the checkout. `--merge PATH` (once per file) reads such files into the
+  report; `--ingest PATH` appends their lines the project doesn't have yet to
+  `.surfex/transitions.log`, once, for you to commit:
+
+      mix surfex.failures --merge ci-transitions.log
+      mix surfex.failures --ingest ci-transitions.log
   """
 
   use Mix.Task
@@ -40,18 +48,45 @@ defmodule Mix.Tasks.Surfex.Failures do
   alias Surfex.Record.Mix, as: R
   alias Surfex.Status.Config
 
-  @switches [json: :boolean, judge: :string, at: :string]
+  @switches [json: :boolean, judge: :string, at: :string, merge: :keep, ingest: :keep]
 
   @impl Mix.Task
   def run(args) do
     {opts, ids} = R.parse(args, @switches)
     root = File.cwd!()
-    transitions = Transitions.load(root)
-    renames = Failures.renames(transitions, scanned_tests(root, opts))
 
-    case opts[:judge] do
-      nil -> report(root, transitions, renames, ids, opts)
-      test -> judge(root, transitions, renames, strip(test), opts)
+    case Keyword.get_values(opts, :ingest) do
+      [] ->
+        merged = Enum.map(Keyword.get_values(opts, :merge), &file!/1)
+        transitions = Transitions.combined(Enum.concat([Transitions.load(root) | merged]))
+        renames = Failures.renames(transitions, scanned_tests(root, opts))
+
+        case opts[:judge] do
+          nil -> report(root, transitions, renames, ids, opts)
+          test -> judge(root, transitions, renames, strip(test), opts)
+        end
+
+      paths ->
+        ingest(root, paths)
+    end
+  end
+
+  defp ingest(root, paths) do
+    unless File.dir?(Surfex.Log.dir(root)),
+      do: Mix.raise("no relation log in #{Surfex.Log.dir(root)}: run `mix surfex.log --init`")
+
+    {added, present} = Transitions.ingest(root, Enum.map(paths, &file!/1))
+
+    Mix.shell().info(
+      "ingested #{length(added)} transitions into #{Path.relative_to(Transitions.path(root), root)}" <>
+        "; #{length(present)} already there"
+    )
+  end
+
+  defp file!(path) do
+    case Transitions.load_file(path) do
+      {:ok, transitions} -> transitions
+      {:error, why} -> Mix.raise("can't read transitions at #{path}: #{:file.format_error(why)}")
     end
   end
 
