@@ -16,13 +16,30 @@ defmodule Surfex.Evidence do
   """
 
   @type t :: %{
-          test: String.t(),
-          test_hash: String.t(),
-          result: :passed | :failed | :excluded | :skipped,
-          at: String.t(),
-          run: String.t(),
-          seq: non_neg_integer,
-          code: %{String.t() => String.t()}
+          required(:test) => String.t(),
+          required(:test_hash) => String.t(),
+          required(:result) => :passed | :failed | :excluded | :skipped,
+          required(:at) => String.t(),
+          required(:run) => String.t(),
+          required(:seq) => non_neg_integer,
+          required(:code) => %{String.t() => String.t()},
+          optional(:duration) => non_neg_integer,
+          optional(:failure) => failure
+        }
+
+  @typedoc """
+  What a failed test's run showed (§17, #406): how it failed (`assertion`, `timeout`,
+  `error`, `exit` or `throw`), the message's first line, where it failed in the test file,
+  the run's seed, and a `digest` of the kind, the exception and that place. The digest
+  leaves the message out, since it carries pids, timings and generated values, so the
+  same failure has the same digest from run to run.
+  """
+  @type failure :: %{
+          kind: String.t(),
+          line: String.t(),
+          location: String.t(),
+          seed: integer | nil,
+          digest: String.t()
         }
 
   @note "confirmed by evidence"
@@ -161,7 +178,7 @@ defmodule Surfex.Evidence do
   # and in file order where those are equal (a stable sort).
   defp sorted(numbered, values), do: Enum.sort_by(numbered, &order(&1, values))
 
-  defp order({_test, _test_hash, _result, at, run, seq, _code}, values),
+  defp order({_test, _test_hash, _result, at, run, seq, _code, _detail}, values),
     do: {at, Map.fetch!(values, run), seq}
 
   # Two sorted lists as one, as sorting their concatenation would order it: the checkpoint's
@@ -241,8 +258,8 @@ defmodule Surfex.Evidence do
 
   # Each numbered record with its values: equal values are one term in every record.
   defp records(values, numbered) do
-    for {test, test_hash, result, at, run, seq, code} <- numbered do
-      %{
+    for {test, test_hash, result, at, run, seq, code, detail} <- numbered do
+      Map.merge(detail, %{
         test: Map.fetch!(values, test),
         test_hash: Map.fetch!(values, test_hash),
         result: result,
@@ -250,7 +267,7 @@ defmodule Surfex.Evidence do
         run: Map.fetch!(values, run),
         seq: seq,
         code: Map.fetch!(values, code)
-      }
+      })
     end
   end
 
@@ -264,7 +281,7 @@ defmodule Surfex.Evidence do
         {:ok, r} ->
           record =
             {number.(r.test), number.(r.test_hash), r.result, :binary.copy(r.at), number.(r.run),
-             r.seq, number.(r.code)}
+             r.seq, number.(r.code), copy(Map.take(r, [:duration, :failure]))}
 
           {:cont, {:ok, [record | acc]}}
 
@@ -379,7 +396,30 @@ defmodule Surfex.Evidence do
       "seq" => r.seq,
       "code" => r.code
     }
+    |> put_detail(r)
     |> Surfex.JSON.encode()
+  end
+
+  # The optional fields, written only when the record has them, so a record reads back as
+  # it was written.
+  defp put_detail(json, r) do
+    json
+    |> then(&if Map.has_key?(r, :duration), do: Map.put(&1, "duration", r.duration), else: &1)
+    |> then(fn json ->
+      case r do
+        %{failure: f} ->
+          Map.put(json, "failure", %{
+            "kind" => f.kind,
+            "line" => f.line,
+            "location" => f.location,
+            "seed" => f.seed,
+            "digest" => f.digest
+          })
+
+        _ ->
+          json
+      end
+    end)
   end
 
   @fields ["test", "test_hash", "at", "run", "seq", "code"]
@@ -401,16 +441,17 @@ defmodule Surfex.Evidence do
   defp record(map, line) do
     case {Enum.reject(@fields, &Map.has_key?(map, &1)), Map.fetch(@results, map["result"])} do
       {[], {:ok, result}} ->
-        {:ok,
-         %{
-           test: map["test"],
-           test_hash: map["test_hash"],
-           result: result,
-           at: map["at"],
-           run: map["run"],
-           seq: map["seq"],
-           code: map["code"]
-         }}
+        record = %{
+          test: map["test"],
+          test_hash: map["test_hash"],
+          result: result,
+          at: map["at"],
+          run: map["run"],
+          seq: map["seq"],
+          code: map["code"]
+        }
+
+        detail(record, map, line)
 
       {[], :error} ->
         {:error,
@@ -421,4 +462,44 @@ defmodule Surfex.Evidence do
          "evidence record has no #{Enum.join(missing, ", ")}: #{String.slice(line, 0, 80)}"}
     end
   end
+
+  @failure_fields ["kind", "line", "location", "seed", "digest"]
+
+  # The optional duration and failure, when the line has them.
+  defp detail(record, map, line) do
+    with {:ok, record} <- duration(record, map, line) do
+      failure(record, map, line)
+    end
+  end
+
+  defp duration(record, %{"duration" => d}, _line) when is_integer(d) and d >= 0,
+    do: {:ok, Map.put(record, :duration, d)}
+
+  defp duration(_record, %{"duration" => _}, line),
+    do: {:error, "evidence duration must be a whole number: #{String.slice(line, 0, 80)}"}
+
+  defp duration(record, _map, _line), do: {:ok, record}
+
+  defp failure(record, %{"failure" => %{} = f}, line) do
+    case Enum.reject(@failure_fields, &Map.has_key?(f, &1)) do
+      [] ->
+        {:ok,
+         Map.put(record, :failure, %{
+           kind: f["kind"],
+           line: f["line"],
+           location: f["location"],
+           seed: f["seed"],
+           digest: f["digest"]
+         })}
+
+      missing ->
+        {:error,
+         "evidence failure has no #{Enum.join(missing, ", ")}: #{String.slice(line, 0, 80)}"}
+    end
+  end
+
+  defp failure(_record, %{"failure" => _}, line),
+    do: {:error, "evidence failure must be an object: #{String.slice(line, 0, 80)}"}
+
+  defp failure(record, _map, _line), do: {:ok, record}
 end

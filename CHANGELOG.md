@@ -25,6 +25,10 @@ release it merely follows.
 
 ### Added
 
+- An evidence record carries its test's `duration` (microseconds), and a failed one a
+  `failure`: its kind (assertion, timeout, error, exit, throw), first line, location in the
+  test file, the run's seed, and a digest that leaves the message out, so the same failure
+  keeps one digest across runs. Both are optional: older lines load as before (#405, #406).
 - `Surfex.Evidence.project/1` reads a project's own evidence file through a checkpoint in
   `.surfex/cache/`, as the log is read, and decodes only the lines appended since. It gives
   exactly `load/1`'s records. `mix surfex.status --evidence`, the recording commands and

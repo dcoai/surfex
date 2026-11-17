@@ -97,9 +97,16 @@ defmodule Surfex.MixProject do
 
   @shown ~w(Surfex.ExUnitFormatter Surfex.Scanner Surfex.Item Surfex.Golden Surfex.SourceScan)
 
-  # A reference's module is its capitalised segments: `Surfex.Item.key/1` is `Surfex.Item`.
+  # A reference's module is its capitalised segments: `Surfex.Item.key/1` is `Surfex.Item`,
+  # and so is `t:Surfex.Item.t/0` once its kind (`t:`, `c:`) is set aside (#406).
   defp skip_autolink?(ref) do
-    module = ref |> String.split(".") |> Enum.take_while(&(&1 =~ ~r/^[A-Z]/)) |> Enum.join(".")
+    module =
+      ref
+      |> String.replace(~r/^[tc]:/, "")
+      |> String.split(".")
+      |> Enum.take_while(&(&1 =~ ~r/^[A-Z]/))
+      |> Enum.join(".")
+
     String.starts_with?(module, "Surfex") and module not in @shown
   end
 end
