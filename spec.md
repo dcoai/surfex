@@ -80,8 +80,9 @@ The relation log keeps its own canonical field order (§12).
 
 ```test:suite-leaves-own-log
 a file under the project's own `.surfex/` that changed, appeared or went missing during
-the suite is named, apart from its cache (§12.2), which a load may write; an untouched
-`.surfex/` names nothing
+the suite is named, apart from its cache (§12.2), which a load may write, and its
+transitions (§17), which the suite's own formatter appends; an untouched `.surfex/`
+names nothing
 ```
 
 ## 2. Surface goldens
@@ -4496,6 +4497,31 @@ evidence). A pass→fail carries the failure (`evidence-failure-detail`); a fail
 number of failed runs since its pass→fail, when the evidence still holds that run. The
 evidence is read only for a run with a flip. A line that isn't a transition raises, naming
 it (#405, #407).
+
+<!-- surfex: failure-classes -->
+`Mix.Tasks.Surfex.Failures` is `mix surfex.failures [TEST…] [--json]`: each test's history from
+the transitions alone, with its state and every flip in time order, each with a **class**
+saying what differed from the run with the opposite result before it. `recurred`: a
+failure whose digest an earlier pass→fail had came back after a fail→pass that changed the
+test or its code, a fix that didn't hold. Otherwise `test_changed` when the test's version
+differed, `code_changed` (naming the code) when reached code's did, and `nondeterministic`
+when nothing did: the result changed with the test and its scanned code at identical
+versions. That is a flake, or a change no version holds (a file the test reads, the
+environment, code the scanner doesn't reach), and either way it needs no rerun to show.
+With nothing to compare against, `new` for a test's first flip and `unknown` after.
+The classes are mechanical: evidence for a judgement, not one. A renamed test keeps its
+history: an id no longer scanned whose last version is exactly one scanned test's current
+version is that test (a renamed module, `describe` or file keeps the version, §14); a version
+two tests share follows neither. `--json` gives the same report, keys sorted. It is advisory:
+it never fails on what it finds, and it reads no issue tracker (#405, #408).
+
+<!-- surfex: failure-judgements -->
+`mix surfex.failures --judge TEST --note N [--at TIME]` records a judgement on the test's
+latest transition, or the one at `TIME`, as its own line in `.surfex/failure_judgements.log`
+(committed, union-merged by the `.surfex/*.log` rule) with who made it and when. A
+judgement never edits a transition; the report shows each with the flip it judges, so the
+next look at a failure starts from the last verdict. A test with no such transition is
+refused, naming the times it has, and `--note` is required (#405, #408).
 
 - **A test version discriminates** once it has failed against one version of its code
   and later passed against a different one, the test itself unchanged:

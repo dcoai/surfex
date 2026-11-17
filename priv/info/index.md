@@ -26,6 +26,7 @@ Read one with `mix surfex.info TOPIC`.
 - `mix surfex.info completeness`: the coverage score and what each item lacks
 - `mix surfex.info drafts`: handing found work to the project's change process
 - `mix surfex.info goldens`: committed, drift-checked reports (RELATIONS.md)
+- `mix surfex.info failures`: each test's failure history: flakes, regressions, fixes that didn't hold
 - `mix surfex.info config`: every .surfex.exs key
 
 ## Commands
@@ -37,6 +38,7 @@ Read the state:
 - `mix surfex.status [--format json] [--validated] [--evidence]`: every relation needing attention
 - `mix surfex.completeness [--format json | --summary]`: coverage by validated relations, and what's missing
 - `mix surfex.history ID`: every relation an id has had, from the log alone
+- `mix surfex.failures [TEST…] [--json] | --judge TEST --note N`: each test's flips, classed, and judgements on them
 - `mix surfex.info [TOPIC]`: this directory, or a topic's page
 - `mix surfex.test UNIT [--within] [--list] [--checks] [-- ARGS]`: run the tests declaring a unit, list tags included
 
@@ -67,6 +69,7 @@ The log and committed reports:
 ## Where things are
 
 - `.surfex.exs`: the project's config (`mix surfex.info config`).
-- `.surfex/`: the relation log, committed, merged by git's union merge.
+- `.surfex/`: the relation log, committed, merged by git's union merge; beside it each
+  test's pass/fail flips (`transitions.log`) and judgements on them.
 - `_build/surfex/evidence.jsonl`: test results at exact versions, never committed.
 - `spec.md` (in the surfex package): the full specification of the tool.
