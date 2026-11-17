@@ -19,6 +19,10 @@ defmodule Surfex.ExUnitFormatter do
   Invalid tests, and tests outside `tests:`, record nothing. When the suite finishes, the run's records are appended to
   `Surfex.Evidence.path/1` under `_build`: scratch data, never committed.
 
+  In a project that keeps a log (`.surfex/`), the run's pass/fail **transitions** are also
+  appended to `.surfex/transitions.log`, which is committed: one line per test whose result
+  flipped (§17).
+
   It never touches the relation log. Evidence justifies confirmations only when someone
   asks for them (`mix surfex.confirm --evidence`).
   """
@@ -86,13 +90,21 @@ defmodule Surfex.ExUnitFormatter do
   end
 
   def handle_cast({:suite_finished, _times}, %{index: index} = state) when index != nil do
-    Evidence.append(state.path, records(state))
+    records = records(state)
+    Evidence.append(state.path, records)
+    Surfex.Transitions.record(state.root, records, fn -> evidence(state) end)
     {:noreply, %{state | finished: []}}
   end
 
   def handle_cast(_event, state), do: {:noreply, state}
 
   # ── Pieces ──────────────────────────────────────────────────────────────
+
+  # The evidence the run was appended to: the project's own through its checkpoint, or a
+  # file named in the options as it is.
+  defp evidence(%{root: root, path: path}) do
+    if path == Evidence.path(root), do: Evidence.project(root), else: Evidence.load(path)
+  end
 
   defp outcome(nil), do: {:ok, :passed}
   defp outcome({:failed, _}), do: {:ok, :failed}

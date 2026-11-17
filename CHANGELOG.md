@@ -25,6 +25,12 @@ release it merely follows.
 
 ### Added
 
+- Each test's pass/fail **transitions** are kept in `.surfex/transitions.log`, committed and
+  union-merged with the log's existing `.surfex/*.log` rule: the end of a run appends a line
+  only for a test whose result flipped. A line gives the test's id and version, both ends,
+  the commit, and what changed since the opposite result: the test's version, or which code.
+  A pass→fail carries its failure, and a fail→pass the number of failed runs. A stable suite
+  writes nothing (#405, #407).
 - An evidence record carries its test's `duration` (microseconds), and a failed one a
   `failure`: its kind (assertion, timeout, error, exit, throw), first line, location in the
   test file, the run's seed, and a digest that leaves the message out, so the same failure
