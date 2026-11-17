@@ -45,6 +45,8 @@ defmodule Surfex.TestHygieneTest do
     File.write!(Path.join(dir, "surfex_2.log"), "new\n")
     File.mkdir_p!(Path.join(dir, "cache"))
     File.write!(Path.join([dir, "cache", "log.checkpoint"]), "derived\n")
+    # The suite's own formatter appends this checkout's flips by design (#408).
+    File.write!(Path.join(dir, "transitions.log"), "a flip\n")
 
     assert OwnLog.changes(before, OwnLog.digest(dir)) == [
              "surfex.log changed",

@@ -25,6 +25,14 @@ release it merely follows.
 
 ### Added
 
+- `mix surfex.failures [TEST…] [--json]` shows each test's failure history from
+  `.surfex/transitions.log`. Each flip is classed by what differed from the run before it:
+  `nondeterministic` (identical versions: a flake, or a change no version holds, shown
+  without reruns), `code_changed`
+  naming the code, `test_changed`, `recurred` (the same failure back after a fix), or
+  `new`/`unknown`. A renamed test keeps its history. `--judge TEST --note N [--at TIME]`
+  records a judgement as its own committed line. It is advisory, and reads no issue tracker
+  (`mix surfex.info failures`; #405, #408).
 - Each test's pass/fail **transitions** are kept in `.surfex/transitions.log`, committed and
   union-merged with the log's existing `.surfex/*.log` rule: the end of a run appends a line
   only for a test whose result flipped. A line gives the test's id and version, both ends,

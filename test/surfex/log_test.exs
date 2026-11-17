@@ -419,7 +419,7 @@ defmodule Surfex.LogTest do
     @tag verifies: "grammar-loud"
     test "every entry in surfex's own log fits the grammar, with its id unchanged" do
       lines =
-        Path.wildcard(Path.expand("../../.surfex/*.log", __DIR__))
+        Path.wildcard(Path.expand("../../.surfex/surfex{,_*}.log", __DIR__))
         |> Enum.flat_map(&String.split(File.read!(&1), "\n", trim: true))
         |> Enum.reject(&String.starts_with?(&1, ~s({"segment")))
 
