@@ -56,13 +56,19 @@ test:
     # This commit's code only: the _build cache is shared by every pipeline, so an
     # incremental compile can run beams another commit built (#172). Deps stay cached.
     - mix compile --force
-    - mix test
+    # Each flipped test's transition goes to an artifact, never the checkout (§17): fold
+    # a job's in with `mix surfex.failures --ingest ci-transitions.log`.
+    - SURFEX_TRANSITIONS_OUT=ci-transitions.log mix test
     # Every relation in .surfex/ still holds, every public item implements a spec section
     # and every test hint is verified (require: in .surfex.exs), the log verifies, and every
     # confirmation by evidence is borne out by the run above, and every relation was
     # validated by the process (§18): nothing current is merely asserted. It checks; it
     # records nothing.
     - mix surfex.status --verify --evidence --validated
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths: [ci-transitions.log]
 
 goldens:
   extends: .elixir

@@ -157,14 +157,31 @@ defmodule Surfex.TransitionsTest do
     assert [%{test: "MyApp.CartTest: b", to: :passed}] = run(root, file, [{"b", nil}])
   end
 
-  test "after a clean build the opposite result and the count are unknown, and no .surfex means no file",
+  test "after a clean build the last transition stands in for the opposite run, the count is unknown, and no .surfex means no file",
        %{tmp_dir: root, cart_test: file} do
     run(root, file, all_pass())
     File.rm!(Evidence.path(root))
+    # A first failure has neither the run nor a transition to compare with.
     assert [%{to: :failed, changed: nil}] = run(root, file, [{"a", failed(5)}])
 
+    # The pass→fail holds the versions it failed at: the same code digest, the same test.
     File.rm!(Evidence.path(root))
-    assert [%{to: :passed, failed_runs: nil, changed: nil}] = run(root, file, [{"a", nil}])
+
+    assert [%{to: :passed, failed_runs: nil, changed: %{test: false, code: []}}] =
+             run(root, file, [{"a", nil}])
+
+    # Code changed since: the digest differs, and which code isn't known without the run.
+    File.rm!(Evidence.path(root))
+    cart = Path.join(root, "lib/my_app/cart.ex")
+
+    File.write!(
+      cart,
+      String.replace(File.read!(cart), "def total", "def total, do: 1\n  def old_total",
+        global: false
+      )
+    )
+
+    assert [%{to: :failed, changed: nil}] = run(root, file, [{"a", failed(5)}])
 
     File.rm_rf!(Path.join(root, ".surfex"))
     assert run(root, file, [{"a", failed(5)}]) == []

@@ -32,6 +32,24 @@ Each flip's class:
 - `new` / `unknown`: there was nothing to compare against (the evidence went with a clean
   build).
 
+CI can't commit, so a CI job writes its flips to an artifact. Set the variable and keep the
+file:
+
+```yaml
+test:
+  variables:
+    SURFEX_TRANSITIONS_OUT: ci-transitions.log
+  script:
+    - mix test
+  artifacts:
+    when: always
+    paths: [ci-transitions.log]
+```
+
+Then read a job's file into the report with `mix surfex.failures --merge
+ci-transitions.log`. To keep it, add it to the history with `mix surfex.failures --ingest
+ci-transitions.log`, which appends only the lines not already there, and commit.
+
 The classes are evidence for a judgement, not verdicts. Record yours, so the next look
 starts from it:
 

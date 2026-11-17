@@ -4492,11 +4492,25 @@ stable suite writes nothing, and a test that stays red writes one line. Each lin
 test's id and version, `from` and `to`, the run's time and id, the commit (`HEAD`, or
 none outside git), a digest of the code versions it reached, and what **changed** since the
 last run with the opposite result in the evidence: whether the test's version differs, and
-which reached code's versions differ (none known when that run is no longer in the
-evidence). A pass→fail carries the failure (`evidence-failure-detail`); a fail→pass the
+which reached code's versions differ. When that run is no longer in the evidence (a clean
+build, a CI job's fresh one), the test's last transition, which reached the opposite result,
+stands in: the same code digest means no reached code changed, and its version says whether
+the test did; a different digest leaves what changed unknown. A pass→fail carries the failure (`evidence-failure-detail`); a fail→pass the
 number of failed runs since its pass→fail, when the evidence still holds that run. The
 evidence is read only for a run with a flip. A line that isn't a transition raises, naming
 it (#405, #407).
+
+<!-- surfex: failure-transitions-ci -->
+CI can't commit, so its flips would go with its working copy. With
+`SURFEX_TRANSITIONS_OUT=PATH` (or the formatter's `surfex_transitions:` option) a run
+writes its transitions to `PATH`, a job artifact, instead of `.surfex/`, judged against the
+project's transitions together with the lines already in `PATH`, so several runs in one job
+don't repeat a flip. The variable is the run of the checkout in the working directory: a
+formatter given another root, as a test starts one over a tmp project, ignores it. It never
+writes the checkout, and it writes `PATH` even where the checkout keeps no log. `mix surfex.failures --merge PATH` (once per file) reads such files
+into the report, and `--ingest PATH` appends to `.surfex/transitions.log` each line the
+project doesn't have yet, once (a line is its test, run and ends), for a person to commit. A
+file that can't be read fails, naming it (#405, #409).
 
 <!-- surfex: failure-classes -->
 `Mix.Tasks.Surfex.Failures` is `mix surfex.failures [TEST…] [--json]`: each test's history from
