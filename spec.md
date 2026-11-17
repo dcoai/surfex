@@ -4465,6 +4465,19 @@ it (`mix surfex.status --evidence`, the recording commands' evidence, `mix surfe
 a CI job's file given with `--merge` is read with `load/1`. On apu's file a warm read went
 from 8 s and 2.9 GB to under 3 s and 1.3 GB (#398, #400).
 
+<!-- surfex: evidence-failure-detail -->
+A record says how long the test's cases took, in microseconds (`duration`), and a failed
+one what its first failing case showed (`failure`, `t:Surfex.Evidence.failure/0`): its
+**kind** (`assertion`, `timeout`, `error` for another exception, `exit` for the test's or a
+linked process's exit, `throw`), the message's first line, its **location** in the test
+file (the deepest frame there for an assertion, error or throw; the test's own line for a
+timeout or an exit, whose stack is wherever it happened to be), the run's **seed**, and a
+**digest** of the kind, the exception's module and the location. The digest leaves the
+message out: it carries pids, timings and generated values, so the same failure would get
+a new digest every run. Both fields are optional, so a line written before them reads as
+it did, and a record reads back as it was written; a malformed one is refused as any bad
+line is (#405, #406).
+
 - **A test version discriminates** once it has failed against one version of its code
   and later passed against a different one, the test itself unchanged:
   `Surfex.Evidence.discriminating?/3`, with `Surfex.Evidence.red_then_green/3` giving the

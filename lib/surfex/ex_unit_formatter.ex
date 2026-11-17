@@ -14,6 +14,8 @@ defmodule Surfex.ExUnitFormatter do
   defines it. When a record's test ran more than once in a run (one per case), it failed
   if any case failed. An excluded or skipped test is recorded as such, with no code
   versions, so a run that leaves a test out is told apart from one where it didn't run.
+  Each record carries how long the test's cases took, in microseconds (`duration`), and a
+  failed one what its first failing case showed (`failure`, `t:Surfex.Evidence.failure/0`).
   Invalid tests, and tests outside `tests:`, record nothing. When the suite finishes, the run's records are appended to
   `Surfex.Evidence.path/1` under `_build`: scratch data, never committed.
 
@@ -37,6 +39,7 @@ defmodule Surfex.ExUnitFormatter do
        index: nil,
        code: %{},
        reach: %{},
+       seed: nil,
        finished: []
      }}
   end
@@ -63,17 +66,20 @@ defmodule Surfex.ExUnitFormatter do
 
     code = for s <- scans, into: %{}, do: {s.id, s.hash}
     index = Enum.group_by(tests, &Path.expand(&1.location.file, state.root))
-    {:noreply, %{state | index: index, code: code, reach: Scan.reach(tests ++ scans)}}
+    seed = ExUnit.configuration()[:seed]
+
+    {:noreply, %{state | index: index, code: code, reach: Scan.reach(tests ++ scans), seed: seed}}
   end
 
   def handle_cast(
-        {:test_finished, %ExUnit.Test{state: result, tags: tags}},
+        {:test_finished, %ExUnit.Test{state: result, tags: tags, time: time}},
         %{index: index} = state
       )
       when index != nil do
     with {:ok, outcome} <- outcome(result),
          %Scan{} = scan <- find(index, tags) do
-      {:noreply, %{state | finished: [{scan, outcome} | state.finished]}}
+      failure = failure(result, tags, state)
+      {:noreply, %{state | finished: [{scan, {outcome, time, failure}} | state.finished]}}
     else
       _ -> {:noreply, state}
     end
@@ -105,6 +111,66 @@ defmodule Surfex.ExUnitFormatter do
 
   defp find(_index, _tags), do: nil
 
+  # What a failed case showed: its first failure's kind, message line and place in the test
+  # file, with the run's seed and a digest that leaves the message out (§17, #406).
+  defp failure({:failed, [{kind, reason, stacktrace} | _]}, tags, state) do
+    {kind, exception} = kind(kind, reason)
+    location = location(stacktrace, tags, kind, state.root)
+
+    %{
+      kind: kind,
+      line: first_line(kind, reason),
+      location: location,
+      seed: state.seed,
+      digest:
+        :crypto.hash(:sha256, Enum.join([kind, exception, location], "\n"))
+        |> Base.encode16(case: :lower)
+        |> binary_part(0, 16)
+    }
+  end
+
+  defp failure(_result, _tags, _state), do: nil
+
+  # The failure's kind, and the exception's module where it raised one.
+  defp kind(:error, %ExUnit.AssertionError{}), do: {"assertion", "ExUnit.AssertionError"}
+  defp kind(:error, %ExUnit.TimeoutError{}), do: {"timeout", "ExUnit.TimeoutError"}
+  defp kind(:error, %module{}), do: {"error", inspect(module)}
+  defp kind(:error, _erlang_error), do: {"error", ""}
+  defp kind(:throw, _value), do: {"throw", ""}
+  # An exit of the test process, or of a process linked to it ({:EXIT, pid}).
+  defp kind(_exit, _reason), do: {"exit", ""}
+
+  # Where it failed: the deepest frame in the test's own file, as `file:line` relative to the
+  # project. A timeout's stack is wherever the test happened to wait, and an exit's is the
+  # exit's, so both are placed at the test itself.
+  defp location(stacktrace, tags, kind, root) do
+    test_file = Path.expand(tags.file)
+
+    frame =
+      kind in ["assertion", "error", "throw"] and
+        Enum.find_value(stacktrace, fn
+          {_m, _f, _a, info} ->
+            file = info[:file]
+            if file && Path.expand(to_string(file), root) == test_file, do: info[:line]
+
+          _ ->
+            nil
+        end)
+
+    "#{Path.relative_to(test_file, root)}:#{frame || tags.line}"
+  end
+
+  defp first_line(kind, reason) do
+    text =
+      case {kind, reason} do
+        {"assertion", %ExUnit.AssertionError{message: message}} -> message
+        {k, %{__exception__: true} = e} when k in ["timeout", "error"] -> Exception.message(e)
+        _ -> inspect(reason, limit: 10)
+      end
+
+    text |> String.split("\n", parts: 2) |> hd() |> String.slice(0, 200)
+  end
+
   # A test's result over its cases: failed if any failed, passed if any ran; otherwise
   # excluded or skipped, as its cases were.
   defp result(outcomes) do
@@ -122,11 +188,13 @@ defmodule Surfex.ExUnitFormatter do
     at = DateTime.utc_now() |> DateTime.to_iso8601()
 
     state.finished
-    |> Enum.group_by(fn {scan, _} -> scan end, fn {_, outcome} -> outcome end)
+    |> Enum.group_by(fn {scan, _} -> scan end, fn {_, ran} -> ran end)
     |> Enum.sort_by(fn {scan, _} -> scan.id end)
     |> Enum.with_index()
-    |> Enum.map(fn {{scan, outcomes}, seq} ->
-      result = result(outcomes)
+    |> Enum.map(fn {{scan, cases}, seq} ->
+      result = result(for {outcome, _, _} <- cases, do: outcome)
+      # The first failing case, in the order the cases finished.
+      failure = cases |> Enum.reverse() |> Enum.find_value(fn {_, _, f} -> f end)
 
       # A test that didn't run was run against no code; one that ran, against everything it
       # reaches.
@@ -142,8 +210,10 @@ defmodule Surfex.ExUnitFormatter do
         at: at,
         run: run,
         seq: seq,
-        code: code
+        code: code,
+        duration: Enum.sum(for {_, time, _} <- cases, do: time)
       }
+      |> then(&if failure, do: Map.put(&1, :failure, failure), else: &1)
     end)
   end
 end
