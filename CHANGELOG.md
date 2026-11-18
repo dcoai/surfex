@@ -4,7 +4,7 @@ All notable changes to Surfex are recorded here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.13.0] — 2026-11-18
 
 A test's failures get a history, and reading the evidence no longer costs what the file
 weighs. Each run's flips, a test that passed and now fails or the other way round, are kept
