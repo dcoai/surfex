@@ -6,8 +6,26 @@ All notable changes to Surfex are recorded here, following
 
 ## [Unreleased]
 
-`mix.exs` reads `0.12.1-dev`: the `-dev` suffix is what keeps a commit from claiming to be the
-release it merely follows.
+A test's failures get a history, and reading the evidence no longer costs what the file
+weighs. Each run's flips, a test that passed and now fails or the other way round, are kept
+in a committed `.surfex/transitions.log`. Each flip carries the commit, the failure (its
+kind, place and seed, and a digest that ignores the message) and what changed since the
+opposite result. `mix surfex.failures` classes every flip (nondeterministic, code changed,
+test changed, recurred, new) and records judgements on them. So a flake is shown from history,
+not proven by rerunning the suite, and surfex reads and writes no issue tracker for it. On
+apu's 1.15 GB evidence file a read went from 33 s and 14.8 GB to under 3 s and 1.3 GB warm.
+The log, the cache and the evidence are now read without OTP's file server keeping the last
+of them alive.
+
+**Upgrade from 0.12.0.** Measured before release on the 30 checkouts that use surfex: no code
+or spec unit changes version, none disappears and none is new, so no relation dangles on the
+upgrade. Once upgraded, a project with a `.surfex/` gains `.surfex/transitions.log` the first
+time one of its tests flips. It is meant to be committed, and the existing `.surfex/*.log`
+rule union-merges it with no `.gitattributes` edit. A CI job that should keep its flips sets
+`SURFEX_TRANSITIONS_OUT=PATH` and keeps `PATH` as an artifact (`mix surfex.info failures`).
+Evidence lines gain optional `duration` and `failure` fields, and older lines load as before.
+An evidence line missing a field now raises an `ArgumentError` naming the first such line,
+where it raised `KeyError`.
 
 ### Changed
 
